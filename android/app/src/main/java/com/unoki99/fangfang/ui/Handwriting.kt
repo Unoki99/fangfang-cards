@@ -95,15 +95,22 @@ fun ResumedNote(shown: Boolean, onGone: () -> Unit) {
 
 // MARK: - 楷體 and how closely the writing follows it
 
-private object Kai {
-    private var face: Typeface? = null
+object Kai {
+    /** the fonts to choose from (設定 or the 字體 button in 手寫練習); what one doesn't have comes from the system's font */
+    val names = listOf("文楷", "芫荽")
+    // 霞鶩文楷 TC; 芫荽 Iansui (Taiwan's way of writing, for learning) — both SIL OFL
+    private val files = listOf(R.font.lxgw_wenkai_tc, R.font.iansui)
+    private val faces = HashMap<Int, Typeface>()
+    private val families = HashMap<Int, FontFamily>()
+    val style: Int get() = Prefs.handFont.value.coerceIn(0, files.size - 1)
     fun typeface(ctx: android.content.Context): Typeface {
-        face?.let { return it }
-        val f = try { androidx.core.content.res.ResourcesCompat.getFont(ctx, R.font.lxgw_wenkai_tc) } catch (_: Exception) { null } ?: Typeface.DEFAULT
-        face = f
+        val s = style
+        faces[s]?.let { return it }
+        val f = try { androidx.core.content.res.ResourcesCompat.getFont(ctx, files[s]) } catch (_: Exception) { null } ?: Typeface.DEFAULT
+        faces[s] = f
         return f
     }
-    val family = FontFamily(Font(R.font.lxgw_wenkai_tc))
+    val family: FontFamily get() = families.getOrPut(style) { FontFamily(Font(files[style])) }
 
     /** where the character goes in a square of this side (centred on its own shape) */
     fun place(ch: String, side: Float, paint: Paint): Pair<Float, Float> {
@@ -173,8 +180,9 @@ private object Kai {
 }
 
 /** one stroke of the writing: its points and how thick it is at each (from the stylus's pressure) */
-class InkStroke(val pts: List<Offset>, val ws: List<Float>) {
-    operator fun plus(x: Pair<Offset, Float>) = InkStroke(pts + x.first, ws + x.second)
+/** a stroke: its points, the thickness at each, and when each was written (uptime ms, for 筆跡延遲) */
+class InkStroke(val pts: List<Offset>, val ws: List<Float>, val ts: List<Long> = emptyList()) {
+    fun add(p: Offset, w: Float, t: Long) = InkStroke(pts + p, ws + w, ts + t)
 }
 
 /** the ink of 手寫練習: always the dark ink of the original theme, or (彩色) the app's rainbow along the strokes */
@@ -302,8 +310,15 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
     val rainbow = Prefs.handRainbow.value
     val sensitivity = Prefs.handPressure.value
     var side by remember { mutableFloatStateOf(0f) }
-    val target = remember(ch) { Kai.target(ch, ctx) }
-    val penWidth = with(androidx.compose.ui.platform.LocalDensity.current) { 14.dp.toPx() }
+    val fontStyle = Prefs.handFont.value
+    val target = remember(ch, fontStyle) { Kai.target(ch, ctx) }
+    val penWidth = with(androidx.compose.ui.platform.LocalDensity.current) { Prefs.handWidth.value.dp.toPx() }
+    // 筆跡延遲: the writing shows up a moment after the pen (redrawn every frame while it's on)
+    val delayMs = (Prefs.handDelay.value * 1000).toLong()
+    var frameNow by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(delayMs) {
+        if (delayMs > 0) while (true) { withFrameMillis { }; frameNow = android.os.SystemClock.uptimeMillis() }
+    }
     val score = if (trace) Kai.score(target, strokes.toList(), side) else 0.0
     LaunchedEffect(ch) { strokes.clear() }
     // what the character is like: reading, meaning
@@ -311,7 +326,10 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
     val z = Store.zh
     val entry = if (card == null) z?.entryForChar(ch, "") else null
     val reading = card?.let { Store.cardRom(it, 0, -1).annotated() } ?: entry?.let { z!!.reading(it.syl(Prefs.zhPlace.value), Prefs.zhRom.value).annotated() }
-    val defs = card?.d?.take(2)?.map { it.p to it.t } ?: entry?.senses?.take(2)?.map { "" to it.text } ?: emptyList()
+    // 華語: the meanings in 華語 or English (the same switch as 設定 → 主要解釋, so the words follow it too)
+    val english = Prefs.zhEnglish.value && Store.isZh
+    val enDefs = if (english) z?.entryForChar(ch, "")?.takeIf { it.en != null }?.enList?.take(2)?.map { "" to it } else null
+    val defs = enDefs ?: card?.d?.take(2)?.map { it.p to it.t } ?: entry?.senses?.take(2)?.map { "" to it.text } ?: emptyList()
     var padSize by Prefs.handPad
     // the biggest square that leaves room for everything else on this screen
     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -333,11 +351,32 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                 Icon(Icons.Filled.TextFields, null, tint = if (trace) T.greenInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
                 Txt("描字", ff(FF.Footnote, FontWeight.SemiBold), if (trace) T.greenInk else T.muted)
             }
-            // 彩色: the writing in the rainbow instead of the dark ink
-            Row(Modifier.clip(RoundedCornerShape(50)).background(if (rainbow) T.green else T.fn).border(1.5.dp, if (rainbow) T.greenEdge else T.fnEdge, RoundedCornerShape(50))
-                .clickable { Prefs.handRainbow.value = !rainbow }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Palette, null, tint = if (rainbow) T.greenInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-                Txt("彩色", ff(FF.Footnote, FontWeight.SemiBold), if (rainbow) T.greenInk else T.muted)
+            // 字體: 文楷 or 芫荽 (the character at the top and the one to trace)
+            Box {
+                var fontMenu by remember { mutableStateOf(false) }
+                Row(Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
+                    .clickable { fontMenu = true }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Txt(Kai.names[Kai.style], ff(FF.Footnote, FontWeight.SemiBold), T.muted)
+                    Icon(Icons.Filled.ArrowDropDown, null, tint = T.muted, modifier = Modifier.size(16.dp))
+                }
+                DropdownMenu(fontMenu, { fontMenu = false }, containerColor = T.fn) {
+                    for ((i, n) in Kai.names.withIndex()) DropdownMenuItem(
+                        text = { Txt(n, ff(FF.Body), if (i == fontStyle) T.greenInk else T.glyph) },
+                        leadingIcon = { if (i == fontStyle) Icon(Icons.Filled.Check, null, tint = T.greenInk) else Spacer(Modifier.size(24.dp)) },
+                        onClick = { Prefs.handFont.value = i; fontMenu = false })
+                }
+            }
+            // 筆: how thick, how much a stylus's pressure changes it, 彩色
+            Box {
+                var penMenu by remember { mutableStateOf(false) }
+                Row(Modifier.clip(RoundedCornerShape(50)).background(if (rainbow) T.green else T.fn).border(1.5.dp, if (rainbow) T.greenEdge else T.fnEdge, RoundedCornerShape(50))
+                    .clickable { penMenu = true }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Edit, null, tint = if (rainbow) T.greenInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
+                    Txt("筆", ff(FF.Footnote, FontWeight.SemiBold), if (rainbow) T.greenInk else T.muted)
+                }
+                DropdownMenu(penMenu, { penMenu = false }, containerColor = T.fn) {
+                    Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) { PenControls() }
+                }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -359,7 +398,10 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                     Txt(d.second, ff(FF.Subheadline), T.glyph, maxLines = 2)
                 }
             }
-            PlayButton("tts:$ch", 40.dp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                PlayButton("tts:$ch", 40.dp)
+                if (Store.isZh) MeaningSwitch()
+            }
         }
         // the grid to write in (米字格), the faint character to trace, and the writing
         val glyph = T.glyph; val edge = T.fnEdge
@@ -368,19 +410,19 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
             .border(1.5.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
             Canvas(Modifier.fillMaxSize()
                 .onSizeChanged { side = it.width.toFloat() }
-                .pointerInput(ch, sensitivity) {
+                .pointerInput(ch, sensitivity, penWidth) {
                     // each touch is a stroke; a stylus's pressure makes it thicker or thinner
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         val stylus = down.type == PointerType.Stylus
                         down.consume()
-                        strokes.add(InkStroke(listOf(down.position), listOf(HandInk.width(penWidth, down.pressure, stylus, sensitivity))))
+                        strokes.add(InkStroke(listOf(down.position), listOf(HandInk.width(penWidth, down.pressure, stylus, sensitivity)), listOf(down.uptimeMillis)))
                         while (true) {
                             val e = awaitPointerEvent()
                             val c = e.changes.firstOrNull { it.id == down.id } ?: break
                             if (!c.pressed) break
                             c.consume()
-                            if (strokes.isNotEmpty()) strokes[strokes.size - 1] = strokes.last() + (c.position to HandInk.width(penWidth, c.pressure, stylus, sensitivity))
+                            if (strokes.isNotEmpty()) strokes[strokes.size - 1] = strokes.last().add(c.position, HandInk.width(penWidth, c.pressure, stylus, sensitivity), c.uptimeMillis)
                         }
                     }
                 }) {
@@ -397,8 +439,15 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                     c.nativeCanvas.drawText(ch, x, y, p)
                 }
                 // the writing: the dark ink, or (彩色) the rainbow along the whole writing
+                // 筆跡延遲: only what was written at least that long ago
+                val until = if (delayMs > 0) frameNow - delayMs else Long.MAX_VALUE
                 var dist = 0f
-                for (s in strokes) {
+                for (s0 in strokes) {
+                    val s = if (delayMs > 0 && s0.ts.size == s0.pts.size) {
+                        val n = s0.ts.count { it <= until }
+                        if (n == 0) continue
+                        if (n < s0.pts.size) InkStroke(s0.pts.take(n), s0.ws.take(n)) else s0
+                    } else s0
                     if (s.pts.size == 1) { drawCircle(if (rainbow) HandInk.color(dist, period) else HandInk.dark, s.ws[0] / 2, s.pts[0]); continue }
                     for (i in 1 until s.pts.size) {
                         val a = s.pts[i - 1]; val b = s.pts[i]
@@ -541,6 +590,68 @@ private fun CharWordCardRow(c: Card) {
         for ((i, d) in ds.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (ds.size > 1) Txt("${i + 1}.", ff(FF.Caption, FontWeight.Bold), T.muted)
             Txt(d.t, ff(FF.Footnote), T.muted, maxLines = 2)
+        }
+    }
+}
+
+/** 筆: 粗細, 筆壓 (a stylus) and 彩色; in 設定 and behind 筆 at the top of 手寫練習 */
+@Composable
+fun PenControls() {
+    val w = Prefs.handWidth.value
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Txt("粗細", ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Txt("${w.toInt()}", lat(15f), T.muted)
+    }
+    Slider(w, { Prefs.handWidth.value = it }, valueRange = 3f..24f,
+        colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+    // how it looks
+    val rainbow = Prefs.handRainbow.value
+    Canvas(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF5F5F5))) {
+        val p = Path()
+        val n = 60
+        for (k in 0..n) {
+            val t = k / n.toFloat()
+            val x = 12.dp.toPx() + t * (size.width - 24.dp.toPx())
+            val y = size.height / 2 + kotlin.math.sin(t * Math.PI.toFloat() * 2) * size.height * 0.22f
+            if (k == 0) p.moveTo(x, y) else p.lineTo(x, y)
+        }
+        drawPath(p, if (rainbow) HandInk.rainbow[0] else HandInk.dark, style = Stroke(w.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+    Spacer(Modifier.height(10.dp))
+    // 筆跡延遲: the writing shows up a moment after the pen
+    val dl = Prefs.handDelay.value
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Txt("筆跡延遲", ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Txt(if (dl < 0.025f) "馬上出現" else String.format("%.1f 秒", dl), ff(FF.Body), T.muted)
+    }
+    Slider(dl, { Prefs.handDelay.value = Math.round(it * 20) / 20f }, valueRange = 0f..1.5f,
+        colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+    Spacer(Modifier.height(10.dp))
+    val s = Prefs.handPressure.value
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Txt("觸控筆筆壓", ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Txt(if (s < 0.05f) "粗細不變" else "${Math.round(s * 100)}%", ff(FF.Body), T.muted)
+    }
+    Slider(s, { Prefs.handPressure.value = it }, valueRange = 0f..1.5f,
+        colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+    Row(Modifier.fillMaxWidth().clickable { Prefs.handRainbow.value = !rainbow }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Txt("彩色筆跡", ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Switch(rainbow, { Prefs.handRainbow.value = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.greenEdge))
+    }
+}
+
+/** 手寫練習 (華語): 中 | 英, the meanings in 華語 or English (設定 → 主要解釋) */
+@Composable
+private fun MeaningSwitch() {
+    val en = Prefs.zhEnglish.value
+    Row(Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
+        .clickable { Prefs.zhEnglish.value = !en }.padding(2.dp)) {
+        for (e in listOf(false, true)) {
+            val on = en == e
+            Box(Modifier.size(width = 26.dp, height = 22.dp).clip(RoundedCornerShape(50)).background(if (on) T.green else Color.Transparent),
+                contentAlignment = Alignment.Center) {
+                Txt(if (e) "英" else "中", ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.greenInk else T.muted)
+            }
         }
     }
 }

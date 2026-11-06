@@ -97,14 +97,11 @@ fun SettingsScreen() {
                             MenuRow("華語卡片的解釋", if (Prefs.zhEnglish.value) "英文" else "華語", listOf(false to "華語", true to "英文")) { Prefs.zhEnglish.value = it }
                             RowDivider()
                             Column(Modifier.padding(14.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Txt("手寫：觸控筆筆壓", ff(FF.Body), modifier = Modifier.weight(1f))
-                                    Txt(if (Prefs.handPressure.value < 0.05f) "不變粗細" else "${Math.round(Prefs.handPressure.value * 100)}%", ff(FF.Body), T.muted)
-                                }
-                                Slider(Prefs.handPressure.value, { Prefs.handPressure.value = it }, valueRange = 0f..1.5f,
-                                    colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+                                Txt("手寫：筆", ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(bottom = 6.dp))
+                                PenControls()
                             }
-                            RowDivider(); SwitchRow("手寫：彩色筆跡", Prefs.handRainbow)
+                            RowDivider()
+                            MenuRow("手寫：字體", Kai.names[Kai.style], Kai.names.withIndex().map { it.index to it.value }) { Prefs.handFont.value = it }
                             RowDivider(); StepRow("連續答對 ${Prefs.goal.value} 次算學會", Prefs.goal, 1, 6, 1)
                             RowDivider(); StepRow("每次練習 ${Prefs.sessionSize.value} 個詞", Prefs.sessionSize, 5, 40, 5)
                         }
@@ -352,7 +349,7 @@ private fun AboutPage() {
             Credit("華語詞表", "HSK 3.0（2021，ivankra/hsk30，MIT）、TOCFL 華語八千詞（2023，ivankra/tocfl）")
             Credit("漢字卡、近義詞、反義詞", "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄。")
             Credit("部首組合", "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
-            Credit("手寫練習的楷體", "霞鶩文楷 TC（Copyright 2022-2024 LXGW、2020 The Klee Project Authors；SIL Open Font License 1.1）")
+            Credit("手寫練習的字體", "文楷：霞鶩文楷 TC（Copyright 2022-2024 LXGW、2020 The Klee Project Authors）；芫荽：Iansui（Copyright 2025 The Iansui Project Authors）。都是 SIL Open Font License 1.1。")
             Credit("輸入法拆碼", "Rime 倉頡、五筆（rime-cangjie、rime-wubi）")
             Credit("音節編碼", "YuRen-tw《rime-taigi-tps》的拼音系統（經作者同意使用）")
             Credit("轉換的朗讀", TaigiSpeech.credit)

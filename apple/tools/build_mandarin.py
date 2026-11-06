@@ -626,12 +626,33 @@ if MOE:
     MORE = 3000
     more = [ch for ch, f in cfreq.most_common() if ch not in listed and ch in moe and ch in words
             and real(moe_readings(moe[ch]))][:MORE]
+    # how each character is read in the words it's in, each word counted by how common it is (撣 is ㄉㄢˇ in
+    # 撣子, 雞毛撣子…, so that's its usual reading, not the ㄕㄢˋ the dictionary happens to list first)
+    usage = collections.defaultdict(collections.Counter)
+    for w, ens in words.items():
+        if len(w) < 2 or not ens: continue
+        tw = ens[0]["tw"]
+        if len(tw) != len(w): continue
+        f = freq.get(w, 0) + 1
+        for i, ch in enumerate(w):
+            # (a light tone in a word, like 子 in 桌子, isn't the character's own reading)
+            if is_han(ch) and tw[i][0] and not tw[i][0].startswith("˙"): usage[ch][tw[i][0]] += f
     for ch in picked + more:
         rs = moe_readings(moe[ch])
-        # the usual reading first (the 兩岸 dictionary's)
+        # the usual reading first: the one it has on its own (的, 了…), else the one the words with it use most,
+        # else the 兩岸 dictionary's; then the others, the more used first, 又音 / 讀音 / 語音 last
+        u = usage.get(ch, collections.Counter())
         main = reading_of(ch)
-        mz = main[0][0][0] if main and main[0] else None
-        rs.sort(key=lambda r: 0 if r[0] == mz else 1)
+        mz = main[0][0][0] if main and main[0] else (rs[0][0] if rs else None)
+        if ch in ALONE_READING and any(r[0] == ALONE_READING[ch] for r in rs):
+            mz = ALONE_READING[ch]
+        elif rs and not (mz or "").startswith("˙"):
+            # (a particle's light tone, like 啦 or 嘛, stays first)
+            best = max(rs, key=lambda r: (u.get(r[0], 0), -(len(r) > 3)))[0]
+            # the words with it clearly use another reading (at least twice as much)
+            if u.get(best, 0) > 0 and u.get(mz, 0) * 2 < u[best]: mz = best
+        order = {id(r): i for i, r in enumerate(rs)}
+        rs.sort(key=lambda r: (0 if r[0] == mz else 1, -u.get(r[0], 0), len(r) > 3, order[id(r)]))
         c = {"h": ch, "m": rs}
         if ch in hsk_ch: c["x"] = hsk_ch[ch]
         if ch in tbcl_ch: c["y"] = tbcl_ch[ch]

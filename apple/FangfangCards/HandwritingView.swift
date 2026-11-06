@@ -62,6 +62,16 @@ enum Kaiti {
         }
     }
 
+    /// the chosen font for SwiftUI's Text (by its name: SwiftUI doesn't keep a UIFont's fallbacks, and with them it
+    /// could end up drawing in another font than the canvas does)
+    static func swiftUI(_ size: CGFloat) -> Font {
+        register()
+        let chosen = styles[style].ps
+        let names = [chosen] + ["LXGWWenKaiTC-Regular", tc, sc].filter { $0 != chosen }
+        guard let n = names.first(where: { UIFont(name: $0, size: size) != nil }) else { return .system(size: size) }
+        return .custom(n, fixedSize: size)
+    }
+
     /// the chosen font at a size; what it doesn't have comes from 文楷, then 楷體 (TC, then SC), then the system font
     static func font(_ size: CGFloat) -> UIFont {
         register()
@@ -471,11 +481,11 @@ private struct HandwritingPad: View {
         return HStack(alignment: .center, spacing: 16) {
             // tap: the words with this character (to learn it in context); on an iPad they're beside the square
             if wide {
-                Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
+                Text(ch).font(Kaiti.swiftUI(64)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
             } else {
                 Button { wordsFor = WordsRef(ch: ch) } label: {
                     VStack(spacing: 0) {
-                        Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
+                        Text(ch).font(Kaiti.swiftUI(64)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
                         Label("看詞", systemImage: "text.magnifyingglass").ffFont(.caption2, .semibold).foregroundStyle(T.muted)
                     }
                     .contentShape(Rectangle())

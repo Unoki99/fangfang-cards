@@ -55,8 +55,9 @@ Updating later: build again and install the new APK over the old one — progres
 - the widget can show only 不熟 words, the 不熟 words of either language, or a 華語 level
 - both dictionaries load when the app starts; a backup import shows a potion bar
 
-The 楷體 in 手寫練習 is 霞鶩文楷 TC (LXGW WenKai TC, SIL Open Font License 1.1, https://github.com/lxgw/LxgwWenkaiTC),
-in `app/src/main/res/font`; its licence is in `licenses/LXGW-WenKai-TC-OFL.txt`. The 皓羅 font (`haolo.ttf`) is a
+The fonts of 手寫練習 (字體) are in `app/src/main/res/font`, each cut down to the characters the app uses, all under the
+SIL Open Font License 1.1: 文楷 is 霞鶩文楷 TC (LXGW WenKai TC, https://github.com/lxgw/LxgwWenkaiTC; licence in
+`licenses/LXGW-WenKai-TC-OFL.txt`) and 芫荽 is Iansui (https://github.com/ButTaiwan/iansui; `licenses/Iansui-OFL.txt`). The 皓羅 font (`haolo.ttf`) is a
 subset of DejaVu Sans; its licence is in `licenses/DejaVu-LICENSE.txt`.
 
 Not in the Android version: Shortcuts actions, Liquid Glass.
