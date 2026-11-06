@@ -115,6 +115,7 @@ fun Sheets() {
                             is Sheet.ConvWord -> DictGate { d -> ConvWordSheet(d, s.index) }
                             is Sheet.CardSheet -> CardSheetRoot(s.card)
                             is Sheet.ZhWord -> ZhGate { z -> ZhEntrySheetRoot(z, s.key) }
+                            is Sheet.CharWords -> CharWordsSheetRoot(s.ch)
                         }
                     }
                 }

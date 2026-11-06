@@ -60,6 +60,25 @@ for j in "/Applications/Android Studio.app/Contents/jbr/Contents/Home" \
          "$(/usr/libexec/java_home -v 21 2>/dev/null)" "$(/usr/libexec/java_home -v 17 2>/dev/null)"; do
   if [ -n "$j" ] && ok_java "$j"; then PICK="$j"; break; fi
 done
+# none (new Android Studio comes with Java 25, too new for the build tools): a Java 21 of our own, downloaded
+# once from Eclipse Adoptium (free) into ~/Library/Application Support/FangfangCards/jdk21
+if [ -z "$PICK" ]; then
+  OWN="$HOME/Library/Application Support/FangfangCards/jdk21"
+  find_own() { for d in "$OWN"/*/Contents/Home; do ok_java "$d" && { echo "$d"; return; }; done; }
+  PICK="$(find_own)"
+  if [ -z "$PICK" ]; then
+    echo "Android Studio 的 Java 太新了（建置工具要 17–23 版），下載一個 Java 21 給方方詞卡用（只有第一次，大概 200 MB）…"
+    ARCH=$( [ "$(uname -m)" = "arm64" ] && echo aarch64 || echo x64 )
+    TGZ="$(mktemp -d)/jdk21.tar.gz"
+    if curl -fL --progress-bar -o "$TGZ" "https://api.adoptium.net/v3/binary/latest/21/ga/mac/$ARCH/jdk/hotspot/normal/eclipse"; then
+      rm -rf "$OWN"; mkdir -p "$OWN"
+      tar -xzf "$TGZ" -C "$OWN" && rm -f "$TGZ"
+      PICK="$(find_own)"
+    else
+      echo "（下載 Java 失敗）"
+    fi
+  fi
+fi
 if [ -z "$PICK" ]; then
   echo "✗ 找不到可以用的 Java（要 17–23 版；這台 Mac 的 Java 太新或沒有）。"
   echo "  請安裝 Android Studio（https://developer.android.com/studio，它裡面有對的 Java），放在「應用程式」資料夾，再執行一次。"

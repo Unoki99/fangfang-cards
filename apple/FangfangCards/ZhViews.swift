@@ -163,6 +163,8 @@ struct ZhWordRow: View {
     let entry: ZhEntry
     /// found by its English meaning: show that instead of the 華語 one
     var english = false
+    /// how many meanings to show (more than 1: one a line)
+    var meanings = 1
     @EnvironmentObject var store: Store
     @AppStorage(ZhMeaning.key) private var mainEnglish = false
     var body: some View {
@@ -179,7 +181,17 @@ struct ZhWordRow: View {
                 if store.cardStatus(entry.k) == 2 { Image(systemName: "star.fill").ffFont(.caption).foregroundStyle(T.rustInk) }
             }
             // found by its English meaning, or 設定 → 主要解釋: English
-            if english || mainEnglish, entry.en != nil {
+            if meanings > 1 {
+                // 1–2 meanings, one a line (手寫練習's words)
+                let en = ((english || mainEnglish) && entry.en != nil) || entry.senses.isEmpty
+                let ms = en ? Array(entry.enList.prefix(meanings)) : entry.senses.prefix(meanings).map(\.text)
+                ForEach(Array(ms.enumerated()), id: \.offset) { i, m in
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        if ms.count > 1 { Text("\(i + 1).").ffFont(.caption, .bold).foregroundStyle(T.muted) }
+                        Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+                    }
+                }
+            } else if english || mainEnglish, entry.en != nil {
                 Text(entry.enList.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
             } else if let s = entry.senses.first {
                 Text(s.text).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)

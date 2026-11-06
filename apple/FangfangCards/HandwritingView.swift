@@ -277,30 +277,62 @@ private struct HandwritingPad: View {
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
     /// the biggest the square can be on this screen (set from the space there is)
     @State private var maxPad: CGFloat = 520
+    /// the character whose words are shown (tapping it at the top)
+    @State private var wordsFor: WordsRef?
+    @Environment(\.horizontalSizeClass) private var hSize
+    static let sideWidth: CGFloat = 330
+    /// room for the words beside the square (iPad, not in a narrow split view)
+    private func isWide(_ size: CGSize) -> Bool { hSize == .regular && size.width >= 800 }
+    struct WordsRef: Identifiable { let ch: String; var id: String { ch } }
 
     var body: some View {
         let ch = chars[min(idx, chars.count - 1)]
         GeometryReader { g in
-            pad(ch)
-                .onAppear { maxPad = fit(g.size) }
-                .onChange(of: g.size) { maxPad = fit(g.size) }
+            let w = isWide(g.size)
+            HStack(alignment: .top, spacing: 0) {
+                // iPad: the words with the character beside the square, to learn it in context
+                if w { sideWords(ch).frame(width: Self.sideWidth).padding([.leading, .vertical]) }
+                pad(ch, wide: w)
+            }
+            .onAppear { maxPad = fit(g.size) }
+            .onChange(of: g.size) { maxPad = fit(g.size) }
+            .onChange(of: hSize) { maxPad = fit(g.size) }
+        }
+        .sheet(item: $wordsFor) { w in
+            CharWordsSheet(ch: w.ch).environmentObject(store)
         }
     }
 
     /// the biggest square that leaves room for everything else (wide and tall enough)
     private func fit(_ size: CGSize) -> CGFloat {
-        max(200, min(size.width - 32, size.height - (trace ? 360 : 320)))
+        let side = isWide(size) ? Self.sideWidth + 16 : 0
+        return max(200, min(size.width - 32 - side, size.height - (trace ? 360 : 320)))
+    }
+
+    private func sideWords(_ ch: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("有「\(ch)」的詞").ffFont(.headline).foregroundStyle(T.glyph)
+                Spacer()
+                RomButton()
+            }
+            .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 2)
+            CharWordsList(ch: ch)
+        }
+        .background(RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.35)))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
     }
 
     private var padSide: CGFloat { min(max(180, CGFloat(padSize)), maxPad) }
 
-    private func pad(_ ch: String) -> some View {
+    private func pad(_ ch: String, wide: Bool) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 10) {
                 PotionBar(value: Double(idx + 1) / Double(chars.count), height: 20, showMarks: false, label: "手寫進度")
                 Text("\(idx + 1)／\(chars.count)").latFont(14).monospacedDigit().foregroundStyle(T.muted)
             }
-            header(ch)
+            header(ch, wide: wide)
             canvas(ch)
             if trace {
                 HStack(spacing: 10) {
@@ -367,10 +399,23 @@ private struct HandwritingPad: View {
         return (AttributedString(""), [], "tts:" + ch)
     }
 
-    private func header(_ ch: String) -> some View {
+    private func header(_ ch: String, wide: Bool) -> some View {
         let i = info(ch)
         return HStack(alignment: .center, spacing: 16) {
-            Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id(kaiti)
+            // tap: the words with this character (to learn it in context); on an iPad they're beside the square
+            if wide {
+                Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id(kaiti)
+            } else {
+                Button { wordsFor = WordsRef(ch: ch) } label: {
+                    VStack(spacing: 0) {
+                        Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id(kaiti)
+                        Label("看詞", systemImage: "text.magnifyingglass").ffFont(.caption2, .semibold).foregroundStyle(T.muted)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(SwellButtonStyle())
+                .accessibilityLabel("看有「\(ch)」的詞")
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text(i.reading).latFont(24).toneGlow().foregroundStyle(T.greenInk)
                 ForEach(Array(i.defs.enumerated()), id: \.offset) { n, d in
@@ -531,5 +576,122 @@ private struct WritingPad: UIViewRepresentable {
             if let now = v.tool as? PKInkingTool, now.color != want.color || now.inkType != want.inkType { v.tool = want }
             DispatchQueue.main.async { self.changed(d) }       // (not while SwiftUI is updating the view)
         }
+    }
+}
+
+/// 手寫練習: the words with a character, so it can be learned in context, each with 1–2 meanings
+/// (in 華語 or English, as 設定 → 主要解釋 says).
+/// 華語: the dictionary's words, the ones on the word lists (HSK / TOCFL) first, the easier levels first.
+/// 台語: the cards' words, in the word list's order. Tap one to open it.
+struct CharWordsList: View {
+    let ch: String
+    @EnvironmentObject var store: Store
+    @State private var zhList: [Int]?
+    @State private var openCard: Card?
+    @State private var openZh: ZhKey?
+    @State private var openChar: WordsRefID?
+    struct WordsRefID: Identifiable { let id: String }
+
+    private var dict: ZhDict? { store.isZh ? store.zh : nil }
+
+    var body: some View {
+        List {
+            if let dict {
+                if dict.charIndex[ch] != nil {
+                    Section {
+                        Button { openChar = WordsRefID(id: ch) } label: {
+                            Label("「\(ch)」這個字", systemImage: "character.book.closed").foregroundStyle(T.glyph)
+                        }
+                    }
+                    .listRowBackground(T.fn.opacity(0.7))
+                }
+                if let zhList {
+                    Section(zhList.isEmpty ? "沒有找到有這個字的詞" : "有「\(ch)」的詞（\(zhList.count)）") {
+                        ForEach(zhList, id: \.self) { i in
+                            Button { openZh = ZhKey(k: dict.entries[i].k) } label: {
+                                ZhWordRow(dict: dict, entry: dict.entries[i], meanings: 2).contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .listRowBackground(T.fn.opacity(0.7))
+                } else {
+                    ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
+                }
+            } else {
+                let ws = store.cards.filter { Lang.charOf($0.k) == nil && $0.h.count > 1 && $0.h.contains(ch) }
+                Section(ws.isEmpty ? "沒有找到有這個字的詞" : "有「\(ch)」的詞（\(ws.count)）") {
+                    ForEach(ws, id: \.k) { c in
+                        Button { openCard = c } label: { CharWordCardRow(card: c).contentShape(Rectangle()) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                .listRowBackground(T.fn.opacity(0.7))
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .sheet(item: $openCard) { CardSheet(card: $0).environmentObject(store) }
+        .sheet(item: $openZh) { k in if let dict { ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) } }
+        .sheet(item: $openChar) { c in if let dict { ZhCharSheet(dict: dict, ch: c.id).environmentObject(store) } }
+        .task(id: ch) {
+            zhList = nil
+            guard let d = dict else { return }
+            let c = ch
+            zhList = await Task.detached(priority: .userInitiated) { () -> [Int] in
+                var listed: [(Int, Int)] = [], other: [Int] = []
+                var seen = Set<String>()
+                for (i, e) in d.entries.enumerated() where e.h.count > 1 && e.h.contains(c) {
+                    guard seen.insert(e.h).inserted else { continue }
+                    let lv = [e.hsk, e.tocfl].filter { $0 > 0 }.min() ?? 0
+                    if lv > 0 { listed.append((lv, i)) } else if other.count < 150 { other.append(i) }
+                }
+                return listed.sorted { $0.0 != $1.0 ? $0.0 < $1.0 : $0.1 < $1.1 }.map(\.1) + other
+            }.value
+        }
+    }
+}
+
+/// a 台語 word card with its reading and 1–2 meanings
+struct CharWordCardRow: View {
+    let card: Card
+    @EnvironmentObject var store: Store
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(card.h).scaledFont(20, weight: .semibold).foregroundStyle(T.blueInk)
+                Text(store.cardRom(card, rom, place)).latFont(16).toneGlow().foregroundStyle(T.greenInk).lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            let ds = Array(card.d.prefix(2))
+            ForEach(Array(ds.enumerated()), id: \.offset) { i, d in
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    if ds.count > 1 { Text("\(i + 1).").ffFont(.caption, .bold).foregroundStyle(T.muted) }
+                    Text(d.t).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+                }
+            }
+        }
+    }
+}
+
+/// the words with a character, in a sheet (on a phone: tap the character at the top of 手寫練習)
+struct CharWordsSheet: View {
+    let ch: String
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            CharWordsList(ch: ch)
+                .appBackground()
+                .navigationTitle("有「\(ch)」的詞")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } }
+                    ToolbarItem(placement: .topBarTrailing) { RomButton() }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }

@@ -46,6 +46,8 @@ sealed class Sheet {
     data class ConvWord(val index: Int) : Sheet()
     data class CardSheet(val card: Card) : Sheet()
     data class ZhWord(val key: String) : Sheet()
+    /** 手寫練習: the words with a character */
+    data class CharWords(val ch: String) : Sheet()
 }
 
 enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING }

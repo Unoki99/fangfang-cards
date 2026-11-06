@@ -313,10 +313,15 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
     var padSize by Prefs.handPad
     // the biggest square that leaves room for everything else on this screen
     BoxWithConstraints(Modifier.fillMaxSize()) {
-    val maxPad = maxOf(200f, minOf(maxWidth.value - 32f, maxHeight.value - (if (trace) 360f else 320f)))
+    // a tablet: the words with the character beside the square, to learn it in context
+    val wide = maxWidth >= 800.dp
+    val sideW = 330f
+    val maxPad = maxOf(200f, minOf(maxWidth.value - 32f - (if (wide) sideW + 16f else 0f), maxHeight.value - (if (trace) 360f else 320f)))
     val padSide = padSize.coerceIn(180f, maxOf(181f, maxPad))
     LaunchedEffect(padSide) { strokes.clear() }      // (the old writing wouldn't fit the new size)
-    Column(Modifier.fillMaxSize().widthIn(max = maxOf(640f, padSide + 32f).dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+    Row(Modifier.fillMaxSize()) {
+    if (wide) CharWordsPanel(ch, Modifier.width(sideW.dp).fillMaxHeight().padding(start = 16.dp, top = 16.dp, bottom = 16.dp))
+    Column(Modifier.weight(1f).fillMaxHeight().widthIn(max = maxOf(640f, padSide + 32f).dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) { PotionBar((idx + 1).toDouble() / chars.size, 20.dp, showMarks = false, label = "手寫進度") }
@@ -334,7 +339,16 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text(ch, style = sz(64f, FontWeight.Medium).copy(fontFamily = Kai.family), color = T.blueInk)
+            // tap: the words with this character (to learn it in context); on a tablet they're beside the square
+            if (wide) Text(ch, style = sz(64f, FontWeight.Medium).copy(fontFamily = Kai.family), color = T.blueInk)
+            else Column(Modifier.clip(RoundedCornerShape(12.dp)).clickable { UI.open(Sheet.CharWords(ch)) }.padding(horizontal = 4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(ch, style = sz(64f, FontWeight.Medium).copy(fontFamily = Kai.family), color = T.blueInk)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Search, null, tint = T.muted, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(2.dp))
+                    Txt("看詞", ff(FF.Caption2, FontWeight.SemiBold), T.muted)
+                }
+            }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (reading != null) Txt(reading, lat(24f), T.greenInk)
                 for ((n, d) in defs.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -414,5 +428,117 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
             Icon(Icons.Filled.ZoomIn, "大一點", tint = T.muted, modifier = Modifier.size(20.dp))
         }
     }
+    }
+    }
+}
+
+
+// MARK: - the words with a character
+
+/** 手寫練習 on a phone: tap the character at the top for the words with it */
+@Composable
+fun CharWordsSheetRoot(ch: String) {
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.greenInk) }
+            Spacer(Modifier.weight(1f))
+            Txt("有「$ch」的詞", ff(FF.Headline, FontWeight.SemiBold), T.glyph)
+            Spacer(Modifier.weight(1f))
+            BarButtons(settings = false)
+        }
+        CharWordsList(ch, Modifier.fillMaxSize())
+    }
+}
+
+/** 手寫練習 on a tablet: the words with the character, beside the square */
+@Composable
+private fun CharWordsPanel(ch: String, modifier: Modifier) {
+    Column(modifier.clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.35f)).border(1.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
+        Txt("有「$ch」的詞", ff(FF.Headline, FontWeight.SemiBold), T.glyph, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+        CharWordsList(ch, Modifier.fillMaxSize())
+    }
+}
+
+/** the words with a character, so it can be learned in context, each with 1–2 meanings (in 華語 or English, as
+ *  設定 → 主要解釋 says). 華語: the dictionary's words, the ones on the word lists (HSK / TOCFL) first, the easier
+ *  levels first. 台語: the cards' words, in the word list's order. Tap one to open it. */
+@Composable
+private fun CharWordsList(ch: String, modifier: Modifier) {
+    val z = if (Store.isZh) Store.zh else null
+    Store.rev
+    var zhList by remember(ch, z) { mutableStateOf<List<Int>?>(null) }
+    LaunchedEffect(ch, z) {
+        if (z == null) return@LaunchedEffect
+        zhList = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val listed = ArrayList<Pair<Int, Int>>(); val other = ArrayList<Int>(); val seen = HashSet<String>()
+            for ((i, e) in z.entries.withIndex()) {
+                if (e.h == ch || e.h.length < 2 || !e.h.contains(ch) || !seen.add(e.h)) continue
+                val lv = listOf(e.hsk, e.tocfl).filter { it > 0 }.minOrNull() ?: 0
+                if (lv > 0) listed.add(lv to i) else if (other.size < 150) other.add(i)
+            }
+            listed.sortedWith(compareBy({ it.first }, { it.second })).map { it.second } + other
+        }
+    }
+    val cardWords = remember(ch, z, Store.cards) {
+        if (z != null) emptyList() else Store.cards.filter { Lang.charOf(it.k) == null && it.h.length > 1 && it.h.contains(ch) }
+    }
+    @Composable
+    fun rowBox(n: Int, size: Int, onClick: () -> Unit, content: @Composable () -> Unit) {
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(
+            topStart = if (n == 0) 14.dp else 0.dp, topEnd = if (n == 0) 14.dp else 0.dp,
+            bottomStart = if (n == size - 1) 14.dp else 0.dp, bottomEnd = if (n == size - 1) 14.dp else 0.dp))
+            .background(T.fn.copy(alpha = 0.7f)).clickable(onClick = onClick)) {
+            if (n > 0) HorizontalDivider(color = T.fnEdge)
+            content()
+        }
+    }
+    androidx.compose.foundation.lazy.LazyColumn(modifier, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 60.dp)) {
+        if (z != null) {
+            // the character itself
+            val ce = z.entryForChar(ch, "")
+            if (ce != null) item(key = "char") {
+                ListCard(Modifier.padding(top = 8.dp)) {
+                    Row(Modifier.fillMaxWidth().clickable { UI.open(Sheet.ZhWord(ce.k)) }.padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Filled.MenuBook, null, tint = T.oliveInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
+                        Txt("「$ch」這個字", ff(FF.Body), T.glyph, Modifier.weight(1f))
+                        Icon(Icons.Filled.ChevronRight, null, tint = T.muted)
+                    }
+                }
+            }
+            val l = zhList
+            if (l == null) item(key = "wait") {
+                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = T.greenInk) }
+            } else {
+                item(key = "title") { SectionTitle(if (l.isEmpty()) "沒有找到有這個字的詞" else "有「$ch」的詞（${l.size}）") }
+                androidx.compose.foundation.lazy.itemsIndexed(l, key = { _, i -> "w|$i" }) { n, i ->
+                    val e = z.entries[i]
+                    rowBox(n, l.size, { UI.open(Sheet.ZhWord(e.k)) }) { ZhWordRow(z, e, meanings = 2) }
+                }
+            }
+        } else {
+            item(key = "title") { SectionTitle(if (cardWords.isEmpty()) "沒有找到有這個字的詞" else "有「$ch」的詞（${cardWords.size}）") }
+            androidx.compose.foundation.lazy.itemsIndexed(cardWords, key = { _, c -> "c|${c.k}" }) { n, c ->
+                rowBox(n, cardWords.size, { UI.open(Sheet.CardSheet(c)) }) { CharWordCardRow(c) }
+            }
+        }
+    }
+}
+
+/** a 台語 word card with its reading and 1–2 meanings */
+@Composable
+private fun CharWordCardRow(c: Card) {
+    val rom = Prefs.rom.value; val place = Prefs.place.value
+    val tk = textKey()
+    Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Txt(c.h, sz(20f, FontWeight.SemiBold), T.blueInk)
+            Txt(remember(c.k, tk, rom, place) { Store.cardRom(c, rom, place).annotated() }, lat(16f), T.greenInk, maxLines = 1)
+        }
+        val ds = c.d.take(2)
+        for ((i, d) in ds.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (ds.size > 1) Txt("${i + 1}.", ff(FF.Caption, FontWeight.Bold), T.muted)
+            Txt(d.t, ff(FF.Footnote), T.muted, maxLines = 2)
+        }
     }
 }

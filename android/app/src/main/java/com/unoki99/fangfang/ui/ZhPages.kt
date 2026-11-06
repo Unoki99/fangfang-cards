@@ -139,7 +139,7 @@ private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, eng
 
 /** a word in a list: 漢字, reading, first meaning */
 @Composable
-fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false) {
+fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1) {
     val zk = zhKey()
     val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value; val list = Prefs.zhList.value
     Store.rev
@@ -155,8 +155,18 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false) {
         }
         // found by its English meaning, or 設定 → 主要解釋: English
         val en = if (e.en != null) e.enList.take(3).joinToString("; ") else null
-        val m = if ((english || Prefs.zhEnglish.value) && en != null) en else e.senses.firstOrNull()?.text ?: en
-        if (m != null) Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
+        if (meanings > 1) {
+            // 1–2 meanings, one a line (手寫練習's words)
+            val useEn = ((english || Prefs.zhEnglish.value) && en != null) || e.senses.isEmpty()
+            val ms = if (useEn) e.enList.take(meanings) else e.senses.take(meanings).map { it.text }
+            for ((i, m) in ms.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (ms.size > 1) Txt("${i + 1}.", ff(FF.Caption, FontWeight.Bold), T.muted)
+                Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
+            }
+        } else {
+            val m = if ((english || Prefs.zhEnglish.value) && en != null) en else e.senses.firstOrNull()?.text ?: en
+            if (m != null) Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
+        }
     }
 }
 
