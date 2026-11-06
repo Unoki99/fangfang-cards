@@ -17,6 +17,7 @@ struct UnknownView: View {
     @State private var blanks = false
     @State private var memory = false
     @State private var writing = false
+    @State private var helping = false
     @State private var detail: Card?
     @State private var query = ""
 
@@ -43,13 +44,13 @@ struct UnknownView: View {
                     if store.isZh {
                         PracticeTile(title: "手寫練習", icon: "pencil.and.scribble", enabled: true) { writing = true }
                     }
+                    // what each way of practising does
+                    PracticeTile(title: "怎麼練習", icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
                 }
                 }
                 .padding(.vertical, 6)
                 .textCase(nil)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-            } footer: {
-                Text("本週學習：從不熟的詞選這個星期要學的（或在列表往右滑 → 本週學習），一週後做期末測驗；答錯的詞可以留到下一週。練習時連續答對 \(goal) 次，詞就會移到「熟悉」。往右滑可以直接移過去。例句填空：只做例句填空題。排句子：例句被打亂了，照華語的意思把詞排回去。看字排讀音：只看漢字，把讀音照順序排。聲調練習：聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。練習範圍：只練一個等級（或一組）的不熟的詞或字。" + (store.isZh ? "手寫練習：選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫；「描字」會在格子裡放一個淡淡的楷體字，藥水條顯示描得多像。" : ""))
             }
             Section(store.practiceName == "全部不熟的詞" ? "不熟的詞（\(store.unknownCount)）"
                     : "\(store.practiceName)・不熟的詞（\(list.count)／\(store.unknownCount)）") {
@@ -63,6 +64,8 @@ struct UnknownView: View {
                             if store.isInWeek(c.k) { Image(systemName: "calendar").ffFont(.caption).foregroundStyle(T.blueInk) }
                             WordRow(card: c, streak: store.streak(c), goal: goal)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())          // the whole row, not only the word
                     }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .leading) {
@@ -91,6 +94,7 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $scrambling) { ScrambleView().environmentObject(store) }
         .fullScreenCover(isPresented: $memory) { MemoryView().environmentObject(store) }
         .fullScreenCover(isPresented: $writing) { HandwritingView().environmentObject(store) }
+        .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
         .fullScreenCover(isPresented: $readingOrder) { ScrambleView(readingMode: true).environmentObject(store) }
     }
 }
@@ -174,7 +178,9 @@ struct KnownView: View {
             .listRowBackground(T.fn.opacity(0.7))
             Section("熟悉的詞（\(store.knownCount)）") {
                 ForEach(cards) { c in
-                    Button { detail = c } label: { WordRow(card: c) }
+                    Button { detail = c } label: {
+                        WordRow(card: c).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                    }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {
                             Button { store.mark(c, known: false, undoable: false) } label: { Label("不熟", systemImage: "xmark") }
@@ -203,6 +209,8 @@ struct PracticeTile: View {
     let title: String
     let icon: String
     var enabled = true
+    /// not a way of practising (怎麼練習): the plain colour
+    var quiet = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
@@ -210,10 +218,10 @@ struct PracticeTile: View {
                 .ffFont(.subheadline, .semibold)
                 .lineLimit(1).minimumScaleFactor(0.6)
                 .padding(.horizontal, 8)
-                .foregroundStyle(enabled ? T.greenInk : T.muted)
+                .foregroundStyle(quiet ? T.glyph : (enabled ? T.greenInk : T.muted))
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(enabled ? T.green : T.fn.opacity(0.6)))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(enabled ? T.greenEdge : T.fnEdge, lineWidth: 1.5))
+                .background(RoundedRectangle(cornerRadius: 12).fill(quiet ? T.fn.opacity(0.8) : (enabled ? T.green : T.fn.opacity(0.6))))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(quiet ? T.fnEdge : (enabled ? T.greenEdge : T.fnEdge), lineWidth: 1.5))
                 .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
@@ -267,5 +275,61 @@ struct PracticeScopeMenu: View {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+/// 不熟 → 怎麼練習: what each way of practising does, one box each
+struct PracticeHelp: View {
+    let goal: Int
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+
+    private var items: [(icon: String, title: String, text: String)] {
+        var a: [(String, String, String)] = [
+            ("calendar", "本週學習", "從不熟的詞選這個星期要學的（或在列表往右滑 → 本週學習），一週後做期末測驗；答錯的詞可以留到下一週。"),
+            ("graduationcap.fill", "開始練習", "各種題目混在一起練。連續答對 \(goal) 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。"),
+            ("text.badge.checkmark", "例句填空", "只做例句填空題。"),
+            ("rectangle.3.group", "排句子", "例句被打亂了，照華語的意思把詞排回去。"),
+            ("character.book.closed", "看字排讀音", "只看漢字，把讀音照順序排。"),
+            ("waveform", "聲調練習", "聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。"),
+            ("square.grid.2x2", "翻牌配對", "不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。"),
+        ]
+        if store.isZh {
+            a.append(("pencil.and.scribble", "手寫練習", "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
+        }
+        a.append(("scope", "練習範圍", "只練一個等級（或一組）的不熟的詞或字。"))
+        return a
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    ForEach(items, id: \.title) { it in
+                        HStack(alignment: .top, spacing: 14) {
+                            Image(systemName: it.icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(T.greenInk)
+                                .frame(width: 28)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(it.title).ffFont(.headline).foregroundStyle(T.glyph)
+                                Text(it.text).ffFont(.subheadline).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .padding(14)
+                        .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(T.fnEdge, lineWidth: 1))
+                    }
+                }
+                .padding()
+                .frame(maxWidth: 700)
+                .frame(maxWidth: .infinity)
+            }
+            .appBackground()
+            .navigationTitle("怎麼練習")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }

@@ -96,6 +96,8 @@ struct WeekPicker: View {
                                     .ffFont(.title3)
                                 WordRow(card: c)
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -153,6 +155,8 @@ struct LevelWordsView: View {
                             statusIcon(c)
                             WordRow(card: c)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .swipeActions(edge: .leading) {

@@ -1041,7 +1041,7 @@ struct CharWordsList: View {
                     Section(zhList.isEmpty ? "沒有找到有這個字的詞" : "有「\(ch)」的詞（\(zhList.count)）") {
                         ForEach(zhList, id: \.self) { i in
                             Button { openZh = ZhKey(k: dict.entries[i].k) } label: {
-                                ZhWordRow(dict: dict, entry: dict.entries[i], meanings: 2).contentShape(Rectangle())
+                                ZhWordRow(dict: dict, entry: dict.entries[i], meanings: 2).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -1054,7 +1054,7 @@ struct CharWordsList: View {
                 let ws = store.cards.filter { Lang.charOf($0.k) == nil && $0.h.count > 1 && $0.h.contains(ch) }
                 Section(ws.isEmpty ? "沒有找到有這個字的詞" : "有「\(ch)」的詞（\(ws.count)）") {
                     ForEach(ws, id: \.k) { c in
-                        Button { openCard = c } label: { CharWordCardRow(card: c).contentShape(Rectangle()) }
+                        Button { openCard = c } label: { CharWordCardRow(card: c).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()) }
                             .buttonStyle(.plain)
                     }
                 }

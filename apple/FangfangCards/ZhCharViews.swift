@@ -31,12 +31,25 @@ struct ZhCharView: View {
 struct ZhCharSheet: View {
     let dict: ZhDict
     let ch: String
+    /// the dictionary's entry for a character, read its usual way
+    static func entry(_ dict: ZhDict, _ ch: String) -> ZhEntry? {
+        let zy = dict.charIndex[ch].map { dict.chars[$0].readings.first?.zy ?? "" } ?? ""
+        return dict.entry(char: ch, zy: zy)
+    }
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            ZhCharView(dict: dict, ch: ch)
-                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
-                .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: dict, key: $0.k) }
+            Group {
+                // straight to the 兩岸 dictionary's entry for the usual reading (with the character card's buttons
+                // and 《重編國語辭典》 at the bottom), not a page that only leads to it
+                if let e = ZhCharSheet.entry(dict, ch) {
+                    ZhEntryView(dict: dict, key: e.k)
+                } else {
+                    ZhCharView(dict: dict, ch: ch)
+                }
+            }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+            .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: dict, key: $0.k) }
         }
         .presentationDetents([.medium, .large])
         .presentationContentInteraction(.scrolls)
@@ -149,6 +162,43 @@ struct ZhCharBody: View {
         case 1?: return Color(hex: 0x6eaaff)
         case 2?: return Color(hex: 0xffa94d)
         default: return T.glyph
+        }
+    }
+}
+
+/// a character's card (漢字卡): 加到「不熟」/ 在「不熟」/ 熟悉, and its 部首 and strokes; in its dictionary entry
+struct ZhCharCardRow: View {
+    let dict: ZhDict
+    let ch: String
+    @EnvironmentObject var store: Store
+    var body: some View {
+        if let i = dict.charIndex[ch] {
+            let char = dict.chars[i]
+            let key = Lang.charKey(ch)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    let st = store.cardStatus(key) ?? 0
+                    if st == 1 {
+                        Chip(text: "漢字卡：熟悉", fill: T.green, edge: T.greenEdge, ink: T.greenInk)
+                    } else {
+                        Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
+                            Label(st == 2 ? "漢字卡在「不熟」" : "漢字卡加到「不熟」", systemImage: st == 2 ? "star.fill" : "star")
+                                .ffFont(.subheadline, .semibold)
+                                .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(Capsule().fill(st == 2 ? T.rust : T.fn.opacity(0.8)))
+                                .overlay(Capsule().stroke(st == 2 ? T.rustEdge : T.fnEdge, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                HStack(spacing: 6) {
+                    if char.hsk > 0 { Chip(text: "漢字 " + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if char.tocfl > 0 { Chip(text: "漢字 " + Lang.levelName(1, char.tocfl), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if let r = char.radical { Text("部首 \(r)").ffFont(.footnote).foregroundStyle(T.muted) }
+                    if let n = char.strokes { Text("\(n) 畫").ffFont(.footnote).foregroundStyle(T.muted) }
+                }
+            }
         }
     }
 }

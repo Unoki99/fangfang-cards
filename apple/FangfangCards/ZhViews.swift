@@ -286,6 +286,8 @@ struct ZhEntryBody: View {
                     saveButton
                     star
                 }
+                // a single character: its character card too
+                if entry.h.count == 1 { ZhCharCardRow(dict: dict, ch: entry.h) }
                 Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                 // the other reading system, small
                 Text(dict.reading(syl, store.zhRom == 0 ? 1 : 0)).ffFont(.subheadline).foregroundStyle(T.purpleInk).textSelection(.enabled)
@@ -353,13 +355,14 @@ struct ZhEntryBody: View {
                     links("反", ant, T.rust, T.rustEdge, T.rustInk)
                 }
             }
-            moeChar
             if entry.extra {
                 Text("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。")
                     .ffFont(.caption).foregroundStyle(T.muted)
             }
             Text("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
                 .ffFont(.caption2).foregroundStyle(T.muted)
+            // 《重編國語辭典修訂本》 always at the very bottom
+            moeChar
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }
@@ -382,6 +385,8 @@ struct ZhEntryBody: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.4)))
+            Text("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。")
+                .ffFont(.caption2).foregroundStyle(T.muted)
         }
     }
 
