@@ -133,7 +133,33 @@ struct RomButton: View {
     @AppStorage("rom") private var rom = 0
     private let glassOn = false   // the Liquid Glass look was taken out
     @ObservedObject private var store = Store.shared
+    /// in a narrow place (手寫練習's word list on an iPad): the spelling and tone colour buttons on one row,
+    /// the 腔口 picker under them
+    var stacked = false
     var body: some View {
+        if stacked {
+            VStack(alignment: .trailing, spacing: 6) {
+                HStack(spacing: 6) { romButton; ToneMenu() }
+                PlaceMenu()
+            }
+            .fixedSize()
+        } else {
+            row
+        }
+    }
+
+    private var romButton: some View {
+        Button {
+            // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字
+            withAnimation(.snappy) { if store.isZh { store.zhRom = (store.zhRom + 1) % 2 } else { rom = (rom + 1) % 3 } }
+        } label: {
+            capsule
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("切換羅馬字")
+    }
+
+    private var row: some View {
         HStack(spacing: 6) {
             Button {
                 // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字

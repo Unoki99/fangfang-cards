@@ -311,10 +311,12 @@ private struct HandwritingPad: View {
 
     private func sideWords(_ ch: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
+            HStack(alignment: .top) {
                 Text("有「\(ch)」的詞").ffFont(.headline).foregroundStyle(T.glyph)
-                Spacer()
-                RomButton()
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .padding(.top, 4)
+                Spacer(minLength: 8)
+                RomButton(stacked: true)
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 2)
             CharWordsList(ch: ch)
