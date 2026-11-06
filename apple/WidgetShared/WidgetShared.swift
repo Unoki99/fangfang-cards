@@ -71,9 +71,26 @@ struct WidgetInboxOp: Codable {
 }
 
 enum WidgetShared {
-    static var groupID: String {
-        (Bundle.main.object(forInfoDictionaryKey: "FFAppGroup") as? String) ?? "group.com.unoki99.fangfangcards"
-    }
+    /// The shared folder's group. Built in Xcode it's the one in Info.plist, but a sideloaded IPA (AltStore,
+    /// SideStore, Sideloadly…) is signed again with the sideloader's account, which renames the app (and the widget)
+    /// and its group, e.g. com.unoki99.fangfangcards.ABCDE12345 and group.com.unoki99.fangfangcards.ABCDE12345,
+    /// while Info.plist still has the old name. So the group the app really has is looked for: the first of these
+    /// that iOS gives a folder for. The app and the widget find the same one, as both come from the app's name.
+    static let groupID: String = {
+        let plist = (Bundle.main.object(forInfoDictionaryKey: "FFAppGroup") as? String) ?? "group.com.unoki99.fangfangcards"
+        // the app's name, also from inside the widget (its name is the app's with .widget in it)
+        let bid = Bundle.main.bundleIdentifier ?? ""
+        let app = bid.replacingOccurrences(of: ".widget", with: "")
+        var tries = [plist, "group." + app]
+        // the sideloader's team id on the end of the app's name: on the end of the group too
+        let base = "com.unoki99.fangfangcards"
+        if app.hasPrefix(base + "."), let team = app.split(separator: ".").last {
+            tries.append(plist + "." + team)
+            tries.append("group." + base + "." + team)
+        }
+        for g in tries where FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: g) != nil { return g }
+        return plist
+    }()
     static var folder: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: groupID)?
             .appendingPathComponent("widget", isDirectory: true)
