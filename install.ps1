@@ -143,19 +143,19 @@ if ($need) {
     $Tmp = Join-Path $env:TEMP ("fangfang-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
     function Get-File($url, $name, [switch]$Optional) {
-        $out = Join-Path $Tmp $name
-        try { Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -ErrorAction Stop; return $out }
+        $dest = Join-Path $Tmp $name
+        try { Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop; return $dest }
         catch {
             if ($Optional) { return "-" }
             Fail "下載失敗：$url（$($_.Exception.Message)）"
         }
     }
     $PyLog = Join-Path $Tmp "py.log"
-    function Run-Py([string[]]$a) {
-        & $Py @PyArgs @a *> $PyLog
+    function Run-Py([string[]]$scriptArgs) {
+        & $Py @PyArgs @scriptArgs *> $PyLog
         if ($LASTEXITCODE -ne 0) {
             Get-Content $PyLog -Tail 15 | Write-Host
-            Fail "整理資料的時候出錯了（$($a[0])）。把上面的訊息傳給 Claude。"
+            Fail "整理資料的時候出錯了（$($scriptArgs[0])）。把上面的訊息傳給 Claude。"
         }
     }
     $raw = "https://raw.githubusercontent.com"
@@ -193,9 +193,9 @@ if ($need) {
         $ced2 = if (Test-Path (Join-Path $Tmp "cedict_ts.u8")) { Join-Path $Tmp "cedict_ts.u8" } else { Get-File "$raw/cschiller/zhongwen/main/data/cedict_ts.u8" "cedict_ts.u8" -Optional }
         $liu = Get-ChildItem -Path $Tools -Filter *.cin -ErrorAction SilentlyContinue | Select-Object -First 1
         if ($cj -ne "-" -and $cjx -ne "-" -and $wb -ne "-") {
-            $a = @("build_inputcodes.py", $cj, $cjx, $wb, (Join-Path $Apd "inputcodes.json"), $(if ($liu) { $liu.FullName } else { "-" }))
-            if ($ced2 -ne "-") { $a += $ced2 }
-            & $Py @PyArgs @a *> $null
+            $icArgs = @("build_inputcodes.py", $cj, $cjx, $wb, (Join-Path $Apd "inputcodes.json"), $(if ($liu) { $liu.FullName } else { "-" }))
+            if ($ced2 -ne "-") { $icArgs += $ced2 }
+            & $Py @PyArgs @icArgs *> $null
             if ($LASTEXITCODE -ne 0) { Write-Host "（沒辦法建立輸入法拆碼，先跳過）" }
         } else { Write-Host "（沒辦法下載輸入法碼表，先跳過）" }
     }
