@@ -261,6 +261,7 @@ private struct PracticeSettings: View {
     @AppStorage(CardLook.hideReadingKey) private var hideReading = false
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(HandInk.colorKey) private var inkColor = 0
     @AppStorage(Kaiti.styleKey) private var handFont = 0
     @AppStorage("goal") private var goal = 3
     @AppStorage("sessionSize") private var sessionSize = 10
@@ -281,14 +282,21 @@ private struct PracticeSettings: View {
             }
             Section {
                 PenSettings()
-                Toggle("彩色筆跡", isOn: $rainbow)
+                NavigationLink { InkColorPicker() } label: {
+                    HStack {
+                        Text("筆的顏色")
+                        Spacer()
+                        Text(rainbow ? "彩虹" : (inkColor == 0 ? "墨色" : "自己選的")).foregroundStyle(T.muted)
+                        InkSwatch(size: 18)
+                    }
+                }
                 Picker("字體", selection: $handFont) {
                     ForEach(Kaiti.styles.indices, id: \.self) { Text(Kaiti.styles[$0].name).tag($0) }
                 }
             } header: {
                 Text("手寫練習")
             } footer: {
-                Text("筆：簽字筆怎麼按都一樣粗；原子筆、鋼筆用 Apple Pencil 按得越用力越粗（鋼筆變最多）；鉛筆、麥克筆、蠟筆、水彩像真的筆。粗細：筆的粗細。筆跡延遲：筆寫過去以後，等一下字才出現（0 = 馬上出現）。這些在手寫練習右上角的筆也可以改。彩色筆跡：每一筆換一個彩虹的顏色（紅、橘、黃、綠…），比較容易看出筆順；關掉是深色的墨水（手寫練習右上角也可以切換）。字體：上面的字和描字用的字，楷體（Apple 的，第一次要下載）、文楷（霞鶩文楷）或芫荽（照臺灣教育部的寫法）")
+                Text("筆：簽字筆怎麼按都一樣粗；原子筆、鋼筆用 Apple Pencil 按得越用力越粗（鋼筆變最多）；鉛筆、麥克筆、蠟筆、水彩像真的筆。粗細：筆的粗細。筆跡延遲：筆寫過去以後，等一下字才出現（0 = 馬上出現）。這些在手寫練習右上角的筆也可以改。筆的顏色：墨色（深色的墨水）、彩虹（每一筆換一個顏色，比較容易看出筆順）或自己選一個顏色（手寫練習右上角的顏色也可以改）。字體：上面的字和描字用的字，楷體（Apple 的，第一次要下載）、文楷（霞鶩文楷）或芫荽（照臺灣教育部的寫法）")
             }
             Section {
                 Button("全部重來", role: .destructive) { confirmReset = true }

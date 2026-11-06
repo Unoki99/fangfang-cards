@@ -324,6 +324,7 @@ private struct HandwritingPad: View {
     /// 華語's meanings in English (設定 → 主要解釋)
     @AppStorage(ZhMeaning.key) private var english = false
     @State private var penOpen = false
+    @State private var colorOpen = false
     /// the biggest the square can be on this screen (set from the space there is)
     @State private var maxPad: CGFloat = 520
     /// the character whose words are shown (tapping it at the top)
@@ -435,9 +436,14 @@ private struct HandwritingPad: View {
                         .popover(isPresented: $penOpen) {
                             PenSettings(compact: true).presentationCompactAdaptation(.popover)
                         }
-                    // 彩色: the writing in the rainbow instead of the dark ink
-                    Toggle(isOn: $rainbow) { Label("彩色", systemImage: "paintpalette") }
-                        .toggleStyle(.button)
+                    // 顏色: the dark ink, the rainbow (a new colour every stroke) or a colour of its own
+                    Button { colorOpen = true } label: {
+                        Label { Text("顏色") } icon: { InkSwatch(size: 20) }
+                    }
+                    .popover(isPresented: $colorOpen) {
+                        InkColorPicker(compact: true).presentationCompactAdaptation(.popover)
+                    }
+                    .accessibilityLabel("筆的顏色")
                     Toggle(isOn: $trace) { Label("描字", systemImage: "character.cursor.ibeam") }
                         .toggleStyle(.button)
                 }
@@ -597,6 +603,8 @@ enum HandInk {
     static let sizeKey = "handwritingPenSize"
     static let sizeDefault = 0.4
     static let rainbowKey = "handwritingRainbow"
+    /// the ink's own colour (a colour of the tone colours' grid, as 0xRRGGBB); 0 = the dark ink
+    static let colorKey = "handwritingInkColor"
     /// 延遲: how many seconds after the pen the writing shows up (0 = right away)
     static let delayKey = "handwritingInkDelay"
     /// the dark ink (the same on every theme)
@@ -625,8 +633,14 @@ enum HandInk {
         return UIColor(red: CGFloat((v >> 16) & 0xff) / 255, green: CGFloat((v >> 8) & 0xff) / 255, blue: CGFloat(v & 0xff) / 255, alpha: 1)
     }
     /// the pen for stroke number n (0 = the first)
+    /// the ink when it isn't the rainbow: the colour picked, or the dark ink
+    static var solid: UIColor {
+        let v = UserDefaults.standard.integer(forKey: colorKey)
+        guard v > 0 else { return dark }
+        return UIColor(red: CGFloat((v >> 16) & 0xff) / 255, green: CGFloat((v >> 8) & 0xff) / 255, blue: CGFloat(v & 0xff) / 255, alpha: 1)
+    }
     static func tool(stroke n: Int, rainbow on: Bool, pen i: Int, size: Double) -> PKInkingTool {
-        let color = on ? rainbow[n % rainbow.count] : dark
+        let color = on ? rainbow[n % rainbow.count] : solid
         return PKInkingTool(pens[pen(i)].type, color: color, width: width(pen: i, size: size))
     }
 }
@@ -637,6 +651,7 @@ struct PenSettings: View {
     @AppStorage(HandInk.sizeKey) private var size = HandInk.sizeDefault
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
     @AppStorage(HandInk.delayKey) private var delay = 0.0
+    @AppStorage(HandInk.colorKey) private var inkColor = 0
     /// in the pop-over (no Form around it)
     var compact = false
 
@@ -644,25 +659,26 @@ struct PenSettings: View {
         if compact {
             VStack(alignment: .leading, spacing: 14) {
                 Text("筆").ffFont(.caption, .bold).foregroundStyle(T.muted)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 8)], spacing: 8) {
-                    ForEach(HandInk.pens.indices, id: \.self) { i in
-                        let on = HandInk.pen(pen) == i
-                        Button { pen = i } label: {
-                            Text(HandInk.pens[i].name).ffFont(.subheadline, on ? Font.Weight.bold : Font.Weight.regular)
-                                .foregroundStyle(on ? T.greenInk : T.glyph)
-                                .frame(maxWidth: .infinity, minHeight: 36)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(on ? T.green : T.fn))
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(on ? T.greenEdge : T.fnEdge, lineWidth: 1.5))
+                GlassGroup {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
+                        ForEach(HandInk.pens.indices, id: \.self) { i in
+                            let on = HandInk.pen(pen) == i
+                            Button { withAnimation(.snappy) { pen = i } } label: {
+                                Text(HandInk.pens[i].name).ffFont(.subheadline, on ? Font.Weight.bold : Font.Weight.regular)
+                                    .foregroundStyle(T.glyph)
+                                    .frame(maxWidth: .infinity, minHeight: 36)
+                                    .contentShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .glassChip(selected: on)
+                            .accessibilityAddTraits(on ? .isSelected : [])
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(on ? .isSelected : [])
                     }
                 }
                 Text(HandInk.pens[HandInk.pen(pen)].about).ffFont(.caption).foregroundStyle(T.muted)
                 sizeRow
                 preview
                 delayRow
-                Toggle("彩色筆跡（每一筆換一個顏色）", isOn: $rainbow).ffFont(.subheadline).tint(T.greenEdge)
             }
             .padding(18)
             .frame(width: 330)
@@ -700,6 +716,7 @@ struct PenSettings: View {
     /// how a stroke of this pen looks, at this thickness
     private var preview: some View {
         let w = HandInk.width(pen: pen, size: size)
+        let _ = inkColor
         let type = HandInk.pens[HandInk.pen(pen)].type
         return Canvas { ctx, sz in
             var p = Path()
@@ -709,7 +726,7 @@ struct PenSettings: View {
                 let pt = CGPoint(x: 12 + t * (sz.width - 24), y: sz.height / 2 + sin(t * .pi * 2) * sz.height * 0.22)
                 if k == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
             }
-            let ink = Color(rainbow ? HandInk.rainbow[0] : HandInk.dark)
+            let ink = Color(rainbow ? HandInk.rainbow[0] : HandInk.solid)
             ctx.opacity = type == .marker ? 0.6 : (type == .watercolor ? 0.75 : 1)
             ctx.stroke(p, with: .color(ink), style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
         }
@@ -729,6 +746,7 @@ private struct WritingPad: UIViewRepresentable {
     @AppStorage(HandInk.sizeKey) private var size = HandInk.sizeDefault
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
     @AppStorage(HandInk.delayKey) private var delay = 0.0
+    @AppStorage(HandInk.colorKey) private var inkColor = 0
 
     func makeUIView(context: Context) -> PadHost {
         let host = PadHost()
@@ -743,7 +761,7 @@ private struct WritingPad: UIViewRepresentable {
         v.delegate = c
         c.host = host
         c.cleared = clearCount
-        c.level = level; c.size = size; c.rainbow = rainbow; c.delay = delay
+        c.level = level; c.size = size; c.rainbow = rainbow; c.delay = delay; c.ink = inkColor
         host.later.delay = delay
         v.tool = c.tool(stroke: 0)
         // follows the pen (for 延遲), without getting in PencilKit's way
@@ -768,9 +786,9 @@ private struct WritingPad: UIViewRepresentable {
             v.drawing = PKDrawing()
             host.later.reset()
         }
-        if c.level != level || c.rainbow != rainbow || c.size != size || c.delay != delay {
+        if c.level != level || c.rainbow != rainbow || c.size != size || c.delay != delay || c.ink != inkColor {
             let delayChanged = (c.delay > 0) != (delay > 0)
-            c.level = level; c.rainbow = rainbow; c.size = size; c.delay = delay
+            c.level = level; c.rainbow = rainbow; c.size = size; c.delay = delay; c.ink = inkColor
             host.later.delay = delay
             v.tool = c.tool(stroke: v.drawing.strokes.count)
             // 延遲 on or off: the strokes already there in the right ink
@@ -792,6 +810,7 @@ private struct WritingPad: UIViewRepresentable {
         var size = HandInk.sizeDefault
         var rainbow = false
         var delay = 0.0
+        var ink = 0
         init(_ c: @escaping (PKDrawing) -> Void) { changed = c }
 
         func tool(stroke n: Int) -> PKInkingTool {
@@ -1177,5 +1196,146 @@ struct KnowCharButton: View {
         .buttonStyle(.plain)
         .accessibilityLabel(known ? "我會了（再點一下：不熟）" : "我會這個字")
         .accessibilityAddTraits(known ? .isSelected : [])
+    }
+}
+
+// MARK: - the ink's colour
+
+/// the ink's colour as a little ball: the colour, or the rainbow
+struct InkSwatch: View {
+    var size: CGFloat = 20
+    @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(HandInk.colorKey) private var inkColor = 0
+    var body: some View {
+        let _ = inkColor
+        Group {
+            if rainbow {
+                Circle().fill(AngularGradient(colors: (HandInk.rainbow + [HandInk.rainbow[0]]).map { Color($0) }, center: .center))
+            } else {
+                Circle().fill(Color(HandInk.solid))
+            }
+        }
+        .frame(width: size, height: size)
+        .overlay(Circle().stroke(.white.opacity(0.55), lineWidth: 1))
+    }
+}
+
+/// 筆的顏色: the dark ink, 彩虹 (a new colour for every stroke) or one colour from the grid of balls (the same
+/// colours as 選聲調顏色: one column per colour in rainbow order, light at the top and dark at the bottom)
+struct InkColorPicker: View {
+    /// in the pop-over (no Form around it)
+    var compact = false
+    @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(HandInk.colorKey) private var inkColor = 0
+
+    var body: some View {
+        if compact {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("筆的顏色").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                modes
+                grid
+                Text("中間那一排是原本的顏色，往上越淺，往下越深。").ffFont(.caption).foregroundStyle(T.muted)
+            }
+            .padding(18)
+            .frame(width: 330)
+        } else {
+            Form {
+                Section { modes }.listRowBackground(T.fn.opacity(0.7))
+                Section {
+                    grid.frame(maxWidth: .infinity).padding(.vertical, 6)
+                } header: {
+                    Text("自己選一個顏色")
+                } footer: {
+                    Text("中間那一排是原本的顏色，往上越淺，往下越深。")
+                }
+                .listRowBackground(T.fn.opacity(0.7))
+            }
+            .scrollContentBackground(.hidden)
+            .appBackground()
+            .navigationTitle("筆的顏色")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    /// 墨色 or 彩虹
+    private var modes: some View {
+        GlassGroup {
+            HStack(spacing: 8) {
+                mode("墨色", on: !rainbow && inkColor == 0) { rainbow = false; inkColor = 0 } swatch: {
+                    Circle().fill(Color(HandInk.dark)).overlay(Circle().stroke(.white.opacity(0.55), lineWidth: 1))
+                }
+                mode("彩虹", on: rainbow) { rainbow = true } swatch: {
+                    Circle().fill(AngularGradient(colors: (HandInk.rainbow + [HandInk.rainbow[0]]).map { Color($0) }, center: .center))
+                }
+            }
+        }
+    }
+
+    private func mode<S: View>(_ name: String, on: Bool, _ act: @escaping () -> Void, @ViewBuilder swatch: () -> S) -> some View {
+        Button { withAnimation(.snappy) { act() } } label: {
+            HStack(spacing: 8) {
+                swatch().frame(width: 18, height: 18)
+                Text(name).ffFont(.subheadline, on ? Font.Weight.bold : Font.Weight.regular).foregroundStyle(T.glyph)
+            }
+            .frame(maxWidth: .infinity, minHeight: 36)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .glassChip(selected: on)
+        .accessibilityAddTraits(on ? .isSelected : [])
+    }
+
+    private var grid: some View {
+        let cols = ToneColors.palette
+        return Grid(horizontalSpacing: 4, verticalSpacing: 8) {
+            ForEach(0..<5, id: \.self) { row in
+                GridRow {
+                    ForEach(cols.indices, id: \.self) { c in ball(cols[c].shades[row], label: cols[c].name) }
+                }
+            }
+        }
+    }
+
+    private func ball(_ hex: UInt32, label: String) -> some View {
+        let picked = !rainbow && inkColor == Int(hex)
+        return Button {
+            withAnimation(.snappy) { inkColor = Int(hex); rainbow = false }
+        } label: {
+            Circle().fill(Color(hex: hex))
+                .frame(width: 27, height: 27)
+                .shadow(color: Color(hex: hex).opacity(0.55), radius: picked ? 6 : 0)
+                .overlay(Circle().stroke(picked ? T.glyph : Color.clear, lineWidth: 2.5).padding(-3))
+                .frame(width: 31, height: 31)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+}
+
+// MARK: - Liquid Glass chips (the pen and colour pop-overs)
+
+/// Liquid Glass's container (iOS 26), so the chips melt together; nothing before iOS 26
+struct GlassGroup<Content: View>: View {
+    @ViewBuilder let content: Content
+    var body: some View {
+        if #available(iOS 26.0, *) { GlassEffectContainer(spacing: 8) { content } } else { content }
+    }
+}
+
+extension View {
+    /// a capsule of Liquid Glass (iOS 26: the real one; before: frosted); the one picked is brighter and rimmed
+    @ViewBuilder func glassChip(selected: Bool) -> some View {
+        if #available(iOS 26.0, *) {
+            self.padding(.horizontal, 10)
+                .glassEffect(selected ? .regular.tint(.white.opacity(0.22)).interactive() : .regular.interactive(), in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(selected ? 0.7 : 0), lineWidth: 1.5))
+        } else {
+            self.padding(.horizontal, 10)
+                .background(Capsule().fill(.ultraThinMaterial))
+                .background(Capsule().fill(.white.opacity(selected ? 0.18 : 0)))
+                .overlay(Capsule().strokeBorder(.white.opacity(selected ? 0.7 : 0.15), lineWidth: selected ? 1.5 : 1))
+        }
     }
 }
