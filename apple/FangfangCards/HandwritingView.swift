@@ -365,7 +365,12 @@ private struct HandwritingPad: View {
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.top, 4)
                 Spacer(minLength: 8)
-                RomButton(stacked: true)
+                // 中 / 英 (華語's meanings), standing next to the two rows of buttons
+                HStack(alignment: .top, spacing: 6) {
+                    if store.isZh { MeaningSwitch(vertical: true).frame(maxHeight: .infinity) }
+                    RomButton(stacked: true)
+                }
+                .fixedSize(horizontal: false, vertical: true)     // (the switch as tall as the two rows)
             }
             .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 2)
             CharWordsList(ch: ch)
@@ -507,29 +512,12 @@ private struct HandwritingPad: View {
             VStack(spacing: 8) {
                 if let a = i.audio { PlayButton(path: a, size: 40) }
                 // 華語: the meanings in 華語 or English (the same switch as 設定 → 主要解釋, so the words follow it too)
-                if store.isZh { meaningSwitch }
+                // 我會了: the character is known (its card 熟悉); tap again: 不熟
+                if store.card(for: Lang.charKey(ch)) != nil { KnowCharButton(ch: ch) }
             }
         }
     }
 
-    private var meaningSwitch: some View {
-        Button { withAnimation(.snappy) { english.toggle() } } label: {
-            HStack(spacing: 0) {
-                ForEach([false, true], id: \.self) { en in
-                    let on = english == en
-                    Text(en ? "英" : "中").ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular)
-                        .foregroundStyle(on ? T.greenInk : T.muted)
-                        .frame(width: 24, height: 22)
-                        .background(Capsule().fill(on ? T.green : Color.clear))
-                }
-            }
-            .padding(2)
-            .background(Capsule().fill(T.fn))
-            .overlay(Capsule().stroke(T.fnEdge, lineWidth: 1.5))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(english ? "解釋：英文" : "解釋：華語")
-    }
 
     private func canvas(_ ch: String) -> some View {
         ZStack {
@@ -1105,10 +1093,89 @@ struct CharWordsSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } }
-                    ToolbarItem(placement: .topBarTrailing) { RomButton() }
+                    ToolbarItem(placement: .topBarTrailing) {
+                    HStack(spacing: 6) {
+                        if store.isZh { MeaningSwitch(vertical: false) }
+                        RomButton()
+                    }
+                }
                 }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+}
+
+/// 中 | 英: 華語's meanings in 華語 or English (the same switch as 設定 → 主要解釋); standing up (中 over 英) next
+/// to the stacked spelling / 腔口 buttons
+struct MeaningSwitch: View {
+    var vertical = false
+    @AppStorage(ZhMeaning.key) private var english = false
+    var body: some View {
+        Button { withAnimation(.snappy) { english.toggle() } } label: {
+            let parts = ForEach([false, true], id: \.self) { en in
+                let on = english == en
+                Text(en ? "英" : "中").ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular)
+                    .foregroundStyle(on ? T.greenInk : T.muted)
+                    .frame(width: 24)
+                    .frame(minHeight: 22, maxHeight: vertical ? .infinity : 22)
+                    .background(Capsule().fill(on ? T.green : Color.clear))
+            }
+            Group {
+                if vertical { VStack(spacing: 0) { parts } } else { HStack(spacing: 0) { parts } }
+            }
+            .padding(2)
+            .background(Capsule().fill(T.fn))
+            .overlay(Capsule().stroke(T.fnEdge, lineWidth: 1.5))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(english ? "解釋：英文" : "解釋：華語")
+    }
+}
+
+/// 手寫練習: 我會了. Tap: the character is known (its card 熟悉), yellow with little rainbow rays around it;
+/// tap again: 不熟.
+struct KnowCharButton: View {
+    let ch: String
+    @EnvironmentObject var store: Store
+    @State private var pop = false
+    private static let yellow = Color(hex: 0xF6C945)
+
+    var body: some View {
+        let known = store.card(for: Lang.charKey(ch)).flatMap { store.status($0) } == 1
+        Button {
+            let now = !known
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { _ = store.setCharKnown(ch, now); pop = now }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            if now { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation(.easeOut(duration: 0.2)) { pop = false } } }
+        } label: {
+            ZStack {
+                // the rays: the rainbow, all the way round
+                if known {
+                    ForEach(0..<12, id: \.self) { i in
+                        Capsule()
+                            .fill(Color(HandInk.rainbow[i % HandInk.rainbow.count]))
+                            .frame(width: 2.5, height: 6)
+                            .offset(y: -(20 + 5 + (pop ? 3 : 0)))
+                            .rotationEffect(.degrees(Double(i) * 30))
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
+                Circle()
+                    .fill(known ? Self.yellow : T.fn)
+                    .overlay(Circle().stroke(known ? Self.yellow.opacity(0.6) : T.fnEdge, lineWidth: 1.5))
+                    .frame(width: 40, height: 40)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(known ? Color(hex: 0x3a2a00) : T.muted)
+            }
+            .frame(width: 58, height: 58)
+            .scaleEffect(pop ? 1.12 : 1)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(known ? "我會了（再點一下：不熟）" : "我會這個字")
+        .accessibilityAddTraits(known ? .isSelected : [])
     }
 }
