@@ -82,6 +82,25 @@ foreach ($c in ($candidates | Select-Object -Unique)) {
         if ($m -ge 17 -and $m -le 23) { $Java = $c; break }
     }
 }
+# none (new Android Studio comes with Java 25, too new for the build tools): a Java 21 of our own, downloaded once
+# from Eclipse Adoptium (free) into %LOCALAPPDATA%\FangfangCards\jdk21
+if (-not $Java) {
+    $Own = Join-Path $LogDir "jdk21"
+    $have = Get-ChildItem -Path $Own -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName "bin\java.exe") } | Select-Object -First 1
+    if (-not $have) {
+        Write-Host "Android Studio 的 Java 太新了（建置工具要 17–23 版），下載一個 Java 21 給方方詞卡用（只有第一次，大概 200 MB）…"
+        $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "aarch64" } else { "x64" }
+        $zip = Join-Path $env:TEMP "fangfang-jdk21.zip"
+        try {
+            Invoke-WebRequest -Uri "https://api.adoptium.net/v3/binary/latest/21/ga/windows/$arch/jdk/hotspot/normal/eclipse" -OutFile $zip -UseBasicParsing -ErrorAction Stop
+            Remove-Item -Recurse -Force $Own -ErrorAction SilentlyContinue
+            Expand-Archive -Path $zip -DestinationPath $Own -Force
+            Remove-Item $zip -Force -ErrorAction SilentlyContinue
+        } catch { Write-Host "（下載 Java 失敗：$($_.Exception.Message)）" }
+        $have = Get-ChildItem -Path $Own -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName "bin\java.exe") } | Select-Object -First 1
+    }
+    if ($have) { $Java = $have.FullName }
+}
 if (-not $Java) {
     Write-Host "✗ 找不到可以用的 Java（要 17–23 版）。"
     if ($seen) { Write-Host "  找到的（版本不對）："; $seen | ForEach-Object { Write-Host $_ } }
