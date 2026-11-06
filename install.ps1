@@ -29,32 +29,66 @@ if (-not (Test-Path $Sdk)) {
     Fail "找不到 Android SDK。請先安裝 Android Studio（https://developer.android.com/studio），打開一次，讓它下載 SDK（照它的說明按下一步），再執行一次。"
 }
 
-# ---- Java 17–23 (the build tools don't run on newer Java): Android Studio's own Java first ----
+# ---- Java 17–23 (the build tools don't run on newer Java): Android Studio's own Java (its "jbr" folder) first ----
+# the version from the "release" file next to it (JAVA_VERSION="21.0.5"), or else by asking java.exe
 function Get-JavaMajor($jh) {
+    $rel = Join-Path $jh "release"
+    if (Test-Path $rel) {
+        $t = Get-Content $rel -Raw -ErrorAction SilentlyContinue
+        if ($t -match 'JAVA_VERSION="(1\.)?(\d+)') { return [int]$Matches[2] }
+    }
     $exe = Join-Path $jh "bin\java.exe"
     if (-not (Test-Path $exe)) { return 0 }
-    $line = (& $exe -version 2>&1 | Select-Object -First 1) | Out-String
-    if ($line -match 'version "(\d+)') { return [int]$Matches[1] }
+    $line = (& $exe -version 2>&1 | ForEach-Object { "$_" }) -join " "
+    if ($line -match 'version "(1\.)?(\d+)') { return [int]$Matches[2] }
     return 0
 }
-$candidates = @(
-    (Join-Path $env:ProgramFiles "Android\Android Studio\jbr"),
-    (Join-Path $env:LOCALAPPDATA "Programs\Android Studio\jbr"),
-    (Join-Path $env:ProgramFiles "Android\Android Studio Preview\jbr"),
-    (Join-Path $env:ProgramFiles "Android\Android Studio\jre")
-)
+# where Android Studio can be: what Windows knows about it, the usual folders, and any "Android Studio*" folder
+$studios = @()
+foreach ($k in @("HKLM:\SOFTWARE\Android Studio", "HKCU:\SOFTWARE\Android Studio", "HKLM:\SOFTWARE\WOW6432Node\Android Studio")) {
+    $p = (Get-ItemProperty -Path $k -ErrorAction SilentlyContinue).Path
+    if ($p) { $studios += $p }
+}
+foreach ($root in @($env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:ProgramFiles "Android"), (Join-Path $env:LOCALAPPDATA "Programs"),
+                    (Join-Path $env:LOCALAPPDATA "Programs\Android"), "C:\Android", "D:\Program Files\Android", "D:\Android")) {
+    if ($root -and (Test-Path $root)) {
+        $studios += (Get-ChildItem -Path $root -Directory -Filter "Android Studio*" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+    }
+}
+# (a shortcut in the Start menu points at it too)
+foreach ($sm in @((Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"), (Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"))) {
+    if (-not (Test-Path $sm)) { continue }
+    foreach ($lnk in (Get-ChildItem -Path $sm -Recurse -Filter "Android Studio*.lnk" -ErrorAction SilentlyContinue)) {
+        try {
+            $target = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk.FullName).TargetPath
+            if ($target) { $studios += (Split-Path (Split-Path $target -Parent) -Parent) }
+        } catch {}
+    }
+}
+$candidates = @()
+foreach ($s in ($studios | Select-Object -Unique)) { $candidates += (Join-Path $s "jbr"); $candidates += (Join-Path $s "jre") }
 $tb = Join-Path $env:LOCALAPPDATA "JetBrains\Toolbox\apps"
 if (Test-Path $tb) { $candidates += (Get-ChildItem -Path $tb -Recurse -Directory -Filter jbr -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
 if ($env:JAVA_HOME) { $candidates += $env:JAVA_HOME }
+foreach ($jroot in @((Join-Path $env:ProgramFiles "Java"), (Join-Path $env:ProgramFiles "Eclipse Adoptium"), (Join-Path $env:ProgramFiles "Microsoft"))) {
+    if (Test-Path $jroot) { $candidates += (Get-ChildItem -Path $jroot -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) }
+}
 $Java = $null
-foreach ($c in $candidates) {
-    if ($c -and (Test-Path $c)) {
+$seen = @()
+foreach ($c in ($candidates | Select-Object -Unique)) {
+    if ($c -and (Test-Path (Join-Path $c "bin\java.exe"))) {
         $m = Get-JavaMajor $c
+        $seen += "  $c（Java $m）"
         if ($m -ge 17 -and $m -le 23) { $Java = $c; break }
     }
 }
 if (-not $Java) {
-    Fail "找不到可以用的 Java（要 17–23 版）。請安裝 Android Studio（它裡面有對的 Java），再執行一次。"
+    Write-Host "✗ 找不到可以用的 Java（要 17–23 版）。"
+    if ($seen) { Write-Host "  找到的（版本不對）："; $seen | ForEach-Object { Write-Host $_ } }
+    else { Write-Host "  找不到 Android Studio 裡面的 Java。Android Studio 裝在哪裡？（例如 C:\Program Files\Android\Android Studio）" }
+    Write-Host "  可以自己指定：在 PowerShell 先輸入  `$env:JAVA_HOME = `"C:\...\Android Studio\jbr`"  再執行 install.ps1。"
+    Write-Host "  把這些訊息傳給 Claude 也可以。"
+    exit 1
 }
 $env:JAVA_HOME = $Java
 $env:ANDROID_HOME = $Sdk
