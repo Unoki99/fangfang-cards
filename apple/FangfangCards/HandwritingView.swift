@@ -444,8 +444,16 @@ private struct HandwritingPad: View {
                         InkColorPicker(compact: true).presentationCompactAdaptation(.popover)
                     }
                     .accessibilityLabel("筆的顏色")
-                    Toggle(isOn: $trace) { Label("描字", systemImage: "character.cursor.ibeam") }
-                        .toggleStyle(.button)
+                    // 描字: on = the icon glows (no filled background), off = plain
+                    Button { withAnimation(.easeInOut(duration: 0.25)) { trace.toggle() } } label: {
+                        Label("描字", systemImage: "character.cursor.ibeam")
+                            .foregroundStyle(trace ? Color(hex: 0xd8f5c0) : T.muted)
+                            .shadow(color: trace ? T.greenEdge.opacity(0.95) : .clear, radius: 3)
+                            .shadow(color: trace ? T.greenEdge.opacity(0.7) : .clear, radius: 9)
+                    }
+                    .accessibilityLabel("描字")
+                    .accessibilityValue(trace ? "開" : "關")
+                    .accessibilityAddTraits(trace ? .isSelected : [])
                 }
             }
         }
