@@ -140,7 +140,7 @@ struct RomButton: View {
         if stacked {
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 6) { romButton; ToneMenu() }
-                PlaceMenu()
+                PlaceMenu(fill: true)       // as wide as the two above
             }
             .fixedSize()
         } else {
@@ -260,6 +260,8 @@ struct Panel<Content: View>: View {
 
 /// 腔口: 通行 or one of the 10 places
 struct PlaceMenu: View {
+    /// as wide as there's room for (RomButton stacked: as wide as the buttons above it)
+    var fill = false
     @AppStorage("place") private var place = -1
     private let glassOn = false   // the Liquid Glass look was taken out
     @ObservedObject private var store = Store.shared
@@ -314,6 +316,7 @@ struct PlaceMenu: View {
             Text(name).ffFont(.subheadline, .bold)
             Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
         }
+        .frame(maxWidth: fill ? .infinity : nil)
         .foregroundStyle(store.isZh ? Color(hex: 0x9ad0ff) : T.purpleInk)
     }
 }

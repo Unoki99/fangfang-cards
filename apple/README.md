@@ -204,7 +204,6 @@ bash build-data.sh ~/Downloads/kautian.ods   # 或用已經下載的檔案
 - **手寫練習的字體**（`FangfangCards/Fonts`，都只留 App 用到的字，都是 SIL Open Font License 1.1）：
   - 文楷：霞鶩文楷 TC — [github.com/lxgw/LxgwWenkaiTC](https://github.com/lxgw/LxgwWenkaiTC)，授權見 [`licenses/LXGW-WenKai-TC-OFL.txt`](licenses/LXGW-WenKai-TC-OFL.txt)
   - 芫荽：Iansui — [github.com/ButTaiwan/iansui](https://github.com/ButTaiwan/iansui)，授權見 [`licenses/Iansui-OFL.txt`](licenses/Iansui-OFL.txt)
-  - 行書：正風毛筆字體 MasaFont（Chun yu Yao，改自青柳衡山「衡山毛筆フォント行書」）— [github.com/max32002/masafont](https://github.com/max32002/masafont)，授權見 [`licenses/MasaFont-OFL.txt`](licenses/MasaFont-OFL.txt)
   - 楷體：Apple 的華文楷體（iOS 內建可下載的字型，不在本儲存庫）
 - **皓羅字型**（`Haolo.ttf`）：DejaVu Sans 的子集 — [dejavu-fonts.github.io](https://dejavu-fonts.github.io/)，授權見 [`licenses/DejaVu-LICENSE.txt`](licenses/DejaVu-LICENSE.txt)。
 - **方音**：臺灣方音符號 — [zh.wikipedia.org/zh-tw/臺灣方音符號](https://zh.wikipedia.org/zh-tw/臺灣方音符號)

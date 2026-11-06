@@ -1,5 +1,6 @@
 import SwiftUI
 import PencilKit
+import UIKit.UIGestureRecognizerSubclass
 import CoreText
 
 // 不熟 → 手寫練習 (華語): pick the characters (不熟的漢字, an HSK / TOCFL character level, the ones you know, or
@@ -14,14 +15,13 @@ import CoreText
 enum Kaiti {
     static let tc = "STKaitiTC-Regular"
     static let sc = "STKaitiSC-Regular"
-    /// 手寫練習's font (設定 or the menu at the top of 手寫練習)
+    /// 手寫練習's font (設定 or the menu at the top of 手寫練習): 楷體, 文楷 or 芫荽
     static let styleKey = "handwritingFont"
     /// the fonts: the name shown, the font's name, the file in the app (nil = Apple's 楷體, downloaded the first time)
     static let styles: [(name: String, ps: String, file: String?)] = [
         ("楷體", tc, nil),
         ("文楷", "LXGWWenKaiTC-Regular", "wenkai"),       // 霞鶩文楷 TC (OFL)
         ("芫荽", "Iansui-Regular", "iansui"),             // 芫荽 Iansui, for learning Taiwan's characters (OFL)
-        ("行書", "MasaFont-Regular", "masafont"),         // 正風毛筆字體, 行書 (OFL)
     ]
     static var style: Int { min(max(UserDefaults.standard.integer(forKey: styleKey), 0), styles.count - 1) }
 
@@ -311,6 +311,9 @@ private struct HandwritingPad: View {
     @AppStorage("handwritingPadSize") private var padSize = 380.0
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
     @AppStorage(Kaiti.styleKey) private var fontStyle = 0
+    /// 華語's meanings in English (設定 → 主要解釋)
+    @AppStorage(ZhMeaning.key) private var english = false
+    @State private var penOpen = false
     /// the biggest the square can be on this screen (set from the space there is)
     @State private var maxPad: CGFloat = 520
     /// the character whose words are shown (tapping it at the top)
@@ -402,7 +405,7 @@ private struct HandwritingPad: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
-                    // 字體: 楷體, 文楷, 芫荽 or 行書 (the character at the top and the one to trace)
+                    // 字體: 楷體, 文楷 or 芫荽 (the character at the top and the one to trace)
                     Menu {
                         Picker("字體", selection: $fontStyle) {
                             ForEach(Kaiti.styles.indices, id: \.self) { Text(Kaiti.styles[$0].name).tag($0) }
@@ -412,6 +415,11 @@ private struct HandwritingPad: View {
                         Label("字體", systemImage: "textformat")
                     }
                     .accessibilityLabel("字體：" + Kaiti.styles[Kaiti.style].name)
+                    // 筆: which pen, how thick, 彩色
+                    Button { penOpen = true } label: { Label("筆", systemImage: "pencil.tip") }
+                        .popover(isPresented: $penOpen) {
+                            PenSettings(compact: true).presentationCompactAdaptation(.popover)
+                        }
                     // 彩色: the writing in the rainbow instead of the dark ink
                     Toggle(isOn: $rainbow) { Label("彩色", systemImage: "paintpalette") }
                         .toggleStyle(.button)
@@ -444,6 +452,11 @@ private struct HandwritingPad: View {
 
     /// what the character is like: reading, meaning, recording
     private func info(_ ch: String) -> (reading: AttributedString, defs: [(p: String, t: String)], audio: String?) {
+        // English: the dictionary's English for the character (when it has one)
+        if english, store.isZh, let d = store.zh, let e = d.entry(char: ch, zy: ""), e.en != nil {
+            let reading = store.card(for: Lang.charKey(ch)).map { store.cardRom($0, 0, -1) } ?? d.reading(e.syl(Lang.zhPlace), Lang.zhRom)
+            return (reading, e.enList.prefix(2).map { ("", $0) }, store.card(for: Lang.charKey(ch))?.audio ?? "tts:" + ch)
+        }
         if let c = store.card(for: Lang.charKey(ch)) {
             return (store.cardRom(c, 0, -1), c.d.prefix(2).map { ($0.p, $0.t) }, c.audio)
         }
@@ -481,8 +494,31 @@ private struct HandwritingPad: View {
                 }
             }
             Spacer(minLength: 0)
-            if let a = i.audio { PlayButton(path: a, size: 40) }
+            VStack(spacing: 8) {
+                if let a = i.audio { PlayButton(path: a, size: 40) }
+                // 華語: the meanings in 華語 or English (the same switch as 設定 → 主要解釋, so the words follow it too)
+                if store.isZh { meaningSwitch }
+            }
         }
+    }
+
+    private var meaningSwitch: some View {
+        Button { withAnimation(.snappy) { english.toggle() } } label: {
+            HStack(spacing: 0) {
+                ForEach([false, true], id: \.self) { en in
+                    let on = english == en
+                    Text(en ? "英" : "中").ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular)
+                        .foregroundStyle(on ? T.greenInk : T.muted)
+                        .frame(width: 24, height: 22)
+                        .background(Capsule().fill(on ? T.green : Color.clear))
+                }
+            }
+            .padding(2)
+            .background(Capsule().fill(T.fn))
+            .overlay(Capsule().stroke(T.fnEdge, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(english ? "解釋：英文" : "解釋：華語")
     }
 
     private func canvas(_ ch: String) -> some View {
@@ -557,79 +593,396 @@ private struct HandwritingPad: View {
 /// the ink of 手寫練習: always the dark ink of the original theme, or (彩色) a new rainbow colour for every stroke
 /// (so the stroke order is easy to follow); and how much the Apple Pencil's pressure changes the thickness
 enum HandInk {
+    /// the pen (kept under its old name: 0–2 were 筆壓's 粗細不變 / 一般 / 很敏感)
     static let pressureKey = "handwritingPressureLevel"
+    /// how thick, 0–1 (from each pen's thinnest to its thickest)
+    static let sizeKey = "handwritingPenSize"
+    static let sizeDefault = 0.4
     static let rainbowKey = "handwritingRainbow"
+    /// 延遲: how many seconds after the pen the writing shows up (0 = right away)
+    static let delayKey = "handwritingInkDelay"
     /// the dark ink (the same on every theme)
     static let dark = UIColor(red: 0x1a / 255, green: 0x1a / 255, blue: 0x1c / 255, alpha: 1)
-    static let width: CGFloat = 14
-    /// 筆壓: 0 the same thickness however you press, 1 normal, 2 very sensitive
-    static let levels = ["粗細不變", "一般", "很敏感"]
+    /// PencilKit's pens: the name, what it's like, the thinnest and thickest it's drawn here
+    static let pens: [(name: String, about: String, type: PKInk.InkType, min: CGFloat, max: CGFloat)] = [
+        ("簽字筆", "怎麼按都一樣粗", .monoline, 2, 14),
+        ("原子筆", "按得越用力越粗", .pen, 2, 16),
+        ("鋼筆", "粗細跟著筆壓和方向變最多", .fountainPen, 2, 16),
+        ("鉛筆", "像鉛筆一樣有紋路，斜著寫會變寬", .pencil, 2, 14),
+        ("麥克筆", "半透明的寬筆", .marker, 6, 30),
+        ("蠟筆", "粗粗的蠟筆紋路", .crayon, 4, 26),
+        ("水彩", "會暈開的水彩", .watercolor, 4, 26),
+    ]
+    static func pen(_ i: Int) -> Int { min(max(i, 0), pens.count - 1) }
+    /// the width of a pen at a size (0–1)
+    static func width(pen i: Int, size: Double) -> CGFloat {
+        let p = pens[pen(i)]
+        let w = p.min + (p.max - p.min) * CGFloat(min(max(size, 0), 1))
+        let r = p.type.validWidthRange
+        return min(max(w, r.lowerBound), r.upperBound)
+    }
     /// the rainbow, in order: red, orange, yellow, green, teal, blue, purple, pink (the standard tone colours)
     static let rainbow: [UIColor] = [1, 2, 3, 4, 5, 6, 7, 0].map { col in
         let v = ToneColors.palette[col].shades[2]
         return UIColor(red: CGFloat((v >> 16) & 0xff) / 255, green: CGFloat((v >> 8) & 0xff) / 255, blue: CGFloat(v & 0xff) / 255, alpha: 1)
     }
     /// the pen for stroke number n (0 = the first)
-    static func tool(stroke n: Int, rainbow on: Bool, level: Int) -> PKInkingTool {
+    static func tool(stroke n: Int, rainbow on: Bool, pen i: Int, size: Double) -> PKInkingTool {
         let color = on ? rainbow[n % rainbow.count] : dark
-        // PencilKit's own pens: monoline keeps one thickness, the fountain pen follows the pressure the most
-        let type: PKInk.InkType = level <= 0 ? .monoline : (level >= 2 ? .fountainPen : .pen)
-        return PKInkingTool(type, color: color, width: type == .monoline ? width * 0.8 : width)
+        return PKInkingTool(pens[pen(i)].type, color: color, width: width(pen: i, size: size))
+    }
+}
+
+/// 筆 and 粗細: in 設定 and behind the pen button at the top of 手寫練習
+struct PenSettings: View {
+    @AppStorage(HandInk.pressureKey) private var pen = 1
+    @AppStorage(HandInk.sizeKey) private var size = HandInk.sizeDefault
+    @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(HandInk.delayKey) private var delay = 0.0
+    /// in the pop-over (no Form around it)
+    var compact = false
+
+    var body: some View {
+        if compact {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("筆").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 8)], spacing: 8) {
+                    ForEach(HandInk.pens.indices, id: \.self) { i in
+                        let on = HandInk.pen(pen) == i
+                        Button { pen = i } label: {
+                            Text(HandInk.pens[i].name).ffFont(.subheadline, on ? Font.Weight.bold : Font.Weight.regular)
+                                .foregroundStyle(on ? T.greenInk : T.glyph)
+                                .frame(maxWidth: .infinity, minHeight: 36)
+                                .background(RoundedRectangle(cornerRadius: 10).fill(on ? T.green : T.fn))
+                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(on ? T.greenEdge : T.fnEdge, lineWidth: 1.5))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(on ? .isSelected : [])
+                    }
+                }
+                Text(HandInk.pens[HandInk.pen(pen)].about).ffFont(.caption).foregroundStyle(T.muted)
+                sizeRow
+                preview
+                delayRow
+                Toggle("彩色筆跡（每一筆換一個顏色）", isOn: $rainbow).ffFont(.subheadline).tint(T.greenEdge)
+            }
+            .padding(18)
+            .frame(width: 330)
+        } else {
+            Picker("筆", selection: $pen) {
+                ForEach(HandInk.pens.indices, id: \.self) { Text(HandInk.pens[$0].name).tag($0) }
+            }
+            sizeRow
+            preview
+            delayRow
+        }
+    }
+
+    /// 延遲: the writing shows up a moment after the pen
+    private var delayRow: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text("筆跡延遲").ffFont(.subheadline).foregroundStyle(T.glyph)
+                Spacer()
+                Text(delay < 0.025 ? "馬上出現" : String(format: "%.1f 秒", delay)).latFont(14).monospacedDigit().foregroundStyle(T.muted)
+            }
+            Slider(value: $delay, in: 0...1.5, step: 0.05).tint(T.greenEdge).accessibilityLabel("筆跡延遲")
+        }
+    }
+
+    private var sizeRow: some View {
+        HStack(spacing: 10) {
+            Text("粗細").ffFont(.subheadline).foregroundStyle(T.glyph)
+            Image(systemName: "circle.fill").font(.system(size: 5)).foregroundStyle(T.muted)
+            Slider(value: $size, in: 0...1).tint(T.greenEdge).accessibilityLabel("粗細")
+            Image(systemName: "circle.fill").font(.system(size: 14)).foregroundStyle(T.muted)
+        }
+    }
+
+    /// how a stroke of this pen looks, at this thickness
+    private var preview: some View {
+        let w = HandInk.width(pen: pen, size: size)
+        let type = HandInk.pens[HandInk.pen(pen)].type
+        return Canvas { ctx, sz in
+            var p = Path()
+            let n = 60
+            for k in 0...n {
+                let t = CGFloat(k) / CGFloat(n)
+                let pt = CGPoint(x: 12 + t * (sz.width - 24), y: sz.height / 2 + sin(t * .pi * 2) * sz.height * 0.22)
+                if k == 0 { p.move(to: pt) } else { p.addLine(to: pt) }
+            }
+            let ink = Color(rainbow ? HandInk.rainbow[0] : HandInk.dark)
+            ctx.opacity = type == .marker ? 0.6 : (type == .watercolor ? 0.75 : 1)
+            ctx.stroke(p, with: .color(ink), style: StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round))
+        }
+        .frame(height: 56)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.96)))
+        .accessibilityHidden(true)
     }
 }
 
 /// a PencilKit canvas: finger or Apple Pencil. The pen changes colour after each stroke in 彩色.
+/// 延遲: the writing shows up a moment after the pen has been there (the canvas's own ink is then invisible, and
+/// the ink is drawn a little later on top of it: first as a line following the pen, then PencilKit's own ink).
 private struct WritingPad: UIViewRepresentable {
     let clearCount: Int
     let changed: (PKDrawing) -> Void
     @AppStorage(HandInk.pressureKey) private var level = 1
+    @AppStorage(HandInk.sizeKey) private var size = HandInk.sizeDefault
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(HandInk.delayKey) private var delay = 0.0
 
-    func makeUIView(context: Context) -> PKCanvasView {
-        let v = PKCanvasView()
+    func makeUIView(context: Context) -> PadHost {
+        let host = PadHost()
+        let v = host.canvas
         v.drawingPolicy = .anyInput
         v.backgroundColor = .clear
         v.isOpaque = false
         // (light, so PencilKit draws the colours as they are instead of turning them around for dark mode)
         v.overrideUserInterfaceStyle = .light
         v.isScrollEnabled = false
-        v.delegate = context.coordinator
-        context.coordinator.cleared = clearCount
-        context.coordinator.level = level
-        context.coordinator.rainbow = rainbow
-        v.tool = HandInk.tool(stroke: 0, rainbow: rainbow, level: level)
-        return v
+        let c = context.coordinator
+        v.delegate = c
+        c.host = host
+        c.cleared = clearCount
+        c.level = level; c.size = size; c.rainbow = rainbow; c.delay = delay
+        host.later.delay = delay
+        v.tool = c.tool(stroke: 0)
+        // follows the pen (for 延遲), without getting in PencilKit's way
+        let follow = PenFollower(target: nil, action: nil)
+        follow.cancelsTouchesInView = false
+        follow.delaysTouchesBegan = false
+        follow.delaysTouchesEnded = false
+        follow.delegate = c
+        follow.began = { [weak c] p, t in c?.began(p, t) }
+        follow.moved = { [weak c] p, t in c?.host?.later.add(p, t) }
+        follow.ended = { [weak c] t in c?.host?.later.end(t) }
+        v.addGestureRecognizer(follow)
+        return host
     }
 
-    func updateUIView(_ v: PKCanvasView, context: Context) {
+    func updateUIView(_ host: PadHost, context: Context) {
         let c = context.coordinator
         c.changed = changed
+        let v = host.canvas
         if c.cleared != clearCount {
             c.cleared = clearCount
             v.drawing = PKDrawing()
+            host.later.reset()
         }
-        if c.level != level || c.rainbow != rainbow {
-            c.level = level; c.rainbow = rainbow
-            v.tool = HandInk.tool(stroke: v.drawing.strokes.count, rainbow: rainbow, level: level)
+        if c.level != level || c.rainbow != rainbow || c.size != size || c.delay != delay {
+            let delayChanged = (c.delay > 0) != (delay > 0)
+            c.level = level; c.rainbow = rainbow; c.size = size; c.delay = delay
+            host.later.delay = delay
+            v.tool = c.tool(stroke: v.drawing.strokes.count)
+            // 延遲 on or off: the strokes already there in the right ink
+            if delayChanged {
+                v.drawing = delay > 0 ? c.hidden(v.drawing) : c.shown(v.drawing)
+                host.later.reset()
+                host.later.show(c.shown(v.drawing), upTo: v.drawing.strokes.count)
+            }
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(changed) }
 
-    final class Coordinator: NSObject, PKCanvasViewDelegate {
+    final class Coordinator: NSObject, PKCanvasViewDelegate, UIGestureRecognizerDelegate {
+        weak var host: PadHost?
         var cleared = 0
         var changed: (PKDrawing) -> Void
         var level = 1
+        var size = HandInk.sizeDefault
         var rainbow = false
+        var delay = 0.0
         init(_ c: @escaping (PKDrawing) -> Void) { changed = c }
+
+        func tool(stroke n: Int) -> PKInkingTool {
+            let t = HandInk.tool(stroke: n, rainbow: rainbow, pen: level, size: size)
+            // 延遲: the canvas's own ink can't be seen (the ink is drawn later, on top)
+            return delay > 0 ? PKInkingTool(t.inkType, color: t.color.withAlphaComponent(0.02), width: t.width) : t
+        }
+        /// every stroke in its real colour
+        func shown(_ d: PKDrawing) -> PKDrawing {
+            PKDrawing(strokes: d.strokes.enumerated().map { i, s in
+                var s = s
+                s.ink = PKInk(s.ink.inkType, color: HandInk.tool(stroke: i, rainbow: rainbow, pen: level, size: size).color)
+                return s
+            })
+        }
+        func hidden(_ d: PKDrawing) -> PKDrawing {
+            PKDrawing(strokes: d.strokes.map { s in
+                var s = s
+                s.ink = PKInk(s.ink.inkType, color: s.ink.color.withAlphaComponent(0.02))
+                return s
+            })
+        }
+
+        func began(_ p: CGPoint, _ t: TimeInterval) {
+            guard delay > 0, let host else { return }
+            let n = host.canvas.drawing.strokes.count + host.later.unfinished
+            let tl = HandInk.tool(stroke: n, rainbow: rainbow, pen: level, size: size)
+            host.later.begin(p, t, color: tl.color, width: tl.width, marker: tl.inkType == .marker)
+        }
 
         func canvasViewDrawingDidChange(_ v: PKCanvasView) {
             let d = v.drawing
             // the next stroke's pen (彩色: the next colour; after 清掉 or undo: back to that stroke's colour)
-            let want = HandInk.tool(stroke: d.strokes.count, rainbow: rainbow, level: level)
-            if let now = v.tool as? PKInkingTool, now.color != want.color || now.inkType != want.inkType { v.tool = want }
-            DispatchQueue.main.async { self.changed(d) }       // (not while SwiftUI is updating the view)
+            let want = tool(stroke: d.strokes.count)
+            if let now = v.tool as? PKInkingTool, now.color != want.color || now.inkType != want.inkType || now.width != want.width { v.tool = want }
+            let seen = delay > 0 ? shown(d) : d
+            if delay > 0 { host?.later.strokes(seen) }
+            DispatchQueue.main.async { self.changed(seen) }       // (not while SwiftUI is updating the view)
         }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
+}
+
+/// the canvas with the late ink on top
+final class PadHost: UIView {
+    let canvas = PKCanvasView()
+    let later = LateInk()
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        addSubview(canvas)
+        later.isUserInteractionEnabled = false
+        later.backgroundColor = .clear
+        later.isOpaque = false
+        addSubview(later)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        canvas.frame = bounds
+        later.frame = bounds
+    }
+}
+
+/// watches the touches on the canvas (never takes them): where the pen is and when
+final class PenFollower: UIGestureRecognizer {
+    var began: ((CGPoint, TimeInterval) -> Void)?
+    var moved: ((CGPoint, TimeInterval) -> Void)?
+    var ended: ((TimeInterval) -> Void)?
+    private weak var touch: UITouch?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard touch == nil, let t = touches.first, let v = view else { return }
+        touch = t
+        began?(t.location(in: v), t.timestamp)
+    }
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let t = touch, touches.contains(t), let v = view else { return }
+        for c in event.coalescedTouches(for: t) ?? [t] { moved?(c.location(in: v), c.timestamp) }
+    }
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let t = touch, touches.contains(t) else { return }
+        ended?(t.timestamp); touch = nil
+        state = .failed
+    }
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let t = touch, touches.contains(t) else { return }
+        ended?(t.timestamp); touch = nil
+        state = .failed
+    }
+    override func reset() { touch = nil }
+}
+
+/// 延遲: draws the writing a moment late. A stroke being written (or just written) is a line that follows the pen
+/// `delay` seconds behind; once it's all there it's swapped for PencilKit's own ink of that stroke.
+final class LateInk: UIView {
+    var delay = 0.0
+    private struct Trail { var pts: [(CGPoint, TimeInterval)]; var color: UIColor; var width: CGFloat; var marker: Bool; var end: TimeInterval? }
+    private var trails: [Trail] = []
+    /// how many of the strokes are already drawn as ink (the image), and the strokes in their colours
+    private var inked = 0
+    private var all = PKDrawing()
+    private var image: UIImage?
+    private var link: CADisplayLink?
+
+    var unfinished: Int { trails.count }
+
+    func begin(_ p: CGPoint, _ t: TimeInterval, color: UIColor, width: CGFloat, marker: Bool) {
+        trails.append(Trail(pts: [(p, t)], color: color, width: width, marker: marker, end: nil))
+        run()
+    }
+    func add(_ p: CGPoint, _ t: TimeInterval) {
+        guard !trails.isEmpty, trails[trails.count - 1].end == nil else { return }
+        trails[trails.count - 1].pts.append((p, t))
+    }
+    func end(_ t: TimeInterval) {
+        guard let i = trails.lastIndex(where: { $0.end == nil }) else { return }
+        trails[i].end = t
+    }
+    /// the canvas's strokes changed (in their real colours)
+    func strokes(_ d: PKDrawing) {
+        // 清掉 or undo: start over from what's there
+        if d.strokes.count < inked { inked = 0; trails.removeAll(); image = nil; all = d; show(d, upTo: d.strokes.count); return }
+        all = d
+        run()
+    }
+    func show(_ d: PKDrawing, upTo n: Int) {
+        all = d
+        inked = min(n, d.strokes.count)
+        render()
+        setNeedsDisplay()
+    }
+    func reset() {
+        trails.removeAll(); inked = 0; all = PKDrawing(); image = nil
+        setNeedsDisplay()
+    }
+
+    private func run() {
+        guard link == nil else { return }
+        let l = CADisplayLink(target: self, selector: #selector(tick))
+        l.add(to: .main, forMode: .common)
+        link = l
+    }
+    @objc private func tick() {
+        let now = CACurrentMediaTime()
+        // a stroke all there (and PencilKit has it): its real ink instead of the line
+        while let f = trails.first, let e = f.end, e + delay <= now {
+            if inked < all.strokes.count {
+                trails.removeFirst()
+                inked += 1
+                render()
+            } else if e + delay + 0.6 <= now {
+                trails.removeFirst()        // a touch PencilKit didn't make a stroke of
+            } else { break }
+        }
+        setNeedsDisplay()
+        if trails.isEmpty && inked >= all.strokes.count { link?.invalidate(); link = nil }
+    }
+    private func render() {
+        guard inked > 0, bounds.width > 0 else { image = nil; return }
+        let d = PKDrawing(strokes: Array(all.strokes.prefix(inked)))
+        var img: UIImage?
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            img = d.image(from: bounds, scale: window?.screen.scale ?? 2)
+        }
+        image = img
+    }
+
+    override func draw(_ rect: CGRect) {
+        image?.draw(in: bounds)
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        let shownUntil = CACurrentMediaTime() - delay
+        for t in trails {
+            let pts = t.pts.filter { $0.1 <= shownUntil }.map(\.0)
+            guard let first = pts.first else { continue }
+            ctx.setStrokeColor(t.color.withAlphaComponent(t.marker ? 0.6 : 1).cgColor)
+            ctx.setLineWidth(t.width * (t.marker ? 1 : 0.8))
+            ctx.setLineCap(.round); ctx.setLineJoin(.round)
+            ctx.beginPath()
+            ctx.move(to: first)
+            if pts.count == 1 { ctx.addLine(to: CGPoint(x: first.x + 0.01, y: first.y)) }
+            for p in pts.dropFirst() { ctx.addLine(to: p) }
+            ctx.strokePath()
+        }
+    }
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        render(); setNeedsDisplay()
     }
 }
 
