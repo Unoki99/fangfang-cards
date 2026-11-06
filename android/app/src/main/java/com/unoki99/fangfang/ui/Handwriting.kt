@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -492,7 +494,7 @@ private fun CharWordsList(ch: String, modifier: Modifier) {
             content()
         }
     }
-    androidx.compose.foundation.lazy.LazyColumn(modifier, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 60.dp)) {
+    LazyColumn(modifier, contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 60.dp)) {
         if (z != null) {
             // the character itself
             val ce = z.entryForChar(ch, "")
@@ -511,14 +513,14 @@ private fun CharWordsList(ch: String, modifier: Modifier) {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = T.greenInk) }
             } else {
                 item(key = "title") { SectionTitle(if (l.isEmpty()) "沒有找到有這個字的詞" else "有「$ch」的詞（${l.size}）") }
-                androidx.compose.foundation.lazy.itemsIndexed(l, key = { _, i -> "w|$i" }) { n, i ->
+                itemsIndexed(l, key = { _, i -> "w|$i" }) { n, i ->
                     val e = z.entries[i]
                     rowBox(n, l.size, { UI.open(Sheet.ZhWord(e.k)) }) { ZhWordRow(z, e, meanings = 2) }
                 }
             }
         } else {
             item(key = "title") { SectionTitle(if (cardWords.isEmpty()) "沒有找到有這個字的詞" else "有「$ch」的詞（${cardWords.size}）") }
-            androidx.compose.foundation.lazy.itemsIndexed(cardWords, key = { _, c -> "c|${c.k}" }) { n, c ->
+            itemsIndexed(cardWords, key = { _, c -> "c|${c.k}" }) { n, c ->
                 rowBox(n, cardWords.size, { UI.open(Sheet.CardSheet(c)) }) { CharWordCardRow(c) }
             }
         }
