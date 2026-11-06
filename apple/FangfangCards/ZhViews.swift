@@ -1,0 +1,834 @@
+import SwiftUI
+
+// MARK: - 華語: 詞典 and 轉換
+
+/// a 華語 word to open (its key)
+struct ZhKey: Hashable, Identifiable {
+    let k: String
+    var id: String { k }
+}
+
+/// 單詞比較 (華語)
+struct ZhCompareRef: Hashable {}
+/// 依詞類列出 (華語): nil = every word class, or the words of one
+struct ZhClassRef: Hashable { var cls: String? = nil }
+
+/// shows its content once the 華語 dictionary is loaded
+struct ZhGate<Content: View>: View {
+    @EnvironmentObject var store: Store
+    @ViewBuilder let content: (ZhDict) -> Content
+    var body: some View {
+        Group {
+            if let d = store.zh {
+                content(d)
+                    .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: d, key: $0.k) }
+                    .navigationDestination(for: ZhCompareRef.self) { _ in ZhComparePage(dict: d) }
+                    .navigationDestination(for: ZhClassRef.self) { r in
+                        if let c = r.cls { ZhWordClassPage(dict: d, cls: c) } else { ZhWordClassListPage(dict: d) }
+                    }
+            } else {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("載入華語詞典…").ffFont(.footnote).foregroundStyle(T.muted)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground()
+    }
+}
+
+/// 詞典 in 華語 mode: 查詞 / 收藏
+struct ZhDictTabs: View {
+    let dict: ZhDict
+    @AppStorage("zhDictTab") private var tab = 0
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $tab) {
+                Text("查詞").tag(0)
+                Text("收藏").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
+            Group {
+                if tab == 1 { ZhSavedPane(dict: dict) } else { ZhLookupPane(dict: dict) }
+            }
+            .id(tab)
+            .frame(maxHeight: .infinity)
+        }
+    }
+}
+
+// MARK: 查詞
+
+struct ZhLookupPane: View {
+    let dict: ZhDict
+    @EnvironmentObject var store: Store
+    @AppStorage("zhLookupQuery") private var query = ""
+    @State private var found = ZhDict.Found()
+    @State private var task: Task<Void, Never>?
+
+    var body: some View {
+        List {
+            Section {
+                TextField("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4", text: $query)
+                    .scaledFont(18)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .submitLabel(.search)
+                    .clearButton($query)
+            }
+            .listRowBackground(T.fn.opacity(0.7))
+            // 單詞比較, as in the 台語 dictionary (a header: a row's rounded corners would cut the tile off)
+            Section {
+            } header: {
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        NavigationLink(value: ZhClassRef()) { TileLabel(icon: "list.bullet.indent", title: "依詞類列出") }
+                            .buttonStyle(.plain)
+                        NavigationLink(value: ZhCompareRef()) { TileLabel(icon: "rectangle.split.2x1", title: "單詞比較") }
+                            .buttonStyle(.plain)
+                    }
+                    HStack(spacing: 10) {
+                        NavigationLink {
+                            RadicalPage(isChar: { dict.byHan[$0] != nil }) { query += $0 }
+                        } label: { TileLabel(icon: "square.grid.3x3", title: "部首查字") }
+                            .buttonStyle(.plain)
+                        Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                    }
+                }
+                .padding(.vertical, 4)
+                .textCase(nil)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            }
+            if query.isEmpty {
+                Text("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                    .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
+            } else if found.empty {
+                Text("找不到「\(query)」。").foregroundStyle(T.muted).listRowBackground(Color.clear)
+            }
+            group("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）", found.tones)
+            group("「\(query)」", found.words)
+            ForEach(Array(found.parts.enumerated()), id: \.offset) { i, w in
+                group("「\(w)」", found.partWords[i])
+            }
+            group("開頭是「\(query)」", found.starts)
+            group("英文「\(query)」", found.english, english: true)
+            group("裡面有「\(query)」", found.contains)
+            group("解釋裡有「\(query)」", found.defs)
+        }
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .onAppear { search() }
+        .onChange(of: query) { search() }
+        .onChange(of: store.zhPlace) { search() }
+    }
+
+    @ViewBuilder private func group(_ title: String, _ list: [Int], english: Bool = false) -> some View {
+        if !list.isEmpty {
+            Section(title) {
+                ForEach(list.prefix(english ? 250 : 500), id: \.self) { i in
+                    let e = dict.entries[i]
+                    NavigationLink(value: ZhKey(k: e.k)) { ZhWordRow(dict: dict, entry: e, english: english) }
+                        .swipeActions(edge: .leading) {
+                            Button { store.toggleUnknown(e.k) } label: { Label("不熟", systemImage: "star") }.tint(T.rustEdge)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button { store.toggleSaved(e.k) } label: {
+                                Label(store.isSaved(e.k) ? "取消收藏" : "收藏", systemImage: "bookmark")
+                            }.tint(T.oliveEdge)
+                        }
+                }
+            }
+            .listRowBackground(T.fn.opacity(0.7))
+        }
+    }
+
+    private func search() {
+        task?.cancel()
+        let q = query, d = dict, pl = store.zhPlace
+        task = Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            let r = await Task.detached(priority: .userInitiated) { d.search(q, place: pl) }.value
+            guard !Task.isCancelled else { return }
+            found = r
+        }
+    }
+}
+
+/// a word in a list: 漢字, reading, first meaning
+struct ZhWordRow: View {
+    let dict: ZhDict
+    let entry: ZhEntry
+    /// found by its English meaning: show that instead of the 華語 one
+    var english = false
+    @EnvironmentObject var store: Store
+    @AppStorage(ZhMeaning.key) private var mainEnglish = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(dict.hanText(entry.h, entry.syl(store.zhPlace), base: T.glyph)).scaledFont(20, weight: .semibold).toneGlow()
+                Text(dict.reading(entry.syl(store.zhPlace), store.zhRom)).latFont(16).toneGlow().foregroundStyle(T.greenInk)
+                if entry.spec != 0 { ZhSpecChip(spec: entry.spec) }
+                if entry.level(store.zhList) > 0 {
+                    Text(Lang.levelName(store.zhList, entry.level(store.zhList))).ffFont(.caption2, .bold).foregroundStyle(T.greenInk)
+                }
+                Spacer(minLength: 0)
+                if store.isSaved(entry.k) { Image(systemName: "bookmark.fill").ffFont(.caption).foregroundStyle(T.oliveInk) }
+                if store.cardStatus(entry.k) == 2 { Image(systemName: "star.fill").ffFont(.caption).foregroundStyle(T.rustInk) }
+            }
+            // found by its English meaning, or 設定 → 主要解釋: English
+            if english || mainEnglish, entry.en != nil {
+                Text(entry.enList.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+            } else if let s = entry.senses.first {
+                Text(s.text).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+            } else if entry.en != nil {
+                Text(entry.enList.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+            }
+        }
+    }
+}
+
+struct ZhSpecChip: View {
+    let spec: Int
+    var body: some View {
+        Chip(text: spec == 1 ? "臺灣用語" : "大陸用語", fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+    }
+}
+
+// MARK: one entry
+
+struct ZhEntryView: View {
+    let dict: ZhDict
+    let key: String
+    var body: some View {
+        ScrollView {
+            if let e = dict.entry(key) {
+                ZhEntryBody(dict: dict, entry: e)
+                    .padding()
+                    .frame(maxWidth: 760)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Text("找不到這個詞。").foregroundStyle(T.muted).padding()
+            }
+        }
+        .appBackground()
+        .navigationTitle(dict.entry(key)?.h ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
+    }
+}
+
+/// a 華語 entry in a sheet from the bottom (from the cards)
+struct ZhEntrySheet: View {
+    let dict: ZhDict
+    let key: String
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            ZhEntryView(dict: dict, key: key)
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+                .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: dict, key: $0.k) }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationContentInteraction(.scrolls)
+        .presentationDragIndicator(.visible)
+    }
+}
+
+struct ZhEntryBody: View {
+    let dict: ZhDict
+    let entry: ZhEntry
+    @EnvironmentObject var store: Store
+    @State private var tapped: ZhKey?
+
+    /// for each character of the headword: the single-character entry read the way this word reads it
+    private func charKeys(_ syl: [String]) -> [String?] {
+        var out: [String?] = [], n = 0
+        for u in entry.h.unicodeScalars {
+            guard Zhuyin.isHan(u) else { out.append(nil); continue }
+            defer { n += 1 }
+            let ch = String(u)
+            guard n < syl.count, syl[n] != "-" else { out.append(nil); continue }
+            let s = syl[n]
+            let hit = (dict.byHan[ch] ?? []).map { dict.entries[$0] }
+                .first { $0.h == ch && $0.k != entry.k && ($0.tw.first == s || $0.lu?.first == s || (n < entry.tw.count && $0.tw.first == entry.tw[n])) }
+            out.append(hit?.k)
+        }
+        return out
+    }
+
+    var body: some View {
+        let syl = entry.syl(store.zhPlace)
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 12) {
+                    // tap a character to see it on its own (the entry with the same reading)
+                    TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl)) { tapped = ZhKey(k: $0) }
+                        .toneGlow()
+                    PlayButton(path: "tts:" + entry.h)
+                    Spacer()
+                }
+                HStack(spacing: 8) {
+                    saveButton
+                    star
+                }
+                Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
+                // the other reading system, small
+                Text(dict.reading(syl, store.zhRom == 0 ? 1 : 0)).ffFont(.subheadline).foregroundStyle(T.purpleInk).textSelection(.enabled)
+                // 臺灣 and 大陸 say it differently
+                if let lu = entry.lu {
+                    let other = store.zhPlace == 1 ? entry.tw : lu
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Chip(text: store.zhPlace == 1 ? "臺灣" : "大陸", fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                        Text(dict.reading(other, store.zhRom)).latFont(17).foregroundStyle(T.greenInk)
+                        Text(dict.reading(other, store.zhRom == 0 ? 1 : 0)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                    }
+                }
+                InputCodesRow(han: entry.h)
+                // the English meanings, one per line
+                let ens = entry.enList
+                if !ens.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Chip(text: "英", fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                        ZhEnglishList(items: ens)
+                    }
+                }
+                // 詞類: tap one for the words of that class
+                if !entry.pos.isEmpty {
+                    HStack(spacing: 6) {
+                        ForEach(entry.pos, id: \.self) { p in
+                            NavigationLink(value: ZhClassRef(cls: p)) { Chip(text: p, fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                                .buttonStyle(.plain)
+                        }
+                    }
+                }
+                HStack(spacing: 6) {
+                    if entry.hsk > 0 { Chip(text: Lang.hskName(entry.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if entry.tocfl > 0 { Chip(text: Lang.levelName(1, entry.tocfl), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if entry.spec != 0 { ZhSpecChip(spec: entry.spec) }
+                    if let a = entry.alt, a != entry.h {
+                        Chip(text: "簡", fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                        Text(a).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.85))
+                    }
+                }
+            }
+            // the same 漢字 read another way
+            let others = dict.others(entry)
+            if !others.isEmpty {
+                HStack(alignment: .top, spacing: 6) {
+                    Chip(text: "又讀", fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                    FlowLayout(spacing: 6) {
+                        ForEach(others, id: \.k) { o in
+                            NavigationLink(value: ZhKey(k: o.k)) {
+                                Text(dict.reading(o.syl(store.zhPlace), store.zhRom)).latFont(15).foregroundStyle(T.greenInk)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Capsule().fill(T.fn.opacity(0.8)))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            ForEach(entry.senses, id: \.n) { s in sense(s) }
+            // 近義詞 / 反義詞 (《重編國語辭典修訂本》), the ones this dictionary has
+            let syn = entry.syn.compactMap { dict.usual($0).map { dict.entries[$0] } }
+            let ant = entry.ant.compactMap { dict.usual($0).map { dict.entries[$0] } }
+            if !syn.isEmpty || !ant.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    links("近", syn, T.blue, T.blueEdge, T.blueInk)
+                    links("反", ant, T.rust, T.rustEdge, T.rustInk)
+                }
+            }
+            moeChar
+            if entry.extra {
+                Text("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。")
+                    .ffFont(.caption).foregroundStyle(T.muted)
+            }
+            Text("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
+                .ffFont(.caption2).foregroundStyle(T.muted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }
+    }
+
+    /// a single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
+    @ViewBuilder private var moeChar: some View {
+        if entry.h.count == 1, let i = dict.charIndex[entry.h],
+           let r = dict.chars[i].readings.first(where: { $0.zy == entry.tw.first }) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("《重編國語辭典修訂本》").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                ForEach(Array(r.defs.enumerated()), id: \.offset) { n, d in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text("\(n + 1).").ffFont(.subheadline, .bold).foregroundStyle(T.muted)
+                        if !d.pos.isEmpty { Chip(text: d.pos, fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                        Text(d.text).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.4)))
+        }
+    }
+
+    private func sense(_ s: ZhSense) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(s.n).").ffFont(.subheadline, .bold).foregroundStyle(T.muted)
+                Text(s.text).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
+                Spacer(minLength: 4)
+                ZhSenseCopyButton(dict: dict, key: entry.k, sense: s.n - 1)
+                SenseSaveButton(item: SavedSense(key: entry.k, sense: s.n - 1), store: store)
+            }
+            ForEach(Array(s.ex.enumerated()), id: \.offset) { _, x in
+                ZhExampleBlock(dict: dict, ex: x)
+                    .padding(.leading, 18)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.55)))
+    }
+
+    @ViewBuilder private func links(_ name: String, _ es: [ZhEntry], _ fill: Color, _ edge: Color, _ ink: Color) -> some View {
+        if !es.isEmpty {
+            HStack(alignment: .top, spacing: 6) {
+                Chip(text: name, fill: fill, edge: edge, ink: ink)
+                FlowLayout(spacing: 6) {
+                    ForEach(es, id: \.k) { e in
+                        NavigationLink(value: ZhKey(k: e.k)) {
+                            HStack(spacing: 4) {
+                                Text(e.h).foregroundStyle(T.glyph)
+                                Text(dict.reading(e.syl(store.zhPlace), store.zhRom)).latFont(13).foregroundStyle(ink)
+                            }
+                            .ffFont(.subheadline)
+                            .padding(.horizontal, 8).padding(.vertical, 3)
+                            .background(Capsule().fill(fill.opacity(0.5)))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private var saveButton: some View {
+        let on = store.isSaved(entry.k)
+        return Button { withAnimation(.snappy) { store.toggleSaved(entry.k) } } label: {
+            Label(on ? "已收藏" : "收藏", systemImage: on ? "bookmark.fill" : "bookmark")
+                .ffFont(.subheadline, .semibold)
+                .foregroundStyle(on ? T.oliveInk : T.glyph)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill(on ? T.olive : T.fn.opacity(0.8)))
+                .overlay(Capsule().stroke(on ? T.oliveEdge : T.fnEdge, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder private var star: some View {
+        let st = store.cardStatus(entry.k) ?? 0
+        if st == 1 {
+            Chip(text: "卡片：熟悉", fill: T.green, edge: T.greenEdge, ink: T.greenInk)
+        } else {
+            Button { withAnimation(.snappy) { store.toggleUnknown(entry.k) } } label: {
+                Label(st == 2 ? "在「不熟」" : "加到「不熟」", systemImage: st == 2 ? "star.fill" : "star")
+                    .ffFont(.subheadline, .semibold)
+                    .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Capsule().fill(st == 2 ? T.rust : T.fn.opacity(0.8)))
+                    .overlay(Capsule().stroke(st == 2 ? T.rustEdge : T.fnEdge, lineWidth: 1.5))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+/// an example sentence: 漢字 (tap a word to see it in the dictionary; the whole word is the button), reading, where it's from; ▶ reads it aloud
+struct ZhExampleBlock: View {
+    let dict: ZhDict
+    let ex: ZhEx
+    @EnvironmentObject var store: Store
+    @State private var tapped: ZhKey?
+    /// 設定 → 例句的詞分開一點
+    @AppStorage("wordGap") private var gap = true
+    var body: some View {
+        let ps = ZhDict.pieces(ex)
+        HStack(alignment: .top, spacing: 10) {
+            PlayButton(path: "tts:" + ex.h, size: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                // the same as the 台語 sentences: each word its own taller box (a bigger place to tap), a little apart
+                // swells when pressed or under the pointer; hold and slide to swell the word under the finger
+                let keys = ps.map { p in p.tw != nil ? dict.entry(for: p)?.k : nil }
+                SwellWords(pieces: ps.indices.map { i in (dict.sentenceHan([ps[i]], store.zhPlace, base: T.blueInk), keys[i] != nil, false, 0) },
+                           lineSpacing: -4, vPad: 7, hPad: gap ? 2 : 0) { i in
+                    if let k = keys[i] { tapped = ZhKey(k: k) }
+                }
+                .ffFont(.body)
+                Text(dict.sentence(ps, store.zhRom, store.zhPlace)).latFont(15).toneGlow().foregroundStyle(T.greenInk).textSelection(.enabled)
+                if !ex.src.isEmpty { Text(ex.src).ffFont(.caption).foregroundStyle(T.muted) }
+            }
+        }
+        .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }
+    }
+}
+
+// MARK: 收藏
+
+struct ZhSavedPane: View {
+    let dict: ZhDict
+    @EnvironmentObject var store: Store
+    @State private var shareItem: ShareItem?
+    var body: some View {
+        let keys = store.savedKeys
+        let senses = store.savedSenses
+        List {
+            if keys.isEmpty && senses.isEmpty {
+                Text("在詞典裡按「收藏」或意思旁邊的書籤，詞和意思會出現在這裡。")
+                    .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
+            } else {
+                Button {
+                    let url = FileManager.default.temporaryDirectory.appendingPathComponent("方方-華語收藏.csv")
+                    if (try? Data(csv(keys, senses).utf8).write(to: url, options: .atomic)) != nil { shareItem = ShareItem(url: url) }
+                } label: {
+                    Label("匯出 CSV", systemImage: "square.and.arrow.up").foregroundStyle(T.oliveInk)
+                }
+                .listRowBackground(T.fn.opacity(0.7))
+            }
+            if !keys.isEmpty {
+                Section("\(keys.count) 個詞（往左滑刪除）") {
+                    ForEach(keys, id: \.self) { k in
+                        if let e = dict.entry(k) {
+                            NavigationLink(value: ZhKey(k: k)) { ZhWordRow(dict: dict, entry: e) }
+                                .swipeActions { Button(role: .destructive) { store.toggleSaved(k) } label: { Label("刪除", systemImage: "trash") } }
+                        }
+                    }
+                }
+                .listRowBackground(T.fn.opacity(0.7))
+            }
+            if !senses.isEmpty {
+                Section("\(senses.count) 個意思（往左滑刪除）") {
+                    ForEach(senses, id: \.id) { s in
+                        if let e = dict.entry(s.key), s.sense < e.senses.count {
+                            NavigationLink(value: ZhKey(k: s.key)) { senseRow(e, e.senses[s.sense]) }
+                                .swipeActions { Button(role: .destructive) { store.unsave(s) } label: { Label("刪除", systemImage: "trash") } }
+                                .contextMenu {
+                                    Button {
+                                        UIPasteboard.general.string = SenseCopy.zhText(dict, key: s.key, sense: s.sense, rom: store.zhRom, place: store.zhPlace)
+                                    } label: { Label("複製這個意思", systemImage: "doc.on.doc") }
+                                }
+                        }
+                    }
+                }
+                .listRowBackground(T.fn.opacity(0.7))
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .sheet(item: $shareItem) { ShareSheet(url: $0.url) }
+    }
+
+    /// word, 拼音 with tone numbers (a space between syllables), meaning (English first), sentences (a blank line
+    /// between them); saved words first, then saved meanings
+    private func csv(_ keys: [String], _ senses: [SavedSense]) -> String {
+        func q(_ s: String) -> String {
+            s.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" }) ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s
+        }
+        func numbered(_ e: ZhEntry) -> String {
+            e.syl(store.zhPlace).filter { $0 != "-" && $0 != "_" }.map { s -> String in
+                let t = Zhuyin.tone(s)
+                return Zhuyin.plainSyllable(s).replacingOccurrences(of: "v", with: "ü") + String(t == 0 ? 5 : t)
+            }.joined(separator: " ")
+        }
+        func sentences(_ xs: [ZhEx]) -> String { xs.map(\.h).joined(separator: "\n\n") }
+        var rows = ["word,pronunciation,meaning,sentences"]
+        for k in keys {
+            guard let e = dict.entry(k) else { continue }
+            let meaning = e.en ?? e.senses.map(\.text).joined(separator: "；")
+            rows.append([e.h, numbered(e), meaning, sentences(e.senses.flatMap(\.ex))].map(q).joined(separator: ","))
+        }
+        for s in senses {
+            guard let e = dict.entry(s.key), s.sense < e.senses.count else { continue }
+            let m = e.senses[s.sense]
+            // the English meaning is for the whole word: with it, which meaning this is
+            let meaning = e.en.map { $0 + "（\(m.text)）" } ?? m.text
+            rows.append([e.h, numbered(e), meaning, sentences(m.ex)].map(q).joined(separator: ","))
+        }
+        return "\u{FEFF}" + rows.joined(separator: "\n") + "\n"
+    }
+
+    private func senseRow(_ e: ZhEntry, _ m: ZhSense) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(dict.hanText(e.h, e.syl(store.zhPlace), base: T.glyph)).scaledFont(20, weight: .semibold).toneGlow()
+                Text(dict.reading(e.syl(store.zhPlace), store.zhRom)).latFont(16).toneGlow().foregroundStyle(T.greenInk)
+                Spacer(minLength: 0)
+                Image(systemName: "bookmark.fill").ffFont(.caption).foregroundStyle(T.blueInk)
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("\(m.n).").ffFont(.footnote, .bold).foregroundStyle(T.muted)
+                Text(m.text).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.9))
+            }
+            ForEach(Array(m.ex.prefix(3).enumerated()), id: \.offset) { _, x in
+                let ps = ZhDict.pieces(x)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(dict.sentenceHan(ps, store.zhPlace, base: T.blueInk)).ffFont(.subheadline).toneGlow()
+                    Text(dict.sentence(ps, store.zhRom, store.zhPlace)).latFont(14).toneGlow().foregroundStyle(T.greenInk)
+                }
+                .padding(.leading, 18)
+            }
+        }
+    }
+}
+
+// MARK: - 轉換 (華語)
+
+/// 華語 text → 拼音 / 注音, in tone colours; the readings are the dictionary's (most common reading of each word)
+struct ZhConvertPane: View {
+    let dict: ZhDict
+    @EnvironmentObject var store: Store
+    @AppStorage("zhConvText") private var text = ""
+    @State private var pieces: [ZhPiece] = []
+    @State private var copied: Int?
+    @State private var copySheet = false
+    @State private var task: Task<Void, Never>?
+    @State private var tapped: ZhKey?
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                ZStack(alignment: .topLeading) {
+                    if text.isEmpty {
+                        Text("輸入或貼上華語（正體或簡體都可以）…").foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
+                    }
+                    TextEditor(text: $text)
+                        .scaledFont(18)
+                        .focused($focused)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 110)
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
+                .overlay(alignment: .bottomTrailing) {
+                    // the same as the 台語 轉換: paste, and empty it
+                    HStack(spacing: 6) {
+                        Button {
+                            if let s = UIPasteboard.general.string { text = s }
+                        } label: { Image(systemName: "doc.on.clipboard") }
+                        if !text.isEmpty {
+                            Button { text = ""; focused = true } label: { Image(systemName: "xmark.circle.fill") }
+                                .accessibilityLabel("清除")
+                        }
+                    }
+                    .scaledFont(18)
+                    .foregroundStyle(T.muted)
+                    .padding(10)
+                }
+                if !pieces.isEmpty {
+                    panel(0, "漢字", dict.sentenceHan(pieces, store.zhPlace, base: T.glyph))
+                    panel(1, "拼音", dict.sentence(pieces, 0, store.zhPlace))
+                    panel(2, "注音", dict.sentence(pieces, 1, store.zhPlace))
+                    HStack(spacing: 10) {
+                        Button { copy(all: true) } label: {
+                            Label(copied == 9 ? "已複製" : "全部複製", systemImage: copied == 9 ? "checkmark" : "doc.on.doc").frame(maxWidth: .infinity)
+                        }
+                        .softButton()
+                        Button { copySheet = true } label: {
+                            Label("選擇複製…", systemImage: "slider.horizontal.3").frame(maxWidth: .infinity)
+                        }
+                        .softButton()
+                    }
+                    Text("讀音照詞典裡最常見的唸法，一字多音的地方可能會錯。上面可以切換臺灣／大陸讀音。")
+                        .ffFont(.caption).foregroundStyle(T.muted)
+                }
+            }
+            .padding()
+            .frame(maxWidth: 760)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .onAppear { run() }
+        .onChange(of: text) { run() }
+        .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }
+        .sheet(isPresented: $copySheet) {
+            CopyOptionsSheet(texts: [plain(0), plain(1), plain(2)], names: ["漢字", "拼音", "注音"])
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("完成") { focused = false }
+            }
+        }
+    }
+
+    private func panel(_ i: Int, _ title: String, _ a: AttributedString) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title).ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Spacer()
+                if i == 0 { PlayButton(path: "tts:" + text, size: 28) }
+                Button { copy(i) } label: {
+                    Image(systemName: copied == i ? "checkmark" : "doc.on.doc").foregroundStyle(T.muted)
+                }
+                .buttonStyle(.plain)
+            }
+            if i == 0 {
+                // the 漢字: each word can be tapped to see it (it swells when pressed or under the pointer;
+                // hold and slide to swell the word under the finger, let go to open it)
+                let w = words
+                SwellWords(pieces: w.map { (dict.sentenceHan([$0.piece], store.zhPlace, base: T.glyph), $0.key != nil, $0.newLine, 0) }, vPad: 3) { j in
+                    if let k = w[j].key { focused = false; tapped = ZhKey(k: k) }
+                }
+                .ffFont(.title3)
+            } else {
+                Text(a).ffFont(.body).toneGlow().textSelection(.enabled)
+                    .foregroundStyle(i == 1 ? T.greenInk : T.purpleInk)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.55)))
+    }
+
+    /// the converted text's words (line breaks start a new line), with the entry each one opens
+    private var words: [(piece: ZhPiece, key: String?, newLine: Bool)] {
+        var out: [(piece: ZhPiece, key: String?, newLine: Bool)] = []
+        var newLine = false
+        for p in pieces {
+            if p.text == ["\n"] { newLine = true; continue }
+            out.append((p, p.tw != nil ? dict.entry(for: p)?.k : nil, newLine))
+            newLine = false
+        }
+        return out
+    }
+
+    private func plain(_ i: Int) -> String {
+        switch i {
+        case 0: return text
+        case 1: return String(dict.sentence(pieces, 0, store.zhPlace, colours: 0).characters)
+        default: return String(dict.sentence(pieces, 1, store.zhPlace, colours: 0).characters)
+        }
+    }
+
+    private func copy(_ i: Int) { UIPasteboard.general.string = plain(i); flash(i) }
+    private func copy(all: Bool) { UIPasteboard.general.string = [plain(0), plain(1), plain(2)].joined(separator: "\n"); flash(9) }
+    private func flash(_ m: Int) {
+        copied = m
+        Task { try? await Task.sleep(nanoseconds: 1_200_000_000); if copied == m { copied = nil } }
+    }
+
+    private func run() {
+        task?.cancel()
+        let t = text, d = dict
+        task = Task {
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            // line by line, so line breaks stay
+            let r = await Task.detached(priority: .userInitiated) { () -> [ZhPiece] in
+                var out: [ZhPiece] = []
+                for (i, line) in t.components(separatedBy: "\n").enumerated() {
+                    if i > 0 { out.append(ZhPiece(text: ["\n"], tw: nil, lu: nil)) }
+                    out += d.convertPieces(line)
+                }
+                return out
+            }.value
+            guard !Task.isCancelled else { return }
+            pieces = r
+        }
+    }
+}
+
+
+// MARK: - 單詞比較 (華語)
+
+/// two 華語 words one above the other (side by side on a wide screen)
+struct ZhComparePage: View {
+    let dict: ZhDict
+    @Environment(\.horizontalSizeClass) private var size
+    var body: some View {
+        Group {
+            if size == .regular {
+                HStack(spacing: 0) {
+                    ZhComparePane(dict: dict, slot: "A")
+                    Rectangle().fill(T.fnEdge).frame(width: 1)
+                    ZhComparePane(dict: dict, slot: "B")
+                }
+            } else {
+                VStack(spacing: 0) {
+                    ZhComparePane(dict: dict, slot: "A")
+                    Rectangle().fill(T.fnEdge).frame(height: 1)
+                    ZhComparePane(dict: dict, slot: "B")
+                }
+            }
+        }
+        .appBackground()
+        .navigationTitle("單詞比較")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
+    }
+}
+
+/// one side: search, pick a word, read its entry (remembered for next time)
+struct ZhComparePane: View {
+    let dict: ZhDict
+    let slot: String
+    @EnvironmentObject var store: Store
+    @AppStorage private var key: String
+    @State private var query = ""
+    @State private var found: [Int] = []
+    @State private var task: Task<Void, Never>?
+
+    init(dict: ZhDict, slot: String) {
+        self.dict = dict; self.slot = slot
+        _key = AppStorage(wrappedValue: "", "zhCompare" + slot)
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(T.muted)
+                TextField(slot == "A" ? "第一個詞" : "第二個詞", text: $query)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .onChange(of: query) { search() }
+                    .clearButton($query)
+            }
+            .padding(10)
+            .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.8)))
+            .padding(10)
+            if !query.isEmpty {
+                List(found, id: \.self) { i in
+                    Button { key = dict.entries[i].k; query = "" } label: { ZhWordRow(dict: dict, entry: dict.entries[i]) }
+                        .listRowBackground(T.fn.opacity(0.7))
+                }
+                .scrollContentBackground(.hidden)
+            } else if !key.isEmpty, let e = dict.entry(key) {
+                ScrollView { ZhEntryBody(dict: dict, entry: e).padding(.horizontal).padding(.bottom) }
+            } else {
+                Text("查一個詞，選它。").foregroundStyle(T.muted).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func search() {
+        task?.cancel()
+        let q = query, d = dict, pl = store.zhPlace
+        guard !q.isEmpty else { found = []; return }
+        task = Task {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+            let r = await Task.detached(priority: .userInitiated) { d.search(q, place: pl) }.value
+            guard !Task.isCancelled else { return }
+            var out: [Int] = []
+            for i in r.tones + r.words + r.starts + r.english + r.contains + r.defs where !out.contains(i) {
+                out.append(i)
+                if out.count >= 40 { break }
+            }
+            found = out
+        }
+    }
+}

@@ -1,0 +1,14 @@
+# word data built from the MOE dictionary (CC BY-ND): build it with build-data.sh, don't publish it
+FangfangCards/dict.json
+FangfangCards/cards.json
+FangfangCards/zh.json
+FangfangCards/inputcodes.json
+tools/*.cin
+*.ods
+# Xcode / macOS
+.DS_Store
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
+build/
+__pycache__/
