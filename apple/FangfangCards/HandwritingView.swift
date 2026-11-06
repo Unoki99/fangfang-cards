@@ -14,11 +14,43 @@ import CoreText
 enum Kaiti {
     static let tc = "STKaitiTC-Regular"
     static let sc = "STKaitiSC-Regular"
-    static var ready: Bool { UIFont(name: tc, size: 12) != nil || UIFont(name: sc, size: 12) != nil }
+    /// 手寫練習's font (設定 or the menu at the top of 手寫練習)
+    static let styleKey = "handwritingFont"
+    /// the fonts: the name shown, the font's name, the file in the app (nil = Apple's 楷體, downloaded the first time)
+    static let styles: [(name: String, ps: String, file: String?)] = [
+        ("楷體", tc, nil),
+        ("文楷", "LXGWWenKaiTC-Regular", "wenkai"),       // 霞鶩文楷 TC (OFL)
+        ("芫荽", "Iansui-Regular", "iansui"),             // 芫荽 Iansui, for learning Taiwan's characters (OFL)
+        ("行書", "MasaFont-Regular", "masafont"),         // 正風毛筆字體, 行書 (OFL)
+    ]
+    static var style: Int { min(max(UserDefaults.standard.integer(forKey: styleKey), 0), styles.count - 1) }
 
-    /// downloads the two fonts if they aren't there yet; done(true) when 楷體 can be used
+    /// the fonts in the app, made usable (once): done in code, not in Info.plist
+    private static let registerOnce: Void = {
+        for s in styles {
+            guard let f = s.file, UIFont(name: s.ps, size: 12) == nil,
+                  let u = Bundle.main.url(forResource: f, withExtension: "ttf")
+                    ?? Bundle.main.url(forResource: f, withExtension: "ttf", subdirectory: "Fonts") else { continue }
+            CTFontManagerRegisterFontsForURL(u as CFURL, .process, nil)
+        }
+    }()
+    static func register() { _ = registerOnce }
+
+    private static var appleReady: Bool { UIFont(name: tc, size: 12) != nil || UIFont(name: sc, size: 12) != nil }
+    /// the chosen font can be used now
+    static var ready: Bool {
+        register()
+        let s = styles[style]
+        return s.file == nil ? appleReady : UIFont(name: s.ps, size: 12) != nil
+    }
+
+    /// Apple's 楷體 (the first choice, and what the others fall back on): downloads it if it isn't there yet;
+    /// done(true) when the chosen font can be used
     static func prepare(_ done: @escaping (Bool) -> Void) {
-        if UIFont(name: tc, size: 12) != nil && UIFont(name: sc, size: 12) != nil { done(true); return }
+        register()
+        if UIFont(name: tc, size: 12) != nil && UIFont(name: sc, size: 12) != nil { done(ready); return }
+        // a font in the app: no need to wait for the download
+        if styles[style].file != nil && ready { done(true) }
         let descs = [tc, sc].map { CTFontDescriptorCreateWithNameAndSize($0 as CFString, 0) } as CFArray
         var finished = false
         CTFontDescriptorMatchFontDescriptorsWithProgressHandler(descs, nil) { state, _ in
@@ -30,13 +62,16 @@ enum Kaiti {
         }
     }
 
-    /// 楷體 at a size: TC first, SC for what TC doesn't have, then the system font
+    /// the chosen font at a size; what it doesn't have comes from 文楷, then 楷體 (TC, then SC), then the system font
     static func font(_ size: CGFloat) -> UIFont {
-        let main = UIFont(name: tc, size: size) ?? UIFont(name: sc, size: size)
-        guard let main else { return .systemFont(ofSize: size) }
-        var cascade: [UIFontDescriptor] = []
-        if main.fontName == tc, UIFont(name: sc, size: size) != nil { cascade.append(UIFontDescriptor(name: sc, size: size)) }
-        return UIFont(descriptor: main.fontDescriptor.addingAttributes([.cascadeList: cascade]), size: size)
+        register()
+        let chosen = styles[style].ps
+        var names = [chosen]
+        for n in ["LXGWWenKaiTC-Regular", tc, sc] where n != chosen { names.append(n) }
+        let have = names.filter { UIFont(name: $0, size: size) != nil }
+        guard let first = have.first, let main = UIFont(name: first, size: size) else { return .systemFont(ofSize: size) }
+        let cascade = have.dropFirst().map { UIFontDescriptor(name: $0, size: size) }
+        return UIFont(descriptor: main.fontDescriptor.addingAttributes([.cascadeList: Array(cascade)]), size: size)
     }
 
     /// a character drawn in 楷體, filling a square (centred on the character's own shape)
@@ -275,6 +310,7 @@ private struct HandwritingPad: View {
     /// how big the writing square is (points); 格子大小 changes it, the shadow follows
     @AppStorage("handwritingPadSize") private var padSize = 380.0
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
     /// the biggest the square can be on this screen (set from the space there is)
     @State private var maxPad: CGFloat = 520
     /// the character whose words are shown (tapping it at the top)
@@ -344,9 +380,9 @@ private struct HandwritingPad: View {
                         .frame(minWidth: 44, alignment: .trailing)
                 }
             }
-            if downloading {
+            if downloading && Kaiti.styles[Kaiti.style].file == nil {
                 Text("下載楷體中…（第一次要網路）").ffFont(.caption).foregroundStyle(T.muted)
-            } else if !kaiti && trace {
+            } else if !kaiti && trace && Kaiti.styles[Kaiti.style].file == nil {
                 Text("楷體下載不了，先用系統的字。").ffFont(.caption).foregroundStyle(T.muted)
             }
             controls
@@ -366,6 +402,16 @@ private struct HandwritingPad: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
+                    // 字體: 楷體, 文楷, 芫荽 or 行書 (the character at the top and the one to trace)
+                    Menu {
+                        Picker("字體", selection: $fontStyle) {
+                            ForEach(Kaiti.styles.indices, id: \.self) { Text(Kaiti.styles[$0].name).tag($0) }
+                        }
+                        .pickerStyle(.inline)
+                    } label: {
+                        Label("字體", systemImage: "textformat")
+                    }
+                    .accessibilityLabel("字體：" + Kaiti.styles[Kaiti.style].name)
                     // 彩色: the writing in the rainbow instead of the dark ink
                     Toggle(isOn: $rainbow) { Label("彩色", systemImage: "paintpalette") }
                         .toggleStyle(.button)
@@ -379,6 +425,12 @@ private struct HandwritingPad: View {
                 downloading = true
                 Kaiti.prepare { ok in kaiti = ok; downloading = false; makeTarget(ch) }
             }
+        }
+        // another font: the character, the one to trace and the measuring follow it
+        .onChange(of: fontStyle) {
+            kaiti = Kaiti.ready
+            if !kaiti { downloading = true; Kaiti.prepare { ok in kaiti = ok; downloading = false; makeTarget(ch) } }
+            makeTarget(ch)
         }
         .onChange(of: idx) { score = 0; drawn = false; makeTarget(chars[min(idx, chars.count - 1)]) }
         // the square really got another size (not just laid out again): start the character over
@@ -406,11 +458,11 @@ private struct HandwritingPad: View {
         return HStack(alignment: .center, spacing: 16) {
             // tap: the words with this character (to learn it in context); on an iPad they're beside the square
             if wide {
-                Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id(kaiti)
+                Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
             } else {
                 Button { wordsFor = WordsRef(ch: ch) } label: {
                     VStack(spacing: 0) {
-                        Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id(kaiti)
+                        Text(ch).font(Font(Kaiti.font(64) as CTFont)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
                         Label("看詞", systemImage: "text.magnifyingglass").ffFont(.caption2, .semibold).foregroundStyle(T.muted)
                     }
                     .contentShape(Rectangle())
@@ -455,7 +507,7 @@ private struct HandwritingPad: View {
                     .resizable()
                     .opacity(0.16)
                     .allowsHitTesting(false)
-                    .id("\(ch)\(kaiti)\(side)")
+                    .id("\(ch)\(kaiti)\(side)\(fontStyle)")
             }
             WritingPad(clearCount: clearCount) { d in
                 lastDrawing = d

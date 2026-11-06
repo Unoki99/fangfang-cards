@@ -262,6 +262,7 @@ private struct PracticeSettings: View {
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
     @AppStorage(HandInk.pressureKey) private var pressure = 1
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(Kaiti.styleKey) private var handFont = 0
     @AppStorage("goal") private var goal = 3
     @AppStorage("sessionSize") private var sessionSize = 10
     @State private var confirmReset = false
@@ -284,10 +285,13 @@ private struct PracticeSettings: View {
                     ForEach(0..<HandInk.levels.count, id: \.self) { Text(HandInk.levels[$0]).tag($0) }
                 }
                 Toggle("彩色筆跡", isOn: $rainbow)
+                Picker("字體", selection: $handFont) {
+                    ForEach(Kaiti.styles.indices, id: \.self) { Text(Kaiti.styles[$0].name).tag($0) }
+                }
             } header: {
                 Text("手寫練習")
             } footer: {
-                Text("筆壓：用 Apple Pencil 寫的時候按得越用力字越粗。「粗細不變」= 怎麼按都一樣粗，「很敏感」= 粗細變化最大。彩色筆跡：每一筆換一個彩虹的顏色（紅、橘、黃、綠…），比較容易看出筆順；關掉是深色的墨水（手寫練習右上角也可以切換）。")
+                Text("筆壓：用 Apple Pencil 寫的時候按得越用力字越粗。「粗細不變」= 怎麼按都一樣粗，「很敏感」= 粗細變化最大。彩色筆跡：每一筆換一個彩虹的顏色（紅、橘、黃、綠…），比較容易看出筆順；關掉是深色的墨水（手寫練習右上角也可以切換）。字體：上面的字和描字用的字，楷體（Apple 的，第一次要下載）、文楷（霞鶩文楷）、芫荽（照臺灣教育部的寫法）或行書（正風毛筆）。")
             }
             Section {
                 Button("全部重來", role: .destructive) { confirmReset = true }
@@ -504,6 +508,7 @@ private struct AboutSettings: View {
                 if let c = TaigiSpeechInfo.credit { credit("轉換的朗讀", c) }
                 credit("皓羅、自補詞條", "Unoki99")
                 credit("皓羅字型", "DejaVu Sans")
+                credit("手寫練習的字體", "文楷：霞鶩文楷 TC（LXGW）；芫荽：Iansui（The Iansui Project Authors）；行書：正風毛筆字體 MasaFont（Chun yu Yao，改自青柳衡山「衡山毛筆フォント行書」）。都是 SIL Open Font License 1.1。楷體：Apple 的華文楷體。")
                 credit("詞頻", "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
             }
             Section("華語") {
