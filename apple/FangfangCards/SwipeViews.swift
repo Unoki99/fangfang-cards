@@ -219,8 +219,8 @@ struct CardDust: View {
                         py += (-40 + Double(r.w) * 60) * s + 620 * s * s
                     }
                 }
-                // 聲調顏色 on: each character's part of the card turns that character's tone colour
-                let to = tones.isEmpty ? tint : tones[min(Int(u * Double(tones.count)), tones.count - 1)]
+                // 聲調顏色 on: the word's tone colours, mixed all over the card (each square takes one of them)
+                let to = tones.isEmpty ? tint : tones[min(Int(r.z * Float(tones.count)), tones.count - 1)]
                 let rgb = SIMD3<Float>(col.x, col.y, col.z) * (1 - k) + to * k
                 let w = c * sc
                 ctx.fill(Path(CGRect(x: px - w / 2, y: py - w / 2, width: w, height: w)),
