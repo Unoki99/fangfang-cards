@@ -345,7 +345,7 @@ struct NewDeckView: View {
     private var topic: Int { store.isZh ? zhTopic : taigiTopic }
     @State private var size: CGSize = .zero
     /// room for the characters' cards on both sides of the big card: an iPad, or a phone on its side
-    private var wideSides: Bool { store.isZh && (size.width >= 1150 || (size.width > size.height && size.width >= 640)) }
+    private var wideSides: Bool { size.width >= 1150 || (size.width > size.height && size.width >= 560) }
     private var sideWidth: CGFloat { size.width >= 1150 ? 290 : max(150, (size.width - 80) * 0.27) }
     /// a phone on its side: smaller side cards
     private var smallSides: Bool { size.height < 520 }
@@ -486,7 +486,7 @@ struct CharSideCard: View {
 
     private var ch: String { Lang.charOf(card.k) ?? card.h }
     private var english: [String]? {
-        guard zhEnglish, let d = store.zh, let e = ZhCharSheet.entry(d, ch) else { return nil }
+        guard card.isZh, zhEnglish, let d = store.zh, let e = ZhCharSheet.entry(d, ch) else { return nil }
         return e.enList.isEmpty ? nil : e.enList
     }
 
@@ -580,7 +580,9 @@ struct CharSideSwipe: View {
         bursts.append(b)
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) { gone = true; offset = .zero }
-        store.setCharKnown(Lang.charOf(card.k) ?? card.h, right)
+        // 華語: the character card; 台語: the character's own dictionary word (read as in the big card's word)
+        if Lang.charOf(card.k) != nil { store.setCharKnown(Lang.charOf(card.k) ?? card.h, right) }
+        else { store.mark(card, known: right, undoable: false) }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         let id = b.id
         Task { @MainActor in
@@ -600,13 +602,33 @@ struct CharSideColumn: View {
     var small = false
     @EnvironmentObject var store: Store
     var body: some View {
-        let chars = word.h.unicodeScalars.filter { Zhuyin.isHan($0) }.map(String.init)
-        let cards = chars.count > 1 ? chars.compactMap { store.card(for: Lang.charKey($0)) } : []
+        let cards = store.sideCards(word)
         VStack(spacing: small ? 10 : 16) {
             ForEach(Array(cards.enumerated()).filter { $0.offset % 2 == side }, id: \.offset) { _, c in
                 CharSideSwipe(card: c, small: small).frame(height: small ? 140 : 210).id(word.k + "|" + c.k)
             }
             Spacer(minLength: 0)
+        }
+    }
+}
+
+extension Store {
+    /// the side cards of a word (2 characters or more): 華語, each character's card; 台語, each character's own
+    /// word in the dictionary with the reading it has in this word (a character is often read several ways)
+    func sideCards(_ word: Card) -> [Card] {
+        if word.isZh {
+            let chars = word.h.unicodeScalars.filter { Zhuyin.isHan($0) }.map(String.init)
+            return chars.count > 1 ? chars.compactMap { card(for: Lang.charKey($0)) } : []
+        }
+        let han = Dict.hanOf(word.k).map(String.init)
+        let codes = Dict.codesOf(word.k).split(separator: " ").map(String.init)
+        guard han.count > 1, han.count == codes.count else { return [] }
+        return zip(han, codes).compactMap { h, c in
+            let k = h + "\t" + c
+            if let x = card(for: k) { return x }
+            // the same character and reading under another written form
+            if let p = dict?.altParent[k], Dict.hanOf(p).count == 1 { return card(for: p) }
+            return nil
         }
     }
 }
