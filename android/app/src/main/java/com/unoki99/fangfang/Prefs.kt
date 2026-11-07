@@ -138,6 +138,8 @@ object Prefs : KeyValue {
     val handFont = Pref("handwritingFont", 0)
     /** how thick the pen is (dp) */
     val handWidth = Pref("handwritingPenWidth", 9f)
+    /** a phone on its side, 新詞: the ✕ ↺ ✓ buttons shown */
+    val sidewaysButtons = Pref("sidewaysButtons", false)
     /** 筆跡延遲: how many seconds after the pen the writing shows up (0 = right away) */
     val handDelay = Pref("handwritingInkDelay", 0f)
     val radicalMode = Pref("radicalMode", 0)

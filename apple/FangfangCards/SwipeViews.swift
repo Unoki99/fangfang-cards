@@ -344,6 +344,8 @@ struct NewDeckView: View {
     private var topicBinding: Binding<Int> { store.isZh ? $zhTopic : $taigiTopic }
     private var topic: Int { store.isZh ? zhTopic : taigiTopic }
     @State private var size: CGSize = .zero
+    /// a phone on its side: the ✕ ↺ ✓ buttons shown (they're put away to start with)
+    @AppStorage("sidewaysButtons") private var sideButtons = false
     /// room for the characters' cards on both sides of the big card: an iPad, or a phone on its side
     private var wideSides: Bool { size.width >= 1150 || (size.width > size.height && size.width >= 560) }
     private var sideWidth: CGFloat { size.width >= 1150 ? 290 : max(150, (size.width - 80) * 0.27) }
@@ -372,9 +374,26 @@ struct NewDeckView: View {
                         store.mark(card, known: right)
                     }, undo: {
                         store.undo()
-                    }, buttons: !sideways)
+                    }, buttons: !sideways || sideButtons)
                     .frame(maxWidth: 560)
                     .environment(\.compactCard, sideways)
+                    // a phone on its side: a small button to bring the ✕ ↺ ✓ buttons out, or put them away
+                    .overlay(alignment: .bottomTrailing) {
+                        if sideways {
+                            Button { withAnimation(.snappy) { sideButtons.toggle() } } label: {
+                                Image(systemName: sideButtons ? "chevron.down" : "chevron.up")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(T.muted)
+                                    .frame(width: 32, height: 32)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                                    .background(Circle().fill(T.fn.opacity(0.35)))
+                                    .overlay(Circle().stroke(T.fnEdge.opacity(0.6), lineWidth: 1))
+                            }
+                            .buttonStyle(SwellButtonStyle())
+                            .offset(x: 18, y: 4)
+                            .accessibilityLabel(sideButtons ? "收起按鈕" : "顯示按鈕")
+                        }
+                    }
                     if wideSides, let top = queue.first { CharSideColumn(word: top, side: 1, small: smallSides).frame(width: sideWidth) }
                 }
             }

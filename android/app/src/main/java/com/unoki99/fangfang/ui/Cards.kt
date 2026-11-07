@@ -116,6 +116,7 @@ fun NewDeckTab() {
             val small = maxHeight < 520.dp
             // a phone on its side: no counts, no buttons, no tab bar; just the cards
             val sideways = landscape && maxHeight < 520.dp
+            var sideButtons by Prefs.sidewaysButtons
             SideEffect { UI.hideTabs = sideways }
             Row(Modifier.fillMaxSize().widthIn(max = if (sides) 1260.dp else 560.dp).align(Alignment.TopCenter).padding(if (small) 10.dp else 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -129,7 +130,18 @@ fun NewDeckTab() {
                         Spacer(Modifier.weight(1f))
                         Txt(if (topic < 0) "全部的詞都看過了！" else if (zh) "這個等級的詞都看過了！" else "這個主題的詞都看過了！", ff(FF.Title3), T.muted)
                         Spacer(Modifier.weight(1f))
-                    } else DeckArea(queue, onSwipe = { c, right -> Store.mark(c, right) }, undo = { Store.undo() }, buttons = !sideways)
+                    } else Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            DeckArea(queue, onSwipe = { c, right -> Store.mark(c, right) }, undo = { Store.undo() }, buttons = !sideways || sideButtons)
+                        }
+                        // a phone on its side: a small button to bring the ✕ ↺ ✓ buttons out, or put them away
+                        if (sideways) Box(Modifier.align(Alignment.BottomEnd).offset(x = 14.dp).size(32.dp).clip(CircleShape)
+                            .background(T.bg.copy(alpha = 0.35f)).border(1.dp, T.fnEdge.copy(alpha = 0.6f), CircleShape)
+                            .clickable { sideButtons = !sideButtons }, contentAlignment = Alignment.Center) {
+                            Icon(if (sideButtons) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                                if (sideButtons) "收起按鈕" else "顯示按鈕", tint = T.muted, modifier = Modifier.size(20.dp))
+                        }
+                    }
                 }
                 if (sides) CharSideColumn(queue.first(), 1, small, Modifier.width(sideW).fillMaxHeight())
             }
