@@ -41,9 +41,7 @@ struct UnknownView: View {
                     PracticeTile(title: "看字排讀音", icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
                     PracticeTile(title: "聲調練習", icon: "waveform", enabled: true) { toning = true }
                     PracticeTile(title: "翻牌配對", icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
-                    if store.isZh {
-                        PracticeTile(title: "手寫練習", icon: "pencil.and.scribble", enabled: true) { writing = true }
-                    }
+                    PracticeTile(title: "手寫練習", icon: "pencil.and.scribble", enabled: true) { writing = true }
                     // what each way of practising does
                     PracticeTile(title: "怎麼練習", icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
                 }
@@ -70,7 +68,7 @@ struct UnknownView: View {
                         .buttonStyle(.plain)
                         .swipeActions(edge: .leading) {
                             Button { store.mark(c, known: true, undoable: false) } label: { Label("熟悉", systemImage: "checkmark") }
-                                .tint(T.greenEdge)
+                                .tint(T.btnEdge)
                             Button { store.toggleWeek(c.k) } label: {
                                 Label(store.isInWeek(c.k) ? "移出本週" : "本週學習", systemImage: "calendar")
                             }
@@ -146,7 +144,7 @@ struct KnownView: View {
                 Text(store.knownCount == 0 ? "在「新詞」往右滑的詞會出現在這裡。" : "這一輪複習完了！")
                     .foregroundStyle(T.muted)
                 if store.knownCount > 0 {
-                    Button("再複習一輪") { shuffle() }.prominentButton(T.greenEdge)
+                    Button("再複習一輪") { shuffle() }.prominentButton(T.btnEdge)
                 }
                 Spacer()
             } else {
@@ -218,10 +216,10 @@ struct PracticeTile: View {
                 .ffFont(.subheadline, .semibold)
                 .lineLimit(1).minimumScaleFactor(0.6)
                 .padding(.horizontal, 8)
-                .foregroundStyle(quiet ? T.glyph : (enabled ? T.greenInk : T.muted))
+                .foregroundStyle(quiet ? T.glyph : (enabled ? T.btnInk : T.muted))
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .background(RoundedRectangle(cornerRadius: 12).fill(quiet ? T.fn.opacity(0.8) : (enabled ? T.green : T.fn.opacity(0.6))))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(quiet ? T.fnEdge : (enabled ? T.greenEdge : T.fnEdge), lineWidth: 1.5))
+                .background(RoundedRectangle(cornerRadius: 12).fill(quiet ? T.fn.opacity(0.8) : (enabled ? T.btn : T.fn.opacity(0.6))))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(quiet ? T.fnEdge : (enabled ? T.btnEdge : T.fnEdge), lineWidth: 1.5))
                 .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
@@ -259,7 +257,7 @@ struct PracticeScopeMenu: View {
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "scope").foregroundStyle(T.greenInk)
+                    Image(systemName: "scope").foregroundStyle(T.btnInk)
                     Text("練習範圍").foregroundStyle(T.muted)
                     Text(store.practiceName).foregroundStyle(T.glyph).lineLimit(1)
                     Spacer(minLength: 4)
@@ -294,8 +292,8 @@ struct PracticeHelp: View {
             ("waveform", "聲調練習", "聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。"),
             ("square.grid.2x2", "翻牌配對", "不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。"),
         ]
-        if store.isZh {
-            a.append(("pencil.and.scribble", "手寫練習", "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
+        do {
+            a.append(("pencil.and.scribble", "手寫練習", store.isZh ? "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。" : "選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
         }
         a.append(("scope", "練習範圍", "只練一個等級（或一組）的不熟的詞或字。"))
         return a
@@ -307,7 +305,7 @@ struct PracticeHelp: View {
                 VStack(spacing: 12) {
                     ForEach(items, id: \.title) { it in
                         HStack(alignment: .top, spacing: 14) {
-                            Image(systemName: it.icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(T.greenInk)
+                            Image(systemName: it.icon).font(.system(size: 20, weight: .semibold)).foregroundStyle(T.btnInk)
                                 .frame(width: 28)
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(it.title).ffFont(.headline).foregroundStyle(T.glyph)

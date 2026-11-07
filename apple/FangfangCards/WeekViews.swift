@@ -160,7 +160,7 @@ struct LevelWordsView: View {
                     }
                     .buttonStyle(.plain)
                     .swipeActions(edge: .leading) {
-                        Button { store.mark(c, known: true, undoable: false) } label: { Label("熟悉", systemImage: "checkmark") }.tint(T.greenEdge)
+                        Button { store.mark(c, known: true, undoable: false) } label: { Label("熟悉", systemImage: "checkmark") }.tint(T.btnEdge)
                     }
                     .swipeActions(edge: .trailing) {
                         Button { store.mark(c, known: false, undoable: false) } label: { Label("不熟", systemImage: "xmark") }.tint(T.rustEdge)

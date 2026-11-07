@@ -68,9 +68,9 @@ struct SwipeStack: View {
         return Text(right ? "認識" : "不熟")
             .ffFont(.title, .heavy)
             .padding(.horizontal, 16).padding(.vertical, 6)
-            .foregroundStyle(right ? T.greenInk : T.rustInk)
-            .background(RoundedRectangle(cornerRadius: 12).fill((right ? T.green : T.rust).opacity(0.9)))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(right ? T.greenEdge : T.rustEdge, lineWidth: 3))
+            .foregroundStyle(right ? T.blueInk : T.rustInk)
+            .background(RoundedRectangle(cornerRadius: 12).fill((right ? T.blue : T.rust).opacity(0.9)))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(right ? T.blueEdge : T.rustEdge, lineWidth: 3))
             .rotationEffect(.degrees(right ? -10 : 10))
             .padding(.top, 24)
             .opacity(amount)
@@ -591,7 +591,8 @@ struct CharSideSwipe: View {
                 }
             }
             .fullScreenCover(isPresented: $writing) {
-                HandwritingView(only: [Lang.charOf(card.k) ?? card.h]).environmentObject(store)
+                HandwritingView(only: [Lang.charOf(card.k) ?? card.h],
+                                given: card.isZh ? [:] : [card.h: card]).environmentObject(store)
             }
             // its picture, made ahead of time (see CardPicture)
             .task(id: "\(card.k)|\(Int(g.size.width))x\(Int(g.size.height))|\(ToneColors.system)|\(store.status(card) ?? 0)") {
@@ -642,7 +643,36 @@ struct CharSideColumn: View {
     }
 }
 
+/// 台語: each character's most common reading (its first word in the word list, which is in order of use)
+nonisolated(unsafe) private var twCharCache: (count: Int, map: [String: Card]) = (0, [:])
+
 extension Store {
+    /// 台語: a character as its own dictionary word, read the most common way
+    func twCharCard(_ ch: String) -> Card? {
+        guard !isZh else { return nil }
+        if twCharCache.count != cards.count {
+            var m: [String: Card] = [:]
+            for c in cards where c.h.count == 1 && m[c.h] == nil { m[c.h] = c }
+            twCharCache = (cards.count, m)
+        }
+        return twCharCache.map[ch]
+    }
+
+    /// 台語 手寫練習: the characters of your 不熟 and 熟悉 words (that have a word of their own), in the order learned
+    func twCharSets() -> (unknown: [String], known: [String]) {
+        var unknown: [String] = [], known: [String] = []
+        var su = Set<String>(), sk = Set<String>()
+        let keys = progress.status.filter { !Lang.isZhKey($0.key) && Lang.charOf($0.key) == nil }
+            .sorted { (progress.added[$0.key] ?? 0) > (progress.added[$1.key] ?? 0) }
+        for (k, v) in keys {
+            for ch in Dict.hanOf(k).map(String.init) where Zhuyin.isHan(ch.unicodeScalars.first!) && twCharCard(ch) != nil {
+                if v == 2, su.insert(ch).inserted { unknown.append(ch) }
+                if v == 1, sk.insert(ch).inserted { known.append(ch) }
+            }
+        }
+        return (unknown.filter { !sk.contains($0) }, known.filter { !su.contains($0) })
+    }
+
     /// the side cards of a word (2 characters or more): 華語, each character's card; 台語, each character's own
     /// word in the dictionary with the reading it has in this word (a character is often read several ways)
     func sideCards(_ word: Card) -> [Card] {

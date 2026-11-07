@@ -50,7 +50,7 @@ fun PracticeHost(p: Practice) {
                 Practice.SCRAMBLE -> ScrambleScreen(false, stars)
                 Practice.READING -> ScrambleScreen(true, stars)
                 Practice.TONES -> ToneScreen(stars)
-                Practice.HANDWRITING -> HandwritingScreen(only = UI.handwritingOnly) { UI.handwritingOnly = null; close() }
+                Practice.HANDWRITING -> HandwritingScreen(only = UI.handwritingOnly) { UI.handwritingOnly = null; handwritingGiven = emptyMap(); close() }
             }
         }
     }

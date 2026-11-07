@@ -302,7 +302,9 @@ struct HSKProgressView: View {
                         .buttonStyle(.plain)
                 }
                 // 台語: 常用詞 and 常用字, 500 a group
-                let list = store.isZh ? store.topics : store.freqTopics
+                // (台語: the characters first, then the words)
+                let list = store.isZh ? store.topics
+                    : store.freqTopics.filter { $0.id >= Lang.freqCharBase } + store.freqTopics.filter { $0.id < Lang.freqCharBase }
                 let all = store.allTopicProgress()
                 ForEach(list) { t in
                     if store.isZh && t.id == store.topics.first(where: { $0.id > Lang.charTopicBase })?.id {

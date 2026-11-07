@@ -114,7 +114,7 @@ fun SoftButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Bool
 }
 
 @Composable
-fun ProminentButton(onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = T.greenEdge, enabled: Boolean = true,
+fun ProminentButton(onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = T.btnEdge, enabled: Boolean = true,
                     content: @Composable RowScope.() -> Unit) {
     Button(onClick = onClick, modifier = modifier, enabled = enabled, shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = tint, contentColor = Color.White,
@@ -147,8 +147,8 @@ fun CapsuleButton(text: String, icon: ImageVector?, on: Boolean, fill: Color, ed
 fun PlayButton(path: String, size: Dp = 34.dp) {
     val on = Player.playing == path
     val bad = Player.failed == path
-    val fill = if (bad) T.rust else if (on) T.greenEdge else T.green.copy(alpha = 0.6f)
-    val edge = if (bad) T.rustEdge else T.greenEdge
+    val fill = if (bad) T.rust else if (on) T.btnEdge else T.btn.copy(alpha = 0.6f)
+    val edge = if (bad) T.rustEdge else T.btnEdge
     Box(
         Modifier.size(size).clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { Player.play(path) },
         contentAlignment = Alignment.Center,
@@ -186,8 +186,8 @@ fun RomButton() {
     val zh = com.unoki99.fangfang.Store.isZh
     // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字
     Text(if (zh) com.unoki99.fangfang.engine.Lang.romNames[zhRom.coerceIn(0, 1)] else ROM_NAMES[rom.coerceIn(0, 2)],
-        style = ff(FF.Subheadline, FontWeight.Bold), color = T.greenInk,
-        modifier = Modifier.clip(CircleShape).background(T.green).border(2.dp, T.greenEdge, CircleShape)
+        style = ff(FF.Subheadline, FontWeight.Bold), color = T.btnInk,
+        modifier = Modifier.clip(CircleShape).background(T.btn).border(2.dp, T.btnEdge, CircleShape)
             .clickable { if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 3 }.padding(horizontal = 10.dp, vertical = 4.dp))
 }
 

@@ -77,7 +77,7 @@ fun WeekPicker(onDone: () -> Unit) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Txt("本週要學的詞", ff(FF.Headline), T.glyph, Modifier.weight(1f))
-                TextButton(onClick = onDone) { Text("完成", color = T.greenInk) }
+                TextButton(onClick = onDone) { Text("完成", color = T.btnInk) }
             }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
                 item {

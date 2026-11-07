@@ -369,7 +369,7 @@ struct StudyView: View {
             } label: {
                 Text(idx + 1 >= queue.count ? "看結果" : "下一題").ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
             }
-            .prominentButton(T.greenEdge)
+            .prominentButton(T.btnEdge)
         }
     }
 
@@ -397,7 +397,7 @@ struct StudyView: View {
                         Button {
                             store.finishWeek(keep: missed.map(\.k)); dismiss()
                         } label: { Text("開始新的一週（答錯的 \(missed.count) 個詞留下來）").frame(maxWidth: .infinity, minHeight: 40) }
-                            .prominentButton(T.greenEdge)
+                            .prominentButton(T.btnEdge)
                     }
                     Button { store.finishWeek(); dismiss() } label: {
                         Text("結束這一週（清空本週的詞）").frame(maxWidth: .infinity, minHeight: 40)
@@ -433,7 +433,7 @@ struct StudyView: View {
                         .softButton()
                         .disabled(words == nil ? store.practiceCards.isEmpty : (words ?? []).isEmpty)
                     Button { dismiss() } label: { Text("完成").frame(maxWidth: .infinity, minHeight: 40) }
-                        .prominentButton(T.greenEdge)
+                        .prominentButton(T.btnEdge)
                 }
             }
             .padding()

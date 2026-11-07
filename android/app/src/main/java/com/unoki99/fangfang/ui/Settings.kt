@@ -80,7 +80,7 @@ fun SettingsScreen() {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回", tint = T.glyph)
                 } else Spacer(Modifier.width(12.dp))
                 Txt(if (p == null) "設定" else if (p == 9) (if (copyZh) "複製意思的格式（華語）" else "複製意思的格式（台語）") else if (p == 10) "選聲調顏色" else titles[p], ff(FF.Headline), T.glyph, Modifier.weight(1f))
-                TextButton(onClick = { UI.settingsOpen = false }) { Text("完成", color = T.greenInk) }
+                TextButton(onClick = { UI.settingsOpen = false }) { Text("完成", color = T.btnInk) }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -154,7 +154,7 @@ fun SettingsScreen() {
                             RowDivider()
                             Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Filled.VolumeMute, null, tint = T.muted)
-                                Slider(Prefs.volume.value, { Prefs.volume.value = it }, Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+                                Slider(Prefs.volume.value, { Prefs.volume.value = it }, Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
                                 Icon(Icons.Filled.VolumeUp, null, tint = T.muted)
                             }
                             RowDivider()
@@ -214,7 +214,7 @@ fun SettingsScreen() {
     }
     message?.let { m ->
         AlertDialog(onDismissRequest = { message = null }, containerColor = T.fn, text = { Txt(m, ff(FF.Body)) },
-            confirmButton = { TextButton(onClick = { message = null }) { Text("好", color = T.greenInk) } })
+            confirmButton = { TextButton(onClick = { message = null }) { Text("好", color = T.btnInk) } })
     }
     if (confirmReset) AlertDialog(onDismissRequest = { confirmReset = false }, containerColor = T.fn,
         text = { Txt("所有的「熟悉」和「不熟」都會清掉，從頭開始。", ff(FF.Body)) },
@@ -286,7 +286,7 @@ private fun LookPage(openColors: () -> Unit) {
             val lvl = Prefs.textSize.value
             Row { Txt("文字大小", ff(FF.Body), modifier = Modifier.weight(1f)); Txt(TextSize.names[lvl.coerceIn(0, TextSize.names.size - 1)], ff(FF.Body), T.muted) }
             Slider(lvl.toFloat(), { Prefs.textSize.value = Math.round(it) }, valueRange = 0f..(TextSize.names.size - 1).toFloat(),
-                steps = TextSize.names.size - 2, colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+                steps = TextSize.names.size - 2, colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
             Txt("也會跟著手機的字型大小。", ff(FF.Footnote), T.muted)
         }
     }
@@ -299,7 +299,7 @@ private fun LookPage(openColors: () -> Unit) {
                 Txt(if (bg < 0.05f) "透明" else if (bg > 0.95f) "不透明" else "${Math.round(bg * 100)}%", ff(FF.Body), T.muted)
             }
             Slider(bg, { Prefs.widgetBG.value = (Math.round(it * 20) / 20f) }, onValueChangeFinished = { WidgetBridge.writeState() },
-                colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+                colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
             Txt("越往左越透明，看得到桌布。字會加一點陰影，比較好讀。在桌面長按 → 小工具 → 方方詞卡，可以加「分類詞卡」。", ff(FF.Footnote), T.muted)
         }
     }
@@ -449,7 +449,7 @@ private fun Group(content: @Composable ColumnScope.() -> Unit) = ListCard(conten
 private fun SwitchRow(title: String, pref: Pref<Boolean>) {
     Row(Modifier.fillMaxWidth().clickable { pref.value = !pref.value }.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Txt(title, ff(FF.Body), modifier = Modifier.weight(1f))
-        Switch(pref.value, { pref.value = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.greenEdge, checkedThumbColor = T.greenInk))
+        Switch(pref.value, { pref.value = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
     }
 }
 

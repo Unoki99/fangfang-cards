@@ -134,7 +134,7 @@ struct CardLight: View {
     let touch: CGPoint?
 
     var body: some View {
-        let color = swipe > 0 ? T.greenEdge : T.rustEdge
+        let color = swipe > 0 ? T.blueEdge : T.rustEdge
         let a = Double(min(abs(swipe), 1))
         return GeometryReader { g in
             ZStack {
@@ -242,7 +242,7 @@ struct CardDetail: View {
                         Button { store.mark(card, known: true, undoable: false); dismiss() } label: {
                             Label("熟悉", systemImage: "checkmark").frame(maxWidth: .infinity)
                         }
-                        .prominentButton(T.greenEdge)
+                        .prominentButton(T.btnEdge)
                     }
                     .padding(.top, 4)
                 }

@@ -57,7 +57,7 @@ fun EntryPage(d: Dict, key: String, onBack: () -> Unit) {
 fun EntrySheetRoot(d: Dict, key: String) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.greenInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
@@ -1040,7 +1040,7 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
         confirmButton = {
             TextButton(onClick = {
                 check.first?.let { Store.addOwn(han.trim() + "\t" + it.joinToString(" ")); onDone() }
-            }, enabled = check.first != null) { Text("加入", color = if (check.first != null) T.greenInk else T.muted) }
+            }, enabled = check.first != null) { Text("加入", color = if (check.first != null) T.btnInk else T.muted) }
         },
         dismissButton = { TextButton(onClick = onDone) { Text("取消", color = T.muted) } },
     )

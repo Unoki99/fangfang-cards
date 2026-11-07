@@ -64,6 +64,10 @@ object T {
     val greenEdge get() = hex(P.now.greenEdge)
     val greenInk get() = hex(P.now.greenInk)
     val purpleInk get() = hex(P.now.purpleInk)
+    /** buttons (what used to be green): 華語 blue, 台語 purple */
+    val btn get() = if (com.unoki99.fangfang.Store.isZh) blue else own
+    val btnEdge get() = if (com.unoki99.fangfang.Store.isZh) blueEdge else ownEdge
+    val btnInk get() = if (com.unoki99.fangfang.Store.isZh) blueInk else purpleInk
     val olive get() = hex(P.now.olive)
     val oliveEdge get() = hex(P.now.oliveEdge)
     val oliveInk get() = hex(P.now.oliveInk)

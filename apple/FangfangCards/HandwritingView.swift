@@ -158,6 +158,8 @@ enum TraceScore {
 struct HandwritingView: View {
     /// from a side card (新詞): just these characters (not saved, no 選字), then back to the cards
     var only: [String]? = nil
+    /// 台語, from a side card: the character's word, read as in the big card's word
+    var given: [String: Card] = [:]
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     /// the characters of this round (nil = choosing them)
@@ -171,7 +173,7 @@ struct HandwritingView: View {
         NavigationStack {
             Group {
                 if let list {
-                    HandwritingPad(chars: list, idx: $idx) { dismiss() }
+                    HandwritingPad(chars: list, idx: $idx, given: given) { dismiss() }
                 } else {
                     HandwritingSetup { chars in
                         idx = 0
@@ -190,7 +192,7 @@ struct HandwritingView: View {
                 }
                 if list != nil && only == nil {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button { PracticeSave.clear("handwriting", zh: true); list = nil } label: {
+                        Button { PracticeSave.clear("handwriting", zh: store.isZh); list = nil } label: {
                             Label("選字", systemImage: "square.grid.3x3")
                         }
                     }
@@ -199,7 +201,7 @@ struct HandwritingView: View {
         }
         .onAppear {
             if let only, list == nil { list = only; idx = 0; return }
-            guard list == nil, let s = PracticeSave.load(Saved.self, "handwriting", zh: true, scope: 0),
+            guard list == nil, let s = PracticeSave.load(Saved.self, "handwriting", zh: store.isZh, scope: 0),
                   !s.chars.isEmpty, s.idx < s.chars.count else { return }
             list = s.chars; idx = s.idx; resumed = true
         }
@@ -208,8 +210,8 @@ struct HandwritingView: View {
 
     private func save() {
         guard only == nil else { return }
-        guard let list, idx < list.count else { PracticeSave.clear("handwriting", zh: true); return }
-        PracticeSave.save(Saved(chars: list, idx: idx), "handwriting", zh: true, scope: 0)
+        guard let list, idx < list.count else { PracticeSave.clear("handwriting", zh: store.isZh); return }
+        PracticeSave.save(Saved(chars: list, idx: idx), "handwriting", zh: store.isZh, scope: 0)
     }
 }
 
@@ -225,6 +227,16 @@ private struct HandwritingSetup: View {
     struct Source: Identifiable { let id: String; let name: String; let chars: [String] }
 
     private var sources: [Source] {
+        // 台語: the characters of your 不熟 / 熟悉 words
+        if !store.isZh {
+            let sets = store.twCharSets()
+            var out = [Source(id: "unknown", name: "不熟的詞的字", chars: sets.unknown),
+                       Source(id: "known", name: "熟悉的詞的字", chars: sets.known)]
+            var seen = Set<String>()
+            let mine = own.unicodeScalars.filter { Zhuyin.isHan($0) }.map { String($0) }.filter { seen.insert($0).inserted }
+            out.append(Source(id: "own", name: "自己選的字", chars: mine))
+            return out
+        }
         let sets = store.zhCharSets()
         var out = [Source(id: "unknown", name: "不熟的漢字", chars: sets.all.filter { sets.unknown.contains($0) })]
         for t in store.topics where t.id > Lang.charTopicBase {
@@ -249,7 +261,7 @@ private struct HandwritingSetup: View {
                 } label: {
                     Label("開始寫（\(picked.count) 個字）", systemImage: "pencil.and.scribble").frame(maxWidth: .infinity, minHeight: 44)
                 }
-                .prominentButton(T.greenEdge)
+                .prominentButton(T.btnEdge)
                 .disabled(picked.isEmpty)
                 Toggle("打亂順序", isOn: $shuffle)
                 Picker("要寫的字", selection: $listID) {
@@ -308,7 +320,16 @@ private struct HandwritingSetup: View {
 private struct HandwritingPad: View {
     let chars: [String]
     @Binding var idx: Int
+    var given: [String: Card] = [:]
     let finished: () -> Void
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+
+    /// the character's card: 華語, its character card; 台語, its own word in the dictionary (the one given, or the
+    /// most common reading)
+    private func charCard(_ ch: String) -> Card? {
+        store.isZh ? store.card(for: Lang.charKey(ch)) : (given[ch] ?? store.twCharCard(ch))
+    }
     @EnvironmentObject var store: Store
     /// changes when the pad is cleared (next character, or 清掉)
     @State private var clearCount = 0
@@ -336,7 +357,7 @@ private struct HandwritingPad: View {
     @Environment(\.horizontalSizeClass) private var hSize
     static let sideWidth: CGFloat = 330
     /// room for the words beside the square (iPad, not in a narrow split view)
-    private func isWide(_ size: CGSize) -> Bool { hSize == .regular && size.width >= 800 }
+    private func isWide(_ size: CGSize) -> Bool { hSize == .regular && size.width >= 800 && !isShort(size) }
     struct WordsRef: Identifiable { let ch: String; var id: String { ch } }
 
     var body: some View {
@@ -346,7 +367,7 @@ private struct HandwritingPad: View {
             HStack(alignment: .top, spacing: 0) {
                 // iPad: the words with the character beside the square, to learn it in context
                 if w { sideWords(ch).frame(width: Self.sideWidth).padding([.leading, .vertical]) }
-                pad(ch, wide: w)
+                pad(ch, wide: w, short: isShort(g.size))
             }
             .onAppear { maxPad = fit(g.size) }
             .onChange(of: g.size) { maxPad = fit(g.size) }
@@ -359,9 +380,12 @@ private struct HandwritingPad: View {
 
     /// the biggest square that leaves room for everything else (wide and tall enough)
     private func fit(_ size: CGSize) -> CGFloat {
+        if isShort(size) { return max(180, min(size.height - 24, size.width - 400 - 60)) }
         let side = isWide(size) ? Self.sideWidth + 16 : 0
         return max(200, min(size.width - 32 - side, size.height - (trace ? 360 : 320)))
     }
+    /// a phone on its side
+    private func isShort(_ size: CGSize) -> Bool { size.width > size.height && size.height < 520 }
 
     private func sideWords(_ ch: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -387,41 +411,73 @@ private struct HandwritingPad: View {
 
     private var padSide: CGFloat { min(max(180, CGFloat(padSize)), maxPad) }
 
-    private func pad(_ ch: String, wide: Bool) -> some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 10) {
-                PotionBar(value: Double(idx + 1) / Double(chars.count), height: 20, showMarks: false, label: "手寫進度")
-                Text("\(idx + 1)／\(chars.count)").latFont(14).monospacedDigit().foregroundStyle(T.muted)
-            }
-            header(ch, wide: wide)
-            canvas(ch)
-            if trace {
-                HStack(spacing: 10) {
-                    Text("描得像").ffFont(.footnote, .semibold).foregroundStyle(T.muted)
-                    PotionBar(value: score, height: 22, showMarks: false, label: "描得像")
-                    Text(drawn ? "\(Int((score * 100).rounded()))%" : "—").latFont(15).monospacedDigit().foregroundStyle(T.glyph)
-                        .frame(minWidth: 44, alignment: .trailing)
-                }
-            }
-            if downloading && Kaiti.styles[Kaiti.style].file == nil {
-                Text("下載楷體中…（第一次要網路）").ffFont(.caption).foregroundStyle(T.muted)
-            } else if !kaiti && trace && Kaiti.styles[Kaiti.style].file == nil {
-                Text("楷體下載不了，先用系統的字。").ffFont(.caption).foregroundStyle(T.muted)
-            }
-            controls
-            // 格子大小: the writing square, bigger or smaller (the shadow follows)
-            HStack(spacing: 10) {
-                Image(systemName: "square.resize.down").foregroundStyle(T.muted)
-                Slider(value: Binding(get: { Double(padSide) }, set: { padSize = $0 }), in: 180...Double(max(181, maxPad)))
-                    .tint(T.greenEdge)
-                    .accessibilityLabel("格子大小")
-                Image(systemName: "square.resize.up").foregroundStyle(T.muted)
-            }
-            Spacer(minLength: 0)
+    private func progressRow() -> some View {
+        HStack(spacing: 10) {
+            PotionBar(value: Double(idx + 1) / Double(chars.count), height: 20, showMarks: false, label: "手寫進度")
+            Text("\(idx + 1)／\(chars.count)").latFont(14).monospacedDigit().foregroundStyle(T.muted)
         }
-        .padding()
-        .frame(maxWidth: max(640, padSide + 32))
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    @ViewBuilder private func scoreAndNotes() -> some View {
+        if trace {
+            HStack(spacing: 10) {
+                Text("描得像").ffFont(.footnote, .semibold).foregroundStyle(T.muted)
+                PotionBar(value: score, height: 22, showMarks: false, label: "描得像")
+                Text(drawn ? "\(Int((score * 100).rounded()))%" : "—").latFont(15).monospacedDigit().foregroundStyle(T.glyph)
+                    .frame(minWidth: 44, alignment: .trailing)
+            }
+        }
+        if downloading && Kaiti.styles[Kaiti.style].file == nil {
+            Text("下載楷體中…（第一次要網路）").ffFont(.caption).foregroundStyle(T.muted)
+        } else if !kaiti && trace && Kaiti.styles[Kaiti.style].file == nil {
+            Text("楷體下載不了，先用系統的字。").ffFont(.caption).foregroundStyle(T.muted)
+        }
+    }
+    /// 格子大小: the writing square, bigger or smaller (the shadow follows)
+    private func sizeRow() -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.resize.down").foregroundStyle(T.muted)
+            Slider(value: Binding(get: { Double(padSide) }, set: { padSize = $0 }), in: 180...Double(max(181, maxPad)))
+                .tint(T.btnEdge)
+                .accessibilityLabel("格子大小")
+            Image(systemName: "square.resize.up").foregroundStyle(T.muted)
+        }
+    }
+
+    private func pad(_ ch: String, wide: Bool, short: Bool = false) -> some View {
+        Group {
+            if short {
+                // a phone on its side: everything else on the left, the square on the right
+                HStack(alignment: .top, spacing: 20) {
+                    ScrollView {
+                        VStack(spacing: 10) {
+                            progressRow()
+                            header(ch, wide: wide)
+                            scoreAndNotes()
+                            controls
+                            sizeRow()
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .frame(maxWidth: 400)
+                    canvas(ch)
+                }
+                .padding(.horizontal).padding(.vertical, 6)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 14) {
+                    progressRow()
+                    header(ch, wide: wide)
+                    canvas(ch)
+                    scoreAndNotes()
+                    controls
+                    sizeRow()
+                    Spacer(minLength: 0)
+                }
+                .padding()
+                .frame(maxWidth: max(640, padSide + 32))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
@@ -451,9 +507,9 @@ private struct HandwritingPad: View {
                     // 描字: on = the icon glows (no filled background), off = plain
                     Button { withAnimation(.easeInOut(duration: 0.25)) { trace.toggle() } } label: {
                         Label("描字", systemImage: "character.cursor.ibeam")
-                            .foregroundStyle(trace ? Color(hex: 0xd8f5c0) : T.muted)
-                            .shadow(color: trace ? T.greenEdge.opacity(0.95) : .clear, radius: 3)
-                            .shadow(color: trace ? T.greenEdge.opacity(0.7) : .clear, radius: 9)
+                            .foregroundStyle(trace ? T.btnInk : T.muted)
+                            .shadow(color: trace ? T.btnEdge.opacity(0.95) : .clear, radius: 3)
+                            .shadow(color: trace ? T.btnEdge.opacity(0.7) : .clear, radius: 9)
                     }
                     .accessibilityLabel("描字")
                     .accessibilityValue(trace ? "開" : "關")
@@ -489,6 +545,9 @@ private struct HandwritingPad: View {
         if english, store.isZh, let d = store.zh, let e = d.entry(char: ch, zy: ""), e.en != nil {
             let reading = store.card(for: Lang.charKey(ch)).map { store.cardRom($0, 0, -1) } ?? d.reading(e.syl(Lang.zhPlace), Lang.zhRom)
             return (reading, e.enList.prefix(2).map { ("", $0) }, store.card(for: Lang.charKey(ch))?.audio ?? "tts:" + ch)
+        }
+        if !store.isZh, let c = charCard(ch) {
+            return (store.cardRom(c, rom, place), c.d.prefix(2).map { ($0.p, $0.t) }, c.audio)
         }
         if let c = store.card(for: Lang.charKey(ch)) {
             return (store.cardRom(c, 0, -1), c.d.prefix(2).map { ($0.p, $0.t) }, c.audio)
@@ -531,7 +590,7 @@ private struct HandwritingPad: View {
                 if let a = i.audio { PlayButton(path: a, size: 40) }
                 // 華語: the meanings in 華語 or English (the same switch as 設定 → 主要解釋, so the words follow it too)
                 // 我會了: the character is known (its card 熟悉); tap again: 不熟
-                if store.card(for: Lang.charKey(ch)) != nil { KnowCharButton(ch: ch) }
+                if let c = charCard(ch) { KnowCharButton(card: c) }
             }
         }
     }
@@ -591,13 +650,13 @@ private struct HandwritingPad: View {
             Button { go(1) } label: {
                 Label(idx + 1 >= chars.count ? "完成" : "下一個", systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 40)
             }
-            .prominentButton(T.greenEdge)
+            .prominentButton(T.btnEdge)
         }
     }
 
     private func go(_ d: Int) {
         if d > 0 && idx + 1 >= chars.count {
-            PracticeSave.clear("handwriting", zh: true)
+            PracticeSave.clear("handwriting", zh: store.isZh)
             finished()
             return
         }
@@ -712,7 +771,7 @@ struct PenSettings: View {
                 Spacer()
                 Text(delay < 0.025 ? "馬上出現" : String(format: "%.1f 秒", delay)).latFont(14).monospacedDigit().foregroundStyle(T.muted)
             }
-            Slider(value: $delay, in: 0...1.5, step: 0.05).tint(T.greenEdge).accessibilityLabel("筆跡延遲")
+            Slider(value: $delay, in: 0...1.5, step: 0.05).tint(T.btnEdge).accessibilityLabel("筆跡延遲")
         }
     }
 
@@ -720,7 +779,7 @@ struct PenSettings: View {
         HStack(spacing: 10) {
             Text("粗細").ffFont(.subheadline).foregroundStyle(T.glyph)
             Image(systemName: "circle.fill").font(.system(size: 5)).foregroundStyle(T.muted)
-            Slider(value: $size, in: 0...1).tint(T.greenEdge).accessibilityLabel("粗細")
+            Slider(value: $size, in: 0...1).tint(T.btnEdge).accessibilityLabel("粗細")
             Image(systemName: "circle.fill").font(.system(size: 14)).foregroundStyle(T.muted)
         }
     }
@@ -1147,10 +1206,10 @@ struct MeaningSwitch: View {
             let parts = ForEach([false, true], id: \.self) { en in
                 let on = english == en
                 Text(en ? "英" : "中").ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular)
-                    .foregroundStyle(on ? T.greenInk : T.muted)
+                    .foregroundStyle(on ? T.btnInk : T.muted)
                     .frame(width: 24)
                     .frame(minHeight: 22, maxHeight: vertical ? .infinity : 22)
-                    .background(Capsule().fill(on ? T.green : Color.clear))
+                    .background(Capsule().fill(on ? T.btn : Color.clear))
             }
             Group {
                 if vertical { VStack(spacing: 0) { parts } } else { HStack(spacing: 0) { parts } }
@@ -1168,16 +1227,20 @@ struct MeaningSwitch: View {
 /// 手寫練習: 我會了. Tap: the character is known (its card 熟悉), yellow with little rainbow rays around it;
 /// tap again: 不熟.
 struct KnowCharButton: View {
-    let ch: String
+    /// 華語: the character card; 台語: the character's own word
+    let card: Card
     @EnvironmentObject var store: Store
     @State private var pop = false
     private static let yellow = Color(hex: 0xF6C945)
 
     var body: some View {
-        let known = store.card(for: Lang.charKey(ch)).flatMap { store.status($0) } == 1
+        let known = store.status(card) == 1
         Button {
             let now = !known
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) { _ = store.setCharKnown(ch, now); pop = now }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                if let ch = Lang.charOf(card.k) { _ = store.setCharKnown(ch, now) } else { store.mark(card, known: now, undoable: false) }
+                pop = now
+            }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             if now { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { withAnimation(.easeOut(duration: 0.2)) { pop = false } } }
         } label: {

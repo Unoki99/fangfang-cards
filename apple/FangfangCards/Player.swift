@@ -91,18 +91,18 @@ struct PlayButton: View {
         } label: {
             if onCard && glassOn {
                 icon
-                    .background(Circle().fill(bad ? T.rustEdge.opacity(0.8) : (on ? T.greenEdge.opacity(0.9) : T.greenEdge.opacity(0.35))))
+                    .background(Circle().fill(bad ? T.rustEdge.opacity(0.8) : (on ? T.btnEdge.opacity(0.9) : T.btnEdge.opacity(0.35))))
                     .background(.ultraThinMaterial, in: Circle())
                     .overlay(Circle().strokeBorder(
-                        LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.08), T.greenEdge.opacity(0.6)],
+                        LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.08), T.btnEdge.opacity(0.6)],
                                        startPoint: .topLeading, endPoint: .bottomTrailing),
                         lineWidth: 1.5))
             } else {
                 icon.glassSurface(Circle(),
-                              tint: bad ? T.rustEdge.opacity(0.8) : (on ? T.greenEdge.opacity(0.9) : T.greenEdge.opacity(0.4)),
+                              tint: bad ? T.rustEdge.opacity(0.8) : (on ? T.btnEdge.opacity(0.9) : T.btnEdge.opacity(0.4)),
                               interactive: true,
-                              fallback: bad ? T.rust : (on ? T.greenEdge : T.green.opacity(0.6)),
-                              edge: bad ? T.rustEdge : T.greenEdge)
+                              fallback: bad ? T.rust : (on ? T.btnEdge : T.btn.opacity(0.6)),
+                              edge: bad ? T.rustEdge : T.btnEdge)
             }
         }
         .buttonStyle(.plain)

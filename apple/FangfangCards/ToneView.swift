@@ -261,7 +261,7 @@ struct ToneView: View {
             } label: {
                 Text(idx + 1 >= queue.count ? "看結果" : "下一題").ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
             }
-            .prominentButton(T.greenEdge)
+            .prominentButton(T.btnEdge)
         }
     }
 
@@ -301,7 +301,7 @@ struct ToneView: View {
                 Button { start() } label: { Text("再一輪").frame(maxWidth: .infinity, minHeight: 40) }
                     .softButton()
                 Button { dismiss() } label: { Text("完成").frame(maxWidth: .infinity, minHeight: 40) }
-                    .prominentButton(T.greenEdge)
+                    .prominentButton(T.btnEdge)
             }
         }
         .padding()

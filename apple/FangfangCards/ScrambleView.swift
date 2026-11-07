@@ -331,7 +331,7 @@ struct ScrambleView: View {
                             Label(idx + 1 < puzzles.count ? "下一句" : "完成", systemImage: "arrow.right")
                                 .ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
                         }
-                        .prominentButton(T.greenEdge)
+                        .prominentButton(T.btnEdge)
                     }
                 }
                 .padding(.top, 4)
@@ -434,7 +434,7 @@ struct ScrambleView: View {
             Button { build() } label: {
                 Label("再來一輪", systemImage: "arrow.clockwise").ffFont(.headline).frame(maxWidth: 260, minHeight: 44)
             }
-            .prominentButton(T.greenEdge)
+            .prominentButton(T.btnEdge)
             Button("結束") { dismiss() }.foregroundStyle(T.muted)
         }
     }

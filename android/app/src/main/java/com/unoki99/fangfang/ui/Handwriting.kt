@@ -92,8 +92,8 @@ object PracticeSave {
 fun ResumedNote(shown: Boolean, onGone: () -> Unit) {
     if (!shown) return
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(2500); onGone() }
-    Txt("接著上次的練習", ff(FF.Footnote, FontWeight.SemiBold), T.greenInk,
-        Modifier.clip(RoundedCornerShape(50)).background(T.green).border(1.5.dp, T.greenEdge, RoundedCornerShape(50))
+    Txt("接著上次的練習", ff(FF.Footnote, FontWeight.SemiBold), T.btnInk,
+        Modifier.clip(RoundedCornerShape(50)).background(T.btn).border(1.5.dp, T.btnEdge, RoundedCornerShape(50))
             .padding(horizontal = 12.dp, vertical = 5.dp))
 }
 
@@ -221,20 +221,20 @@ fun HandwritingScreen(only: List<String>? = null, onClose: () -> Unit) {
     var resumed by remember { mutableStateOf(false) }
     fun save() {
         val l = list
-        if (l == null || idx >= l.size) PracticeSave.clear("handwriting", true)
-        else PracticeSave.save("handwriting", true, 0, mapOf("chars" to l, "idx" to idx))
+        if (l == null || idx >= l.size) PracticeSave.clear("handwriting", Store.isZh)
+        else PracticeSave.save("handwriting", Store.isZh, 0, mapOf("chars" to l, "idx" to idx))
     }
     LaunchedEffect(Unit) {
         if (only != null) return@LaunchedEffect
-        val s = PracticeSave.load("handwriting", true, 0) ?: return@LaunchedEffect
+        val s = PracticeSave.load("handwriting", Store.isZh, 0) ?: return@LaunchedEffect
         val cs = PracticeSave.strings(s["chars"]); val i = PracticeSave.int(s["idx"])
         if (cs.isNotEmpty() && i < cs.size) { list = cs; idx = i; resumed = true }
     }
     LaunchedEffect(idx, list) { if (list != null && only == null) save() }
     Column(Modifier.fillMaxSize()) {
         TopBar("手寫練習", onClose, close = true, settings = false) {
-            if (list != null && only == null) TextButton(onClick = { PracticeSave.clear("handwriting", true); list = null }) {
-                Icon(Icons.Filled.GridView, null, tint = T.greenInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("選字", color = T.greenInk)
+            if (list != null && only == null) TextButton(onClick = { PracticeSave.clear("handwriting", Store.isZh); list = null }) {
+                Icon(Icons.Filled.GridView, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("選字", color = T.btnInk)
             }
             // 中 / 英 (華語's meanings), standing up next to the spelling / 腔口 buttons
             if (list != null && Store.isZh) { Spacer(Modifier.width(4.dp)); MeaningSwitch(vertical = true) }
@@ -242,7 +242,7 @@ fun HandwritingScreen(only: List<String>? = null, onClose: () -> Unit) {
         Box(Modifier.fillMaxSize()) {
             val l = list
             if (l == null) HandwritingSetup { chars -> idx = 0; list = chars }
-            else HandwritingPad(l, idx, { idx = it }) { PracticeSave.clear("handwriting", true); onClose() }
+            else HandwritingPad(l, idx, { idx = it }) { PracticeSave.clear("handwriting", Store.isZh); onClose() }
             Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.TopCenter) { ResumedNote(resumed) { resumed = false } }
         }
     }
@@ -256,8 +256,13 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
     var own by Prefs.handOwn
     val off = remember { mutableStateListOf<String>() }
     class Source(val id: String, val name: String, val chars: List<String>)
-    val sets = Store.zhCharSets()
-    val sources = buildList {
+    val sources = if (!Store.isZh) {
+        // 台語: the characters of your 不熟 / 熟悉 words
+        val tw = twCharSets()
+        listOf(Source("unknown", "不熟的詞的字", tw.first), Source("known", "熟悉的詞的字", tw.second),
+            Source("own", "自己選的字", own.cps().filter { Zhuyin.isHan(it.firstCp()) }.distinct()))
+    } else buildList {
+        val sets = Store.zhCharSets()
         add(Source("unknown", "不熟的漢字", sets.all.filter { sets.unknown.contains(it) }))
         for (t in Store.topics) if (t.id > Lang.charTopicBase) add(Source("level${t.id}", t.name, Store.levelCards(t.id).mapNotNull { Lang.charOf(it.k) }))
         add(Source("known", "認識的漢字", sets.all.filter { sets.known.contains(it) }))
@@ -276,7 +281,7 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
                 }
                 Row(Modifier.fillMaxWidth().clickable { shuffle = !shuffle }, verticalAlignment = Alignment.CenterVertically) {
                     Txt("打亂順序", ff(FF.Body), modifier = Modifier.weight(1f))
-                    Switch(shuffle, { shuffle = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.greenEdge, checkedThumbColor = T.greenInk))
+                    Switch(shuffle, { shuffle = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
                 }
                 Box {
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f)).border(1.dp, T.fnEdge, RoundedCornerShape(12.dp))
@@ -294,8 +299,8 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
                 if (src.chars.isEmpty()) Txt(if (src.id == "unknown") "還沒有不熟的漢字。" else if (src.id == "own") "在上面打字。" else "這裡沒有字。", ff(FF.Footnote), T.muted)
                 else Row(verticalAlignment = Alignment.CenterVertically) {
                     Txt("點字可以不選它。選了 ${picked.size}／${src.chars.size} 個", ff(FF.Footnote), T.muted, Modifier.weight(1f))
-                    TextButton(onClick = { off.clear() }) { Text("全選", color = T.greenInk) }
-                    TextButton(onClick = { off.clear(); off.addAll(src.chars) }) { Text("全不選", color = T.greenInk) }
+                    TextButton(onClick = { off.clear() }) { Text("全選", color = T.btnInk) }
+                    TextButton(onClick = { off.clear(); off.addAll(src.chars) }) { Text("全不選", color = T.btnInk) }
                 }
             }
         }
@@ -333,10 +338,11 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
     val score = if (trace) Kai.score(target, strokes.toList(), side) else 0.0
     LaunchedEffect(ch) { strokes.clear() }
     // what the character is like: reading, meaning
-    val card = Store.cardFor(Lang.charKey(ch))
-    val z = Store.zh
+    // 華語: the character card; 台語: the character's own word (the one given from a side card, or the most common)
+    val card = charCardFor(ch)
+    val z = if (Store.isZh) Store.zh else null
     val entry = if (card == null) z?.entryForChar(ch, "") else null
-    val reading = card?.let { Store.cardRom(it, 0, -1).annotated() } ?: entry?.let { z!!.reading(it.syl(Prefs.zhPlace.value), Prefs.zhRom.value).annotated() }
+    val reading = card?.let { (if (Store.isZh) Store.cardRom(it, 0, -1) else Store.cardRom(it, Prefs.rom.value, Prefs.place.value)).annotated() } ?: entry?.let { z!!.reading(it.syl(Prefs.zhPlace.value), Prefs.zhRom.value).annotated() }
     // 華語: the meanings in 華語 or English (the same switch as 設定 → 主要解釋, so the words follow it too)
     val english = Prefs.zhEnglish.value && Store.isZh
     val enDefs = if (english) z?.entryForChar(ch, "")?.takeIf { it.en != null }?.enList?.take(2)?.map { "" to it } else null
@@ -357,10 +363,10 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) { PotionBar((idx + 1).toDouble() / chars.size, 20.dp, showMarks = false, label = "手寫進度") }
             Txt("${idx + 1}／${chars.size}", lat(14f), T.muted)
-            Row(Modifier.clip(RoundedCornerShape(50)).background(if (trace) T.green else T.fn).border(1.5.dp, if (trace) T.greenEdge else T.fnEdge, RoundedCornerShape(50))
+            Row(Modifier.clip(RoundedCornerShape(50)).background(if (trace) T.btn else T.fn).border(1.5.dp, if (trace) T.btnEdge else T.fnEdge, RoundedCornerShape(50))
                 .clickable { trace = !trace }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.TextFields, null, tint = if (trace) T.greenInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-                Txt("描字", ff(FF.Footnote, FontWeight.SemiBold), if (trace) T.greenInk else T.muted)
+                Icon(Icons.Filled.TextFields, null, tint = if (trace) T.btnInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
+                Txt("描字", ff(FF.Footnote, FontWeight.SemiBold), if (trace) T.btnInk else T.muted)
             }
             // 字體: 文楷 or 芫荽 (the character at the top and the one to trace)
             Box {
@@ -421,7 +427,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PlayButton("tts:$ch", 40.dp)
                 // 我會了: the character is known (its card 熟悉); tap again: 不熟
-                if (Store.cardFor(Lang.charKey(ch)) != null) KnowCharButton(ch)
+                if (card != null) KnowCharButton(card)
             }
         }
         // the grid to write in (米字格), the faint character to trace, and the writing
@@ -497,7 +503,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Icon(Icons.Filled.ZoomOut, "小一點", tint = T.muted, modifier = Modifier.size(20.dp))
             Slider(padSide, { padSize = it }, Modifier.weight(1f), valueRange = 180f..maxOf(181f, maxPad),
-                colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+                colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
             Icon(Icons.Filled.ZoomIn, "大一點", tint = T.muted, modifier = Modifier.size(20.dp))
         }
     }
@@ -513,7 +519,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
 fun CharWordsSheetRoot(ch: String) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.greenInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             Txt("有「$ch」的詞", ff(FF.Headline, FontWeight.SemiBold), T.glyph)
             Spacer(Modifier.weight(1f))
@@ -625,7 +631,7 @@ fun PenControls() {
         Txt("${w.toInt()}", lat(15f), T.muted)
     }
     Slider(w, { Prefs.handWidth.value = it }, valueRange = 3f..24f,
-        colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+        colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
     // how it looks
     val rainbow = Prefs.handRainbow.value
     Canvas(Modifier.fillMaxWidth().height(48.dp).clip(RoundedCornerShape(10.dp)).background(Color(0xFFF5F5F5))) {
@@ -647,7 +653,7 @@ fun PenControls() {
         Txt(if (dl < 0.025f) "馬上出現" else String.format("%.1f 秒", dl), ff(FF.Body), T.muted)
     }
     Slider(dl, { Prefs.handDelay.value = Math.round(it * 20) / 20f }, valueRange = 0f..1.5f,
-        colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+        colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
     Spacer(Modifier.height(10.dp))
     val s = Prefs.handPressure.value
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -655,7 +661,7 @@ fun PenControls() {
         Txt(if (s < 0.05f) "粗細不變" else "${Math.round(s * 100)}%", ff(FF.Body), T.muted)
     }
     Slider(s, { Prefs.handPressure.value = it }, valueRange = 0f..1.5f,
-        colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
+        colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
 }
 
 /** 中 | 英: 華語's meanings in 華語 or English (設定 → 主要解釋); standing up (中 over 英) in the top bar */
@@ -668,8 +674,8 @@ fun MeaningSwitch(vertical: Boolean = false) {
     fun part(e: Boolean) {
         val on = en == e
         Box(Modifier.size(width = if (vertical) 24.dp else 26.dp, height = if (vertical) 19.dp else 22.dp).clip(RoundedCornerShape(50))
-            .background(if (on) T.green else Color.Transparent), contentAlignment = Alignment.Center) {
-            Txt(if (e) "英" else "中", ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.greenInk else T.muted)
+            .background(if (on) T.btn else Color.Transparent), contentAlignment = Alignment.Center) {
+            Txt(if (e) "英" else "中", ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.btnInk else T.muted)
         }
     }
     if (vertical) Column(m) { part(false); part(true) } else Row(m) { part(false); part(true) }
@@ -678,8 +684,7 @@ fun MeaningSwitch(vertical: Boolean = false) {
 /** 手寫練習: 我會了. Tap: the character is known (its card 熟悉), yellow with little rainbow rays around it;
  *  tap again: 不熟. */
 @Composable
-private fun KnowCharButton(ch: String) {
-    val c = Store.cardFor(Lang.charKey(ch)) ?: return
+private fun KnowCharButton(c: Card) {
     val known = Store.status(c) == 1
     val yellow = Color(0xFFF6C945)
     var pop by remember { mutableStateOf(false) }
@@ -690,7 +695,8 @@ private fun KnowCharButton(ch: String) {
     Box(Modifier.size(58.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
         .clickable {
             val now = !known
-            Store.setCharKnown(ch, now)
+            val ch = Lang.charOf(c.k)
+            if (ch != null) Store.setCharKnown(ch, now) else Store.mark(c, now, undoable = false)
             if (now) pop = true
             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
         }, contentAlignment = Alignment.Center) {
@@ -760,4 +766,40 @@ fun InkColorControls() {
         }
     }
     Txt("中間那一排是原本的顏色，往上越淺，往下越深。", ff(FF.Caption), T.muted, Modifier.padding(top = 8.dp))
+}
+
+/** 手寫練習 from a 台語 side card: the character's word, read as in the big card's word */
+var handwritingGiven: Map<String, Card> = emptyMap()
+
+/** 華語: the character card; 台語: the character's own word (from a side card, or its most common reading) */
+fun charCardFor(ch: String): Card? =
+    if (Store.isZh) Store.cardFor(Lang.charKey(ch)) else handwritingGiven[ch] ?: twCharCard(ch)
+
+private var twCache: Pair<Int, Map<String, Card>> = 0 to emptyMap()
+
+/** 台語: a character as its own dictionary word, read the most common way (the word list is in order of use) */
+fun twCharCard(ch: String): Card? {
+    if (Store.isZh) return null
+    val cs = Store.cards
+    if (twCache.first != cs.size) {
+        val m = HashMap<String, Card>()
+        for (c in cs) if (c.h.codePointCount(0, c.h.length) == 1 && !m.containsKey(c.h)) m[c.h] = c
+        twCache = cs.size to m
+    }
+    return twCache.second[ch]
+}
+
+/** 台語 手寫練習: the characters of your 不熟 and 熟悉 words (that have a word of their own), the latest first */
+private fun twCharSets(): Pair<List<String>, List<String>> {
+    val p = Store.progress
+    val keys = p.status.entries.filter { !Lang.isZhKey(it.key) && Lang.charOf(it.key) == null }
+        .sortedByDescending { p.added[it.key] ?: 0.0 }
+    val unknown = LinkedHashSet<String>(); val known = LinkedHashSet<String>()
+    for ((k, v) in keys) {
+        val tab = k.indexOf('\t'); val h = if (tab < 0) k else k.substring(0, tab)
+        for (ch in h.cps()) if (Zhuyin.isHan(ch.firstCp()) && twCharCard(ch) != null) {
+            if (v == 2) unknown.add(ch) else if (v == 1) known.add(ch)
+        }
+    }
+    return unknown.filter { it !in known } to known.filter { it !in unknown }
 }

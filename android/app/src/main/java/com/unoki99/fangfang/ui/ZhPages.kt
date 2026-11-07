@@ -192,7 +192,7 @@ fun ZhEntryPage(z: ZhDict, key: String, onBack: () -> Unit) {
 fun ZhEntrySheetRoot(z: ZhDict, key: String) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.greenInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
@@ -582,7 +582,8 @@ fun HSKProgressList() {
     fun pct(v: Double) = "${(v * 100).roundToInt()}%"
     val zh = Store.isZh
     // 台語: 常用詞 and 常用字, 500 a group
-    val list = if (zh) Store.topics else Store.freqTopics
+    // (台語: the characters first, then the words)
+    val list = if (zh) Store.topics else Store.freqTopics.filter { it.id >= Lang.freqCharBase } + Store.freqTopics.filter { it.id < Lang.freqCharBase }
     val all = Store.allTopicProgress()
     val firstChar = Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

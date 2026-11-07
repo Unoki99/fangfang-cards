@@ -102,6 +102,10 @@ enum T {
     static var greenEdge: Color { Color(hex: P.now.greenEdge) }
     static var greenInk: Color { Color(hex: P.now.greenInk) }
     static var purpleInk: Color { Color(hex: P.now.purpleInk) }
+    /// buttons (what used to be green): 華語 blue, 台語 purple
+    static var btn: Color { Store.shared.isZh ? blue : Color(hex: P.now.own) }
+    static var btnEdge: Color { Store.shared.isZh ? blueEdge : Color(hex: P.now.ownEdge) }
+    static var btnInk: Color { Store.shared.isZh ? blueInk : purpleInk }
     static var olive: Color { Color(hex: P.now.olive) }
     static var oliveEdge: Color { Color(hex: P.now.oliveEdge) }
     static var oliveInk: Color { Color(hex: P.now.oliveInk) }
@@ -198,13 +202,13 @@ struct RomButton: View {
     private var plainText: some View {
         Text(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[min(max(rom, 0), 2)])
             .ffFont(.subheadline, .bold)
-            .foregroundStyle(T.greenInk)
+            .foregroundStyle(T.btnInk)
     }
     private var capsule: some View {
         plainText
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(T.green))
-            .overlay(Capsule().stroke(T.greenEdge, lineWidth: 2))
+            .background(Capsule().fill(T.btn))
+            .overlay(Capsule().stroke(T.btnEdge, lineWidth: 2))
     }
 }
 

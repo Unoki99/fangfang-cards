@@ -738,7 +738,7 @@ struct WordSheet: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .background(RoundedRectangle(cornerRadius: 12).fill(i == it.sel ? T.green.opacity(0.6) : T.fn.opacity(0.6)))
+                .background(RoundedRectangle(cornerRadius: 12).fill(i == it.sel ? T.btn.opacity(0.6) : T.fn.opacity(0.6)))
             }
         }
     }

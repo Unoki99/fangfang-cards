@@ -203,8 +203,8 @@ enum AppTint {
     /// light green on iPhone/iPad; on the Mac the system fills active buttons with the accent colour,
     /// so it's the darker green there (light text stays readable)
     #if targetEnvironment(macCatalyst)
-    static var accent: Color { T.greenEdge }
+    static var accent: Color { T.btnEdge }
     #else
-    static var accent: Color { T.greenInk }
+    static var accent: Color { T.btnInk }
     #endif
 }

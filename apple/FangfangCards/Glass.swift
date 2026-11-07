@@ -71,7 +71,7 @@ struct CardSurface: ViewModifier {
 }
 
 struct ProminentButton: ViewModifier {
-    var tint: Color = T.greenEdge
+    var tint: Color = T.btnEdge
     private let glassOn = false   // the Liquid Glass look was taken out
 
     func body(content: Content) -> some View {
@@ -130,7 +130,7 @@ extension View {
                                 fallback: Color = T.fn, edge: Color = T.fnEdge) -> some View {
         modifier(GlassSurface(shape: shape, tint: tint, interactive: interactive, fallback: fallback, edge: edge))
     }
-    func prominentButton(_ tint: Color = T.greenEdge) -> some View { modifier(ProminentButton(tint: tint)) }
+    func prominentButton(_ tint: Color = T.btnEdge) -> some View { modifier(ProminentButton(tint: tint)) }
     func softButton() -> some View { modifier(SoftButton()) }
     /// the moving colour background that the glass refracts
     func appBackground() -> some View { background { AppBackground() } }

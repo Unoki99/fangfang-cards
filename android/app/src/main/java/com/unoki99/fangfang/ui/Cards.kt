@@ -1,6 +1,18 @@
 package com.unoki99.fangfang.ui
 
 import androidx.compose.animation.core.Animatable
+import kotlin.math.max
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.foundation.background
@@ -60,10 +72,10 @@ fun NewDeckTab() {
         TopBar("新詞", extra = {
             Box {
                 TextButton(onClick = { menu = true }) {
-                    Icon(Icons.Filled.Layers, null, tint = T.greenInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Filled.Layers, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                     Text((Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
                         ?: (if (zh) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・全部" else "全部"),
-                        color = T.greenInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
+                        color = T.btnInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
                 }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
                     if (zh) {
@@ -133,27 +145,39 @@ fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = "不熟", rightL
     val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     val dens = LocalDensity.current.density
     var flying by remember { mutableStateOf(false) }
+    // the top card drawn into a picture when it's swiped: it falls apart into little squares
+    val picture = rememberGraphicsLayer()
+    val bursts = remember { mutableStateListOf<CardBurst>() }
+    var boxSize by remember { mutableStateOf(IntSize.Zero) }
     fun fly(c: Card, right: Boolean) {
         if (flying) return
         flying = true
         scope.launch {
-            offset.animateTo(Offset(if (right) 2000f else -2000f, offset.value.y + 80f), tween(220))
+            val at = offset.value
+            val img = try { picture.toImageBitmap() } catch (_: Exception) { null }
+            val b = CardBurst.make(c, img, boxSize, right, at, at.x / 18f / dens, dens)
+            if (b != null) bursts.add(b)
             onSwipe(c, right)
             offset.snapTo(Offset.Zero)
             flying = false
+            if (b == null) return@launch
+            kotlinx.coroutines.delay((CardBurst.LIFE * 1000).toLong() + 100)
+            bursts.remove(b)
         }
     }
-    Box(Modifier.weight(1f).fillMaxWidth().heightIn(max = 680.dp)) {
+    Box(Modifier.weight(1f).fillMaxWidth().heightIn(max = 680.dp).onSizeChanged { boxSize = it }) {
         val shown = cards.take(3)
         for (i in shown.indices.reversed()) {
             val card = shown[i]
             key(card.k) {
                 val top = i == 0
+                // (the next card moves up into place)
+                val place by animateFloatAsState(i.toFloat(), spring(dampingRatio = 0.8f, stiffness = 500f), label = "stack")
                 Box(Modifier.fillMaxSize().zIndex((10 - i).toFloat())
                     .graphicsLayer {
-                        val s = if (top) 1f else 1f - i * 0.04f
+                        val s = 1f - place * 0.04f
                         scaleX = s; scaleY = s
-                        translationY = i * 14 * density + if (top) offset.value.y else 0f
+                        translationY = place * 14 * density + if (top) offset.value.y else 0f
                         translationX = if (top) offset.value.x else 0f
                         rotationZ = if (top) offset.value.x / 18f / density else 0f
                     }
@@ -170,7 +194,10 @@ fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = "不熟", rightL
                         }
                     } else Modifier)
                 ) {
-                    WordCard(card, top)
+                    Box(if (top) Modifier.drawWithContent {
+                        picture.record { this@drawWithContent.drawContent() }
+                        drawLayer(picture)
+                    } else Modifier) { WordCard(card, top) }
                     if (top) {
                         val sw = (offset.value.x / dens / 140f).coerceIn(-1f, 1f)
                         CardLight(sw)
@@ -179,6 +206,7 @@ fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = "不熟", rightL
                 }
             }
         }
+        if (bursts.isNotEmpty()) CardDust(bursts, Modifier.matchParentSize().zIndex(20f))
     }
     if (buttons) Spacer(Modifier.height(18.dp))
     if (buttons) cards.firstOrNull()?.let { top ->
@@ -191,18 +219,18 @@ private fun BoxScope.Stamp(dx: Float, leftLabel: String, rightLabel: String) {
     val right = dx > 0
     val amount = (abs(dx) / 110f).coerceIn(0f, 1f)
     if (amount < 0.02f) return
-    Text(if (right) rightLabel else leftLabel, style = ff(FF.Title, FontWeight.ExtraBold), color = if (right) T.greenInk else T.rustInk,
+    Text(if (right) rightLabel else leftLabel, style = ff(FF.Title, FontWeight.ExtraBold), color = if (right) T.blueInk else T.rustInk,
         modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp).graphicsLayer { alpha = amount; rotationZ = if (right) -10f else 10f }
-            .background((if (right) T.green else T.rust).copy(alpha = 0.9f), RoundedCornerShape(12.dp))
-            .border(3.dp, if (right) T.greenEdge else T.rustEdge, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 6.dp))
+            .background((if (right) T.blue else T.rust).copy(alpha = 0.9f), RoundedCornerShape(12.dp))
+            .border(3.dp, if (right) T.blueEdge else T.rustEdge, RoundedCornerShape(12.dp)).padding(horizontal = 16.dp, vertical = 6.dp))
 }
 
-/** green / rust glow from the side you swipe toward */
+/** blue / rust glow from the side you swipe toward */
 @Composable
 private fun BoxScope.CardLight(swipe: Float) {
     val a = abs(swipe)
     if (a < 0.02f) return
-    val color = if (swipe > 0) T.greenEdge else T.rustEdge
+    val color = if (swipe > 0) T.blueEdge else T.rustEdge
     Box(Modifier.matchParentSize().clip(RoundedCornerShape(28.dp)).drawWithContent {
         drawRect(Brush.horizontalGradient(
             if (swipe > 0) listOf(Color.Transparent, color.copy(alpha = 0.55f * a)) else listOf(color.copy(alpha = 0.55f * a), Color.Transparent)))
@@ -219,7 +247,7 @@ fun SwipeButtons(leftLabel: String, rightLabel: String, canUndo: Boolean, onLeft
                 Icon(Icons.AutoMirrored.Filled.Undo, "復原", tint = if (canUndo) T.oliveInk else T.fnEdge)
             }
         }
-        RoundAction(Icons.Filled.Check, rightLabel, T.green, T.greenEdge, T.greenInk, onRight)
+        RoundAction(Icons.Filled.Check, rightLabel, T.blue, T.blueEdge, T.blueInk, onRight)
     }
 }
 
@@ -346,7 +374,7 @@ private fun CardDetail(card: Card) {
     Store.rev
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.greenInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
             Spacer(Modifier.weight(1f)); BarButtons(settings = false)
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -434,7 +462,7 @@ fun UnknownTab() {
                         PT("看字排讀音", Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
                         PT("聲調練習", Icons.Filled.GraphicEq, true, Practice.TONES),
                         PT("翻牌配對", Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
-                        if (Store.isZh) PT("手寫練習", Icons.Filled.Edit, true, Practice.HANDWRITING) else null,
+                        PT("手寫練習", Icons.Filled.Edit, true, Practice.HANDWRITING),
                     )
                     // the last tile: 怎麼練習, what each way of practising does
                     var help by remember { mutableStateOf(false) }
@@ -527,12 +555,12 @@ fun KnownTab() {
 /** one practice button in 不熟 (half the width, the soft green) */
 @Composable
 fun PracticeTile(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, enabled: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Row(modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).background(if (enabled) T.green else T.fn.copy(alpha = 0.6f))
-        .border(1.5.dp, if (enabled) T.greenEdge else T.fnEdge, RoundedCornerShape(12.dp)).clickable(enabled = enabled, onClick = onClick)
+    Row(modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).background(if (enabled) T.btn else T.fn.copy(alpha = 0.6f))
+        .border(1.5.dp, if (enabled) T.btnEdge else T.fnEdge, RoundedCornerShape(12.dp)).clickable(enabled = enabled, onClick = onClick)
         .padding(horizontal = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = if (enabled) T.greenInk else T.muted, modifier = Modifier.size(18.dp))
+        Icon(icon, null, tint = if (enabled) T.btnInk else T.muted, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
-        Txt(title, ff(FF.Subheadline, FontWeight.SemiBold), if (enabled) T.greenInk else T.muted, maxLines = 1)
+        Txt(title, ff(FF.Subheadline, FontWeight.SemiBold), if (enabled) T.btnInk else T.muted, maxLines = 1)
     }
 }
 
@@ -547,11 +575,11 @@ private fun PracticeHelp(goal: Int, close: () -> Unit) {
         add("看字排讀音" to "只看漢字，把讀音照順序排。")
         add("聲調練習" to "聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。")
         add("翻牌配對" to "不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。")
-        if (Store.isZh) add("手寫練習" to "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。")
+        add("手寫練習" to (if (Store.isZh) "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），" else "選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），") + "看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。")
         add("練習範圍" to "只練一個等級（或一組）的不熟的詞或字。")
     }
     AlertDialog(onDismissRequest = close, containerColor = T.bg,
-        confirmButton = { TextButton(onClick = close) { Text("完成", color = T.greenInk) } },
+        confirmButton = { TextButton(onClick = close) { Text("完成", color = T.btnInk) } },
         title = { Txt("怎麼練習", ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -619,7 +647,10 @@ private fun CharSideSwipe(card: Card, small: Boolean, modifier: Modifier) {
         Box(Modifier.align(Alignment.BottomEnd).padding(if (small) 8.dp else 12.dp).size(if (small) 32.dp else 38.dp).clip(CircleShape)
             // (quiet: see-through, in the theme's own colours)
             .background(T.bg.copy(alpha = 0.35f)).border(1.dp, T.fnEdge.copy(alpha = 0.6f), CircleShape)
-            .clickable { UI.handwritingOnly = listOf(ch); UI.practice = Practice.HANDWRITING }, contentAlignment = Alignment.Center) {
+            .clickable {
+                handwritingGiven = if (card.isZh) emptyMap() else mapOf(card.h to card)
+                UI.handwritingOnly = listOf(ch); UI.practice = Practice.HANDWRITING
+            }, contentAlignment = Alignment.Center) {
             Icon(Icons.Filled.Draw, "寫這個字", tint = T.muted, modifier = Modifier.size(if (small) 16.dp else 20.dp))
         }
     }
@@ -670,5 +701,108 @@ private fun sideCards(word: Card): List<Card> {
     return han.zip(codes).mapNotNull { (h, c) ->
         val k = h + "\t" + c
         Store.cardFor(k) ?: Store.dict?.altParent?.get(k)?.takeIf { p -> p.indexOf('\t').let { it > 0 && p.codePointCount(0, it) == 1 } }?.let { Store.cardFor(it) }
+    }
+}
+
+// MARK: - a swiped card falling apart
+
+/** a card falling apart: its picture cut into little squares, each with its own way to go. 認識: they turn blue
+ *  and float up and away to the right; 不熟: red, out to the left and falling. With 聲調顏色, the word's tone
+ *  colours, mixed. */
+class CardBurst(val start: Long, val right: Boolean, val w: Int, val h: Int, val offset: Offset, val angle: Float,
+                val cell: Float, val cols: Int, val rows: Int, val colors: IntArray, val rnd: FloatArray, val tones: IntArray) {
+    companion object {
+        const val LIFE = 1.1f
+        fun make(card: Card, img: ImageBitmap?, size: IntSize, right: Boolean, offset: Offset, angleDeg: Float, density: Float): CardBurst? {
+            if (size.width <= 0 || size.height <= 0) return null
+            val cell = (size.width / 42f).coerceIn(16f, 34f)
+            val cols = max(1, (size.width / cell).toInt()); val rows = max(1, (size.height / cell).toInt())
+            val px = IntArray(cols * rows)
+            if (img != null) try {
+                var bmp = img.asAndroidBitmap()
+                if (bmp.config == android.graphics.Bitmap.Config.HARDWARE) bmp = bmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                android.graphics.Bitmap.createScaledBitmap(bmp, cols, rows, true).getPixels(px, 0, cols, 0, 0, cols, rows)
+            } catch (_: Exception) {}
+            val base = T.fn.toArgb()
+            val r = 28f * density / cell
+            for (y in 0 until rows) for (x in 0 until cols) {
+                val i = y * cols + x
+                // outside the rounded corners: nothing
+                val fx = x + 0.5f; val fy = y + 0.5f
+                val rx = minOf(fx, cols - fx); val ry = minOf(fy, rows - fy)
+                val inside = !(rx < r && ry < r) || (r - rx) * (r - rx) + (r - ry) * (r - ry) <= r * r
+                val p = px[i]
+                val a = (p ushr 24) / 255f
+                // (the card's own colour where the picture has nothing)
+                val c = if (a < 0.99f) blend(p, base, a) else p
+                px[i] = if (inside) (c or (0xFF shl 24)) else 0
+            }
+            val rnd = FloatArray(cols * rows * 4) { Math.random().toFloat() }
+            // the word's characters in their tone colours (only when 聲調顏色 is on)
+            val tones = if (Prefs.toneSys.value != 0) {
+                Store.cardHan(card, Prefs.place.value, T.blueInk.toArgb()).flatMap { seg ->
+                    val c = seg.c ?: return@flatMap emptyList<Int>()
+                    List(seg.t.codePointCount(0, seg.t.length)) { c }
+                }.toIntArray()
+            } else IntArray(0)
+            return CardBurst(android.os.SystemClock.uptimeMillis(), right, size.width, size.height, offset,
+                Math.toRadians(angleDeg.toDouble()).toFloat(), cell, cols, rows, px, rnd, tones)
+        }
+        private fun blend(p: Int, base: Int, a: Float): Int {
+            fun ch(v: Int, s: Int) = ((v shr s) and 0xFF)
+            fun mix(s: Int) = (ch(p, s) + ch(base, s) * (1 - a)).toInt().coerceIn(0, 255)
+            return (mix(16) shl 16) or (mix(8) shl 8) or mix(0)
+        }
+    }
+}
+
+/** draws the falling-apart cards (over the whole screen: nothing cuts it off) */
+@Composable
+private fun CardDust(bursts: List<CardBurst>, modifier: Modifier) {
+    var now by remember { mutableLongStateOf(android.os.SystemClock.uptimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { withFrameMillis { }; now = android.os.SystemClock.uptimeMillis() } }
+    val blue = Color(0xFF6EA8FF); val red = Color(0xFFFF6B66)
+    Canvas(modifier) {
+        for (b in bursts) {
+            val t = (now - b.start) / 1000f
+            if (t < 0 || t >= CardBurst.LIFE) continue
+            val cx = size.width / 2 + b.offset.x; val cy = size.height / 2 + b.offset.y
+            val ca = kotlin.math.cos(b.angle); val sa = kotlin.math.sin(b.angle)
+            val tint = if (b.right) blue else red
+            val c = b.cell
+            for (y in 0 until b.rows) for (x in 0 until b.cols) {
+                val i = y * b.cols + x
+                val col = b.colors[i]
+                if (col == 0) continue
+                val r0 = b.rnd[i * 4]; val r1 = b.rnd[i * 4 + 1]; val r2 = b.rnd[i * 4 + 2]; val r3 = b.rnd[i * 4 + 3]
+                val u = (x + 0.5f) / b.cols
+                // the side it's going to goes first, like a wind blowing it away
+                val delay = (if (b.right) 1 - u else u) * 0.28f + r0 * 0.12f
+                val s = t - delay
+                val lx = (x + 0.5f) * c - b.w / 2f; val ly = (y + 0.5f) * c - b.h / 2f
+                var px = cx + lx * ca - ly * sa; var py = cy + lx * sa + ly * ca
+                var alpha = 1f; var k = 0f; var sc = 1f
+                if (s > 0) {
+                    k = (s / 0.22f).coerceAtMost(1f)
+                    val left = (CardBurst.LIFE - delay).coerceAtLeast(0.3f)
+                    alpha = (1 - s / left).coerceAtLeast(0f)
+                    sc = 1 - 0.45f * s / left
+                    val d = density
+                    if (b.right) {
+                        px += ((40 + r1 * 110) * s + kotlin.math.sin(s * 7 + r2 * 6) * 6) * d
+                        py -= ((60 + r3 * 120) * s + 260 * s * s) * d
+                    } else {
+                        px -= ((50 + r1 * 120) * s) * d
+                        py += ((-40 + r3 * 60) * s + 620 * s * s) * d
+                    }
+                }
+                val to = if (b.tones.isEmpty()) tint else Color(b.tones[minOf((r2 * b.tones.size).toInt(), b.tones.size - 1)])
+                val from = Color(col)
+                val rgb = Color(from.red + (to.red - from.red) * k, from.green + (to.green - from.green) * k,
+                    from.blue + (to.blue - from.blue) * k, alpha)
+                val wq = c * sc
+                drawRect(rgb, Offset(px - wq / 2, py - wq / 2), Size(wq, wq))
+            }
+        }
     }
 }

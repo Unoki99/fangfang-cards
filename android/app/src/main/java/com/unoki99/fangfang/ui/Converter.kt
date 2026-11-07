@@ -356,7 +356,7 @@ fun ConvWordSheet(d: Dict, index: Int) {
     var addingOwn by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.greenInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
@@ -371,7 +371,7 @@ fun ConvWordSheet(d: Dict, index: Int) {
                 }
                 for ((i, o) in it.opts.withIndex()) {
                     val on = i == it.sel
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) T.green.copy(alpha = 0.6f) else T.fn.copy(alpha = 0.6f))
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) T.btn.copy(alpha = 0.6f) else T.fn.copy(alpha = 0.6f))
                         .clickable { ConvModel.choose(index, i) }.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         RadioButton(on, { ConvModel.choose(index, i) }, colors = RadioButtonDefaults.colors(selectedColor = T.greenInk, unselectedColor = T.muted))
@@ -488,7 +488,7 @@ fun CopyOptionsSheet(texts: List<String>, names: List<String>, onDone: () -> Uni
                 Column(Modifier.fillMaxWidth().surface(RoundedCornerShape(14.dp), width = 1.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Txt("複製" + names[i], ff(FF.Body), T.glyph, Modifier.weight(1f))
-                        Switch(on, { on = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.greenEdge))
+                        Switch(on, { on = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge))
                     }
                     if (on) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -513,7 +513,7 @@ fun CopyOptionsSheet(texts: List<String>, names: List<String>, onDone: () -> Uni
             var gap by Prefs.copyGap
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Txt("段跟段中間空一行", ff(FF.Body), T.glyph, Modifier.weight(1f))
-                Switch(gap, { gap = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.greenEdge))
+                Switch(gap, { gap = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge))
             }
             Txt("這些是 Discord 的格式：文字本身會被包起來，例如 **粗體**、||暗藏||、> 引用。", ff(FF.Caption), T.muted)
             val out = copyOutput(texts)

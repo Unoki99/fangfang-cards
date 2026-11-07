@@ -108,8 +108,8 @@ fun RadicalPage(zhSearch: Boolean, onBack: () -> Unit) {
     }
     Column(Modifier.fillMaxSize()) {
         TopBar(if (mode == 1) "組合部首" else radical?.let { "部首「${it.radical}」" } ?: "部首查字", onBack, settings = false) {
-            if (mode == 0 && radical != null) TextButton(onClick = { radical = null }) { Text("換部首", color = T.greenInk) }
-            if (mode == 1 && picked.isNotEmpty()) TextButton(onClick = { picked.clear() }) { Text("清除", color = T.greenInk) }
+            if (mode == 0 && radical != null) TextButton(onClick = { radical = null }) { Text("換部首", color = T.btnInk) }
+            if (mode == 1 && picked.isNotEmpty()) TextButton(onClick = { picked.clear() }) { Text("清除", color = T.btnInk) }
         }
         val z = Store.zh
         if (z == null) {

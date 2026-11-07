@@ -39,10 +39,10 @@ struct ResumedNote: View {
     var body: some View {
         if shown {
             Text("接著上次的練習")
-                .ffFont(.footnote, .semibold).foregroundStyle(T.greenInk)
+                .ffFont(.footnote, .semibold).foregroundStyle(T.btnInk)
                 .padding(.horizontal, 12).padding(.vertical, 5)
-                .background(Capsule().fill(T.green))
-                .overlay(Capsule().stroke(T.greenEdge, lineWidth: 1.5))
+                .background(Capsule().fill(T.btn))
+                .overlay(Capsule().stroke(T.btnEdge, lineWidth: 1.5))
                 .transition(.opacity.combined(with: .move(edge: .top)))
                 .task {
                     try? await Task.sleep(nanoseconds: 2_500_000_000)

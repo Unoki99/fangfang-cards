@@ -44,7 +44,7 @@ fun App() {
     // the theme's colours are read while drawing: set it first, then draw everything again
     key(theme) {
         T.syncEngine()
-        val scheme = darkColorScheme(primary = T.greenInk, onPrimary = T.bg, background = T.bg, surface = T.fn, onSurface = T.glyph,
+        val scheme = darkColorScheme(primary = T.btnInk, onPrimary = T.bg, background = T.bg, surface = T.fn, onSurface = T.glyph,
             onBackground = T.glyph, surfaceVariant = T.fn, onSurfaceVariant = T.muted, secondary = T.oliveInk, outline = T.fnEdge)
         val base = LocalDensity.current
         val factor = TextSize.factor(Prefs.textSize.value)
@@ -95,7 +95,7 @@ private fun Root() {
     Store.zhError?.let { e ->
         AlertDialog(onDismissRequest = { Store.zhError = null }, containerColor = T.fn,
             title = { Txt("華語", ff(FF.Headline)) }, text = { Txt(e, ff(FF.Body)) },
-            confirmButton = { TextButton(onClick = { Store.zhError = null }) { Text("好", color = T.greenInk) } })
+            confirmButton = { TextButton(onClick = { Store.zhError = null }) { Text("好", color = T.btnInk) } })
     }
     UI.practice?.let { PracticeHost(it) }
     if (UI.settingsOpen) SettingsScreen()
