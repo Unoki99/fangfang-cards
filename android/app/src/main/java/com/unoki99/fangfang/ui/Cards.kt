@@ -99,7 +99,7 @@ fun NewDeckTab() {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             // a tablet, or a phone on its side (華語): the word's characters as small cards beside the big one
             val landscape = maxWidth > maxHeight
-            val sides = zh && queue.isNotEmpty() && (maxWidth >= 1100.dp || (landscape && maxWidth >= 640.dp))
+            val sides = queue.isNotEmpty() && (maxWidth >= 1100.dp || (landscape && maxWidth >= 560.dp))
             val sideW = if (maxWidth >= 1100.dp) 290.dp else ((maxWidth - 32.dp - 32.dp) * 0.27f)
             val small = maxHeight < 520.dp
             Row(Modifier.fillMaxSize().widthIn(max = if (sides) 1260.dp else 560.dp).align(Alignment.TopCenter).padding(if (small) 10.dp else 16.dp),
@@ -564,8 +564,7 @@ private fun PracticeHelp(goal: Int, close: () -> Unit) {
 /** the side cards of a word's characters: the 1st, 3rd, 5th… on the left (side 0), the 2nd, 4th, 6th… on the right */
 @Composable
 private fun CharSideColumn(word: Card, side: Int, small: Boolean, modifier: Modifier) {
-    val chars = word.h.codePoints().toArray().filter { Zhuyin.isHan(it) }.map { String(Character.toChars(it)) }
-    val cards = if (chars.size > 1) chars.mapNotNull { Store.cardFor(Lang.charKey(it)) } else emptyList()
+    val cards = remember(word.k, Store.rev) { sideCards(word) }
     Column(modifier.padding(top = if (small) 22.dp else 32.dp), verticalArrangement = Arrangement.spacedBy(if (small) 10.dp else 16.dp)) {
         for ((i, c) in cards.withIndex()) if (i % 2 == side) key(word.k + "|" + c.k) {
             CharSideSwipe(c, small, Modifier.fillMaxWidth().height(if (small) 140.dp else 210.dp))
@@ -588,7 +587,8 @@ private fun CharSideSwipe(card: Card, small: Boolean, modifier: Modifier) {
         flying = true
         scope.launch {
             offset.animateTo(Offset(if (right) 1600f else -1600f, offset.value.y + 60f), tween(220))
-            Store.setCharKnown(ch, right)
+            // 華語: the character card; 台語: the character's own dictionary word (read as in the big card's word)
+            if (Lang.charOf(card.k) != null) Store.setCharKnown(ch, right) else Store.mark(card, right, undoable = false)
             offset.snapTo(Offset.Zero); shown.snapTo(0f)
             shown.animateTo(1f, androidx.compose.animation.core.spring(0.7f, 300f))
             flying = false
@@ -619,7 +619,7 @@ private fun CharSideCard(card: Card, small: Boolean) {
     val rom = Prefs.rom.value; val place = Prefs.place.value
     val tk = textKey()
     val ch = Lang.charOf(card.k) ?: card.h
-    val en = if (Prefs.zhEnglish.value) Store.zh?.entryForChar(ch, "")?.enList?.takeIf { it.isNotEmpty() } else null
+    val en = if (card.isZh && Prefs.zhEnglish.value) Store.zh?.entryForChar(ch, "")?.enList?.takeIf { it.isNotEmpty() } else null
     Row(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(T.fn).border(2.dp, T.keyEdge, RoundedCornerShape(24.dp))
         .padding(if (small) 10.dp else 16.dp), horizontalArrangement = Arrangement.spacedBy(if (small) 8.dp else 14.dp)) {
         Column(Modifier.widthIn(min = if (small) 48.dp else 70.dp), horizontalAlignment = Alignment.CenterHorizontally,
@@ -640,5 +640,23 @@ private fun CharSideCard(card: Card, small: Boolean) {
                 NumBadge(i + 1); Txt(d.t, ff(if (small) FF.Footnote else FF.Subheadline), T.glyph, maxLines = 2)
             }
         }
+    }
+}
+
+/** the side cards of a word (2 characters or more): 華語, each character's card; 台語, each character's own word in
+ *  the dictionary with the reading it has in this word (a character is often read several ways) */
+private fun sideCards(word: Card): List<Card> {
+    if (word.isZh) {
+        val chars = word.h.codePoints().toArray().filter { Zhuyin.isHan(it) }.map { String(Character.toChars(it)) }
+        return if (chars.size > 1) chars.mapNotNull { Store.cardFor(Lang.charKey(it)) } else emptyList()
+    }
+    val tab = word.k.indexOf('\t')
+    if (tab < 0) return emptyList()
+    val han = word.k.substring(0, tab).codePoints().toArray().map { String(Character.toChars(it)) }
+    val codes = word.k.substring(tab + 1).split(" ")
+    if (han.size < 2 || han.size != codes.size) return emptyList()
+    return han.zip(codes).mapNotNull { (h, c) ->
+        val k = h + "\t" + c
+        Store.cardFor(k) ?: Store.dict?.altParent?.get(k)?.takeIf { p -> p.indexOf('\t').let { it > 0 && p.codePointCount(0, it) == 1 } }?.let { Store.cardFor(it) }
     }
 }
