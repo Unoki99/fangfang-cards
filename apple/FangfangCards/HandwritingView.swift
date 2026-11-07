@@ -156,6 +156,8 @@ enum TraceScore {
 // MARK: - the practice
 
 struct HandwritingView: View {
+    /// from a side card (新詞): just these characters (not saved, no 選字), then back to the cards
+    var only: [String]? = nil
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     /// the characters of this round (nil = choosing them)
@@ -186,7 +188,7 @@ struct HandwritingView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("結束")
                 }
-                if list != nil {
+                if list != nil && only == nil {
                     ToolbarItem(placement: .topBarLeading) {
                         Button { PracticeSave.clear("handwriting", zh: true); list = nil } label: {
                             Label("選字", systemImage: "square.grid.3x3")
@@ -196,6 +198,7 @@ struct HandwritingView: View {
             }
         }
         .onAppear {
+            if let only, list == nil { list = only; idx = 0; return }
             guard list == nil, let s = PracticeSave.load(Saved.self, "handwriting", zh: true, scope: 0),
                   !s.chars.isEmpty, s.idx < s.chars.count else { return }
             list = s.chars; idx = s.idx; resumed = true
@@ -204,6 +207,7 @@ struct HandwritingView: View {
     }
 
     private func save() {
+        guard only == nil else { return }
         guard let list, idx < list.count else { PracticeSave.clear("handwriting", zh: true); return }
         PracticeSave.save(Saved(chars: list, idx: idx), "handwriting", zh: true, scope: 0)
     }

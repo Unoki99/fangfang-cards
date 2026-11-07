@@ -37,7 +37,7 @@ import kotlin.random.Random
 /** the practice screens, over everything */
 @Composable
 fun PracticeHost(p: Practice) {
-    BackHandler { UI.practice = null }
+    BackHandler { UI.practice = null; UI.handwritingOnly = null }
     val stars = remember { StarField() }
     AppBackground {
         StarBox(stars, Modifier.fillMaxSize().navigationBarsPadding()) {
@@ -50,7 +50,7 @@ fun PracticeHost(p: Practice) {
                 Practice.SCRAMBLE -> ScrambleScreen(false, stars)
                 Practice.READING -> ScrambleScreen(true, stars)
                 Practice.TONES -> ToneScreen(stars)
-                Practice.HANDWRITING -> HandwritingScreen { close() }
+                Practice.HANDWRITING -> HandwritingScreen(only = UI.handwritingOnly) { UI.handwritingOnly = null; close() }
             }
         }
     }

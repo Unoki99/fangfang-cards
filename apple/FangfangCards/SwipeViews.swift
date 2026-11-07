@@ -550,6 +550,7 @@ struct CharSideSwipe: View {
     @State private var bursts: [CardBurst] = []
     @State private var gone = false
     @State private var picture: (key: String, pic: CardPicture)?
+    @State private var writing = false
 
     var body: some View {
         GeometryReader { g in
@@ -557,6 +558,22 @@ struct CharSideSwipe: View {
                 if !gone {
                     CharSideCard(card: card, small: small)
                         .overlay { CardLight(swipe: max(-1, min(1, offset.width / 110)), touch: nil) }
+                        // write this character (手寫練習), then back to the cards
+                        .overlay(alignment: .bottomTrailing) {
+                            Button { writing = true } label: {
+                                Image(systemName: "pencil.and.scribble")
+                                    .font(.system(size: small ? 14 : 17, weight: .semibold))
+                                    .foregroundStyle(T.muted)
+                                    .frame(width: small ? 32 : 38, height: small ? 32 : 38)
+                                    // (quiet: see-through, in the theme's own colours)
+                                    .background(Circle().fill(.ultraThinMaterial))
+                                    .background(Circle().fill(T.fn.opacity(0.35)))
+                                    .overlay(Circle().stroke(T.fnEdge.opacity(0.6), lineWidth: 1))
+                            }
+                            .buttonStyle(SwellButtonStyle())
+                            .padding(small ? 8 : 12)
+                            .accessibilityLabel("寫這個字")
+                        }
                         .offset(offset)
                         .rotationEffect(.degrees(Double(offset.width / 22)))
                         .gesture(
@@ -572,6 +589,9 @@ struct CharSideSwipe: View {
                 if !bursts.isEmpty {
                     CardDust(bursts: bursts, pad: CardDust.pad).padding(-CardDust.pad).allowsHitTesting(false)
                 }
+            }
+            .fullScreenCover(isPresented: $writing) {
+                HandwritingView(only: [Lang.charOf(card.k) ?? card.h]).environmentObject(store)
             }
             // its picture, made ahead of time (see CardPicture)
             .task(id: "\(card.k)|\(Int(g.size.width))x\(Int(g.size.height))|\(ToneColors.system)|\(store.status(card) ?? 0)") {

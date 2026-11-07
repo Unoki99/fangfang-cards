@@ -615,6 +615,13 @@ private fun CharSideSwipe(card: Card, small: Boolean, modifier: Modifier) {
     }) {
         CharSideCard(card, small)
         CardLight((offset.value.x / dens / 110f).coerceIn(-1f, 1f))
+        // write this character (手寫練習), then back to the cards
+        Box(Modifier.align(Alignment.BottomEnd).padding(if (small) 8.dp else 12.dp).size(if (small) 32.dp else 38.dp).clip(CircleShape)
+            // (quiet: see-through, in the theme's own colours)
+            .background(T.bg.copy(alpha = 0.35f)).border(1.dp, T.fnEdge.copy(alpha = 0.6f), CircleShape)
+            .clickable { UI.handwritingOnly = listOf(ch); UI.practice = Practice.HANDWRITING }, contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Draw, "寫這個字", tint = T.muted, modifier = Modifier.size(if (small) 16.dp else 20.dp))
+        }
     }
 }
 

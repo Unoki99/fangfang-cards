@@ -214,8 +214,9 @@ object HandInk {
 // MARK: - the practice
 
 @Composable
-fun HandwritingScreen(onClose: () -> Unit) {
-    var list by remember { mutableStateOf<List<String>?>(null) }
+fun HandwritingScreen(only: List<String>? = null, onClose: () -> Unit) {
+    // only: from a side card, just these characters (not saved, no 選字)
+    var list by remember { mutableStateOf<List<String>?>(only) }
     var idx by remember { mutableIntStateOf(0) }
     var resumed by remember { mutableStateOf(false) }
     fun save() {
@@ -224,14 +225,15 @@ fun HandwritingScreen(onClose: () -> Unit) {
         else PracticeSave.save("handwriting", true, 0, mapOf("chars" to l, "idx" to idx))
     }
     LaunchedEffect(Unit) {
+        if (only != null) return@LaunchedEffect
         val s = PracticeSave.load("handwriting", true, 0) ?: return@LaunchedEffect
         val cs = PracticeSave.strings(s["chars"]); val i = PracticeSave.int(s["idx"])
         if (cs.isNotEmpty() && i < cs.size) { list = cs; idx = i; resumed = true }
     }
-    LaunchedEffect(idx, list) { if (list != null) save() }
+    LaunchedEffect(idx, list) { if (list != null && only == null) save() }
     Column(Modifier.fillMaxSize()) {
         TopBar("手寫練習", onClose, close = true, settings = false) {
-            if (list != null) TextButton(onClick = { PracticeSave.clear("handwriting", true); list = null }) {
+            if (list != null && only == null) TextButton(onClick = { PracticeSave.clear("handwriting", true); list = null }) {
                 Icon(Icons.Filled.GridView, null, tint = T.greenInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("選字", color = T.greenInk)
             }
             // 中 / 英 (華語's meanings), standing up next to the spelling / 腔口 buttons
