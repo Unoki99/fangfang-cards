@@ -251,7 +251,7 @@ struct LanguageWelcome: View {
     }
 
     private func choice(zh: Bool, title: String, sub: String, note: String) -> some View {
-        let fill = zh ? T.blue : Color(hex: P.now.own), edge = zh ? T.blueEdge : Color(hex: P.now.ownEdge), ink = zh ? T.blueInk : T.purpleInk
+        let fill = zh ? T.blue : T.own, edge = zh ? T.blueEdge : T.ownEdge, ink = zh ? T.blueInk : T.purpleInk
         return Button { pick(zh) } label: {
             HStack(spacing: 18) {
                 Text(zh ? "華" : "台").scaledFont(44, weight: .bold).foregroundStyle(ink)

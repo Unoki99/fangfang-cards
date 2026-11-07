@@ -105,8 +105,8 @@ enum T {
     /// buttons (what used to be green): 華語 blue, 台語 purple
     /// 華語 or 台語 now (kept in step by Store, readable from anywhere)
     nonisolated(unsafe) static var zh = false
-    static var btn: Color { zh ? blue : Color(hex: P.now.own) }
-    static var btnEdge: Color { zh ? blueEdge : Color(hex: P.now.ownEdge) }
+    static var btn: Color { zh ? blue : own }
+    static var btnEdge: Color { zh ? blueEdge : ownEdge }
     static var btnInk: Color { zh ? blueInk : purpleInk }
     static var olive: Color { Color(hex: P.now.olive) }
     static var oliveEdge: Color { Color(hex: P.now.oliveEdge) }
