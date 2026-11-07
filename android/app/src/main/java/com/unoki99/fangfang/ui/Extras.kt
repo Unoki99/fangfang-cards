@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -43,14 +44,14 @@ fun copyToClipboard(ctx: Context, s: String) {
 
 /** a round button that copies (a check for a moment after) */
 @Composable
-fun CopyIconButton(label: String = "複製這個意思", text: () -> String) {
+fun CopyIconButton(label: String = tr("複製這個意思"), text: () -> String) {
     val ctx = LocalContext.current
     var done by remember { mutableStateOf(false) }
     LaunchedEffect(done) { if (done) { delay(1200); done = false } }
     Box(Modifier.size(30.dp).clip(CircleShape).background(if (done) T.green else T.fn.copy(alpha = 0.8f))
         .border(1.5.dp, if (done) T.greenEdge else T.fnEdge, CircleShape)
         .clickable { copyToClipboard(ctx, text()); done = true }, contentAlignment = Alignment.Center) {
-        Icon(if (done) Icons.Filled.Check else Icons.Filled.ContentCopy, if (done) "已複製" else label,
+        Icon(if (done) Icons.Filled.Check else Icons.Filled.ContentCopy, if (done) tr("已複製") else label,
             tint = if (done) T.greenInk else T.muted, modifier = Modifier.size(16.dp))
     }
 }
@@ -63,7 +64,7 @@ fun SenseSaveButton(item: SavedSense) {
     Box(Modifier.size(30.dp).clip(CircleShape).background(if (on) T.blue else T.fn.copy(alpha = 0.8f))
         .border(1.5.dp, if (on) T.blueEdge else T.fnEdge, CircleShape)
         .clickable { Store.toggleSaved(item) }, contentAlignment = Alignment.Center) {
-        Icon(if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, if (on) "取消收藏這個意思" else "收藏這個意思",
+        Icon(if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, if (on) tr("取消收藏這個意思") else tr("收藏這個意思"),
             tint = if (on) T.blueInk else T.muted, modifier = Modifier.size(16.dp))
     }
 }

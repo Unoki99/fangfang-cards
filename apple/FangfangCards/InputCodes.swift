@@ -79,7 +79,7 @@ struct InputCodesRow: View {
                 }
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("輸入法拆碼")
+            .accessibilityLabel(tr("輸入法拆碼"))
         }
     }
 }
@@ -92,15 +92,15 @@ struct InputCodesSettings: View {
     @AppStorage("imeLiu") private var liu = false
     var body: some View {
         Section {
-            Toggle("在詞典顯示輸入法拆碼", isOn: $on)
+            Toggle(tr("在詞典顯示輸入法拆碼"), isOn: $on)
             if on {
-                Toggle("倉頡", isOn: $cj)
-                Toggle("五筆（86 版）", isOn: $wb)
-                Toggle("無蝦米", isOn: $liu)
+                Toggle(tr("倉頡"), isOn: $cj)
+                Toggle(tr("五筆（86 版）"), isOn: $wb)
+                Toggle(tr("無蝦米"), isOn: $liu)
                     .disabled(!InputCodes.shared.has(2))
             }
         } header: {
-            Text("輸入法拆碼")
+            Text(tr("輸入法拆碼"))
         } footer: {
             Text(InputCodes.shared.has(2) ? "顯示在詞典每個詞的上面。"
                  : "顯示在詞典每個詞的上面。無蝦米要用自己的碼表：把 .cin 檔放到 tools 資料夾，執行 build-data.sh ime。")

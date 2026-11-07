@@ -53,7 +53,7 @@ struct WordEntrySheet: View {
     var body: some View {
         NavigationStack {
             DictEntryView(dict: dict, key: key)
-                .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+                .toolbar { ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { dismiss() } } }
                 .dictDestinations(dict)
         }
         .presentationDetents([.medium, .large])
@@ -75,7 +75,7 @@ struct DictGate<Content: View>: View {
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("載入字典…").ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("載入字典…")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
         }
@@ -120,11 +120,11 @@ struct DictTabs: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $tab) {
-                Text("查詞").tag(0)
-                Text("各地讀音").tag(3)
-                Text("分類").tag(1)
-                Text("收藏").tag(2)
-                Text("自訂").tag(4)
+                Text(tr("查詞")).tag(0)
+                Text(tr("各地讀音")).tag(3)
+                Text(tr("分類")).tag(1)
+                Text(tr("收藏")).tag(2)
+                Text(tr("自訂")).tag(4)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
@@ -227,7 +227,7 @@ struct ConvertPane: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                             if hasOutput { panels } else {
-                                Text("轉換的結果會出現在這裡。").foregroundStyle(T.muted).padding(.top, 40)
+                                Text(tr("轉換的結果會出現在這裡。")).foregroundStyle(T.muted).padding(.top, 40)
                                     .frame(maxWidth: .infinity)
                             }
                         }
@@ -264,33 +264,33 @@ struct ConvertPane: View {
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
-                Button("完成") { focused = false }
+                Button(tr("完成")) { focused = false }
             }
         }
     }
 
     @ViewBuilder private var panels: some View {
-        panel(0, "漢字")
-        panel(1, ROM_NAMES[min(max(rom, 0), 2)])
-        panel(2, "方音")
+        panel(0, trs("漢字"))
+        panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)]))
+        panel(2, trs("方音"))
     }
 
     @ViewBuilder private var actions: some View {
         HStack(spacing: 10) {
             Button { copy(all: true) } label: {
-                Label(copied == 9 ? "已複製" : "全部複製", systemImage: copied == 9 ? "checkmark" : "doc.on.doc")
+                Label(copied == 9 ? trs("已複製") : trs("全部複製"), systemImage: copied == 9 ? "checkmark" : "doc.on.doc")
                     .frame(maxWidth: .infinity)
             }
             .softButton()
             Button { copySheet = true } label: {
-                Label("選擇複製…", systemImage: "slider.horizontal.3")
+                Label(tr("選擇複製…"), systemImage: "slider.horizontal.3")
                     .frame(maxWidth: .infinity)
             }
             .softButton()
         }
         .sheet(isPresented: $copySheet) {
             CopyOptionsSheet(texts: [plain(0), plain(1), plain(2)],
-                             names: ["漢字", ROM_NAMES[min(max(rom, 0), 2)], "方音"])
+                             names: [trs("漢字"), trs(ROM_NAMES[min(max(rom, 0), 2)]), trs("方音")])
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }
@@ -298,7 +298,7 @@ struct ConvertPane: View {
         if !keys.isEmpty {
             let newOnes = keys.filter { store.cardStatus($0) == 0 }
             Button { withAnimation(.snappy) { store.addUnknown(keys) } } label: {
-                Label(newOnes.isEmpty ? "這段的新詞都在卡片裡了" : "這段的新詞加到「不熟」（\(newOnes.count)）",
+                Label(newOnes.isEmpty ? trs("這段的新詞都在卡片裡了") : tr("這段的新詞加到「不熟」（\(newOnes.count)）"),
                       systemImage: newOnes.isEmpty ? "star.fill" : "star")
                     .frame(maxWidth: .infinity)
             }
@@ -306,21 +306,21 @@ struct ConvertPane: View {
             .disabled(newOnes.isEmpty)
             let all = keys.allSatisfy { store.isSaved($0) }
             Button { withAnimation(.snappy) { store.saveAll(keys) } } label: {
-                Label(all ? "這段的詞都收藏了" : "收藏這段所有的詞（\(keys.filter { !store.isSaved($0) }.count)）",
+                Label(all ? trs("這段的詞都收藏了") : tr("收藏這段所有的詞（\(keys.filter { !store.isSaved($0) }.count)）"),
                       systemImage: all ? "bookmark.fill" : "bookmark")
                     .frame(maxWidth: .infinity)
             }
             .softButton()
             .disabled(all)
         }
-        Text("點詞可以看意思、換讀音、收藏、加到「不熟」。詞下面有彩色小星星 = 已收藏或在「不熟」，藍色星星 = 收藏了這個詞的某個意思。橘色 = 字典裡找不到，或讀音不太確定（猜對的機會約 80% 以下），點一下可以確認。")
+        Text(tr("點詞可以看意思、換讀音、收藏、加到「不熟」。詞下面有彩色小星星 = 已收藏或在「不熟」，藍色星星 = 收藏了這個詞的某個意思。橘色 = 字典裡找不到，或讀音不太確定（猜對的機會約 80% 以下），點一下可以確認。"))
             .ffFont(.caption).foregroundStyle(T.muted)
     }
 
     private var input: some View {
         ZStack(alignment: .topLeading) {
             if model.text.isEmpty {
-                Text("輸入或貼上漢字、皓羅、方音、台羅、白話字…")
+                Text(tr("輸入或貼上漢字、皓羅、方音、台羅、白話字…"))
                     .foregroundStyle(T.muted)
                     .padding(.horizontal, 5).padding(.vertical, 8)
                     .allowsHitTesting(false)
@@ -353,12 +353,12 @@ struct ConvertPane: View {
     private var latinPicker: some View {
         let autoName = ["lat": "皓羅", "tl": "台羅", "poj": "白話字"][model.result.autoLatin] ?? "皓羅"
         return VStack(alignment: .leading, spacing: 4) {
-            Text("羅馬字當作").ffFont(.caption).foregroundStyle(T.muted)
-            Picker("羅馬字", selection: $model.latinMode) {
-                Text("自動（\(autoName)）").tag(LatinMode.auto)
-                Text("皓羅").tag(LatinMode.lat)
-                Text("台羅").tag(LatinMode.tl)
-                Text("白話字").tag(LatinMode.poj)
+            Text(tr("羅馬字當作")).ffFont(.caption).foregroundStyle(T.muted)
+            Picker(tr("羅馬字"), selection: $model.latinMode) {
+                Text(tr("自動（\(autoName)）")).tag(LatinMode.auto)
+                Text(tr("皓羅")).tag(LatinMode.lat)
+                Text(tr("台羅")).tag(LatinMode.tl)
+                Text(tr("白話字")).tag(LatinMode.poj)
             }
             .pickerStyle(.segmented)
         }
@@ -366,7 +366,7 @@ struct ConvertPane: View {
 
     private var help: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("例：").ffFont(.footnote, .bold).foregroundStyle(T.muted)
+            Text(tr("例：")).ffFont(.footnote, .bold).foregroundStyle(T.muted)
             ForEach(["我欲去學校讀冊。", "Guá beh khì ha̍k-hāu tha̍k-tsheh.", "ㆣㄨㄚˋ ㄅㆤㆷ ㄎㄧˋ"], id: \.self) { s in
                 Button { model.text = s } label: {
                     Group { if s.first.map({ $0.isASCII }) == true { Text(s).latFont(16) } else { Text(s).ffFont(.body) } }
@@ -608,7 +608,7 @@ struct WordSheet: View {
             NavigationStack {
                 page
                     .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } }
+                        ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { dismiss() } }
                         ToolbarItem(placement: .topBarLeading) { RomButton() }
                     }
                     .dictDestinations(dict)
@@ -642,13 +642,13 @@ struct WordSheet: View {
                                     if let k = dict.keyOf(it.current), dict.isUser(k) {
                                         HStack(spacing: 8) {
                                             OwnChip()
-                                            Text("你自己加的詞（不是教育部辭典的內容）。").ffFont(.footnote).foregroundStyle(T.muted)
+                                            Text(tr("你自己加的詞（不是教育部辭典的內容）。")).ffFont(.footnote).foregroundStyle(T.muted)
                                         }
                                     } else {
-                                        Text("字典裡沒有這個詞。").ffFont(.footnote).foregroundStyle(T.muted)
+                                        Text(tr("字典裡沒有這個詞。")).ffFont(.footnote).foregroundStyle(T.muted)
                                         if let h = it.current.han, !h.isEmpty {
                                             Button { addingOwn = true } label: {
-                                                Label("加到「自訂」", systemImage: "plus.circle")
+                                                Label(tr("加到「自訂」"), systemImage: "plus.circle")
                                                     .ffFont(.subheadline, .semibold)
                                                     .foregroundStyle(T.ownInk)
                                                     .padding(.horizontal, 12).padding(.vertical, 6)
@@ -702,9 +702,9 @@ struct WordSheet: View {
     private func options(_ it: ConvItem) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text("選讀音／漢字").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(tr("選讀音／漢字")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 if let p = it.likely {
-                    Text("目前的讀音：猜對的機會約 \(Int((p * 100).rounded()))%")
+                    Text(tr("目前的讀音：猜對的機會約 \(Int((p * 100).rounded()))%"))
                         .ffFont(.caption).foregroundStyle(it.unsure ? Color.orange : T.muted)
                 }
             }
@@ -789,7 +789,7 @@ struct DictEntryBody: View {
             otherWordsRow
             if let g = dict.gl[key], !g.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Chip(text: "華語", fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                    Chip(text: tr("華語"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
                     Text(g.map { $0.t }.joined(separator: "、")).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9))
                 }
             }
@@ -805,7 +805,7 @@ struct DictEntryBody: View {
                 }
             }
             if dict.raw.typ[key] == 1 {
-                Text("臺華共同詞：台語和華語寫法、意思一樣的詞。").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。")).ffFont(.caption).foregroundStyle(T.muted)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -833,15 +833,15 @@ struct DictEntryBody: View {
             InputCodesRow(han: han)
             HStack(spacing: 4) {
                 if let r = dict.raw.reg[key] { RegChip(reg: r) }
-                if dict.subst.contains(key) { Chip(text: "替", fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
+                if dict.subst.contains(key) { Chip(text: tr("替"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
                 if let t = dict.raw.typ[key], t > 0, let types = dict.raw.types, t < types.count, t != 1 {
                     Chip(text: types[t], fill: T.fn, edge: T.fnEdge, ink: T.muted)
                 }
-                if dict.own.contains(key) { Chip(text: "方方補", fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                if dict.own.contains(key) { Chip(text: tr("方方補"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
                 if dict.isUser(key) { OwnChip() }
                 if place >= 0, dict.differsFromCommon(key, place), place < dict.raw.places.count {
                     Chip(text: dict.raw.places[place], fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
-                    if !dict.isStated(key, place) { Chip(text: "推測", fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                    if !dict.isStated(key, place) { Chip(text: tr("推測"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
                 }
             }
         }
@@ -866,7 +866,7 @@ struct DictEntryBody: View {
     private var saveButton: some View {
         let on = store.isSaved(key)
         return Button { withAnimation(.snappy) { store.toggleSaved(key) } } label: {
-            Label(on ? "已收藏" : "收藏", systemImage: on ? "bookmark.fill" : "bookmark")
+            Label(on ? trs("已收藏") : trs("收藏"), systemImage: on ? "bookmark.fill" : "bookmark")
                 .ffFont(.subheadline, .semibold)
                 .foregroundStyle(on ? T.oliveInk : T.glyph)
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -879,10 +879,10 @@ struct DictEntryBody: View {
     @ViewBuilder private var star: some View {
         if let st = store.cardStatus(key) {
             if st == 1 {
-                Chip(text: "卡片：熟悉", fill: T.green, edge: T.greenEdge, ink: T.greenInk)
+                Chip(text: tr("卡片：熟悉"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
             } else {
                 Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
-                    Label(st == 2 ? "在「不熟」" : "加到「不熟」", systemImage: st == 2 ? "star.fill" : "star")
+                    Label(st == 2 ? trs("在「不熟」") : trs("加到「不熟」"), systemImage: st == 2 ? "star.fill" : "star")
                         .ffFont(.subheadline, .semibold)
                         .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
                         .padding(.horizontal, 12).padding(.vertical, 6)
@@ -948,7 +948,7 @@ struct DictEntryBody: View {
         let cs = dict.raw.cat?[key] ?? []
         if !cs.isEmpty, let names = dict.raw.cats {
             HStack(alignment: .top, spacing: 6) {
-                Chip(text: "分類", fill: T.pink, edge: T.pinkEdge, ink: T.pinkInk)
+                Chip(text: tr("分類"), fill: T.pink, edge: T.pinkEdge, ink: T.pinkInk)
                 FlowLayout(spacing: 6) {
                     ForEach(cs.filter { $0 < names.count }, id: \.self) { i in
                         NavigationLink(value: CatRef(i: i)) {
@@ -967,7 +967,7 @@ struct DictEntryBody: View {
         let vs = dict.raw.variants.filter { $0.value.contains(key) }.map(\.key).sorted()
         if !vs.isEmpty {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Chip(text: "異用字", fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                Chip(text: tr("異用字"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
                 Text(vs.joined(separator: "、")).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9))
             }
         }
@@ -1014,7 +1014,7 @@ struct DictEntryBody: View {
                     Chip(text: ps.map { $0 < dict.raw.places.count ? String(dict.raw.places[$0].prefix(2)) : "" }.joined(separator: "、"))
                     Text(dict.codes(codes, rom, ps.first ?? -1)).latFont(15).foregroundStyle(T.greenInk)
                     Text(dict.codes(codes, 3, ps.first ?? -1)).ffFont(.footnote).foregroundStyle(T.purpleInk)
-                    Text("這個意思").ffFont(.caption2).foregroundStyle(T.muted)
+                    Text(tr("這個意思")).ffFont(.caption2).foregroundStyle(T.muted)
                 }
                 .padding(.leading, 18)
             }
@@ -1281,8 +1281,8 @@ enum Lookup {
             r.tones = toneSearch(d, ts, place: place)
             if r.tones.isEmpty && ts.contains(6) {
                 r.toneNote = place < 0
-                    ? "通行讀音沒有第 6 聲。先在上方選一個有第 6 聲的腔口（例如鹿港），再查一次。"
-                    : "這個腔口找不到這個聲調組合的詞。第 6 聲只有部分腔口有（例如鹿港）。"
+                    ? trs("通行讀音沒有第 6 聲。先在上方選一個有第 6 聲的腔口（例如鹿港），再查一次。")
+                    : trs("這個腔口找不到這個聲調組合的詞。第 6 聲只有部分腔口有（例如鹿港）。")
             }
             return r
         }
@@ -1385,7 +1385,7 @@ struct LookupPane: View {
     var body: some View {
         List {
             Section {
-                TextField("華語、台語漢字、羅馬字或方音，例如：醫院、食飯、tsiah png", text: $query)
+                TextField(tr("華語、台語漢字、羅馬字或方音，例如：醫院、食飯、tsiah png"), text: $query)
                     .scaledFont(18)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
@@ -1397,17 +1397,17 @@ struct LookupPane: View {
             } header: {
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        NavigationLink(value: MoreRoute.classes) { TileLabel(icon: "list.bullet.indent", title: "依詞類列出") }
+                        NavigationLink(value: MoreRoute.classes) { TileLabel(icon: "list.bullet.indent", title: trs("依詞類列出")) }
                             .buttonStyle(.plain)
-                        NavigationLink(value: MoreRoute.compare) { TileLabel(icon: "rectangle.split.2x1", title: "單詞比較") }
+                        NavigationLink(value: MoreRoute.compare) { TileLabel(icon: "rectangle.split.2x1", title: trs("單詞比較")) }
                             .buttonStyle(.plain)
                     }
                     HStack(spacing: 10) {
                         NavigationLink {
                             RadicalPage(isChar: { dict.hanMap[$0] != nil }) { query += $0 }
-                        } label: { TileLabel(icon: "square.grid.3x3", title: "部首查字") }
+                        } label: { TileLabel(icon: "square.grid.3x3", title: trs("部首查字")) }
                             .buttonStyle(.plain)
-                        NavigationLink(value: MoreRoute.japanese) { TileLabel(icon: "globe.asia.australia", title: "日語借詞") }
+                        NavigationLink(value: MoreRoute.japanese) { TileLabel(icon: "globe.asia.australia", title: trs("日語借詞")) }
                             .buttonStyle(.plain)
                     }
                 }
@@ -1416,23 +1416,23 @@ struct LookupPane: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
             if !query.isEmpty && result.empty {
-                Text("找不到「\(query)」。").foregroundStyle(T.muted).listRowBackground(Color.clear)
+                Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
             if result.isPattern {
-                group("台語詞「\(query)」（\(result.pattern.count == 300 ? "300+" : String(result.pattern.count))）", result.pattern)
-                group("華語「\(query)」的台語講法", result.patternZh)
+                group(tr("台語詞「\(query)」（\(result.pattern.count == 300 ? "300+" : String(result.pattern.count))）"), result.pattern)
+                group(tr("華語「\(query)」的台語講法"), result.patternZh)
             } else if query.isEmpty {
-                Text("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）或方音。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…")
+                Text(tr("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）或方音。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…"))
                     .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
             if !result.tones.isEmpty {
-                group("聲調「\(query.filter { $0.isNumber }.map(String.init).joined(separator: "-"))」（\(result.tones.count >= 1000 ? "1000+" : String(result.tones.count))）", result.tones)
+                group(tr("聲調「\(query.filter { $0.isNumber }.map(String.init).joined(separator: "-"))」（\(result.tones.count >= 1000 ? "1000+" : String(result.tones.count))）"), result.tones)
             }
             if let note = result.toneNote {
                 Text(note).ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
-            group("台語「\(query)」", result.taigi)
-            group("台語講法", result.exact)
+            group(tr("台語「\(query)」"), result.taigi)
+            group(trs("台語講法"), result.exact)
             if !result.parts.isEmpty {
                 ForEach(Array(result.parts.enumerated()), id: \.offset) { i, w in
                     let pr = result.partResults[i]
@@ -1442,7 +1442,7 @@ struct LookupPane: View {
                 Section {
                 } header: {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("點一個詞，看那個詞的更多").ffFont(.footnote).foregroundStyle(T.muted).padding(.leading, 16)
+                        Text(tr("點一個詞，看那個詞的更多")).ffFont(.footnote).foregroundStyle(T.muted).padding(.leading, 16)
                         WordPickRow(words: result.parts, picked: $picked)
                     }
                     .textCase(nil)
@@ -1474,17 +1474,17 @@ struct LookupPane: View {
             Section {
             } header: {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("更多").ffFont(.footnote).foregroundStyle(T.muted).padding(.leading, 16)
+                    Text(tr("更多")).ffFont(.footnote).foregroundStyle(T.muted).padding(.leading, 16)
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                         if !r.sentences.isEmpty {
-                            NavigationLink(value: MoreRoute.sentences(title: "台語句子裡有「\(words)」", hits: r.sentences)) {
-                                TileLabel(icon: "text.quote", title: "句子裡有「\(words)」", count: r.sentences.count, cap: 300)
+                            NavigationLink(value: MoreRoute.sentences(title: tr("台語句子裡有「\(words)」"), hits: r.sentences)) {
+                                TileLabel(icon: "text.quote", title: tr("句子裡有「\(words)」"), count: r.sentences.count, cap: 300)
                             }
                             .buttonStyle(.plain)
                         }
                         if !r.contains.isEmpty {
-                            NavigationLink(value: MoreRoute.keys(title: "台語詞裡有「\(query)」", keys: r.contains)) {
-                                TileLabel(icon: "character.textbox", title: "詞裡有「\(query)」", count: r.contains.count, cap: 80)
+                            NavigationLink(value: MoreRoute.keys(title: tr("台語詞裡有「\(query)」"), keys: r.contains)) {
+                                TileLabel(icon: "character.textbox", title: tr("詞裡有「\(query)」"), count: r.contains.count, cap: 80)
                             }
                             .buttonStyle(.plain)
                         }
@@ -1492,19 +1492,19 @@ struct LookupPane: View {
                             NavigationLink(value: MoreRoute.places(groups: r.places.map { e in
                                 PlaceGroup(zh: e.zh, rows: e.rows.map { PlaceRow(han: $0.han, codes: $0.codes, places: $0.places) })
                             })) {
-                                TileLabel(icon: "map", title: "各地講法", count: r.places.count, cap: 6)
+                                TileLabel(icon: "map", title: trs("各地講法"), count: r.places.count, cap: 6)
                             }
                             .buttonStyle(.plain)
                         }
                         if !r.gloss.isEmpty {
-                            NavigationLink(value: MoreRoute.keys(title: "華語意思有「\(query)」", keys: r.gloss)) {
-                                TileLabel(icon: "text.magnifyingglass", title: "華語意思有「\(query)」", count: r.gloss.count, cap: 60)
+                            NavigationLink(value: MoreRoute.keys(title: tr("華語意思有「\(query)」"), keys: r.gloss)) {
+                                TileLabel(icon: "text.magnifyingglass", title: tr("華語意思有「\(query)」"), count: r.gloss.count, cap: 60)
                             }
                             .buttonStyle(.plain)
                         }
                         if !r.defs.isEmpty {
-                            NavigationLink(value: MoreRoute.keys(title: "解釋裡有「\(query)」", keys: r.defs)) {
-                                TileLabel(icon: "book", title: "解釋裡有「\(query)」", count: r.defs.count, cap: 60)
+                            NavigationLink(value: MoreRoute.keys(title: tr("解釋裡有「\(query)」"), keys: r.defs)) {
+                                TileLabel(icon: "book", title: tr("解釋裡有「\(query)」"), count: r.defs.count, cap: 60)
                             }
                             .buttonStyle(.plain)
                         }
@@ -1580,7 +1580,7 @@ struct MorePage: View {
             }
             .scrollContentBackground(.hidden)
             .appBackground()
-            .navigationTitle("各地講法")
+            .navigationTitle(tr("各地講法"))
             .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
         }
     }
@@ -1599,13 +1599,13 @@ struct KeyListSection: View {
                     NavigationLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) }
                         .swipeActions(edge: .leading) {
                             if store.cardStatus(k) == 0 {
-                                Button { store.toggleUnknown(k) } label: { Label("加到不熟", systemImage: "star") }
+                                Button { store.toggleUnknown(k) } label: { Label(tr("加到不熟"), systemImage: "star") }
                                     .tint(T.rustEdge)
                             }
                         }
                         .swipeActions(edge: .trailing) {
                             Button { store.toggleSaved(k) } label: {
-                                Label(store.isSaved(k) ? "取消收藏" : "收藏", systemImage: "bookmark")
+                                Label(store.isSaved(k) ? trs("取消收藏") : trs("收藏"), systemImage: "bookmark")
                             }
                             .tint(T.oliveEdge)
                         }
@@ -1702,9 +1702,9 @@ struct ExampleBlock: View {
                 ForEach(Array(dict.vocabOptions(w, place, zh: swapZh).enumerated()), id: \.offset) { _, o in
                     Button(o.han + "　" + dict.codes(o.codes.joined(separator: " "), min(max(rom, 0), 2), place)) { choose(w, o.han) }
                 }
-                Button("原本的詞：" + w + "　" + dict.word(dict.hanMap[w]?.first.map { w + "\t" + $0 } ?? w, min(max(rom, 0), 2), -1)) { choose(w, w) }
+                Button(tr("原本的詞：") + w + "　" + dict.word(dict.hanMap[w]?.first.map { w + "\t" + $0 } ?? w, min(max(rom, 0), 2), -1)) { choose(w, w) }
             }
-            Button("取消", role: .cancel) { swapWord = nil }
+            Button(tr("取消"), role: .cancel) { swapWord = nil }
         }
     }
 
@@ -1735,8 +1735,8 @@ struct ExampleBlock: View {
             let on = !dict.swapsOff().contains(k)
             VStack(alignment: .trailing, spacing: 6) {
                 HStack(spacing: 6) {
-                    Text("在地詞").ffFont(.caption, .bold).foregroundStyle(on ? T.pinkInk : T.muted)
-                    Toggle("在地詞", isOn: Binding(get: { on }, set: { setSwapOn(k, $0) }))
+                    Text(tr("在地詞")).ffFont(.caption, .bold).foregroundStyle(on ? T.pinkInk : T.muted)
+                    Toggle(tr("在地詞"), isOn: Binding(get: { on }, set: { setSwapOn(k, $0) }))
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .tint(T.swapInk)
@@ -1761,7 +1761,7 @@ struct ExampleBlock: View {
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Text("選詞")
+                            Text(tr("選詞"))
                             Image(systemName: "chevron.down").ffFont(.caption2, .bold)
                         }
                         .ffFont(.caption, .semibold)
@@ -1921,7 +1921,7 @@ struct SentencesPage: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 10) {
-                Text("\(hits.count) 句，短的在前面").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("\(hits.count) 句，短的在前面")).ffFont(.caption).foregroundStyle(T.muted)
                 ForEach(Array(hits.enumerated()), id: \.offset) { _, h in card(h) }
             }
             .padding()
@@ -1942,7 +1942,7 @@ struct SentencesPage: View {
             ExampleBlock(dict: dict, ex: e, own: h.word, boxedOwn: true, onWord: { tapped = DictKey(k: $0) })
             NavigationLink(value: DictKey(k: h.entry)) {
                 HStack(spacing: 4) {
-                    Text("出自").foregroundStyle(T.muted)
+                    Text(tr("出自")).foregroundStyle(T.muted)
                     Text(Dict.hanOf(h.entry)).foregroundStyle(T.blueInk)
                     Image(systemName: "chevron.right").ffFont(.caption2, .bold).foregroundStyle(T.muted)
                 }
@@ -1975,8 +1975,8 @@ struct SavedPane: View {
         List {
             if keys.isEmpty && senses.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label("還沒有收藏", systemImage: "bookmark").ffFont(.headline).foregroundStyle(T.glyph)
-                    Text("在「轉換」點一個詞，或在「查詞」打開一個詞，按「收藏」就會存在這裡。詞的每個意思旁邊也有書籤，可以只收藏那個意思（連同它的讀音、例句、音檔）。")
+                    Label(tr("還沒有收藏"), systemImage: "bookmark").ffFont(.headline).foregroundStyle(T.glyph)
+                    Text(tr("在「轉換」點一個詞，或在「查詞」打開一個詞，按「收藏」就會存在這裡。詞的每個意思旁邊也有書籤，可以只收藏那個意思（連同它的讀音、例句、音檔）。"))
                         .ffFont(.footnote).foregroundStyle(T.muted)
                 }
                 .listRowBackground(Color.clear)
@@ -1984,13 +1984,13 @@ struct SavedPane: View {
                 // export (here rather than in the top bar, so the top bar is the same on every page)
                 Menu {
                     Button { share(Data(store.savedCSV(dict).utf8), "方方-收藏.csv") } label: {
-                        Label("匯出 CSV（Anki）", systemImage: "tablecells")
+                        Label(tr("匯出 CSV（Anki）"), systemImage: "tablecells")
                     }
                     Button { share(Data(textExport(keys, senses).utf8), "方方-收藏.txt") } label: {
-                        Label("匯出文字", systemImage: "doc.plaintext")
+                        Label(tr("匯出文字"), systemImage: "doc.plaintext")
                     }
                 } label: {
-                    Label("匯出收藏", systemImage: "square.and.arrow.up").foregroundStyle(T.oliveInk)
+                    Label(tr("匯出收藏"), systemImage: "square.and.arrow.up").foregroundStyle(T.oliveInk)
                 }
                 .listRowBackground(T.fn.opacity(0.7))
                 if !keys.isEmpty {
@@ -1999,18 +1999,18 @@ struct SavedPane: View {
                         NavigationLink(value: DictKey(k: k)) { row(k) }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) { withAnimation { store.unsave([k]) } } label: {
-                                    Label("刪除", systemImage: "trash")
+                                    Label(tr("刪除"), systemImage: "trash")
                                 }
                             }
                             .swipeActions(edge: .leading) {
                                 if let st = store.cardStatus(k), st != 2 {
-                                    Button { store.toggleUnknown(k) } label: { Label("加到不熟", systemImage: "star") }
+                                    Button { store.toggleUnknown(k) } label: { Label(tr("加到不熟"), systemImage: "star") }
                                         .tint(T.rustEdge)
                                 }
                             }
                     }
                 } header: {
-                    Text("\(keys.count) 個詞（往左滑刪除，往右滑加到「不熟」）")
+                    Text(tr("\(keys.count) 個詞（往左滑刪除，往右滑加到「不熟」）"))
                 }
                 .listRowBackground(T.fn.opacity(0.7))
                 }
@@ -2020,12 +2020,12 @@ struct SavedPane: View {
                             NavigationLink(value: DictKey(k: s.key)) { senseRow(s) }
                                 .swipeActions(edge: .trailing) {
                                     Button(role: .destructive) { withAnimation { store.unsave(s) } } label: {
-                                        Label("刪除", systemImage: "trash")
+                                        Label(tr("刪除"), systemImage: "trash")
                                     }
                                 }
                         }
                     } header: {
-                        Text("\(senses.count) 個意思（往左滑刪除）")
+                        Text(tr("\(senses.count) 個意思（往左滑刪除）"))
                     }
                     .listRowBackground(T.fn.opacity(0.7))
                 }
@@ -2074,7 +2074,7 @@ struct SavedPane: View {
         return senseRowBody(s, m)
             .contextMenu {
                 Button { UIPasteboard.general.string = SenseCopy.text(dict, key: s.key, sense: s.sense, rom: rom, place: place) } label: {
-                    Label("複製這個意思", systemImage: "doc.on.doc")
+                    Label(tr("複製這個意思"), systemImage: "doc.on.doc")
                 }
             }
     }
@@ -2127,10 +2127,10 @@ struct CategoryPane: View {
         let shown = names.indices.filter { filter.isEmpty || names[$0].contains(filter) }
         List {
             Section {
-                TextField("找分類，例如：食物、稱謂、時間", text: $filter).autocorrectionDisabled().clearButton($filter)
+                TextField(tr("找分類，例如：食物、稱謂、時間"), text: $filter).autocorrectionDisabled().clearButton($filter)
             }
             .listRowBackground(T.fn.opacity(0.7))
-            Section("\(shown.count) 個分類（教育部辭典）") {
+            Section(tr("\(shown.count) 個分類（教育部辭典）")) {
                 ForEach(shown, id: \.self) { i in
                     NavigationLink(value: CatRef(i: i)) {
                         HStack {
@@ -2161,26 +2161,26 @@ struct CategoryWordsView: View {
         List {
             Section {
                 Button { withAnimation(.snappy) { store.addUnknown(keys) } } label: {
-                    Label(newOnes.isEmpty ? "這個分類的新詞都在卡片裡了" : "新詞全部加到「不熟」（\(newOnes.count)）",
+                    Label(newOnes.isEmpty ? trs("這個分類的新詞都在卡片裡了") : tr("新詞全部加到「不熟」（\(newOnes.count)）"),
                           systemImage: newOnes.isEmpty ? "star.fill" : "star")
                 }
                 .disabled(newOnes.isEmpty)
             } footer: {
-                Text("最常用的在前面。往右滑一個詞加到「不熟」，往左滑收藏。")
+                Text(tr("最常用的在前面。往右滑一個詞加到「不熟」，往左滑收藏。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
-            Section("\(keys.count) 個詞") {
+            Section(tr("\(keys.count) 個詞")) {
                 ForEach(keys, id: \.self) { k in
                     NavigationLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) }
                         .swipeActions(edge: .leading) {
                             if store.cardStatus(k) == 0 {
-                                Button { store.toggleUnknown(k) } label: { Label("加到不熟", systemImage: "star") }
+                                Button { store.toggleUnknown(k) } label: { Label(tr("加到不熟"), systemImage: "star") }
                                     .tint(T.rustEdge)
                             }
                         }
                         .swipeActions(edge: .trailing) {
                             Button { store.toggleSaved(k) } label: {
-                                Label(store.isSaved(k) ? "取消收藏" : "收藏", systemImage: "bookmark")
+                                Label(store.isSaved(k) ? trs("取消收藏") : trs("收藏"), systemImage: "bookmark")
                             }
                             .tint(T.oliveEdge)
                         }
@@ -2265,7 +2265,7 @@ extension Dict {
 /// shown under examples when some readings in them are guessed
 struct GuessNote: View {
     var body: some View {
-        Text("紅色 = 推測的讀音（辭典沒有寫這個地方怎麼唸這個詞，照規則推出來的）")
+        Text(tr("紅色 = 推測的讀音（辭典沒有寫這個地方怎麼唸這個詞，照規則推出來的）"))
             .ffFont(.caption2).foregroundStyle(T.muted)
     }
 }
@@ -2340,11 +2340,11 @@ struct PlacesTable: View {
         let commonBoxes = groups.filter { $0.codes == main }.count
         if always || groups.contains(where: { $0.codes != main }) || dict.raw.dia2?[key] != nil {
             VStack(alignment: .leading, spacing: 8) {
-                Text("各地讀音").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(tr("各地讀音")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(g.places.map { String(dict.raw.places[$0].prefix(2)) }.joined(separator: "、")
-                             + (g.codes == main ? (commonBoxes > 1 ? (g.places.contains(where: { dict.quanSandhi($0) }) ? "（同通行，泉腔變調）" : "（同通行，漳腔變調）") : "（同通行）") : ""))
+                             + (g.codes == main ? (commonBoxes > 1 ? (g.places.contains(where: { dict.quanSandhi($0) }) ? trs("（同通行，泉腔變調）") : trs("（同通行，漳腔變調）")) : trs("（同通行）")) : ""))
                             .ffFont(.caption).foregroundStyle(g.places.contains(place) ? T.oliveInk : T.muted)
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             // the 通行 box is written the 通行 way, whichever places share it
@@ -2352,13 +2352,13 @@ struct PlacesTable: View {
                             let shownIn = g.codes == main ? -1 : g.places[0]
                             Text(dict.wordText(key, rom, shownIn, tonesIn: g.places[0])).latFont(17).foregroundStyle(T.greenInk)
                             Text(dict.wordText(key, 3, shownIn, tonesIn: g.places[0])).ffFont(.subheadline).foregroundStyle(T.purpleInk)
-                            if g.guessed { Chip(text: "推測", fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                            if g.guessed { Chip(text: tr("推測"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
                         }
                         // the place also says it another way
                         let also = Array(Set(g.places.flatMap { dict.alsoSaid(key, $0) })).sorted()
                         ForEach(also, id: \.self) { x in
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Chip(text: "也講", fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                                Chip(text: tr("也講"), fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
                                 Text(dict.codes(x, rom, g.places[0])).latFont(15).foregroundStyle(T.greenInk)
                                 Text(dict.codes(x, 3, g.places[0])).ffFont(.footnote).foregroundStyle(T.purpleInk)
                                 let who = g.places.filter { dict.alsoSaid(key, $0).contains(x) }
@@ -2374,8 +2374,8 @@ struct PlacesTable: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.55)))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(g.places.contains(place) ? Color(hex: 0x7b3c9b) : .clear, lineWidth: 1.5))
                 }
-                Text(colours ? "推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。"
-                             : "紅色／推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。").ffFont(.caption2).foregroundStyle(T.muted)
+                Text(colours ? trs("推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。")
+                             : trs("紅色／推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。")).ffFont(.caption2).foregroundStyle(T.muted)
             }
         }
     }
@@ -2393,7 +2393,7 @@ struct PronunciationPane: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                TextField("台語漢字、羅馬字或方音，例如：做伙、四界、tsiah", text: $query)
+                TextField(tr("台語漢字、羅馬字或方音，例如：做伙、四界、tsiah"), text: $query)
                     .scaledFont(18)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -2401,10 +2401,10 @@ struct PronunciationPane: View {
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
                 if query.isEmpty {
-                    Text("查一個詞，看它在鹿港、三峽、臺北、宜蘭、臺南、高雄、金門、馬公、新竹、臺中各地的讀音。紅色／推測 = 辭典沒有寫，照規則推出來的。")
+                    Text(tr("查一個詞，看它在鹿港、三峽、臺北、宜蘭、臺南、高雄、金門、馬公、新竹、臺中各地的讀音。紅色／推測 = 辭典沒有寫，照規則推出來的。"))
                         .ffFont(.footnote).foregroundStyle(T.muted)
                 } else if keys.isEmpty {
-                    Text("找不到「\(query)」。").foregroundStyle(T.muted)
+                    Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted)
                 }
                 ForEach(keys, id: \.self) { k in
                     // the whole block opens the word's dictionary entry
@@ -2412,7 +2412,7 @@ struct PronunciationPane: View {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(Dict.hanOf(k)).scaledFont(24, weight: .semibold).foregroundStyle(T.glyph)
-                                Text("通行").ffFont(.caption).foregroundStyle(T.muted)
+                                Text(tr("通行")).ffFont(.caption).foregroundStyle(T.muted)
                                 Text(dict.word(k, min(max(rom, 0), 2), -1)).latFont(16).foregroundStyle(T.greenInk)
                                 Text(dict.word(k, 3, -1)).ffFont(.footnote).foregroundStyle(T.purpleInk)
                                 Spacer(minLength: 0)
@@ -2576,7 +2576,7 @@ struct WordClassPage: View {
                            keys: all ? keys : Array(keys.prefix(300)))
             if !all && keys.count > 300 {
                 Button { all = true } label: {
-                    Label("顯示全部（\(keys.count)）", systemImage: "list.bullet").foregroundStyle(T.oliveInk)
+                    Label(tr("顯示全部（\(keys.count)）"), systemImage: "list.bullet").foregroundStyle(T.oliveInk)
                 }
                 .listRowBackground(T.fn.opacity(0.7))
             }
@@ -2690,7 +2690,7 @@ struct ComparePage: View {
             }
         }
         .appBackground()
-        .navigationTitle("單詞比較")
+        .navigationTitle(tr("單詞比較"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
     }
@@ -2714,7 +2714,7 @@ struct ComparePane: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(T.muted)
-                TextField(slot == "A" ? "第一個詞" : "第二個詞", text: $query)
+                TextField(slot == "A" ? trs("第一個詞") : trs("第二個詞"), text: $query)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .onChange(of: query) { search() }
@@ -2732,7 +2732,7 @@ struct ComparePane: View {
             } else if !key.isEmpty, dict.raw.defs.m[key] != nil || dict.baseKeys.contains(key) || dict.isUser(key) {
                 ScrollView { DictEntryBody(dict: dict, key: key).padding(.horizontal).padding(.bottom) }
             } else {
-                Text("查一個詞，選它。").foregroundStyle(T.muted).frame(maxWidth: .infinity, maxHeight: .infinity)
+                Text(tr("查一個詞，選它。")).foregroundStyle(T.muted).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2776,7 +2776,7 @@ struct SenseSaveButton: View {
                 .overlay(Circle().stroke(on ? T.blueEdge : T.fnEdge, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(on ? "取消收藏這個意思" : "收藏這個意思")
+        .accessibilityLabel(on ? trs("取消收藏這個意思") : trs("收藏這個意思"))
     }
 }
 
@@ -2839,7 +2839,7 @@ struct WordClassListPage: View {
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .navigationTitle("依詞類列出")
+        .navigationTitle(tr("依詞類列出"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
     }
@@ -2915,13 +2915,13 @@ struct CopyOptionsSheet: View {
                 typeSection(1, $useRom, $styleRom, $preRom)
                 typeSection(2, $useZy, $styleZy, $preZy)
                 Section {
-                    Toggle("段跟段中間空一行", isOn: $gap)
+                    Toggle(tr("段跟段中間空一行"), isOn: $gap)
                 } footer: {
-                    Text("這些是 Discord 的格式：文字本身會被包起來，例如 **粗體**、||暗藏||、> 引用。")
+                    Text(tr("這些是 Discord 的格式：文字本身會被包起來，例如 **粗體**、||暗藏||、> 引用。"))
                 }
                 .listRowBackground(T.fn.opacity(0.7))
-                Section("預覽") {
-                    Text(output.isEmpty ? "（沒有選任何一段）" : output)
+                Section(tr("預覽")) {
+                    Text(output.isEmpty ? trs("（沒有選任何一段）") : output)
                         .ffFont(.footnote, mono: true)
                         .foregroundStyle(output.isEmpty ? T.muted : T.glyph)
                         .textSelection(.enabled)
@@ -2934,7 +2934,7 @@ struct CopyOptionsSheet: View {
                         done = true
                         Task { try? await Task.sleep(nanoseconds: 700_000_000); dismiss() }
                     } label: {
-                        Label(done ? "已複製" : "複製", systemImage: done ? "checkmark" : "doc.on.doc")
+                        Label(done ? trs("已複製") : trs("複製"), systemImage: done ? "checkmark" : "doc.on.doc")
                             .frame(maxWidth: .infinity)
                     }
                     .softButton()
@@ -2945,23 +2945,23 @@ struct CopyOptionsSheet: View {
             }
             .scrollContentBackground(.hidden)
             .appBackground()
-            .navigationTitle("選擇複製")
+            .navigationTitle(tr("選擇複製"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button(tr("取消")) { dismiss() } } }
         }
     }
 
     private func typeSection(_ i: Int, _ on: Binding<Bool>, _ style: Binding<Int>, _ pre: Binding<String>) -> some View {
         Section {
-            Toggle("複製\(names[i])", isOn: on)
+            Toggle(tr("複製\(names[i])"), isOn: on)
             if on.wrappedValue {
-                Picker("格式", selection: style) {
-                    ForEach(0..<Self.styles.count, id: \.self) { Text(Self.styles[$0].name).tag($0) }
+                Picker(tr("格式"), selection: style) {
+                    ForEach(0..<Self.styles.count, id: \.self) { Text(trs(Self.styles[$0].name)).tag($0) }
                 }
                 .pickerStyle(.menu)
                 HStack {
-                    Text("前面加").foregroundStyle(T.muted)
-                    TextField("（不加）", text: pre).multilineTextAlignment(.trailing).clearButton(pre)
+                    Text(tr("前面加")).foregroundStyle(T.muted)
+                    TextField(tr("（不加）"), text: pre).multilineTextAlignment(.trailing).clearButton(pre)
                 }
             }
         } header: {

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// purple 「自訂」 label: a word you added yourself, not from the MOE dictionary
 struct OwnChip: View {
-    var body: some View { Chip(text: "自訂", fill: T.own, edge: T.ownEdge, ink: T.ownInk) }
+    var body: some View { Chip(text: tr("自訂"), fill: T.own, edge: T.ownEdge, ink: T.ownInk) }
 }
 
 /// 詞典 → 自訂: the words you added yourself
@@ -17,11 +17,11 @@ struct OwnPane: View {
         List {
             Section {
                 Button { adding = true } label: {
-                    Label("加一個詞", systemImage: "plus.circle.fill")
+                    Label(tr("加一個詞"), systemImage: "plus.circle.fill")
                         .ffFont(.headline).foregroundStyle(T.ownInk)
                 }
             } footer: {
-                Text("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。")
+                Text(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
             if !keys.isEmpty {
@@ -30,12 +30,12 @@ struct OwnPane: View {
                         NavigationLink(value: DictKey(k: k)) { row(k) }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) { withAnimation { store.removeOwn(k) } } label: {
-                                    Label("刪除", systemImage: "trash")
+                                    Label(tr("刪除"), systemImage: "trash")
                                 }
                             }
                     }
                 } header: {
-                    Text("\(keys.count) 個詞（往左滑刪除）")
+                    Text(tr("\(keys.count) 個詞（往左滑刪除）"))
                 }
                 .listRowBackground(T.fn.opacity(0.7))
             }
@@ -72,23 +72,23 @@ struct AddOwnWordSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("漢字") {
-                    TextField("例：揣頭路", text: $han)
+                Section(tr("漢字")) {
+                    TextField(tr("例：揣頭路"), text: $han)
                         .autocorrectionDisabled()
                         .clearButton($han)
                 }
                 Section {
-                    TextField("例：tshuē-thâu-lōo", text: $reading)
+                    TextField(tr("例：tshuē-thâu-lōo"), text: $reading)
                         .latFont(17)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .clearButton($reading)
                 } header: {
-                    Text("讀音")
+                    Text(tr("讀音"))
                 } footer: {
-                    Text("用皓羅、台羅、白話字或方音都可以。寫聲調比較準；沒寫聲調的話，請看下面的結果對不對。")
+                    Text(tr("用皓羅、台羅、白話字或方音都可以。寫聲調比較準；沒寫聲調的話，請看下面的結果對不對。"))
                 }
-                Section("結果") {
+                Section(tr("結果")) {
                     switch check {
                     case .ok(let codes):
                         let cs = codes.joined(separator: " ")
@@ -106,12 +106,12 @@ struct AddOwnWordSheet: View {
             }
             .scrollContentBackground(.hidden)
             .appBackground()
-            .navigationTitle("加一個詞")
+            .navigationTitle(tr("加一個詞"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(tr("取消")) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("加入") {
+                    Button(tr("加入")) {
                         if case .ok(let codes) = check {
                             store.addOwn(han.trimmingCharacters(in: .whitespaces) + "\t" + codes.joined(separator: " "))
                             dismiss()
@@ -134,25 +134,25 @@ struct AddOwnWordSheet: View {
     private var check: Check {
         let h = han.trimmingCharacters(in: .whitespaces)
         let chars = h.unicodeScalars.filter { ConvertEngine.isHan($0.value) }
-        if h.isEmpty { return .problem("先寫漢字。") }
-        if chars.count != h.unicodeScalars.count { return .problem("漢字欄只能寫漢字。") }
-        if reading.trimmingCharacters(in: .whitespaces).isEmpty { return .problem("再寫讀音。") }
+        if h.isEmpty { return .problem(trs("先寫漢字。")) }
+        if chars.count != h.unicodeScalars.count { return .problem(trs("漢字欄只能寫漢字。")) }
+        if reading.trimmingCharacters(in: .whitespaces).isEmpty { return .problem(trs("再寫讀音。")) }
         guard let engine else { return .problem("") }
         var codes: [String] = []
         for it in engine.convert(reading).items {
             if it.space || it.newline { continue }
             if let raw = it.raw {
                 if raw.trimmingCharacters(in: CharacterSet(charactersIn: " -‑–")).isEmpty { continue }
-                return .problem("看不懂「\(raw)」這個讀音。")
+                return .problem(tr("看不懂「\(raw)」這個讀音。"))
             }
-            guard let c = it.current.codes else { return .problem("看不懂這個讀音。") }
+            guard let c = it.current.codes else { return .problem(trs("看不懂這個讀音。")) }
             codes += c
         }
-        if codes.isEmpty { return .problem("看不懂這個讀音。") }
-        if codes.count != chars.count { return .problem("讀音有 \(codes.count) 個音節，漢字有 \(chars.count) 個字，要一樣多。") }
+        if codes.isEmpty { return .problem(trs("看不懂這個讀音。")) }
+        if codes.count != chars.count { return .problem(tr("讀音有 \(codes.count) 個音節，漢字有 \(chars.count) 個字，要一樣多。")) }
         let key = h + "\t" + codes.joined(separator: " ")
-        if dict.baseKeys.contains(key) || (dict.altParent[key] != nil) { return .problem("辭典裡已經有這個詞了。") }
-        if store.isOwn(key) { return .problem("這個詞已經在「自訂」裡了。") }
+        if dict.baseKeys.contains(key) || (dict.altParent[key] != nil) { return .problem(trs("辭典裡已經有這個詞了。")) }
+        if store.isOwn(key) { return .problem(trs("這個詞已經在「自訂」裡了。")) }
         return .ok(codes)
     }
 }

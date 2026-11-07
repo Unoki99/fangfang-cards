@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.compose.animation.core.Animatable
 import kotlin.math.max
 import androidx.compose.foundation.Canvas
@@ -69,38 +70,38 @@ fun NewDeckTab() {
         if (Prefs.autoPlay.value) queue.firstOrNull()?.audio?.let { Player.play(it) }
     }
     Column(Modifier.fillMaxSize()) {
-        TopBar("新詞", extra = {
+        TopBar(tr("新詞"), extra = {
             Box {
                 TextButton(onClick = { menu = true }) {
                     Icon(Icons.Filled.Layers, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                     Text((Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
-                        ?: (if (zh) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・全部" else "全部"),
+                        ?: (if (zh) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
                         color = T.btnInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
                 }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
                     if (zh) {
-                        Txt("詞表", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Txt(tr("詞表"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         Lang.listNames.forEachIndexed { i, n ->
                             DropdownMenuItem(text = { Text(n, color = if (Prefs.zhList.value == i) T.greenInk else T.glyph) },
                                 onClick = { Store.setZhList(i); menu = false })
                         }
                         HorizontalDivider(color = T.fnEdge)
-                        Txt("等級", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                        Txt(tr("等級"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                     }
-                    DropdownMenuItem(text = { Text(if (zh) "全部（從第一級開始）" else "全部（最常用的先）", color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
+                    DropdownMenuItem(text = { Text(if (zh) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
                     for (t in Store.topics) {
                         if (zh && t.id == Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id) {
                             HorizontalDivider(color = T.fnEdge)
-                            Txt("漢字", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                            Txt(tr("漢字"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         }
-                        DropdownMenuItem(text = { Text("${t.name}（${t.count}）", color = if (topic == t.id) T.greenInk else T.glyph) },
+                        DropdownMenuItem(text = { Text(tr("{0}（{1}）", t.name, t.count), color = if (topic == t.id) T.greenInk else T.glyph) },
                             onClick = { topic = t.id; menu = false })
                     }
                     // 台語: the most common words / characters, 500 at a time
                     if (!zh) for (t in Store.freqTopics) {
                         if (t.id == Lang.freqWordBase || t.id == Lang.freqCharBase) {
                             HorizontalDivider(color = T.fnEdge)
-                            Txt(if (t.id == Lang.freqWordBase) "常用詞（每組 ${Lang.freqSize} 個）" else "常用字（每組 ${Lang.freqSize} 個）",
+                            Txt(if (t.id == Lang.freqWordBase) tr("常用詞（每組 {0} 個）", Lang.freqSize) else tr("常用字（每組 {0} 個）", Lang.freqSize),
                                 ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         }
                         DropdownMenuItem(text = { Text(t.name, color = if (topic == t.id) T.greenInk else T.glyph) }, onClick = { topic = t.id; menu = false })
@@ -124,12 +125,12 @@ fun NewDeckTab() {
                 // (zIndex: the big card goes over the side cards when it's swiped)
                 Column(Modifier.weight(1f).fillMaxHeight().zIndex(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     if (!sideways) {
-                        Txt("已看 ${Store.seenCount} / ${Store.cards.size}　熟悉 ${Store.knownCount}　不熟 ${Store.unknownCount}", ff(FF.Footnote), T.muted)
+                        Txt(tr("已看 {0} / {1}　熟悉 {2}　不熟 {3}", Store.seenCount, Store.cards.size, Store.knownCount, Store.unknownCount), ff(FF.Footnote), T.muted)
                         Spacer(Modifier.height(if (small) 6.dp else 12.dp))
                     }
                     if (queue.isEmpty()) {
                         Spacer(Modifier.weight(1f))
-                        Txt(if (topic < 0) "全部的詞都看過了！" else if (zh) "這個等級的詞都看過了！" else "這個主題的詞都看過了！", ff(FF.Title3), T.muted)
+                        Txt(if (topic < 0) tr("全部的詞都看過了！") else if (zh) tr("這個等級的詞都看過了！") else tr("這個主題的詞都看過了！"), ff(FF.Title3), T.muted)
                         Spacer(Modifier.weight(1f))
                     } else Box(Modifier.weight(1f).fillMaxWidth()) {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -140,7 +141,7 @@ fun NewDeckTab() {
                             .background(T.bg.copy(alpha = 0.35f)).border(1.dp, T.fnEdge.copy(alpha = 0.6f), CircleShape)
                             .clickable { sideButtons = !sideButtons }, contentAlignment = Alignment.Center) {
                             Icon(if (sideButtons) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
-                                if (sideButtons) "收起按鈕" else "顯示按鈕", tint = T.muted, modifier = Modifier.size(20.dp))
+                                if (sideButtons) tr("收起按鈕") else tr("顯示按鈕"), tint = T.muted, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
@@ -152,7 +153,7 @@ fun NewDeckTab() {
 
 /** a stack plus its buttons */
 @Composable
-fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = "不熟", rightLabel: String = "認識",
+fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = tr("不熟"), rightLabel: String = tr("認識"),
                          onSwipe: (Card, Boolean) -> Unit, undo: (() -> Unit)? = null, buttons: Boolean = true) {
     val scope = rememberCoroutineScope()
     val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
@@ -257,7 +258,7 @@ fun SwipeButtons(leftLabel: String, rightLabel: String, canUndo: Boolean, onLeft
         if (onUndo != null) {
             Box(Modifier.size(46.dp).clip(CircleShape).background(T.fn).border(2.dp, T.fnEdge, CircleShape).clickable(enabled = canUndo, onClick = onUndo),
                 contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Filled.Undo, "復原", tint = if (canUndo) T.oliveInk else T.fnEdge)
+                Icon(Icons.AutoMirrored.Filled.Undo, tr("復原"), tint = if (canUndo) T.oliveInk else T.fnEdge)
             }
         }
         RoundAction(Icons.Filled.Check, rightLabel, T.blue, T.blueEdge, T.blueInk, onRight)
@@ -292,13 +293,13 @@ fun WordCard(card: Card, isTop: Boolean) {
         val hideReading = Prefs.hideReading.value && !revealed
         Row(verticalAlignment = Alignment.CenterVertically) {
             // 設定 → 卡片先隱藏讀音: tap the card to see it
-            if (hideReading) Txt("點一下看讀音", ff(FF.Subheadline), T.muted, Modifier.weight(1f))
+            if (hideReading) Txt(tr("點一下看讀音"), ff(FF.Subheadline), T.muted, Modifier.weight(1f))
             else Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Txt(remember(card.k, tk, dict) { Store.cardRom(card, rom, place).annotated() }, lat(26f), T.greenInk)
                 Txt(remember(card.k, tk, dict) { Store.cardZy(card, place).annotated() }, sz(18f), T.purpleInk)
                 val also = Store.alsoSaid(card, rom, place).firstOrNull()
                 if (also != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlaceChip("也講"); Txt(also.first, lat(15f), T.greenInk.copy(alpha = 0.85f))
+                    PlaceChip(tr("也講")); Txt(also.first, lat(15f), T.greenInk.copy(alpha = 0.85f))
                 } else card.o?.firstOrNull()?.let { o ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Chip(o.l); Txt(o.r[rom.coerceIn(0, 2)], lat(15f), T.greenInk.copy(alpha = 0.85f))
@@ -309,7 +310,7 @@ fun WordCard(card: Card, isTop: Boolean) {
         }
         Box(Modifier.fillMaxWidth().height(2.dp).background(T.fnEdge))
         if (hide && !revealed) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Txt("點一下看意思", ff(FF.Headline), T.muted) }
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { Txt(tr("點一下看意思"), ff(FF.Headline), T.muted) }
         } else {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // 華語: the 詞類 (from the word lists), and the English meanings if they're the main ones
@@ -324,7 +325,7 @@ fun WordCard(card: Card, isTop: Boolean) {
                         if (d.p.isNotEmpty()) Chip(d.p)
                         Txt(d.t, ff(FF.Body), T.glyph, maxLines = if (exs.size > 1) 2 else 3)
                     }
-                    if (card.d.size > 3) Txt("還有 ${card.d.size - 3} 個意思", ff(FF.Caption), T.muted)
+                    if (card.d.size > 3) Txt(tr("還有 {0} 個意思", card.d.size - 3), ff(FF.Caption), T.muted)
                 }
                 for ((n, x) in exs) Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -343,7 +344,7 @@ fun WordCard(card: Card, isTop: Boolean) {
             Row(Modifier.clip(CircleShape).background(Color.White.copy(alpha = 0.08f)).border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
                 .clickable { UI.open(Sheet.CardSheet(card)) }.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.MenuBook, null, tint = T.greenInk, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(5.dp))
-                Txt("詳細", ff(FF.Footnote, FontWeight.SemiBold), T.greenInk)
+                Txt(tr("詳細"), ff(FF.Footnote, FontWeight.SemiBold), T.greenInk)
             }
         }
     }
@@ -354,11 +355,11 @@ fun WordCard(card: Card, isTop: Boolean) {
 fun CardChips(card: Card, place: Int) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         RegChip(card.g)
-        if (card.s == 1) Chip("替", T.rust, T.rustEdge, T.rustInk)
+        if (card.s == 1) Chip(tr("替"), T.rust, T.rustEdge, T.rustInk)
         card.t?.let { Chip(it, T.fn, T.fnEdge, T.muted) }
         if (Store.cardDiffers(card, place) && place < Store.places.size && place >= 0) {
             PlaceChip(Store.places[place].take(2))
-            if (Store.isGuessed(card, place)) Chip("推測", T.fn, T.fnEdge, T.muted)
+            if (Store.isGuessed(card, place)) Chip(tr("推測"), T.fn, T.fnEdge, T.muted)
         }
     }
 }
@@ -387,7 +388,7 @@ private fun CardDetail(card: Card) {
     Store.rev
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f)); BarButtons(settings = false)
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -400,7 +401,7 @@ private fun CardDetail(card: Card) {
                 Txt(Store.cardRom(card, rom, place).annotated(), lat(24f), T.greenInk)
                 Txt(Store.cardZy(card, place).annotated(), sz(17f), T.purpleInk)
                 for (o in card.o ?: emptyList()) OtherRow(o.l, o.r[rom.coerceIn(0, 2)], o.z)
-                Txt(when (Store.status(card)) { 1 -> "熟悉"; 2 -> "不熟（連續答對 ${Store.streak(card)} 次）"; else -> "還沒看過" }, ff(FF.Caption), T.muted)
+                Txt(when (Store.status(card)) { 1 -> tr("熟悉"); 2 -> tr("不熟（連續答對 {0} 次）", Store.streak(card)); else -> tr("還沒看過") }, ff(FF.Caption), T.muted)
             }
             for ((i, d) in card.d.withIndex()) Panel {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { NumBadge(i + 1); if (d.p.isNotEmpty()) Chip(d.p); Txt(d.t, ff(FF.Body), T.glyph) }
@@ -413,10 +414,10 @@ private fun CardDetail(card: Card) {
                     }
                 }
             }
-            if (card.t == "臺華共同") Txt("臺華共同詞：意思跟華語一樣。", ff(FF.Footnote), T.muted)
+            if (card.t == "臺華共同") Txt(tr("臺華共同詞：意思跟華語一樣。"), ff(FF.Footnote), T.muted)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ProminentButton(onClick = { Store.mark(card, false, false); UI.closeSheet() }, Modifier.weight(1f), T.rustEdge) { IconLabel(Icons.Filled.Close, "不熟") }
-                ProminentButton(onClick = { Store.mark(card, true, false); UI.closeSheet() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, "熟悉") }
+                ProminentButton(onClick = { Store.mark(card, false, false); UI.closeSheet() }, Modifier.weight(1f), T.rustEdge) { IconLabel(Icons.Filled.Close, tr("不熟")) }
+                ProminentButton(onClick = { Store.mark(card, true, false); UI.closeSheet() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("熟悉")) }
             }
             Spacer(Modifier.height(40.dp))
         }
@@ -461,7 +462,7 @@ fun UnknownTab() {
     val all = Store.practiceCards
     val list = all.filter { matches(it, query) }
     Column(Modifier.fillMaxSize()) {
-        TopBar("不熟")
+        TopBar(tr("不熟"))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
             item {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -469,35 +470,35 @@ fun UnknownTab() {
                     class PT(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val enabled: Boolean, val p: Practice)
                     PracticeScopeMenu()
                     val tiles = listOfNotNull(
-                        PT("開始練習", Icons.Filled.School, all.isNotEmpty(), Practice.STUDY),
-                        PT("例句填空", Icons.Filled.Rule, all.any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
-                        PT("排句子", Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
-                        PT("看字排讀音", Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
-                        PT("聲調練習", Icons.Filled.GraphicEq, true, Practice.TONES),
-                        PT("翻牌配對", Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
-                        PT("手寫練習", Icons.Filled.Edit, true, Practice.HANDWRITING),
+                        PT(tr("開始練習"), Icons.Filled.School, all.isNotEmpty(), Practice.STUDY),
+                        PT(tr("例句填空"), Icons.Filled.Rule, all.any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
+                        PT(tr("排句子"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
+                        PT(tr("看字排讀音"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
+                        PT(tr("聲調練習"), Icons.Filled.GraphicEq, true, Practice.TONES),
+                        PT(tr("翻牌配對"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
+                        PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
                     )
                     // the last tile: 怎麼練習, what each way of practising does
                     var help by remember { mutableStateOf(false) }
                     TileGrid(tiles.size + 1) { i, m ->
-                        if (i == tiles.size) PracticeTile("怎麼練習", Icons.Filled.HelpOutline, true, m) { help = true }
+                        if (i == tiles.size) PracticeTile(tr("怎麼練習"), Icons.Filled.HelpOutline, true, m) { help = true }
                         else { val t = tiles[i]; PracticeTile(t.title, t.icon, t.enabled, m) { UI.practice = t.p } }
                     }
                     if (help) PracticeHelp(goal) { help = false }
-                    SearchField(query, { query = it }, "漢字、羅馬字或意思", fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp))
-                    SectionTitle(if (Store.practiceName == "全部不熟的詞") "不熟的詞（${Store.unknownCount}）"
-                        else "${Store.practiceName}・不熟的詞（${all.size}／${Store.unknownCount}）")
+                    SearchField(query, { query = it }, tr("漢字、羅馬字或意思"), fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp))
+                    SectionTitle(if (Store.practiceName == tr("全部不熟的詞")) tr("不熟的詞（{0}）", Store.unknownCount)
+                        else tr("{0}・不熟的詞（{1}／{2}）", Store.practiceName, all.size, Store.unknownCount))
                 }
             }
-            if (list.isEmpty()) item { Txt(if (query.isEmpty()) "在「新詞」往左滑的詞會出現在這裡。" else "找不到。", ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+            if (list.isEmpty()) item { Txt(if (query.isEmpty()) tr("在「新詞」往左滑的詞會出現在這裡。") else tr("找不到。"), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
             items(list, key = { "u|" + it.k }) { c ->
-                SwipeRow(start = Pair("熟悉", T.greenEdge), end = Pair("移回新詞", T.oliveEdge),
+                SwipeRow(start = Pair(tr("熟悉"), T.greenEdge), end = Pair(tr("移回新詞"), T.oliveEdge),
                     onStart = { Store.mark(c, true, false) }, onEnd = { Store.forget(c) }, onClick = { UI.open(Sheet.CardSheet(c)) }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) { WordRow(c, Store.streak(c), goal) }
                         val inWeek = Store.isInWeek(c.k)
                         IconButton(onClick = { Store.toggleWeek(c.k) }) {
-                            Icon(if (inWeek) Icons.Filled.CalendarMonth else Icons.Filled.CalendarToday, if (inWeek) "移出本週" else "本週學習",
+                            Icon(if (inWeek) Icons.Filled.CalendarMonth else Icons.Filled.CalendarToday, if (inWeek) tr("移出本週") else tr("本週學習"),
                                 tint = if (inWeek) T.blueInk else T.fnEdge, modifier = Modifier.size(20.dp))
                         }
                     }
@@ -520,9 +521,9 @@ fun KnownTab() {
     fun shuffle() { reviewKeys = Store.knownCards.map { it.k }.shuffled(); pos = 0 }
     LaunchedEffect(Unit) { if (reviewKeys.isEmpty()) shuffle() }
     Column(Modifier.fillMaxSize()) {
-        TopBar("熟悉")
-        val modes = if (if (Store.isZh) Store.topics.isNotEmpty() else Store.freqTopics.isNotEmpty()) listOf(0 to "卡片複習", 1 to "列表", 2 to "學習進度")
-            else listOf(0 to "卡片複習", 1 to "列表")
+        TopBar(tr("熟悉"))
+        val modes = if (if (Store.isZh) Store.topics.isNotEmpty() else Store.freqTopics.isNotEmpty()) listOf(0 to tr("卡片複習"), 1 to tr("列表"), 2 to tr("學習進度"))
+            else listOf(0 to tr("卡片複習"), 1 to tr("列表"))
         Segmented(modes, mode, { mode = it }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         if (mode == 2) {
             HSKProgressList()
@@ -538,10 +539,10 @@ fun KnownTab() {
                 Spacer(Modifier.height(12.dp))
                 if (cards.isEmpty()) {
                     Spacer(Modifier.weight(1f))
-                    Txt(if (Store.knownCount == 0) "在「新詞」往右滑的詞會出現在這裡。" else "這一輪複習完了！", ff(FF.Body), T.muted, modifier = Modifier.fillMaxWidth())
-                    if (Store.knownCount > 0) { Spacer(Modifier.height(12.dp)); ProminentButton(onClick = { shuffle() }) { Text("再複習一輪") } }
+                    Txt(if (Store.knownCount == 0) tr("在「新詞」往右滑的詞會出現在這裡。") else tr("這一輪複習完了！"), ff(FF.Body), T.muted, modifier = Modifier.fillMaxWidth())
+                    if (Store.knownCount > 0) { Spacer(Modifier.height(12.dp)); ProminentButton(onClick = { shuffle() }) { Text(tr("再複習一輪")) } }
                     Spacer(Modifier.weight(1f))
-                } else DeckArea(cards, "不熟", "記得", onSwipe = { card, right ->
+                } else DeckArea(cards, tr("不熟"), tr("記得"), onSwipe = { card, right ->
                     if (!right) Store.mark(card, false, false)
                     val i = reviewKeys.subList(pos, reviewKeys.size).indexOf(card.k)
                     pos = if (i >= 0) pos + i + 1 else pos + 1
@@ -551,11 +552,11 @@ fun KnownTab() {
             val list = Store.knownCards.filter { matches(it, query) }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
                 item {
-                    SearchField(query, { query = it }, "漢字、羅馬字或意思")
-                    SectionTitle("熟悉的詞（${Store.knownCount}）")
+                    SearchField(query, { query = it }, tr("漢字、羅馬字或意思"))
+                    SectionTitle(tr("熟悉的詞（{0}）", Store.knownCount))
                 }
                 items(list, key = { "k|" + it.k }) { c ->
-                    SwipeRow(start = null, end = Pair("不熟", T.rustEdge), onEnd = { Store.mark(c, false, false) }, onClick = { UI.open(Sheet.CardSheet(c)) }) {
+                    SwipeRow(start = null, end = Pair(tr("不熟"), T.rustEdge), onEnd = { Store.mark(c, false, false) }, onClick = { UI.open(Sheet.CardSheet(c)) }) {
                         WordRow(c)
                     }
                     RowDivider()
@@ -581,19 +582,19 @@ fun PracticeTile(title: String, icon: androidx.compose.ui.graphics.vector.ImageV
 @Composable
 private fun PracticeHelp(goal: Int, close: () -> Unit) {
     val items = buildList {
-        add("本週學習" to "從不熟的詞選這個星期要學的（或點詞旁邊的月曆），一週後做期末測驗；答錯的詞可以留到下一週。")
-        add("開始練習" to "各種題目混在一起練。連續答對 $goal 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。")
-        add("例句填空" to "只做例句填空題。")
-        add("排句子" to "例句被打亂了，照華語的意思把詞排回去。")
-        add("看字排讀音" to "只看漢字，把讀音照順序排。")
-        add("聲調練習" to "聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。")
-        add("翻牌配對" to "不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。")
-        add("手寫練習" to (if (Store.isZh) "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），" else "選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），") + "看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。")
-        add("練習範圍" to "只練一個等級（或一組）的不熟的詞或字。")
+        add(tr("本週學習") to tr("從不熟的詞選這個星期要學的（或點詞旁邊的月曆），一週後做期末測驗；答錯的詞可以留到下一週。"))
+        add(tr("開始練習") to tr("各種題目混在一起練。連續答對 {0} 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。", goal))
+        add(tr("例句填空") to tr("只做例句填空題。"))
+        add(tr("排句子") to tr("例句被打亂了，照華語的意思把詞排回去。"))
+        add(tr("看字排讀音") to tr("只看漢字，把讀音照順序排。"))
+        add(tr("聲調練習") to tr("聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。"))
+        add(tr("翻牌配對") to tr("不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。"))
+        add(tr("手寫練習") to (if (Store.isZh) tr("選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），") else tr("選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），")) + tr("看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
+        add(tr("練習範圍") to tr("只練一個等級（或一組）的不熟的詞或字。"))
     }
     AlertDialog(onDismissRequest = close, containerColor = T.bg,
-        confirmButton = { TextButton(onClick = close) { Text("完成", color = T.btnInk) } },
-        title = { Txt("怎麼練習", ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
+        confirmButton = { TextButton(onClick = close) { Text(tr("完成"), color = T.btnInk) } },
+        title = { Txt(tr("怎麼練習"), ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 for ((t, x) in items) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.7f))
@@ -664,7 +665,7 @@ private fun CharSideSwipe(card: Card, small: Boolean, modifier: Modifier) {
                 handwritingGiven = if (card.isZh) emptyMap() else mapOf(card.h to card)
                 UI.handwritingOnly = listOf(ch); UI.practice = Practice.HANDWRITING
             }, contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Draw, "寫這個字", tint = T.muted, modifier = Modifier.size(if (small) 16.dp else 20.dp))
+            Icon(Icons.Filled.Draw, tr("寫這個字"), tint = T.muted, modifier = Modifier.size(if (small) 16.dp else 20.dp))
         }
     }
 }
@@ -683,8 +684,8 @@ private fun CharSideCard(card: Card, small: Boolean) {
             Txt(remember(card.k, tk) { Store.cardHan(card, place, T.blueInk.argbInt()).annotated() }, sz(if (small) 38f else 56f, FontWeight.Medium), T.blueInk, maxLines = 1)
             Txt(remember(card.k, tk) { Store.cardRom(card, rom, place).annotated() }, lat(if (small) 15f else 20f), T.greenInk, maxLines = 1)
             when (Store.status(card)) {
-                1 -> Chip("熟悉", T.blue, T.blueEdge, T.blueInk)
-                2 -> Chip("不熟", T.rust, T.rustEdge, T.rustInk)
+                1 -> Chip(tr("熟悉"), T.blue, T.blueEdge, T.blueInk)
+                2 -> Chip(tr("不熟"), T.rust, T.rustEdge, T.rustInk)
                 else -> {}
             }
         }

@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -74,7 +75,7 @@ private fun copyText(ctx: Context, s: String) {
 @Composable
 fun ConverterTab() {
     Column(Modifier.fillMaxSize()) {
-        TopBar("轉換")
+        TopBar(tr("轉換"))
         if (Store.isZh) ZhGate { z -> ZhConvertPane(z) }
         else DictGate { d -> ConvertPane(d) }
     }
@@ -95,7 +96,7 @@ private fun ConvertPane(d: Dict) {
     var copySheet by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied >= 0) { delay(1200); copied = -1 } }
     Store.rev
-    if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf("漢字", ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)], "方音")) { copySheet = false }
+    if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf(tr("漢字"), tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]), tr("方音"))) { copySheet = false }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 820.dp
@@ -103,7 +104,7 @@ private fun ConvertPane(d: Dict) {
         @Composable fun input() {
             Box(Modifier.fillMaxWidth().surface()) {
                 TextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 220.dp),
-                    placeholder = { Text("輸入或貼上漢字、皓羅、方音、台羅、白話字…", color = T.muted) },
+                    placeholder = { Text(tr("輸入或貼上漢字、皓羅、方音、台羅、白話字…"), color = T.muted) },
                     textStyle = TextStyle(fontSize = 18.sp, color = T.glyph),
                     colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                         focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = T.greenInk))
@@ -111,18 +112,18 @@ private fun ConvertPane(d: Dict) {
                     IconButton(onClick = {
                         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         cm.primaryClip?.getItemAt(0)?.coerceToText(ctx)?.toString()?.let { text = it }
-                    }) { Icon(Icons.Filled.ContentPaste, "貼上", tint = T.muted) }
-                    if (text.isNotEmpty()) IconButton(onClick = { text = "" }) { Icon(Icons.Filled.Cancel, "清除", tint = T.muted) }
+                    }) { Icon(Icons.Filled.ContentPaste, tr("貼上"), tint = T.muted) }
+                    if (text.isNotEmpty()) IconButton(onClick = { text = "" }) { Icon(Icons.Filled.Cancel, tr("清除"), tint = T.muted) }
                 }
             }
             if (res.anyLatin) {
-                val autoName = mapOf("lat" to "皓羅", "tl" to "台羅", "poj" to "白話字")[res.autoLatin] ?: "皓羅"
-                Txt("羅馬字當作", ff(FF.Caption), T.muted)
-                Segmented(listOf("auto" to "自動（$autoName）", "lat" to "皓羅", "tl" to "台羅", "poj" to "白話字"), latin, { Prefs.latin.value = it })
+                val autoName = mapOf("lat" to tr("皓羅"), "tl" to tr("台羅"), "poj" to tr("白話字"))[res.autoLatin] ?: tr("皓羅")
+                Txt(tr("羅馬字當作"), ff(FF.Caption), T.muted)
+                Segmented(listOf("auto" to tr("自動（{0}）", autoName), "lat" to tr("皓羅"), "tl" to tr("台羅"), "poj" to tr("白話字")), latin, { Prefs.latin.value = it })
             }
         }
         @Composable fun help() {
-            Txt("例：", ff(FF.Footnote, FontWeight.Bold), T.muted)
+            Txt(tr("例："), ff(FF.Footnote, FontWeight.Bold), T.muted)
             for (s in listOf("我欲去學校讀冊。", "Guá beh khì ha̍k-hāu tha̍k-tsheh.", "ㆣㄨㄚˋ ㄅㆤㆷ ㄎㄧˋ")) {
                 SoftButton(onClick = { text = s }, modifier = Modifier.fillMaxWidth()) {
                     Text(s, style = if (s.first().code < 128) lat(16f) else ff(FF.Body), color = T.glyph, modifier = Modifier.weight(1f))
@@ -130,17 +131,17 @@ private fun ConvertPane(d: Dict) {
             }
         }
         @Composable fun panels() {
-            for ((mode, title) in listOf(0 to "漢字", 1 to ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)], 2 to "方音")) {
+            for ((mode, title) in listOf(0 to tr("漢字"), 1 to tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]), 2 to tr("方音"))) {
                 OutPanel(d, mode, title, copied == mode, onCopy = { copyText(ctx, plain(mode)); copied = mode }) { i -> focus.clearFocus(); UI.open(Sheet.ConvWord(i)) }
             }
         }
         @Composable fun actions() {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SoftButton(onClick = { copyText(ctx, listOf(plain(0), plain(1), plain(2)).joinToString("\n")); copied = 9 }, modifier = Modifier.weight(1f)) {
-                    IconLabel(if (copied == 9) Icons.Filled.Check else Icons.Filled.ContentCopy, if (copied == 9) "已複製" else "全部複製", ff(FF.Subheadline))
+                    IconLabel(if (copied == 9) Icons.Filled.Check else Icons.Filled.ContentCopy, if (copied == 9) tr("已複製") else tr("全部複製"), ff(FF.Subheadline))
                 }
                 SoftButton(onClick = { copySheet = true }, modifier = Modifier.weight(1f)) {
-                    IconLabel(Icons.Filled.Tune, "選擇複製…", ff(FF.Subheadline))
+                    IconLabel(Icons.Filled.Tune, tr("選擇複製…"), ff(FF.Subheadline))
                 }
             }
             val keys = textKeys(d)
@@ -148,15 +149,15 @@ private fun ConvertPane(d: Dict) {
                 val newOnes = keys.filter { Store.cardStatus(it) == 0 }
                 SoftButton(onClick = { Store.addUnknown(keys) }, enabled = newOnes.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                     IconLabel(if (newOnes.isEmpty()) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        if (newOnes.isEmpty()) "這段的新詞都在卡片裡了" else "這段的新詞加到「不熟」（${newOnes.size}）", ff(FF.Subheadline))
+                        if (newOnes.isEmpty()) tr("這段的新詞都在卡片裡了") else tr("這段的新詞加到「不熟」（{0}）", newOnes.size), ff(FF.Subheadline))
                 }
                 val all = keys.all { Store.isSaved(it) }
                 SoftButton(onClick = { Store.saveAll(keys) }, enabled = !all, modifier = Modifier.fillMaxWidth()) {
                     IconLabel(if (all) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                        if (all) "這段的詞都收藏了" else "收藏這段所有的詞（${keys.count { !Store.isSaved(it) }}）", ff(FF.Subheadline))
+                        if (all) tr("這段的詞都收藏了") else tr("收藏這段所有的詞（{0}）", keys.count { !Store.isSaved(it) }), ff(FF.Subheadline))
                 }
             }
-            Txt("點詞可以看意思、換讀音、收藏、加到「不熟」。按住再滑過去，放開就打開那個詞。下面有彩色星星 = 已收藏或在「不熟」，藍色星星 = 收藏了這個詞的某個意思。橘色 = 字典裡找不到，或讀音不太確定（猜對的機會約 80% 以下），點一下可以確認。",
+            Txt(tr("點詞可以看意思、換讀音、收藏、加到「不熟」。按住再滑過去，放開就打開那個詞。下面有彩色星星 = 已收藏或在「不熟」，藍色星星 = 收藏了這個詞的某個意思。橘色 = 字典裡找不到，或讀音不太確定（猜對的機會約 80% 以下），點一下可以確認。"),
                 ff(FF.Caption), T.muted)
         }
         if (wide) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -165,7 +166,7 @@ private fun ConvertPane(d: Dict) {
                 input(); if (hasOutput) actions() else help()
             }
             Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (hasOutput) panels() else Txt("轉換的結果會出現在這裡。", ff(FF.Body), T.muted, Modifier.padding(top = 40.dp))
+                if (hasOutput) panels() else Txt(tr("轉換的結果會出現在這裡。"), ff(FF.Body), T.muted, Modifier.padding(top = 40.dp))
             }
         } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             input()
@@ -253,7 +254,7 @@ private fun OutPanel(d: Dict, mode: Int, title: String, copied: Boolean, onCopy:
         Row(verticalAlignment = Alignment.CenterVertically) {
             Txt(title, ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.weight(1f))
             SpeakButton(speechText())
-            IconButton(onClick = onCopy) { Icon(if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy, "複製", tint = T.muted, modifier = Modifier.size(18.dp)) }
+            IconButton(onClick = onCopy) { Icon(if (copied) Icons.Filled.Check else Icons.Filled.ContentCopy, tr("複製"), tint = T.muted, modifier = Modifier.size(18.dp)) }
         }
         val style = if (mode == 1) lat(19f) else sz(if (mode == 0) 22f else 20f)
         TapWords(
@@ -343,7 +344,7 @@ fun SpeakButton(text: String) {
             TaigiSpeech.Phase.FAILED -> Icon(Icons.Filled.Warning, null, tint = T.rustInk, modifier = Modifier.size(14.dp))
             TaigiSpeech.Phase.IDLE -> Icon(Icons.Filled.VolumeUp, null, tint = T.purpleInk, modifier = Modifier.size(14.dp))
         }
-        Txt(if (failed) "連不上鬥拍字" else if (ph == TaigiSpeech.Phase.IDLE) "唸出來" else "停", ff(FF.Footnote, FontWeight.SemiBold), if (failed) T.rustInk else T.purpleInk)
+        Txt(if (failed) tr("連不上鬥拍字") else if (ph == TaigiSpeech.Phase.IDLE) tr("唸出來") else tr("停"), ff(FF.Footnote, FontWeight.SemiBold), if (failed) T.rustInk else T.purpleInk)
     }
 }
 
@@ -356,7 +357,7 @@ fun ConvWordSheet(d: Dict, index: Int) {
     var addingOwn by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
@@ -366,8 +367,8 @@ fun ConvWordSheet(d: Dict, index: Int) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (it.opts.size > 1) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Txt("選讀音／漢字", ff(FF.Caption, FontWeight.Bold), T.muted)
-                    it.likely?.let { p -> Txt("目前的讀音：猜對的機會約 ${Math.round(p * 100)}%", ff(FF.Caption), if (it.unsure) Color(0xFFFF9F0A) else T.muted) }
+                    Txt(tr("選讀音／漢字"), ff(FF.Caption, FontWeight.Bold), T.muted)
+                    it.likely?.let { p -> Txt(tr("目前的讀音：猜對的機會約 {0}%", Math.round(p * 100)), ff(FF.Caption), if (it.unsure) Color(0xFFFF9F0A) else T.muted) }
                 }
                 for ((i, o) in it.opts.withIndex()) {
                     val on = i == it.sel
@@ -399,11 +400,11 @@ fun ConvWordSheet(d: Dict, index: Int) {
                     Txt(guessColored(e.wordPieces(it.current, 2, rom, place)).annotated(), ff(FF.Body), T.purpleInk)
                 }
                 if (k != null && d.isUser(k)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    OwnChip(); Txt("你自己加的詞（不是教育部辭典的內容）。", ff(FF.Footnote), T.muted)
+                    OwnChip(); Txt(tr("你自己加的詞（不是教育部辭典的內容）。"), ff(FF.Footnote), T.muted)
                 } else {
-                    Txt("字典裡沒有這個詞。", ff(FF.Footnote), T.muted)
+                    Txt(tr("字典裡沒有這個詞。"), ff(FF.Footnote), T.muted)
                     val h = it.current.han
-                    if (!h.isNullOrEmpty()) CapsuleButton("加到「自訂」", Icons.Filled.AddCircleOutline, true, T.own, T.ownEdge, T.ownInk) { addingOwn = true }
+                    if (!h.isNullOrEmpty()) CapsuleButton(tr("加到「自訂」"), Icons.Filled.AddCircleOutline, true, T.own, T.ownEdge, T.ownInk) { addingOwn = true }
                 }
             }
             Spacer(Modifier.height(60.dp))
@@ -479,7 +480,7 @@ fun CopyOptionsSheet(texts: List<String>, names: List<String>, onDone: () -> Uni
     LaunchedEffect(done) { if (done) { delay(700); onDone() } }
     ModalBottomSheet(onDismissRequest = onDone, containerColor = T.bg, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Txt("選擇複製", ff(FF.Headline))
+            Txt(tr("選擇複製"), ff(FF.Headline))
             for (i in 0 until 3) {
                 var on by Prefs.copyOn[i]
                 var style by Prefs.copyStyle[i]
@@ -487,17 +488,17 @@ fun CopyOptionsSheet(texts: List<String>, names: List<String>, onDone: () -> Uni
                 var menu by remember { mutableStateOf(false) }
                 Column(Modifier.fillMaxWidth().surface(RoundedCornerShape(14.dp), width = 1.dp).padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Txt("複製" + names[i], ff(FF.Body), T.glyph, Modifier.weight(1f))
+                        Txt(tr("複製") + names[i], ff(FF.Body), T.glyph, Modifier.weight(1f))
                         Switch(on, { on = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge))
                     }
                     if (on) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Txt("格式", ff(FF.Body), T.muted, Modifier.weight(1f))
+                            Txt(tr("格式"), ff(FF.Body), T.muted, Modifier.weight(1f))
                             Box {
-                                TextButton(onClick = { menu = true }) { Text(COPY_STYLES[style.coerceIn(0, COPY_STYLES.size - 1)].name, color = T.oliveInk) }
+                                TextButton(onClick = { menu = true }) { Text(tr(COPY_STYLES[style.coerceIn(0, COPY_STYLES.size - 1)].name), color = T.oliveInk) }
                                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
                                     COPY_STYLES.forEachIndexed { j, st ->
-                                        DropdownMenuItem(text = { Text(st.name, color = T.glyph) },
+                                        DropdownMenuItem(text = { Text(tr(st.name), color = T.glyph) },
                                             leadingIcon = { if (j == style) Icon(Icons.Filled.Check, null, tint = T.greenInk) else Spacer(Modifier.size(24.dp)) },
                                             onClick = { style = j; menu = false })
                                     }
@@ -505,23 +506,23 @@ fun CopyOptionsSheet(texts: List<String>, names: List<String>, onDone: () -> Uni
                             }
                         }
                         val fPre = remember { androidx.compose.ui.focus.FocusRequester() }
-                        OutlinedTextField(pre, { pre = it }, label = { Text("前面加") }, placeholder = { Text("（不加）") }, singleLine = true,
+                        OutlinedTextField(pre, { pre = it }, label = { Text(tr("前面加")) }, placeholder = { Text(tr("（不加）")) }, singleLine = true,
                             modifier = Modifier.fillMaxWidth().focusRequester(fPre), trailingIcon = { ClearIcon(pre, { pre = it }, fPre) })
                     }
                 }
             }
             var gap by Prefs.copyGap
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Txt("段跟段中間空一行", ff(FF.Body), T.glyph, Modifier.weight(1f))
+                Txt(tr("段跟段中間空一行"), ff(FF.Body), T.glyph, Modifier.weight(1f))
                 Switch(gap, { gap = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge))
             }
-            Txt("這些是 Discord 的格式：文字本身會被包起來，例如 **粗體**、||暗藏||、> 引用。", ff(FF.Caption), T.muted)
+            Txt(tr("這些是 Discord 的格式：文字本身會被包起來，例如 **粗體**、||暗藏||、> 引用。"), ff(FF.Caption), T.muted)
             val out = copyOutput(texts)
-            Txt("預覽", ff(FF.Caption, FontWeight.Bold), T.muted)
-            Txt(if (out.isEmpty()) "（沒有選任何一段）" else out, ff(FF.Footnote).copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+            Txt(tr("預覽"), ff(FF.Caption, FontWeight.Bold), T.muted)
+            Txt(if (out.isEmpty()) tr("（沒有選任何一段）") else out, ff(FF.Footnote).copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
                 if (out.isEmpty()) T.muted else T.glyph, Modifier.fillMaxWidth().surface(RoundedCornerShape(12.dp), width = 1.dp).padding(10.dp))
             ProminentButton(onClick = { copyText(ctx, out); done = true }, enabled = out.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
-                IconLabel(if (done) Icons.Filled.Check else Icons.Filled.ContentCopy, if (done) "已複製" else "複製", ff(FF.Headline))
+                IconLabel(if (done) Icons.Filled.Check else Icons.Filled.ContentCopy, if (done) tr("已複製") else tr("複製"), ff(FF.Headline))
             }
             Spacer(Modifier.height(30.dp))
         }

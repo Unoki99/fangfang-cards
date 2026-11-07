@@ -30,7 +30,7 @@ struct ZhEnglishList: View {
                 }
             }
             if max > 0 && items.count > max {
-                Text("還有 \(items.count - max) 個意思").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("還有 \(items.count - max) 個意思")).ffFont(.caption).foregroundStyle(T.muted)
             }
         }
     }
@@ -61,13 +61,13 @@ struct ZhWordClassListPage: View {
                     }
                 }
             } footer: {
-                Text("詞類來自 HSK 3.0 和 TOCFL 的詞表，所以只有詞表裡的詞有。")
+                Text(tr("詞類來自 HSK 3.0 和 TOCFL 的詞表，所以只有詞表裡的詞有。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .navigationTitle("依詞類列出")
+        .navigationTitle(tr("依詞類列出"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             guard counts.isEmpty else { return }
@@ -93,16 +93,16 @@ struct ZhWordClassPage: View {
     var body: some View {
         List {
             if let list {
-                Section("\(list.count) 個詞") {
+                Section(tr("\(list.count) 個詞")) {
                     ForEach(list, id: \.self) { i in
                         let e = dict.entries[i]
                         NavigationLink(value: ZhKey(k: e.k)) { ZhWordRow(dict: dict, entry: e) }
                             .swipeActions(edge: .leading) {
-                                Button { store.toggleUnknown(e.k) } label: { Label("不熟", systemImage: "star") }.tint(T.rustEdge)
+                                Button { store.toggleUnknown(e.k) } label: { Label(tr("不熟"), systemImage: "star") }.tint(T.rustEdge)
                             }
                             .swipeActions(edge: .trailing) {
                                 Button { store.toggleSaved(e.k) } label: {
-                                    Label(store.isSaved(e.k) ? "取消收藏" : "收藏", systemImage: "bookmark")
+                                    Label(store.isSaved(e.k) ? trs("取消收藏") : trs("收藏"), systemImage: "bookmark")
                                 }.tint(T.oliveEdge)
                             }
                     }

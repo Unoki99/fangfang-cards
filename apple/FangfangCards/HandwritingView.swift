@@ -184,16 +184,16 @@ struct HandwritingView: View {
             }
             .overlay(alignment: .top) { ResumedNote(shown: $resumed).padding(.top, 4) }
             .appBackground()
-            .navigationTitle("手寫練習")
+            .navigationTitle(tr("手寫練習"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("結束")
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
                 }
                 if list != nil && only == nil {
                     ToolbarItem(placement: .topBarLeading) {
                         Button { PracticeSave.clear("handwriting", zh: store.isZh); list = nil } label: {
-                            Label("選字", systemImage: "square.grid.3x3")
+                            Label(tr("選字"), systemImage: "square.grid.3x3")
                         }
                     }
                 }
@@ -230,22 +230,22 @@ private struct HandwritingSetup: View {
         // 台語: the characters of your 不熟 / 熟悉 words
         if !store.isZh {
             let sets = store.twCharSets()
-            var out = [Source(id: "unknown", name: "不熟的詞的字", chars: sets.unknown),
-                       Source(id: "known", name: "熟悉的詞的字", chars: sets.known)]
+            var out = [Source(id: "unknown", name: trs("不熟的詞的字"), chars: sets.unknown),
+                       Source(id: "known", name: trs("熟悉的詞的字"), chars: sets.known)]
             var seen = Set<String>()
             let mine = own.unicodeScalars.filter { Zhuyin.isHan($0) }.map { String($0) }.filter { seen.insert($0).inserted }
-            out.append(Source(id: "own", name: "自己選的字", chars: mine))
+            out.append(Source(id: "own", name: trs("自己選的字"), chars: mine))
             return out
         }
         let sets = store.zhCharSets()
-        var out = [Source(id: "unknown", name: "不熟的漢字", chars: sets.all.filter { sets.unknown.contains($0) })]
+        var out = [Source(id: "unknown", name: trs("不熟的漢字"), chars: sets.all.filter { sets.unknown.contains($0) })]
         for t in store.topics where t.id > Lang.charTopicBase {
             out.append(Source(id: "level\(t.id)", name: t.name, chars: store.levelCards(t.id).compactMap { Lang.charOf($0.k) }))
         }
-        out.append(Source(id: "known", name: "認識的漢字", chars: sets.all.filter { sets.known.contains($0) }))
+        out.append(Source(id: "known", name: trs("認識的漢字"), chars: sets.all.filter { sets.known.contains($0) }))
         var seen = Set<String>()
         let mine = own.unicodeScalars.filter { Zhuyin.isHan($0) }.map { String($0) }.filter { seen.insert($0).inserted }
-        out.append(Source(id: "own", name: "自己選的字", chars: mine))
+        out.append(Source(id: "own", name: trs("自己選的字"), chars: mine))
         return out
     }
 
@@ -259,12 +259,12 @@ private struct HandwritingSetup: View {
                 Button {
                     start(shuffle ? picked.shuffled() : picked)
                 } label: {
-                    Label("開始寫（\(picked.count) 個字）", systemImage: "pencil.and.scribble").frame(maxWidth: .infinity, minHeight: 44)
+                    Label(tr("開始寫（\(picked.count) 個字）"), systemImage: "pencil.and.scribble").frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .prominentButton(T.btnEdge)
                 .disabled(picked.isEmpty)
-                Toggle("打亂順序", isOn: $shuffle)
-                Picker("要寫的字", selection: $listID) {
+                Toggle(tr("打亂順序"), isOn: $shuffle)
+                Picker(tr("要寫的字"), selection: $listID) {
                     ForEach(all) { s in Text(s.id == "own" ? s.name : "\(s.name)（\(s.chars.count)）").tag(s.id) }
                 }
                 .pickerStyle(.menu)
@@ -274,7 +274,7 @@ private struct HandwritingSetup: View {
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
                 .onChange(of: listID) { off = [] }
                 if src.id == "own" {
-                    TextField("打你要寫的字，例如：龍鳳書寫", text: $own)
+                    TextField(tr("打你要寫的字，例如：龍鳳書寫"), text: $own)
                         .scaledFont(20)
                         .autocorrectionDisabled()
                         .clearButton($own)
@@ -283,14 +283,14 @@ private struct HandwritingSetup: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
                 }
                 if src.chars.isEmpty {
-                    Text(src.id == "unknown" ? "還沒有不熟的漢字。" : (src.id == "own" ? "在上面打字。" : "這裡沒有字。"))
+                    Text(src.id == "unknown" ? trs("還沒有不熟的漢字。") : (src.id == "own" ? trs("在上面打字。") : trs("這裡沒有字。")))
                         .ffFont(.footnote).foregroundStyle(T.muted)
                 } else {
                     HStack(spacing: 10) {
-                        Text("點字可以不選它。選了 \(picked.count)／\(src.chars.count) 個").ffFont(.footnote).foregroundStyle(T.muted)
+                        Text(tr("點字可以不選它。選了 \(picked.count)／\(src.chars.count) 個")).ffFont(.footnote).foregroundStyle(T.muted)
                         Spacer()
-                        Button("全選") { off = [] }.ffFont(.footnote, .semibold)
-                        Button("全不選") { off = Set(src.chars) }.ffFont(.footnote, .semibold)
+                        Button(tr("全選")) { off = [] }.ffFont(.footnote, .semibold)
+                        Button(tr("全不選")) { off = Set(src.chars) }.ffFont(.footnote, .semibold)
                     }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
                         ForEach(src.chars, id: \.self) { ch in
@@ -390,7 +390,7 @@ private struct HandwritingPad: View {
     private func sideWords(_ ch: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
-                Text("有「\(ch)」的詞").ffFont(.headline).foregroundStyle(T.glyph)
+                Text(tr("有「\(ch)」的詞")).ffFont(.headline).foregroundStyle(T.glyph)
                     .lineLimit(1).minimumScaleFactor(0.7)
                     .padding(.top, 4)
                 Spacer(minLength: 8)
@@ -413,23 +413,23 @@ private struct HandwritingPad: View {
 
     private func progressRow() -> some View {
         HStack(spacing: 10) {
-            PotionBar(value: Double(idx + 1) / Double(chars.count), height: 20, showMarks: false, label: "手寫進度")
-            Text("\(idx + 1)／\(chars.count)").latFont(14).monospacedDigit().foregroundStyle(T.muted)
+            PotionBar(value: Double(idx + 1) / Double(chars.count), height: 20, showMarks: false, label: trs("手寫進度"))
+            Text(tr("\(idx + 1)／\(chars.count)")).latFont(14).monospacedDigit().foregroundStyle(T.muted)
         }
     }
     @ViewBuilder private func scoreAndNotes() -> some View {
         if trace {
             HStack(spacing: 10) {
-                Text("描得像").ffFont(.footnote, .semibold).foregroundStyle(T.muted)
-                PotionBar(value: score, height: 22, showMarks: false, label: "描得像")
+                Text(tr("描得像")).ffFont(.footnote, .semibold).foregroundStyle(T.muted)
+                PotionBar(value: score, height: 22, showMarks: false, label: trs("描得像"))
                 Text(drawn ? "\(Int((score * 100).rounded()))%" : "—").latFont(15).monospacedDigit().foregroundStyle(T.glyph)
                     .frame(minWidth: 44, alignment: .trailing)
             }
         }
         if downloading && Kaiti.styles[Kaiti.style].file == nil {
-            Text("下載楷體中…（第一次要網路）").ffFont(.caption).foregroundStyle(T.muted)
+            Text(tr("下載楷體中…（第一次要網路）")).ffFont(.caption).foregroundStyle(T.muted)
         } else if !kaiti && trace && Kaiti.styles[Kaiti.style].file == nil {
-            Text("楷體下載不了，先用系統的字。").ffFont(.caption).foregroundStyle(T.muted)
+            Text(tr("楷體下載不了，先用系統的字。")).ffFont(.caption).foregroundStyle(T.muted)
         }
     }
     /// 格子大小: the writing square, bigger or smaller (the shadow follows)
@@ -438,7 +438,7 @@ private struct HandwritingPad: View {
             Image(systemName: "square.resize.down").foregroundStyle(T.muted)
             Slider(value: Binding(get: { Double(padSide) }, set: { padSize = $0 }), in: 180...Double(max(181, maxPad)))
                 .tint(T.btnEdge)
-                .accessibilityLabel("格子大小")
+                .accessibilityLabel(tr("格子大小"))
             Image(systemName: "square.resize.up").foregroundStyle(T.muted)
         }
     }
@@ -483,36 +483,36 @@ private struct HandwritingPad: View {
                 HStack {
                     // 字體: 楷體, 文楷 or 芫荽 (the character at the top and the one to trace)
                     Menu {
-                        Picker("字體", selection: $fontStyle) {
-                            ForEach(Kaiti.styles.indices, id: \.self) { Text(Kaiti.styles[$0].name).tag($0) }
+                        Picker(tr("字體"), selection: $fontStyle) {
+                            ForEach(Kaiti.styles.indices, id: \.self) { Text(trs(Kaiti.styles[$0].name)).tag($0) }
                         }
                         .pickerStyle(.inline)
                     } label: {
-                        Label("字體", systemImage: "textformat")
+                        Label(tr("字體"), systemImage: "textformat")
                     }
-                    .accessibilityLabel("字體：" + Kaiti.styles[Kaiti.style].name)
+                    .accessibilityLabel(tr("字體：") + trs(Kaiti.styles[Kaiti.style].name))
                     // 筆: which pen, how thick, 彩色
-                    Button { penOpen = true } label: { Label("筆", systemImage: "pencil.tip") }
+                    Button { penOpen = true } label: { Label(tr("筆"), systemImage: "pencil.tip") }
                         .popover(isPresented: $penOpen) {
                             PenSettings(compact: true).presentationCompactAdaptation(.popover)
                         }
                     // 顏色: the dark ink, the rainbow (a new colour every stroke) or a colour of its own
                     Button { colorOpen = true } label: {
-                        Label { Text("顏色") } icon: { InkSwatch(size: 20) }
+                        Label { Text(tr("顏色")) } icon: { InkSwatch(size: 20) }
                     }
                     .popover(isPresented: $colorOpen) {
                         InkColorPicker(compact: true).presentationCompactAdaptation(.popover)
                     }
-                    .accessibilityLabel("筆的顏色")
+                    .accessibilityLabel(tr("筆的顏色"))
                     // 描字: on = the icon glows (no filled background), off = plain
                     Button { withAnimation(.easeInOut(duration: 0.25)) { trace.toggle() } } label: {
-                        Label("描字", systemImage: "character.cursor.ibeam")
+                        Label(tr("描字"), systemImage: "character.cursor.ibeam")
                             .foregroundStyle(trace ? T.btnInk : T.muted)
                             .shadow(color: trace ? T.btnEdge.opacity(0.95) : .clear, radius: 3)
                             .shadow(color: trace ? T.btnEdge.opacity(0.7) : .clear, radius: 9)
                     }
-                    .accessibilityLabel("描字")
-                    .accessibilityValue(trace ? "開" : "關")
+                    .accessibilityLabel(tr("描字"))
+                    .accessibilityValue(trace ? trs("開") : trs("關"))
                     .accessibilityAddTraits(trace ? .isSelected : [])
                 }
             }
@@ -568,12 +568,12 @@ private struct HandwritingPad: View {
                 Button { wordsFor = WordsRef(ch: ch) } label: {
                     VStack(spacing: 0) {
                         Text(ch).font(Kaiti.swiftUI(64)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
-                        Label("看詞", systemImage: "text.magnifyingglass").ffFont(.caption2, .semibold).foregroundStyle(T.muted)
+                        Label(tr("看詞"), systemImage: "text.magnifyingglass").ffFont(.caption2, .semibold).foregroundStyle(T.muted)
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(SwellButtonStyle())
-                .accessibilityLabel("看有「\(ch)」的詞")
+                .accessibilityLabel(tr("看有「\(ch)」的詞"))
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(i.reading).latFont(24).toneGlow().foregroundStyle(T.greenInk)
@@ -629,7 +629,7 @@ private struct HandwritingPad: View {
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .frame(width: padSide, height: padSide)
-        .accessibilityLabel("寫字的地方")
+        .accessibilityLabel(tr("寫字的地方"))
     }
 
     private func makeTarget(_ ch: String) {
@@ -640,15 +640,15 @@ private struct HandwritingPad: View {
 
     private var controls: some View {
         HStack(spacing: 12) {
-            Button { go(-1) } label: { Label("上一個", systemImage: "chevron.left").frame(maxWidth: .infinity, minHeight: 40) }
+            Button { go(-1) } label: { Label(tr("上一個"), systemImage: "chevron.left").frame(maxWidth: .infinity, minHeight: 40) }
                 .softButton()
                 .disabled(idx == 0)
             Button { clearCount += 1; score = 0; drawn = false } label: {
-                Label("清掉", systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
+                Label(tr("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
             }
             .softButton()
             Button { go(1) } label: {
-                Label(idx + 1 >= chars.count ? "完成" : "下一個", systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 40)
+                Label(idx + 1 >= chars.count ? trs("完成") : trs("下一個"), systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 40)
             }
             .prominentButton(T.btnEdge)
         }
@@ -729,13 +729,13 @@ struct PenSettings: View {
     var body: some View {
         if compact {
             VStack(alignment: .leading, spacing: 14) {
-                Text("筆").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(tr("筆")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 GlassGroup {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
                         ForEach(HandInk.pens.indices, id: \.self) { i in
                             let on = HandInk.pen(pen) == i
                             Button { withAnimation(.snappy) { pen = i } } label: {
-                                Text(HandInk.pens[i].name).ffFont(.subheadline, on ? Font.Weight.bold : Font.Weight.regular)
+                                Text(trs(HandInk.pens[i].name)).ffFont(.subheadline, on ? Font.Weight.bold : Font.Weight.regular)
                                     .foregroundStyle(T.glyph)
                                     .frame(maxWidth: .infinity, minHeight: 36)
                                     .contentShape(Capsule())
@@ -746,7 +746,7 @@ struct PenSettings: View {
                         }
                     }
                 }
-                Text(HandInk.pens[HandInk.pen(pen)].about).ffFont(.caption).foregroundStyle(T.muted)
+                Text(trs(HandInk.pens[HandInk.pen(pen)].about)).ffFont(.caption).foregroundStyle(T.muted)
                 sizeRow
                 preview
                 delayRow
@@ -754,8 +754,8 @@ struct PenSettings: View {
             .padding(18)
             .frame(width: 330)
         } else {
-            Picker("筆", selection: $pen) {
-                ForEach(HandInk.pens.indices, id: \.self) { Text(HandInk.pens[$0].name).tag($0) }
+            Picker(tr("筆"), selection: $pen) {
+                ForEach(HandInk.pens.indices, id: \.self) { Text(trs(HandInk.pens[$0].name)).tag($0) }
             }
             sizeRow
             preview
@@ -767,19 +767,19 @@ struct PenSettings: View {
     private var delayRow: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack {
-                Text("筆跡延遲").ffFont(.subheadline).foregroundStyle(T.glyph)
+                Text(tr("筆跡延遲")).ffFont(.subheadline).foregroundStyle(T.glyph)
                 Spacer()
-                Text(delay < 0.025 ? "馬上出現" : String(format: "%.1f 秒", delay)).latFont(14).monospacedDigit().foregroundStyle(T.muted)
+                Text(delay < 0.025 ? trs("馬上出現") : String(format: trs("%.1f 秒"), delay)).latFont(14).monospacedDigit().foregroundStyle(T.muted)
             }
-            Slider(value: $delay, in: 0...1.5, step: 0.05).tint(T.btnEdge).accessibilityLabel("筆跡延遲")
+            Slider(value: $delay, in: 0...1.5, step: 0.05).tint(T.btnEdge).accessibilityLabel(tr("筆跡延遲"))
         }
     }
 
     private var sizeRow: some View {
         HStack(spacing: 10) {
-            Text("粗細").ffFont(.subheadline).foregroundStyle(T.glyph)
+            Text(tr("粗細")).ffFont(.subheadline).foregroundStyle(T.glyph)
             Image(systemName: "circle.fill").font(.system(size: 5)).foregroundStyle(T.muted)
-            Slider(value: $size, in: 0...1).tint(T.btnEdge).accessibilityLabel("粗細")
+            Slider(value: $size, in: 0...1).tint(T.btnEdge).accessibilityLabel(tr("粗細"))
             Image(systemName: "circle.fill").font(.system(size: 14)).foregroundStyle(T.muted)
         }
     }
@@ -1095,13 +1095,13 @@ struct CharWordsList: View {
                 if dict.charIndex[ch] != nil {
                     Section {
                         Button { openChar = WordsRefID(id: ch) } label: {
-                            Label("「\(ch)」這個字", systemImage: "character.book.closed").foregroundStyle(T.glyph)
+                            Label(tr("「\(ch)」這個字"), systemImage: "character.book.closed").foregroundStyle(T.glyph)
                         }
                     }
                     .listRowBackground(T.fn.opacity(0.7))
                 }
                 if let zhList {
-                    Section(zhList.isEmpty ? "沒有找到有這個字的詞" : "有「\(ch)」的詞（\(zhList.count)）") {
+                    Section(zhList.isEmpty ? trs("沒有找到有這個字的詞") : tr("有「\(ch)」的詞（\(zhList.count)）")) {
                         ForEach(zhList, id: \.self) { i in
                             Button { openZh = ZhKey(k: dict.entries[i].k) } label: {
                                 ZhWordRow(dict: dict, entry: dict.entries[i], meanings: 2).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
@@ -1115,7 +1115,7 @@ struct CharWordsList: View {
                 }
             } else {
                 let ws = store.cards.filter { Lang.charOf($0.k) == nil && $0.h.count > 1 && $0.h.contains(ch) }
-                Section(ws.isEmpty ? "沒有找到有這個字的詞" : "有「\(ch)」的詞（\(ws.count)）") {
+                Section(ws.isEmpty ? trs("沒有找到有這個字的詞") : tr("有「\(ch)」的詞（\(ws.count)）")) {
                     ForEach(ws, id: \.k) { c in
                         Button { openCard = c } label: { CharWordCardRow(card: c).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()) }
                             .buttonStyle(.plain)
@@ -1179,10 +1179,10 @@ struct CharWordsSheet: View {
         NavigationStack {
             CharWordsList(ch: ch)
                 .appBackground()
-                .navigationTitle("有「\(ch)」的詞")
+                .navigationTitle(tr("有「\(ch)」的詞"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } }
+                    ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { dismiss() } }
                     ToolbarItem(placement: .topBarTrailing) {
                     HStack(spacing: 6) {
                         if store.isZh { MeaningSwitch(vertical: false) }
@@ -1205,7 +1205,7 @@ struct MeaningSwitch: View {
         Button { withAnimation(.snappy) { english.toggle() } } label: {
             let parts = ForEach([false, true], id: \.self) { en in
                 let on = english == en
-                Text(en ? "英" : "中").ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular)
+                Text(en ? trs("英") : trs("中")).ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular)
                     .foregroundStyle(on ? T.btnInk : T.muted)
                     .frame(width: 24)
                     .frame(minHeight: 22, maxHeight: vertical ? .infinity : 22)
@@ -1220,7 +1220,7 @@ struct MeaningSwitch: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(english ? "解釋：英文" : "解釋：華語")
+        .accessibilityLabel(english ? trs("解釋：英文") : trs("解釋：華語"))
     }
 }
 
@@ -1269,7 +1269,7 @@ struct KnowCharButton: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(known ? "我會了（再點一下：不熟）" : "我會這個字")
+        .accessibilityLabel(known ? trs("我會了（再點一下：不熟）") : trs("我會這個字"))
         .accessibilityAddTraits(known ? .isSelected : [])
     }
 }
@@ -1306,10 +1306,10 @@ struct InkColorPicker: View {
     var body: some View {
         if compact {
             VStack(alignment: .leading, spacing: 14) {
-                Text("筆的顏色").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(tr("筆的顏色")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 modes
                 grid
-                Text("中間那一排是原本的顏色，往上越淺，往下越深。").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("中間那一排是原本的顏色，往上越淺，往下越深。")).ffFont(.caption).foregroundStyle(T.muted)
             }
             .padding(18)
             .frame(width: 330)
@@ -1319,15 +1319,15 @@ struct InkColorPicker: View {
                 Section {
                     grid.frame(maxWidth: .infinity).padding(.vertical, 6)
                 } header: {
-                    Text("自己選一個顏色")
+                    Text(tr("自己選一個顏色"))
                 } footer: {
-                    Text("中間那一排是原本的顏色，往上越淺，往下越深。")
+                    Text(tr("中間那一排是原本的顏色，往上越淺，往下越深。"))
                 }
                 .listRowBackground(T.fn.opacity(0.7))
             }
             .scrollContentBackground(.hidden)
             .appBackground()
-            .navigationTitle("筆的顏色")
+            .navigationTitle(tr("筆的顏色"))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -1336,10 +1336,10 @@ struct InkColorPicker: View {
     private var modes: some View {
         GlassGroup {
             HStack(spacing: 8) {
-                mode("墨色", on: !rainbow && inkColor == 0) { rainbow = false; inkColor = 0 } swatch: {
+                mode(trs("墨色"), on: !rainbow && inkColor == 0) { rainbow = false; inkColor = 0 } swatch: {
                     Circle().fill(Color(HandInk.dark)).overlay(Circle().stroke(.white.opacity(0.55), lineWidth: 1))
                 }
-                mode("彩虹", on: rainbow) { rainbow = true } swatch: {
+                mode(trs("彩虹"), on: rainbow) { rainbow = true } swatch: {
                     Circle().fill(AngularGradient(colors: (HandInk.rainbow + [HandInk.rainbow[0]]).map { Color($0) }, center: .center))
                 }
             }

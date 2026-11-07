@@ -97,7 +97,7 @@ struct LookUpSnippetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if rows.isEmpty {
-                Text("找不到「\(word)」。").foregroundStyle(.secondary)
+                Text(tr("找不到「\(word)」。")).foregroundStyle(.secondary)
             }
             ForEach(rows) { row in
                 VStack(alignment: .leading, spacing: 4) {
@@ -120,7 +120,7 @@ struct LookUpSnippetView: View {
             }
             if more {
                 Button(intent: OpenLookUpIntent(word: word)) {
-                    Label("在 App 裡看全部", systemImage: "arrow.up.forward.app")
+                    Label(tr("在 App 裡看全部"), systemImage: "arrow.up.forward.app")
                 }
                 .buttonStyle(.bordered)
             }
@@ -135,15 +135,15 @@ struct LookUpSnippetView: View {
                     .buttonStyle(.bordered).tint(.green)
             }
             Button(intent: ToggleSavedIntent(key: row.key)) {
-                Label(row.saved ? "已收藏" : "收藏", systemImage: row.saved ? "bookmark.fill" : "bookmark")
+                Label(row.saved ? trs("已收藏") : trs("收藏"), systemImage: row.saved ? "bookmark.fill" : "bookmark")
             }
             .buttonStyle(.bordered).tint(.yellow)
             if let st = row.status {
                 if st == 1 {
-                    Text("熟悉").ffFont(.caption).foregroundStyle(.green)
+                    Text(tr("熟悉")).ffFont(.caption).foregroundStyle(.green)
                 } else {
                     Button(intent: ToggleUnknownIntent(key: row.key)) {
-                        Label(st == 2 ? "在不熟" : "加到不熟", systemImage: st == 2 ? "star.fill" : "star")
+                        Label(st == 2 ? trs("在不熟") : trs("加到不熟"), systemImage: st == 2 ? "star.fill" : "star")
                     }
                     .buttonStyle(.bordered).tint(.orange)
                 }

@@ -7,7 +7,7 @@ struct PotionBar: View {
     let value: Double                  // 0–1
     var height: CGFloat = 30
     var showMarks = true               // two small notches at 4 % and 15 % (where a score turns 🤔 / ✅)
-    var label = "通順程度"
+    var label = trs("通順程度")
     var palette: PotionPalette = .rainbow
     @State private var shown = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -168,7 +168,7 @@ struct SplitPotionBar: View {
     let known: Double                  // 0–1
     let unknown: Double                // 0–1
     var height: CGFloat = 24
-    var label = "進度"
+    var label = trs("進度")
     /// one colour for the bar (a level's colour): 熟悉 in it, 不熟 in a pale version of it; nil = blue and orange
     var tint: Color? = nil
     @State private var shownK = 0.0
@@ -189,7 +189,7 @@ struct SplitPotionBar: View {
             .onChange(of: unknown) { withAnimation(.spring(response: 0.9, dampingFraction: 0.62)) { shownU = unknown } }
             .accessibilityElement()
             .accessibilityLabel(label)
-            .accessibilityValue("熟悉 \(Int((known * 100).rounded()))%，不熟 \(Int((unknown * 100).rounded()))%")
+            .accessibilityValue(tr("熟悉 \(Int((known * 100).rounded()))%，不熟 \(Int((unknown * 100).rounded()))%"))
     }
 }
 
@@ -308,10 +308,10 @@ struct HSKProgressView: View {
                 let all = store.allTopicProgress()
                 ForEach(list) { t in
                     if store.isZh && t.id == store.topics.first(where: { $0.id > Lang.charTopicBase })?.id {
-                        Text("漢字卡").ffFont(.headline).foregroundStyle(T.muted).padding(.top, 6)
+                        Text(tr("漢字卡")).ffFont(.headline).foregroundStyle(T.muted).padding(.top, 6)
                     }
                     if !store.isZh && (t.id == Lang.freqWordBase || t.id == Lang.freqCharBase) {
-                        Text(t.id == Lang.freqWordBase ? "常用詞" : "常用字").ffFont(.headline).foregroundStyle(T.muted).padding(.top, 6)
+                        Text(t.id == Lang.freqWordBase ? trs("常用詞") : trs("常用字")).ffFont(.headline).foregroundStyle(T.muted).padding(.top, 6)
                     }
                     let p = all[t.id] ?? (0, 0, 0)
                     let k = p.total > 0 ? Double(p.known) / Double(p.total) : 0
@@ -323,11 +323,11 @@ struct HSKProgressView: View {
                             Text(t.name).ffFont(.headline).foregroundStyle(T.glyph)
                             Text("\(p.total) \((t.id > Lang.charTopicBase && t.id < Lang.freqWordBase) || t.id >= Lang.freqCharBase ? "字" : "詞")").ffFont(.caption).foregroundStyle(T.muted)
                             Spacer()
-                            Text("熟悉 \(pct(k))").ffFont(.subheadline, .semibold).foregroundStyle(levelColor(t.id))
-                            Text("不熟 \(pct(u))").ffFont(.subheadline, .semibold).foregroundStyle(levelColor(t.id).opacity(0.6))
+                            Text(tr("熟悉 \(pct(k))")).ffFont(.subheadline, .semibold).foregroundStyle(levelColor(t.id))
+                            Text(tr("不熟 \(pct(u))")).ffFont(.subheadline, .semibold).foregroundStyle(levelColor(t.id).opacity(0.6))
                         }
                         SplitPotionBar(known: k, unknown: u, label: t.name, tint: levelColor(t.id))
-                        Text("熟悉 \(p.known)　不熟 \(p.unknown)　還沒看 \(p.total - p.known - p.unknown)")
+                        Text(tr("熟悉 \(p.known)　不熟 \(p.unknown)　還沒看 \(p.total - p.known - p.unknown)"))
                             .ffFont(.caption).foregroundStyle(T.muted)
                     }
                     .padding(12)
@@ -337,10 +337,10 @@ struct HSKProgressView: View {
                     .buttonStyle(.plain)
                 }
                 if !store.isZh {
-                    Text("台語的詞照常用的程度分組，每組 \(Lang.freqSize) 個：最常用的在「常用詞 1–\(Lang.freqSize)」。單一個字的另外分在「常用字」。在「新詞」右上角可以選一組來滑。點一組可以看全部的詞，或一次把整組標成熟悉。")
+                    Text(tr("台語的詞照常用的程度分組，每組 \(Lang.freqSize) 個：最常用的在「常用詞 1–\(Lang.freqSize)」。單一個字的另外分在「常用字」。在「新詞」右上角可以選一組來滑。點一組可以看全部的詞，或一次把整組標成熟悉。"))
                         .ffFont(.caption).foregroundStyle(T.muted)
                 } else {
-                Text("每個等級一個顏色：從左邊來的濃色 = 熟悉（往右滑或練習學會的詞），從右邊來的淡色 = 不熟，中間空的 = 還沒看過。點一個等級可以看全部的詞，或一次把整個等級標成熟悉；點「認識的漢字」可以看每個字。漢字卡在「新詞」右上角的「漢字」選。在「新詞」右上角可以換詞表（HSK／TOCFL）和選等級。詞表：\(store.zhList == 1 ? "TOCFL 華語八千詞（2023）" : "HSK 3.0（2021）")。")
+                Text(tr("每個等級一個顏色：從左邊來的濃色 = 熟悉（往右滑或練習學會的詞），從右邊來的淡色 = 不熟，中間空的 = 還沒看過。點一個等級可以看全部的詞，或一次把整個等級標成熟悉；點「認識的漢字」可以看每個字。漢字卡在「新詞」右上角的「漢字」選。在「新詞」右上角可以換詞表（HSK／TOCFL）和選等級。詞表：\(store.zhList == 1 ? trs("TOCFL 華語八千詞（2023）") : "HSK 3.0（2021）")。"))
                     .ffFont(.caption).foregroundStyle(T.muted)
                 }
             }
@@ -359,14 +359,14 @@ struct HSKProgressView: View {
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline) {
                 Image(systemName: "chevron.right").ffFont(.caption).foregroundStyle(T.muted)
-                Text("認識的漢字").ffFont(.headline).foregroundStyle(T.glyph)
-                Text("\(p.total) 字").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("認識的漢字")).ffFont(.headline).foregroundStyle(T.glyph)
+                Text(tr("\(p.total) 字")).ffFont(.caption).foregroundStyle(T.muted)
                 Spacer()
-                Text("熟悉 \(p.known)").ffFont(.subheadline, .semibold).foregroundStyle(Color(hex: 0x6eaaff))
-                Text("不熟 \(p.unknown)").ffFont(.subheadline, .semibold).foregroundStyle(Color(hex: 0xffa94d))
+                Text(tr("熟悉 \(p.known)")).ffFont(.subheadline, .semibold).foregroundStyle(Color(hex: 0x6eaaff))
+                Text(tr("不熟 \(p.unknown)")).ffFont(.subheadline, .semibold).foregroundStyle(Color(hex: 0xffa94d))
             }
-            SplitPotionBar(known: k, unknown: u, label: "認識的漢字")
-            Text("熟悉的詞裡的字都算認識（就算它也在不熟的詞裡）；只在不熟的詞裡出現的字算不熟。還沒看 \(p.total - p.known - p.unknown) 字（所有詞卡和漢字卡裡的字，每個字只算一次）。")
+            SplitPotionBar(known: k, unknown: u, label: trs("認識的漢字"))
+            Text(tr("熟悉的詞裡的字都算認識（就算它也在不熟的詞裡）；只在不熟的詞裡出現的字算不熟。還沒看 \(p.total - p.known - p.unknown) 字（所有詞卡和漢字卡裡的字，每個字只算一次）。"))
                 .ffFont(.caption).foregroundStyle(T.muted)
         }
         .padding(12)

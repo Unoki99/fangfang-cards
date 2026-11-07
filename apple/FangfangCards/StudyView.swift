@@ -96,15 +96,15 @@ struct StudyView: View {
                 // how far through the round: the potion fills up
                 if !queue.isEmpty && idx < queue.count {
                     HStack(spacing: 10) {
-                        PotionBar(value: Double(idx) / Double(max(queue.count, 1)), height: 22, showMarks: false, label: "練習進度")
-                        Text("\(idx + 1)／\(queue.count)").latFont(14).monospacedDigit().foregroundStyle(T.muted)
+                        PotionBar(value: Double(idx) / Double(max(queue.count, 1)), height: 22, showMarks: false, label: trs("練習進度"))
+                        Text(tr("\(idx + 1)／\(queue.count)")).latFont(14).monospacedDigit().foregroundStyle(T.muted)
                     }
                     .padding(.horizontal).padding(.top, 2)
                     .frame(maxWidth: 700)
                 }
                 Group {
                     if queue.isEmpty {
-                        Text(blanksOnly ? "不熟的詞裡沒有可以填空的例句。" : (words != nil ? "本週還沒有選詞。" : "沒有不熟的詞可以練習。")).foregroundStyle(T.muted)
+                        Text(blanksOnly ? trs("不熟的詞裡沒有可以填空的例句。") : (words != nil ? trs("本週還沒有選詞。") : trs("沒有不熟的詞可以練習。"))).foregroundStyle(T.muted)
                     } else if idx >= queue.count {
                         summary
                     } else {
@@ -119,7 +119,7 @@ struct StudyView: View {
             .appBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("結束")
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack {
@@ -225,13 +225,13 @@ struct StudyView: View {
             VStack(alignment: .leading, spacing: 10) {
                 switch q.kind {
                 case .meaningToWord:
-                    label(store.isZh ? "這個意思是哪個詞？" : "這個意思的台語是？")
+                    label(store.isZh ? trs("這個意思是哪個詞？") : trs("這個意思的台語是？"))
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         if let p = c.d.first?.p, !p.isEmpty { Chip(text: p) }
                         Text(c.firstMeaning).ffFont(.title3).foregroundStyle(T.glyph)
                     }
                 case .wordToMeaning:
-                    label("這個詞是什麼意思？")
+                    label(trs("這個詞是什麼意思？"))
                     HStack {
                         Text(c.h).scaledFont(52, weight: .medium).foregroundStyle(T.blueInk)
                         Spacer()
@@ -239,7 +239,7 @@ struct StudyView: View {
                     }
                     Text(store.cardRom(c, rom, place)).latFont(24).foregroundStyle(T.greenInk)
                 case .listen:
-                    label("聽發音，選出正確的詞")
+                    label(trs("聽發音，選出正確的詞"))
                     HStack {
                         Spacer()
                         if let a = c.audio { PlayButton(path: a, size: 84) }
@@ -247,18 +247,18 @@ struct StudyView: View {
                     }
                     .padding(.vertical, 8)
                 case .fillBlank:
-                    label("例句填空")
+                    label(trs("例句填空"))
                     if let x = q.example {
                         Text(x.bh ?? x.h).ffFont(.title3).foregroundStyle(T.blueInk)
                         if let br = store.blankRom(c, x, rom, place) { Text(br).latFont(17).foregroundStyle(T.greenInk) }
                         Text(x.z).ffFont(.subheadline).foregroundStyle(T.muted)
                         HStack(spacing: 8) {
                             PlayButton(path: Audio.examplePath(x.n), size: 28)
-                            Text("聽例句（提示）").ffFont(.caption).foregroundStyle(T.muted)
+                            Text(tr("聽例句（提示）")).ffFont(.caption).foregroundStyle(T.muted)
                         }
                     }
                 case .romanization:
-                    label("這個詞怎麼唸？")
+                    label(trs("這個詞怎麼唸？"))
                     Text(c.h).scaledFont(60, weight: .medium).foregroundStyle(T.blueInk)
                     Text(c.firstMeaning).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
                 }
@@ -342,7 +342,7 @@ struct StudyView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Panel {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(ok ? (learned.contains(c) ? "答對了！學會了" : "答對了！") : "答錯了")
+                    Text(ok ? (learned.contains(c) ? trs("答對了！學會了") : trs("答對了！")) : trs("答錯了"))
                         .ffFont(.headline).foregroundStyle(ok ? T.greenInk : T.rustInk)
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(c.h).ffFont(.title, .medium).foregroundStyle(T.blueInk)
@@ -367,7 +367,7 @@ struct StudyView: View {
                 chosen = nil
                 idx += 1
             } label: {
-                Text(idx + 1 >= queue.count ? "看結果" : "下一題").ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
+                Text(idx + 1 >= queue.count ? trs("看結果") : trs("下一題")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
             }
             .prominentButton(T.btnEdge)
         }
@@ -380,14 +380,14 @@ struct StudyView: View {
         let score = Double(right) / Double(total)
         return ScrollView {
             VStack(spacing: 18) {
-                Text("期末測驗").ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
-                Text("\(Int((score * 100).rounded())) 分").ffFont(.title, .bold).foregroundStyle(score >= 0.8 ? T.greenInk : T.rustInk)
-                PotionBar(value: score, height: 24, showMarks: false, label: "分數")
-                Text("答對 \(right) 個，答錯 \(wrong) 個").foregroundStyle(T.muted)
+                Text(tr("期末測驗")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
+                Text(tr("\(Int((score * 100).rounded())) 分")).ffFont(.title, .bold).foregroundStyle(score >= 0.8 ? T.greenInk : T.rustInk)
+                PotionBar(value: score, height: 24, showMarks: false, label: trs("分數"))
+                Text(tr("答對 \(right) 個，答錯 \(wrong) 個")).foregroundStyle(T.muted)
                 if !missed.isEmpty {
                     Panel {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("答錯的詞：").ffFont(.headline).foregroundStyle(T.rustInk)
+                            Text(tr("答錯的詞：")).ffFont(.headline).foregroundStyle(T.rustInk)
                             ForEach(missed) { WordRow(card: $0) }
                         }
                     }
@@ -396,17 +396,17 @@ struct StudyView: View {
                     if !missed.isEmpty {
                         Button {
                             store.finishWeek(keep: missed.map(\.k)); dismiss()
-                        } label: { Text("開始新的一週（答錯的 \(missed.count) 個詞留下來）").frame(maxWidth: .infinity, minHeight: 40) }
+                        } label: { Text(tr("開始新的一週（答錯的 \(missed.count) 個詞留下來）")).frame(maxWidth: .infinity, minHeight: 40) }
                             .prominentButton(T.btnEdge)
                     }
                     Button { store.finishWeek(); dismiss() } label: {
-                        Text("結束這一週（清空本週的詞）").frame(maxWidth: .infinity, minHeight: 40)
+                        Text(tr("結束這一週（清空本週的詞）")).frame(maxWidth: .infinity, minHeight: 40)
                     }
                     .softButton()
-                    Button { dismiss() } label: { Text("先不要，繼續這一週").frame(maxWidth: .infinity, minHeight: 40) }
+                    Button { dismiss() } label: { Text(tr("先不要，繼續這一週")).frame(maxWidth: .infinity, minHeight: 40) }
                         .softButton()
                 }
-                Text("詞還是會留在「不熟」或「熟悉」，只是不在本週的清單裡。").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("詞還是會留在「不熟」或「熟悉」，只是不在本週的清單裡。")).ffFont(.caption).foregroundStyle(T.muted)
             }
             .padding()
             .frame(maxWidth: 560)
@@ -418,21 +418,21 @@ struct StudyView: View {
         if test { return AnyView(testSummary) }
         return AnyView(ScrollView {
             VStack(spacing: 18) {
-                Text("練習完了").ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
-                Text("答對 \(right) 題，答錯 \(wrong) 題").foregroundStyle(T.muted)
+                Text(tr("練習完了")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
+                Text(tr("答對 \(right) 題，答錯 \(wrong) 題")).foregroundStyle(T.muted)
                 if !learned.isEmpty {
                     Panel {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("學會了，移到「熟悉」：").ffFont(.headline).foregroundStyle(T.greenInk)
+                            Text(tr("學會了，移到「熟悉」：")).ffFont(.headline).foregroundStyle(T.greenInk)
                             ForEach(learned) { WordRow(card: $0) }
                         }
                     }
                 }
                 HStack(spacing: 12) {
-                    Button { start() } label: { Text("再練一次").frame(maxWidth: .infinity, minHeight: 40) }
+                    Button { start() } label: { Text(tr("再練一次")).frame(maxWidth: .infinity, minHeight: 40) }
                         .softButton()
                         .disabled(words == nil ? store.practiceCards.isEmpty : (words ?? []).isEmpty)
-                    Button { dismiss() } label: { Text("完成").frame(maxWidth: .infinity, minHeight: 40) }
+                    Button { dismiss() } label: { Text(tr("完成")).frame(maxWidth: .infinity, minHeight: 40) }
                         .prominentButton(T.btnEdge)
                 }
             }

@@ -34,26 +34,26 @@ struct UnknownView: View {
                 WeekPanel()
                 PracticeScopeMenu()
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    PracticeTile(title: "開始練習", icon: "graduationcap.fill", enabled: !pool.isEmpty) { studying = true }
-                    PracticeTile(title: "例句填空", icon: "text.badge.checkmark",
+                    PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty) { studying = true }
+                    PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
                                  enabled: pool.contains { !$0.blankExamples.isEmpty }) { blanks = true }
-                    PracticeTile(title: "排句子", icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
-                    PracticeTile(title: "看字排讀音", icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
-                    PracticeTile(title: "聲調練習", icon: "waveform", enabled: true) { toning = true }
-                    PracticeTile(title: "翻牌配對", icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
-                    PracticeTile(title: "手寫練習", icon: "pencil.and.scribble", enabled: true) { writing = true }
+                    PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
+                    PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
+                    PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: true) { toning = true }
+                    PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
+                    PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: true) { writing = true }
                     // what each way of practising does
-                    PracticeTile(title: "怎麼練習", icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
+                    PracticeTile(title: tr("怎麼練習"), icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
                 }
                 }
                 .padding(.vertical, 6)
                 .textCase(nil)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
-            Section(store.practiceName == "全部不熟的詞" ? "不熟的詞（\(store.unknownCount)）"
-                    : "\(store.practiceName)・不熟的詞（\(list.count)／\(store.unknownCount)）") {
+            Section(store.practiceName == trs("全部不熟的詞") ? tr("不熟的詞（\(store.unknownCount)）")
+                    : tr("\(store.practiceName)・不熟的詞（\(list.count)／\(store.unknownCount)）")) {
                 if list.isEmpty {
-                    Text(query.isEmpty ? "在「新詞」往左滑的詞會出現在這裡。" : "找不到。")
+                    Text(query.isEmpty ? trs("在「新詞」往左滑的詞會出現在這裡。") : trs("找不到。"))
                         .foregroundStyle(T.muted)
                 }
                 ForEach(list) { c in
@@ -67,15 +67,15 @@ struct UnknownView: View {
                     }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .leading) {
-                            Button { store.mark(c, known: true, undoable: false) } label: { Label("熟悉", systemImage: "checkmark") }
+                            Button { store.mark(c, known: true, undoable: false) } label: { Label(tr("熟悉"), systemImage: "checkmark") }
                                 .tint(T.btnEdge)
                             Button { store.toggleWeek(c.k) } label: {
-                                Label(store.isInWeek(c.k) ? "移出本週" : "本週學習", systemImage: "calendar")
+                                Label(store.isInWeek(c.k) ? trs("移出本週") : trs("本週學習"), systemImage: "calendar")
                             }
                                 .tint(T.blueEdge)
                         }
                         .swipeActions(edge: .trailing) {
-                            Button { store.forget(c) } label: { Label("移回新詞", systemImage: "arrow.uturn.backward") }
+                            Button { store.forget(c) } label: { Label(tr("移回新詞"), systemImage: "arrow.uturn.backward") }
                                 .tint(T.oliveEdge)
                         }
                 }
@@ -83,7 +83,7 @@ struct UnknownView: View {
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .searchable(text: $query, prompt: "漢字、羅馬字或意思")
+        .searchable(text: $query, prompt: trs("漢字、羅馬字或意思"))
 
         .sheet(item: $detail) { CardSheet(card: $0).environmentObject(store) }
         .fullScreenCover(isPresented: $studying) { StudyView().environmentObject(store) }
@@ -109,9 +109,9 @@ struct KnownView: View {
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $mode) {
-                Text("卡片複習").tag(0)
-                Text("列表").tag(1)
-                if store.isZh ? !store.topics.isEmpty : !store.freqTopics.isEmpty { Text("學習進度").tag(2) }
+                Text(tr("卡片複習")).tag(0)
+                Text(tr("列表")).tag(1)
+                if store.isZh ? !store.topics.isEmpty : !store.freqTopics.isEmpty { Text(tr("學習進度")).tag(2) }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.top, 8)
@@ -141,14 +141,14 @@ struct KnownView: View {
                 .ffFont(.footnote).foregroundStyle(T.muted)
             if cards.isEmpty {
                 Spacer()
-                Text(store.knownCount == 0 ? "在「新詞」往右滑的詞會出現在這裡。" : "這一輪複習完了！")
+                Text(store.knownCount == 0 ? trs("在「新詞」往右滑的詞會出現在這裡。") : trs("這一輪複習完了！"))
                     .foregroundStyle(T.muted)
                 if store.knownCount > 0 {
-                    Button("再複習一輪") { shuffle() }.prominentButton(T.btnEdge)
+                    Button(tr("再複習一輪")) { shuffle() }.prominentButton(T.btnEdge)
                 }
                 Spacer()
             } else {
-                DeckArea(cards: cards, leftLabel: "不熟", rightLabel: "記得") { card, right in
+                DeckArea(cards: cards, leftLabel: trs("不熟"), rightLabel: trs("記得")) { card, right in
                     if !right { store.mark(card, known: false, undoable: false) }
                     advance(past: card)
                 }
@@ -166,7 +166,7 @@ struct KnownView: View {
             Section {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(T.muted)
-                    TextField("漢字、羅馬字或意思", text: $query)
+                    TextField(tr("漢字、羅馬字或意思"), text: $query)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .submitLabel(.search)
@@ -174,14 +174,14 @@ struct KnownView: View {
                 }
             }
             .listRowBackground(T.fn.opacity(0.7))
-            Section("熟悉的詞（\(store.knownCount)）") {
+            Section(tr("熟悉的詞（\(store.knownCount)）")) {
                 ForEach(cards) { c in
                     Button { detail = c } label: {
                         WordRow(card: c).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing) {
-                            Button { store.mark(c, known: false, undoable: false) } label: { Label("不熟", systemImage: "xmark") }
+                            Button { store.mark(c, known: false, undoable: false) } label: { Label(tr("不熟"), systemImage: "xmark") }
                                 .tint(T.rustEdge)
                         }
                 }
@@ -237,20 +237,20 @@ struct PracticeScopeMenu: View {
         let chars = ts.filter { store.isZh ? $0.id > Lang.charTopicBase : $0.id >= Lang.freqCharBase }
         if !ts.isEmpty {
             Menu {
-                Picker("練習範圍", selection: $store.practiceTopic) {
-                    Text("全部不熟的詞（\(store.unknownCount)）").tag(-1)
+                Picker(tr("練習範圍"), selection: $store.practiceTopic) {
+                    Text(tr("全部不熟的詞（\(store.unknownCount)）")).tag(-1)
                 }
                 .pickerStyle(.inline)
-                Menu(store.isZh ? "詞（等級）" : "常用詞") {
-                    Picker("詞", selection: $store.practiceTopic) {
-                        ForEach(words) { t in Text("\(t.name)（不熟 \(all[t.id]?.unknown ?? 0)）").tag(t.id) }
+                Menu(store.isZh ? trs("詞（等級）") : trs("常用詞")) {
+                    Picker(tr("詞"), selection: $store.practiceTopic) {
+                        ForEach(words) { t in Text(tr("\(t.name)（不熟 \(all[t.id]?.unknown ?? 0)）")).tag(t.id) }
                     }
                     .pickerStyle(.inline)
                 }
                 if !chars.isEmpty {
-                    Menu(store.isZh ? "漢字（等級）" : "常用字") {
-                        Picker("字", selection: $store.practiceTopic) {
-                            ForEach(chars) { t in Text("\(t.name)（不熟 \(all[t.id]?.unknown ?? 0)）").tag(t.id) }
+                    Menu(store.isZh ? trs("漢字（等級）") : trs("常用字")) {
+                        Picker(tr("字"), selection: $store.practiceTopic) {
+                            ForEach(chars) { t in Text(tr("\(t.name)（不熟 \(all[t.id]?.unknown ?? 0)）")).tag(t.id) }
                         }
                         .pickerStyle(.inline)
                     }
@@ -258,7 +258,7 @@ struct PracticeScopeMenu: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "scope").foregroundStyle(T.btnInk)
-                    Text("練習範圍").foregroundStyle(T.muted)
+                    Text(tr("練習範圍")).foregroundStyle(T.muted)
                     Text(store.practiceName).foregroundStyle(T.glyph).lineLimit(1)
                     Spacer(minLength: 4)
                     Text("\(store.practiceCards.count)").ffFont(.footnote, mono: true).foregroundStyle(T.muted)
@@ -284,18 +284,18 @@ struct PracticeHelp: View {
 
     private var items: [(icon: String, title: String, text: String)] {
         var a: [(String, String, String)] = [
-            ("calendar", "本週學習", "從不熟的詞選這個星期要學的（或在列表往右滑 → 本週學習），一週後做期末測驗；答錯的詞可以留到下一週。"),
-            ("graduationcap.fill", "開始練習", "各種題目混在一起練。連續答對 \(goal) 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。"),
-            ("text.badge.checkmark", "例句填空", "只做例句填空題。"),
-            ("rectangle.3.group", "排句子", "例句被打亂了，照華語的意思把詞排回去。"),
-            ("character.book.closed", "看字排讀音", "只看漢字，把讀音照順序排。"),
-            ("waveform", "聲調練習", "聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。"),
-            ("square.grid.2x2", "翻牌配對", "不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。"),
+            ("calendar", trs("本週學習"), trs("從不熟的詞選這個星期要學的（或在列表往右滑 → 本週學習），一週後做期末測驗；答錯的詞可以留到下一週。")),
+            ("graduationcap.fill", trs("開始練習"), tr("各種題目混在一起練。連續答對 \(goal) 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。")),
+            ("text.badge.checkmark", trs("例句填空"), trs("只做例句填空題。")),
+            ("rectangle.3.group", trs("排句子"), trs("例句被打亂了，照華語的意思把詞排回去。")),
+            ("character.book.closed", trs("看字排讀音"), trs("只看漢字，把讀音照順序排。")),
+            ("waveform", trs("聲調練習"), trs("聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。")),
+            ("square.grid.2x2", trs("翻牌配對"), trs("不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。")),
         ]
         do {
-            a.append(("pencil.and.scribble", "手寫練習", store.isZh ? "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。" : "選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
+            a.append(("pencil.and.scribble", trs("手寫練習"), store.isZh ? trs("選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。") : trs("選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。")))
         }
-        a.append(("scope", "練習範圍", "只練一個等級（或一組）的不熟的詞或字。"))
+        a.append(("scope", trs("練習範圍"), trs("只練一個等級（或一組）的不熟的詞或字。")))
         return a
     }
 
@@ -323,9 +323,9 @@ struct PracticeHelp: View {
                 .frame(maxWidth: .infinity)
             }
             .appBackground()
-            .navigationTitle("怎麼練習")
+            .navigationTitle(tr("怎麼練習"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { dismiss() } } }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)

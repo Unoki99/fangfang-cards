@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.widget
 
+import com.unoki99.fangfang.tr
 import android.content.Context
 import android.graphics.*
 import android.text.Layout
@@ -86,7 +87,7 @@ private fun WidgetContent(ctx: Context, widgetId: Int) {
             verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             textImage(ctx, null, "方方詞卡", GLYPH, 16f, wPx - (32 * density).toInt(), 1, bold = true)
-            textImage(ctx, null, "打開方方詞卡一次，小工具就會載入詞。", MUTED, 12f, wPx - (32 * density).toInt(), 3)
+            textImage(ctx, null, tr("打開方方詞卡一次，小工具就會載入詞。"), MUTED, 12f, wPx - (32 * density).toInt(), 3)
         }
         return
     }
@@ -101,7 +102,7 @@ private fun WidgetContent(ctx: Context, widgetId: Int) {
             verticalAlignment = Alignment.CenterVertically, horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             textImage(ctx, null, "方方詞卡", GLYPH, 16f, wPx - (32 * density).toInt(), 1, bold = true)
-            textImage(ctx, null, "「$catName」現在沒有不熟的詞。", MUTED, 12f, wPx - (32 * density).toInt(), 3)
+            textImage(ctx, null, tr("「{0}」現在沒有不熟的詞。", catName), MUTED, 12f, wPx - (32 * density).toInt(), 3)
         }
         return
     }

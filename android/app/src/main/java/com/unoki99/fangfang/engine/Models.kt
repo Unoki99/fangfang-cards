@@ -26,7 +26,10 @@ data class Variant(val r: List<String>, val z: String)
 /** another reading: 又 / 俗 / 合 */
 data class Other(val l: String, val r: List<String>, val z: String)
 
-data class Topic(val id: Int, val name: String, val count: Int)
+data class Topic(val id: Int, val rawName: String, val count: Int) {
+    /** the name in the app's language */
+    val name: String get() = com.unoki99.fangfang.UILang.label(rawName)
+}
 
 class Card(
     val k: String,              // "漢字\tcodes"

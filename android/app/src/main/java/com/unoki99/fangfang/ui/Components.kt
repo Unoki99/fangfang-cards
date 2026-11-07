@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
@@ -71,14 +72,14 @@ fun Chip(text: String, fill: Color = T.olive, edge: Color = T.oliveEdge, ink: Co
 @Composable
 fun RegChip(reg: String) {
     when (reg) {
-        "白" -> Chip("白", T.green, T.greenEdge, T.greenInk)
-        "文" -> Chip("文", T.blue, T.blueEdge, T.blueInk)
-        "俗" -> Chip("俗", T.rust, T.rustEdge, T.rustInk)
+        "白" -> Chip(tr("白"), T.green, T.greenEdge, T.greenInk)
+        "文" -> Chip(tr("文"), T.blue, T.blueEdge, T.blueInk)
+        "俗" -> Chip(tr("俗"), T.rust, T.rustEdge, T.rustInk)
     }
 }
 
 @Composable
-fun OwnChip() = Chip("自訂", T.own, T.ownEdge, T.ownInk)
+fun OwnChip() = Chip(tr("自訂"), T.own, T.ownEdge, T.ownInk)
 
 @Composable
 fun PlaceChip(text: String) = Chip(text, T.placeFill, T.placeEdge, T.purpleInk)
@@ -153,7 +154,7 @@ fun PlayButton(path: String, size: Dp = 34.dp) {
         Modifier.size(size).clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { Player.play(path) },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.PlayArrow, "播放", tint = T.glyph, modifier = Modifier.size(size * 0.55f))
+        Icon(Icons.Filled.PlayArrow, tr("播放"), tint = T.glyph, modifier = Modifier.size(size * 0.55f))
     }
 }
 
@@ -185,7 +186,7 @@ fun RomButton() {
     var zhRom by Prefs.zhRom
     val zh = com.unoki99.fangfang.Store.isZh
     // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字
-    Text(if (zh) com.unoki99.fangfang.engine.Lang.romNames[zhRom.coerceIn(0, 1)] else ROM_NAMES[rom.coerceIn(0, 2)],
+    Text(tr(if (zh) com.unoki99.fangfang.engine.Lang.romNames[zhRom.coerceIn(0, 1)] else ROM_NAMES[rom.coerceIn(0, 2)]),
         style = ff(FF.Subheadline, FontWeight.Bold), color = T.btnInk,
         modifier = Modifier.clip(CircleShape).background(T.btn).border(2.dp, T.btnEdge, CircleShape)
             .clickable { if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 3 }.padding(horizontal = 10.dp, vertical = 4.dp))
@@ -216,17 +217,17 @@ fun PlaceMenu() {
                 DropdownMenuItem(text = { Text(text, color = T.glyph) },
                     leadingIcon = { if (on) Icon(Icons.Filled.Check, null, tint = T.greenInk) else Spacer(Modifier.size(24.dp)) },
                     onClick = onClick)
-            Text("語言", style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            item("台語", !zh) { store.setLanguage(false); open = false }
-            item("華語", zh) { store.setLanguage(true); open = false }
+            Text(tr("語言"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            item(tr("台語"), !zh) { store.setLanguage(false); open = false }
+            item(tr("華語"), zh) { store.setLanguage(true); open = false }
             HorizontalDivider(color = T.fnEdge)
             if (zh) {
-                Text("華語讀音", style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                com.unoki99.fangfang.engine.Lang.placeNames.forEachIndexed { i, p -> item(p, zhPlace == i) { zhPlace = i; open = false } }
+                Text(tr("華語讀音"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                com.unoki99.fangfang.engine.Lang.placeNames.forEachIndexed { i, p -> item(tr(p), zhPlace == i) { zhPlace = i; open = false } }
             } else {
-                Text("台語腔口", style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-                item("通行", place < 0) { place = -1; open = false }
-                PLACE_NAMES.forEachIndexed { i, p -> item(p, place == i) { place = i; open = false } }
+                Text(tr("台語腔口"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                item(tr("通行"), place < 0) { place = -1; open = false }
+                PLACE_NAMES.forEachIndexed { i, p -> item(tr(p), place == i) { place = i; open = false } }
             }
         }
     }
@@ -241,21 +242,21 @@ fun ToneMenu() {
     Box {
         Row(Modifier.clip(CircleShape).background(T.fn).border(2.dp, T.fnEdge, CircleShape).clickable { open = true }
             .padding(horizontal = 9.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (system == 0) Text("調", style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
+            if (system == 0) Text(tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
             else for (t in if (system == 5) listOf(1, 2, 3, 5, 6, 7) else listOf(1, 2, 3, 4, 5, 6, 7, 8)) {
                 Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.color(t, system) ?: 0xFF888888.toInt()), CircleShape))
             }
         }
         DropdownMenu(open, { open = false }, containerColor = T.fn) {
-            for ((v, name) in listOf(0 to "關", 7 to "七聲（1 2 3 4 5 7 8）", 5 to "五聲（1=8、3=4）")) {
+            for ((v, name) in listOf(0 to tr("關"), 7 to tr("七聲（1 2 3 4 5 7 8）"), 5 to tr("五聲（1=8、3=4）"))) {
                 DropdownMenuItem(text = { Text(name, color = if (system == v) T.greenInk else T.glyph) },
                     leadingIcon = { if (system == v) Icon(Icons.Filled.Check, null, tint = T.greenInk) }, onClick = { system = v; open = false })
             }
             if (system != 0) {
                 HorizontalDivider(color = T.fnEdge)
-                DropdownMenuItem(text = { Text("聲調符號照變調寫", color = T.glyph) },
+                DropdownMenuItem(text = { Text(tr("聲調符號照變調寫"), color = T.glyph) },
                     leadingIcon = { Checkbox(marks, null) }, onClick = { marks = !marks })
-                DropdownMenuItem(text = { Text("聲調光暈", color = T.glyph) },
+                DropdownMenuItem(text = { Text(tr("聲調光暈"), color = T.glyph) },
                     leadingIcon = { Checkbox(glow, null) }, onClick = { glow = !glow })
             }
         }
@@ -266,7 +267,7 @@ fun ToneMenu() {
 fun BarButtons(settings: Boolean = true) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RomButton(); PlaceMenu(); ToneMenu()
-        if (settings) IconButton(onClick = { UI.settingsOpen = true }) { Icon(Icons.Filled.Settings, "設定", tint = T.glyph) }
+        if (settings) IconButton(onClick = { UI.settingsOpen = true }) { Icon(Icons.Filled.Settings, tr("設定"), tint = T.glyph) }
     }
 }
 
@@ -277,7 +278,7 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, close: Boolean = false, 
     Row(Modifier.fillMaxWidth().statusBarsPadding().height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
             IconButton(onClick = onBack) {
-                Icon(if (close) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, if (close) "結束" else "返回", tint = T.glyph)
+                Icon(if (close) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, if (close) tr("結束") else tr("返回"), tint = T.glyph)
             }
         } else Spacer(Modifier.width(12.dp))
         Text(title, style = ff(FF.Headline), color = T.glyph, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -323,6 +324,6 @@ fun SearchField(value: String, onChange: (String) -> Unit, hint: String, modifie
 @Composable
 fun ClearIcon(value: String, onChange: (String) -> Unit, focus: FocusRequester) {
     if (value.isNotEmpty()) IconButton(onClick = { onChange(""); try { focus.requestFocus() } catch (_: Exception) {} }) {
-        Icon(Icons.Filled.Cancel, "清除", tint = T.muted)
+        Icon(Icons.Filled.Cancel, tr("清除"), tint = T.muted)
     }
 }

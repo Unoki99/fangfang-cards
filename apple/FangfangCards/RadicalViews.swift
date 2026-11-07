@@ -20,8 +20,8 @@ struct RadicalPage: View {
             if let d = store.zh {
                 VStack(spacing: 0) {
                     Picker("", selection: $mode) {
-                        Text("一個部首").tag(0)
-                        Text("組合部首").tag(1)
+                        Text(tr("一個部首")).tag(0)
+                        Text(tr("組合部首")).tag(1)
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
@@ -32,7 +32,7 @@ struct RadicalPage: View {
                     } else {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 14) {
-                                Text("點一個部首，再點你要的字。字會放進搜尋框。").ffFont(.footnote).foregroundStyle(T.muted)
+                                Text(tr("點一個部首，再點你要的字。字會放進搜尋框。")).ffFont(.footnote).foregroundStyle(T.muted)
                                 RadicalMap(radicals: d.radicals) { r in withAnimation(.snappy) { radical = r } }
                             }
                             .padding()
@@ -44,23 +44,23 @@ struct RadicalPage: View {
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("載入部首資料…").ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("載入部首資料…")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .appBackground()
-        .navigationTitle(mode == 0 ? (radical.map { "部首「\($0.radical)」" } ?? "部首查字") : "組合部首")
+        .navigationTitle(mode == 0 ? (radical.map { tr("部首「\($0.radical)」") } ?? trs("部首查字")) : trs("組合部首"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if mode == 0 && radical != nil {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button { withAnimation(.snappy) { radical = nil } } label: { Label("換部首", systemImage: "square.grid.3x3") }
+                    Button { withAnimation(.snappy) { radical = nil } } label: { Label(tr("換部首"), systemImage: "square.grid.3x3") }
                 }
             }
             if mode == 1 && !picked.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("清除") { withAnimation(.snappy) { picked = [] } }
+                    Button(tr("清除")) { withAnimation(.snappy) { picked = [] } }
                 }
             }
         }
@@ -87,7 +87,7 @@ private struct RadicalMap: View {
         LazyVStack(alignment: .leading, spacing: 14) {
             ForEach(groups.keys.sorted(), id: \.self) { n in
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("\(n) 畫").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                    Text(tr("\(n) 畫")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
                         ForEach(groups[n] ?? []) { r in
                             let i = picked.firstIndex(of: r.radical)
@@ -106,7 +106,7 @@ private struct RadicalMap: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(off)
-                            .accessibilityLabel("部首 \(r.radical)")
+                            .accessibilityLabel(tr("部首 \(r.radical)"))
                             .accessibilityAddTraits(i != nil ? .isSelected : [])
                         }
                     }
@@ -155,7 +155,7 @@ private struct RadicalCombine: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 if dict.radicalInside.isEmpty {
-                    Text("這份華語資料沒有字的組成。重新執行一次 build-data.sh（或 install.sh）就有了。")
+                    Text(tr("這份華語資料沒有字的組成。重新執行一次 build-data.sh（或 install.sh）就有了。"))
                         .ffFont(.footnote).foregroundStyle(T.muted)
                 }
                 RadicalMap(radicals: dict.radicals, picked: picked, enabled: enabled) { r in
@@ -174,7 +174,7 @@ private struct RadicalCombine: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 if picked.isEmpty {
-                    Text("還沒選部首").ffFont(.subheadline).foregroundStyle(T.muted)
+                    Text(tr("還沒選部首")).ffFont(.subheadline).foregroundStyle(T.muted)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -190,13 +190,13 @@ private struct RadicalCombine: View {
                                 .foregroundStyle(Rainbow.ink(i))
                             }
                             .buttonStyle(.plain)
-                            .accessibilityLabel("拿掉 \(r)")
+                            .accessibilityLabel(tr("拿掉 \(r)"))
                         }
                     }
                     .padding(.vertical, 2)
                 }
                 if !picked.isEmpty {
-                    Text("\(found.count) 個字").ffFont(.footnote).foregroundStyle(T.muted).fixedSize()
+                    Text(tr("\(found.count) 個字")).ffFont(.footnote).foregroundStyle(T.muted).fixedSize()
                 }
             }
             .padding(.horizontal).padding(.vertical, 10)
@@ -205,7 +205,7 @@ private struct RadicalCombine: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if picked.isEmpty {
-                        Text("點好幾個部首（例如 氵 和 毋），這裡會出現裡面都有這些部首的字。偏旁也算：氵 = 水、亻 = 人、扌 = 手、艹 = 艸、⻌ = 辵、阝 = 阜／邑…不可能再組合的部首會變淡。")
+                        Text(tr("點好幾個部首（例如 氵 和 毋），這裡會出現裡面都有這些部首的字。偏旁也算：氵 = 水、亻 = 人、扌 = 手、艹 = 艸、⻌ = 辵、阝 = 阜／邑…不可能再組合的部首會變淡。"))
                             .ffFont(.footnote).foregroundStyle(T.muted)
                     } else {
                         results
@@ -220,13 +220,13 @@ private struct RadicalCombine: View {
 
     @ViewBuilder private var results: some View {
         if found.isEmpty {
-            Text("沒有字同時有這些部首。").ffFont(.footnote).foregroundStyle(T.muted)
+            Text(tr("沒有字同時有這些部首。")).ffFont(.footnote).foregroundStyle(T.muted)
         } else {
             let shown = Array(found.prefix(shownMax))
             let groups = Dictionary(grouping: shown, by: { dict.strokesOf[$0] ?? 0 })
             ForEach(groups.keys.sorted(), id: \.self) { n in
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(n == 0 ? "其他" : "\(n) 畫").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                    Text(n == 0 ? trs("其他") : tr("\(n) 畫")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
                         ForEach(groups[n] ?? [], id: \.self) { ch in
                             Button { onPick(ch) } label: {
@@ -244,7 +244,7 @@ private struct RadicalCombine: View {
                 }
             }
             if found.count > shownMax {
-                Text("只列出筆畫最少的 \(shownMax) 個字。再點一個部首可以縮小範圍。").ffFont(.caption).foregroundStyle(T.muted)
+                Text(tr("只列出筆畫最少的 \(shownMax) 個字。再點一個部首可以縮小範圍。")).ffFont(.caption).foregroundStyle(T.muted)
             }
         }
     }
@@ -277,11 +277,11 @@ private struct RadicalChars: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if chars.isEmpty {
-                    Text("這個詞典沒有這個部首的字。").ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("這個詞典沒有這個部首的字。")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
                 ForEach(groups.keys.sorted(), id: \.self) { n in
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(n == 0 ? "部首本身" : "再 \(n) 畫").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                        Text(n == 0 ? trs("部首本身") : tr("再 \(n) 畫")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
                             ForEach(Array((groups[n] ?? []).enumerated()), id: \.offset) { _, c in
                                 Button { onPick(c.ch) } label: {

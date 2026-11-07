@@ -14,21 +14,21 @@ struct WeekPanel: View {
         let left = store.weekDaysLeft
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Label("本週學習", systemImage: "calendar").ffFont(.headline).foregroundStyle(T.glyph)
+                Label(tr("本週學習"), systemImage: "calendar").ffFont(.headline).foregroundStyle(T.glyph)
                 Spacer()
                 if !words.isEmpty {
-                    Text(left == 0 ? "該考試了！" : "還有 \(left) 天")
+                    Text(left == 0 ? trs("該考試了！") : tr("還有 \(left) 天"))
                         .ffFont(.subheadline, .semibold).foregroundStyle(left == 0 ? T.rustInk : T.muted)
                 }
             }
             if words.isEmpty {
-                Text("從「不熟」選這個星期要學的詞（例如 10–20 個），每天練習，一週後做期末測驗。")
+                Text(tr("從「不熟」選這個星期要學的詞（例如 10–20 個），每天練習，一週後做期末測驗。"))
                     .ffFont(.footnote).foregroundStyle(T.muted)
             } else {
                 let known = words.filter { store.status($0) == 1 }.count
-                Text("\(words.count) 個詞・已經學會 \(known) 個").ffFont(.footnote).foregroundStyle(T.muted)
+                Text(tr("\(words.count) 個詞・已經學會 \(known) 個")).ffFont(.footnote).foregroundStyle(T.muted)
                 // the week: how many of its 7 days have gone
-                PotionBar(value: Double(7 - left) / 7, height: 16, showMarks: false, label: "這一週", palette: .blue)
+                PotionBar(value: Double(7 - left) / 7, height: 16, showMarks: false, label: trs("這一週"), palette: .blue)
                 FlowLayout(spacing: 6) {
                     ForEach(words.prefix(24)) { c in
                         Text(c.h).ffFont(.subheadline)
@@ -40,9 +40,9 @@ struct WeekPanel: View {
                 }
             }
             HStack(spacing: 10) {
-                PracticeTile(title: words.isEmpty ? "選詞" : "改詞", icon: "checklist", enabled: true) { picking = true }
-                PracticeTile(title: "練習", icon: "graduationcap.fill", enabled: !words.isEmpty) { practising = true }
-                PracticeTile(title: "期末測驗", icon: "rosette", enabled: !words.isEmpty) { testing = true }
+                PracticeTile(title: words.isEmpty ? trs("選詞") : trs("改詞"), icon: "checklist", enabled: true) { picking = true }
+                PracticeTile(title: tr("練習"), icon: "graduationcap.fill", enabled: !words.isEmpty) { practising = true }
+                PracticeTile(title: tr("期末測驗"), icon: "rosette", enabled: !words.isEmpty) { testing = true }
             }
         }
         .padding(12)
@@ -71,7 +71,7 @@ struct WeekPicker: View {
                 Section {
                     HStack(spacing: 10) {
                         ForEach([10, 20], id: \.self) { k in
-                            Button("隨機選 \(k) 個") {
+                            Button(tr("隨機選 \(k) 個")) {
                                 let pick = unknown.filter { !store.isInWeek($0.k) }.shuffled().prefix(max(0, k - n)).map(\.k)
                                 store.setWeek(pick, on: true)
                             }
@@ -79,15 +79,15 @@ struct WeekPicker: View {
                         }
                         Spacer()
                         if n > 0 {
-                            Button("全部取消", role: .destructive) { store.setWeek(store.weekCards.map(\.k), on: false) }
+                            Button(tr("全部取消"), role: .destructive) { store.setWeek(store.weekCards.map(\.k), on: false) }
                                 .buttonStyle(.bordered)
                         }
                     }
                 } footer: {
-                    Text("已選 \(n) 個。建議一週 10–20 個詞。")
+                    Text(tr("已選 \(n) 個。建議一週 10–20 個詞。"))
                 }
                 .listRowBackground(Color.clear)
-                Section("不熟的詞（\(unknown.count)）") {
+                Section(tr("不熟的詞（\(unknown.count)）")) {
                     ForEach(list) { c in
                         Button { withAnimation(.snappy) { store.toggleWeek(c.k) } } label: {
                             HStack {
@@ -106,10 +106,10 @@ struct WeekPicker: View {
             }
             .scrollContentBackground(.hidden)
             .appBackground()
-            .searchable(text: $query, prompt: "漢字或意思")
-            .navigationTitle("本週要學的詞")
+            .searchable(text: $query, prompt: trs("漢字或意思"))
+            .navigationTitle(tr("本週要學的詞"))
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(tr("完成")) { dismiss() } } }
         }
     }
 }
@@ -140,15 +140,15 @@ struct LevelWordsView: View {
                 SplitPotionBar(known: p.total > 0 ? Double(p.known) / Double(p.total) : 0,
                                unknown: p.total > 0 ? Double(p.unknown) / Double(p.total) : 0, label: name, tint: levelColor(level))
                 Picker("", selection: $filter) {
-                    Text("全部").tag(0)
-                    Text("沒看過").tag(1)
-                    Text("熟悉").tag(2)
-                    Text("不熟").tag(3)
+                    Text(tr("全部")).tag(0)
+                    Text(tr("沒看過")).tag(1)
+                    Text(tr("熟悉")).tag(2)
+                    Text(tr("不熟")).tag(3)
                 }
                 .pickerStyle(.segmented)
             }
             .listRowBackground(Color.clear)
-            Section("\(shown.count) 個詞（往右滑 = 熟悉，往左滑 = 不熟）") {
+            Section(tr("\(shown.count) 個詞（往右滑 = 熟悉，往左滑 = 不熟）")) {
                 ForEach(shown) { c in
                     Button { detail = c } label: {
                         HStack {
@@ -160,10 +160,10 @@ struct LevelWordsView: View {
                     }
                     .buttonStyle(.plain)
                     .swipeActions(edge: .leading) {
-                        Button { store.mark(c, known: true, undoable: false) } label: { Label("熟悉", systemImage: "checkmark") }.tint(T.btnEdge)
+                        Button { store.mark(c, known: true, undoable: false) } label: { Label(tr("熟悉"), systemImage: "checkmark") }.tint(T.btnEdge)
                     }
                     .swipeActions(edge: .trailing) {
-                        Button { store.mark(c, known: false, undoable: false) } label: { Label("不熟", systemImage: "xmark") }.tint(T.rustEdge)
+                        Button { store.mark(c, known: false, undoable: false) } label: { Label(tr("不熟"), systemImage: "xmark") }.tint(T.rustEdge)
                     }
                 }
             }
@@ -176,15 +176,15 @@ struct LevelWordsView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button { confirm = 1 } label: { Label("全部標成熟悉", systemImage: "checkmark.circle") }
-                    Button { confirm = 2 } label: { Label("沒看過的標成熟悉", systemImage: "checkmark.circle.badge.questionmark") }
-                    Button(role: .destructive) { confirm = 3 } label: { Label("全部移回新詞", systemImage: "arrow.uturn.backward") }
+                    Button { confirm = 1 } label: { Label(tr("全部標成熟悉"), systemImage: "checkmark.circle") }
+                    Button { confirm = 2 } label: { Label(tr("沒看過的標成熟悉"), systemImage: "checkmark.circle.badge.questionmark") }
+                    Button(role: .destructive) { confirm = 3 } label: { Label(tr("全部移回新詞"), systemImage: "arrow.uturn.backward") }
                 } label: { Image(systemName: "checklist.checked") }
-                .accessibilityLabel("整個等級")
+                .accessibilityLabel(tr("整個等級"))
             }
         }
         .confirmationDialog(confirmTitle, isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), titleVisibility: .visible) {
-            Button(confirm == 3 ? "移回新詞" : "標成熟悉", role: confirm == 3 ? .destructive : nil) {
+            Button(confirm == 3 ? trs("移回新詞") : trs("標成熟悉"), role: confirm == 3 ? .destructive : nil) {
                 switch confirm {
                 case 1: store.markAll(all, known: true)
                 case 2: store.markAll(all.filter { (store.status($0) ?? 0) == 0 }, known: true)
@@ -193,16 +193,16 @@ struct LevelWordsView: View {
                 }
                 confirm = nil
             }
-            Button("取消", role: .cancel) { confirm = nil }
+            Button(tr("取消"), role: .cancel) { confirm = nil }
         }
         .sheet(item: $detail) { CardSheet(card: $0).environmentObject(store) }
     }
 
     private var confirmTitle: String {
         switch confirm {
-        case 1: return "把 \(name) 的詞全部標成熟悉？"
-        case 2: return "把 \(name) 還沒看過的詞標成熟悉？"
-        case 3: return "把 \(name) 的詞全部移回新詞？（熟悉和不熟的都會）"
+        case 1: return tr("把 \(name) 的詞全部標成熟悉？")
+        case 2: return tr("把 \(name) 還沒看過的詞標成熟悉？")
+        case 3: return tr("把 \(name) 的詞全部移回新詞？（熟悉和不熟的都會）")
         default: return ""
         }
     }

@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -122,12 +123,12 @@ fun MemoryScreen(stars: StarField) {
 
     val done = tiles.isNotEmpty() && matched.size == cards.size
     Column(Modifier.fillMaxSize()) {
-        TopBar(if (tiles.isNotEmpty() && !done) "翻牌配對　${matched.size}／${cards.size}　翻了 $moves 次" else "翻牌配對",
+        TopBar(if (tiles.isNotEmpty() && !done) tr("翻牌配對　{0}／{1}　翻了 {2} 次", matched.size, cards.size, moves) else tr("翻牌配對"),
             { UI.practice = null; Player.stop() }, close = true, settings = false) {
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.GridView, "幾對", tint = T.glyph) }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.GridView, tr("幾對"), tint = T.glyph) }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
-                    for (n in listOf(4, 6, 8, 10)) DropdownMenuItem(text = { Text("$n 對", color = T.glyph) },
+                    for (n in listOf(4, 6, 8, 10)) DropdownMenuItem(text = { Text(tr("{0} 對", n), color = T.glyph) },
                         leadingIcon = { if (n == pairCount) Icon(Icons.Filled.Check, null, tint = T.greenInk) else Spacer(Modifier.size(24.dp)) },
                         onClick = { pairCount = n; menu = false })
                 }
@@ -136,12 +137,12 @@ fun MemoryScreen(stars: StarField) {
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) { ResumedNote(resumed) { resumed = false } }
         Box(Modifier.fillMaxSize()) {
             when {
-                tiles.isEmpty() -> Txt("「不熟」裡至少要有兩個詞才能玩。", ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
+                tiles.isEmpty() -> Txt(tr("「不熟」裡至少要有兩個詞才能玩。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
                 done -> Column(Modifier.align(Alignment.Center).widthIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Icon(Icons.Filled.AutoAwesome, null, tint = T.greenInk, modifier = Modifier.size(44.dp))
-                    Txt("全部配對了！", ff(FF.Title2, FontWeight.Bold), T.glyph)
-                    Txt("${cards.size} 對，翻了 $moves 次", ff(FF.Body), T.muted)
+                    Txt(tr("全部配對了！"), ff(FF.Title2, FontWeight.Bold), T.glyph)
+                    Txt(tr("{0} 對，翻了 {1} 次", cards.size, moves), ff(FF.Body), T.muted)
                     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.7f)).padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (c in cards) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -151,8 +152,8 @@ fun MemoryScreen(stars: StarField) {
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SoftButton(onClick = { build() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Refresh, "再玩一次", ff(FF.Subheadline)) }
-                        SoftButton(onClick = { UI.practice = null; Player.stop() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, "結束", ff(FF.Subheadline)) }
+                        SoftButton(onClick = { build() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Refresh, tr("再玩一次"), ff(FF.Subheadline)) }
+                        SoftButton(onClick = { UI.practice = null; Player.stop() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("結束"), ff(FF.Subheadline)) }
                     }
                 }
                 else -> BoxWithConstraints(Modifier.fillMaxSize()) {

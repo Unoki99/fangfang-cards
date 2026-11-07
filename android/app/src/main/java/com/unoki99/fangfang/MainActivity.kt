@@ -97,15 +97,15 @@ private fun Root() {
                     Spacer(Modifier.height(10.dp))
                     LinearProgressIndicator(progress = { Store.loadProgress }, modifier = Modifier.width(220.dp), color = T.greenInk, trackColor = T.fn)
                     Spacer(Modifier.height(8.dp))
-                    Txt("${Math.round(Store.loadProgress * 100)}%　第一次打開比較久，在模擬器上可能要一分鐘。", ff(FF.Footnote), T.muted)
+                    Txt(tr("{0}%　第一次打開比較久，在模擬器上可能要一分鐘。", Math.round(Store.loadProgress * 100)), ff(FF.Footnote), T.muted)
                 }
             }
         } else Tabs()
     }
     Store.zhError?.let { e ->
         AlertDialog(onDismissRequest = { Store.zhError = null }, containerColor = T.fn,
-            title = { Txt("華語", ff(FF.Headline)) }, text = { Txt(e, ff(FF.Body)) },
-            confirmButton = { TextButton(onClick = { Store.zhError = null }) { Text("好", color = T.btnInk) } })
+            title = { Txt(tr("華語"), ff(FF.Headline)) }, text = { Txt(e, ff(FF.Body)) },
+            confirmButton = { TextButton(onClick = { Store.zhError = null }) { Text(tr("好"), color = T.btnInk) } })
     }
     UI.practice?.let { PracticeHost(it) }
     if (UI.settingsOpen) SettingsScreen()
@@ -137,7 +137,7 @@ private fun Tabs() {
             val zh = Store.isZh
             val lv = Store.listVersion
             LaunchedEffect(zh) { for (t in UI.tabs) t.stack.clear() }
-            key(tab, zh, lv) { StackHost(UI.tabs[tab]) {
+            key(tab, zh, lv, Prefs.uiLanguage.value) { StackHost(UI.tabs[tab]) {
                 when (tab) {
                     0 -> NewDeckTab()
                     1 -> UnknownTab()
@@ -153,8 +153,8 @@ private fun Tabs() {
                 NavigationBarItem(
                     selected = on,
                     onClick = { if (on) UI.tabs[it.value].stack.clear() else UI.tab = it.value },
-                    icon = { Icon(if (on) it.on else it.icon, it.title) },
-                    label = { Text(it.title) },
+                    icon = { Icon(if (on) it.on else it.icon, tr(it.title)) },
+                    label = { Text(tr(it.title)) },
                     colors = NavigationBarItemDefaults.colors(selectedIconColor = T.greenInk, selectedTextColor = T.greenInk,
                         indicatorColor = T.green, unselectedIconColor = T.muted, unselectedTextColor = T.muted),
                 )
@@ -171,8 +171,8 @@ private fun LanguageWelcome(pick: (Boolean) -> Unit) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Txt("方方詞卡", ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
-                Txt("你想先學哪一種？", ff(FF.Title3), T.muted)
+                Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
+                Txt(tr("你想先學哪一種？"), ff(FF.Title3), T.muted)
                 Txt("Which language would you like to start with?", ff(FF.Subheadline), T.muted)
             }
             Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -187,16 +187,17 @@ private fun LanguageWelcome(pick: (Boolean) -> Unit) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Txt(if (zh) "華語" else "台語", ff(FF.Title2, FontWeight.Bold), ink)
-                                Txt(if (zh) "Mandarin" else "Taiwanese", ff(FF.Subheadline), ink.copy(alpha = 0.8f))
+                                if (!UILang.english) Txt(if (zh) "Mandarin" else "Taiwanese", ff(FF.Subheadline), ink.copy(alpha = 0.8f))
+                                else Txt(if (zh) "Mandarin" else "Taiwanese", ff(FF.Subheadline, FontWeight.SemiBold), ink)
                             }
-                            Txt(if (zh) "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音" else "教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音",
+                            Txt(tr(if (zh) "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音" else "教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音"),
                                 ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
                         }
                         Icon(Icons.Filled.ChevronRight, null, tint = ink.copy(alpha = 0.7f))
                     }
                 }
             }
-            Txt("之後可以在「設定 → 語言」換。\nYou can change this later in Settings.", ff(FF.Footnote), T.muted)
+            Txt(tr("之後可以在「設定 → 語言與讀音」換。"), ff(FF.Footnote), T.muted)
         }
     }
 }

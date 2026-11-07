@@ -7,6 +7,8 @@ final class Router: ObservableObject {
     static let shared = Router()
     /// the app opens on 詞典
     @Published var tab = 4
+    /// 設定 is open (shown above everything, so it stays open while a change in it redraws the pages behind)
+    @Published var settingsOpen = false
 
     /// open 詞典 → 查詞 with this word
     func lookUp(_ word: String) {

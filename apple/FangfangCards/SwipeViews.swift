@@ -65,7 +65,7 @@ struct SwipeStack: View {
     private var stamp: some View {
         let right = offset.width > 0
         let amount = min(abs(offset.width) / 110, 1)
-        return Text(right ? "認識" : "不熟")
+        return Text(right ? trs("認識") : trs("不熟"))
             .ffFont(.title, .heavy)
             .padding(.horizontal, 16).padding(.vertical, 6)
             .foregroundStyle(right ? T.blueInk : T.rustInk)
@@ -289,8 +289,8 @@ struct CardDust: View {
 
 /// ✕ / ↺ / ✓ buttons under a stack
 struct SwipeButtons: View {
-    var leftLabel = "不熟"
-    var rightLabel = "認識"
+    var leftLabel = trs("不熟")
+    var rightLabel = trs("認識")
     var canUndo = false
     var onLeft: () -> Void
     var onRight: () -> Void
@@ -310,7 +310,7 @@ struct SwipeButtons: View {
                 }
                 .disabled(!canUndo)
                 .keyboardShortcut("z", modifiers: .command)
-                .accessibilityLabel("復原")
+                .accessibilityLabel(tr("復原"))
             }
             round("checkmark", rightLabel, T.blue, T.blueEdge, T.blueInk, onRight)
                 .keyboardShortcut(.rightArrow, modifiers: [])
@@ -359,12 +359,12 @@ struct NewDeckView: View {
         VStack(spacing: sideways ? 0 : 18) {
             // (a phone on its side: no counts, no buttons, no tab bar; just the cards)
             if !sideways {
-                Text("已看 \(store.seenCount) / \(store.cards.count)　熟悉 \(store.knownCount)　不熟 \(store.unknownCount)")
+                Text(tr("已看 \(store.seenCount) / \(store.cards.count)　熟悉 \(store.knownCount)　不熟 \(store.unknownCount)"))
                     .ffFont(.footnote).foregroundStyle(T.muted)
             }
             if queue.isEmpty {
                 Spacer()
-                Text(topic < 0 ? "全部的詞都看過了！" : "這個主題的詞都看過了！").ffFont(.title3).foregroundStyle(T.muted)
+                Text(topic < 0 ? trs("全部的詞都看過了！") : trs("這個主題的詞都看過了！")).ffFont(.title3).foregroundStyle(T.muted)
                 Spacer()
             } else {
                 HStack(alignment: .top, spacing: smallSides ? 14 : 24) {
@@ -393,7 +393,7 @@ struct NewDeckView: View {
                             }
                             .buttonStyle(SwellButtonStyle())
                             .offset(x: 18, y: 4)
-                            .accessibilityLabel(sideButtons ? "收起按鈕" : "顯示按鈕")
+                            .accessibilityLabel(sideButtons ? trs("收起按鈕") : trs("顯示按鈕"))
                         }
                     }
                     if wideSides, let top = queue.first { CharSideColumn(word: top, side: 1, small: smallSides).frame(width: sideWidth) }
@@ -407,37 +407,37 @@ struct NewDeckView: View {
         .toolbar(sideways ? .hidden : .automatic, for: .tabBar)
         .animation(.snappy, value: sideways)
         .appBackground()
-        .rootPage("新詞") {
+        .rootPage(tr("新詞")) {
             if !store.topics.isEmpty {
             Menu {
                 if store.isZh {
-                    Picker("詞表", selection: $store.zhList) {
+                    Picker(tr("詞表"), selection: $store.zhList) {
                         ForEach(0..<Lang.listNames.count, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                     }
                     .pickerStyle(.inline)
                 }
-                Picker(store.isZh ? "等級" : "主題", selection: topicBinding) {
-                    Text(store.isZh ? "全部（從第一級開始）" : "全部（最常用的先）").tag(-1)
-                    ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text("\(t.name)（\(t.count)）").tag(t.id) }
+                Picker(store.isZh ? trs("等級") : trs("主題"), selection: topicBinding) {
+                    Text(store.isZh ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
+                    ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
                 }
                 // 華語: the character cards, one level at a time
                 let charTopics = store.isZh ? store.topics.filter { $0.id > Lang.charTopicBase } : []
                 if !charTopics.isEmpty {
-                    Picker("漢字", selection: topicBinding) {
-                        ForEach(charTopics) { t in Text("\(t.name)（\(t.count)）").tag(t.id) }
+                    Picker(tr("漢字"), selection: topicBinding) {
+                        ForEach(charTopics) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
                     }
                     .pickerStyle(.inline)
                 }
                 // 台語: the most common words / characters, 500 at a time
                 if !store.isZh && !store.freqTopics.isEmpty {
-                    Menu("常用詞（每組 \(Lang.freqSize) 個）") {
-                        Picker("常用詞", selection: topicBinding) {
+                    Menu(tr("常用詞（每組 \(Lang.freqSize) 個）")) {
+                        Picker(tr("常用詞"), selection: topicBinding) {
                             ForEach(store.freqTopics.filter { $0.id < Lang.freqCharBase }) { t in Text(t.name).tag(t.id) }
                         }
                         .pickerStyle(.inline)
                     }
-                    Menu("常用字（每組 \(Lang.freqSize) 個）") {
-                        Picker("常用字", selection: topicBinding) {
+                    Menu(tr("常用字（每組 \(Lang.freqSize) 個）")) {
+                        Picker(tr("常用字"), selection: topicBinding) {
                             ForEach(store.freqTopics.filter { $0.id >= Lang.freqCharBase }) { t in Text(t.name).tag(t.id) }
                         }
                         .pickerStyle(.inline)
@@ -457,15 +457,15 @@ struct NewDeckView: View {
 
 extension NewDeckView {
     var topicName: String {
-        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.isZh ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・全部" : "全部")
+        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.isZh ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
     }
 }
 
 /// a stack plus its buttons
 struct DeckArea: View {
     let cards: [Card]
-    var leftLabel = "不熟"
-    var rightLabel = "認識"
+    var leftLabel = trs("不熟")
+    var rightLabel = trs("認識")
     let onSwipe: (Card, Bool) -> Void
     var undo: (() -> Void)? = nil
     /// the ✕ ↺ ✓ buttons (not on a phone on its side: there's no room)
@@ -530,8 +530,8 @@ struct CharSideCard: View {
                     .lineLimit(1).minimumScaleFactor(0.5)
                 // the character card's place now
                 switch store.status(card) {
-                case 1?: Chip(text: "熟悉", fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
-                case 2?: Chip(text: "不熟", fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
+                case 1?: Chip(text: tr("熟悉"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
+                case 2?: Chip(text: tr("不熟"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
                 default: EmptyView()
                 }
             }
@@ -593,7 +593,7 @@ struct CharSideSwipe: View {
                             }
                             .buttonStyle(SwellButtonStyle())
                             .padding(small ? 8 : 12)
-                            .accessibilityLabel("寫這個字")
+                            .accessibilityLabel(tr("寫這個字"))
                         }
                         .offset(offset)
                         .rotationEffect(.degrees(Double(offset.width / 22)))

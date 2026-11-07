@@ -28,7 +28,7 @@ struct WordCard: View {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
                     if hideMeaning && !revealed {
-                        Text("點一下看意思").ffFont(.headline).foregroundStyle(T.muted)
+                        Text(tr("點一下看意思")).ffFont(.headline).foregroundStyle(T.muted)
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     } else {
                         // 華語: the 詞類 (from the word lists)
@@ -48,7 +48,7 @@ struct WordCard: View {
                                 }
                             }
                             if card.d.count > n {
-                                Text("還有 \(card.d.count - n) 個意思").ffFont(.caption).foregroundStyle(T.muted)
+                                Text(tr("還有 \(card.d.count - n) 個意思")).ffFont(.caption).foregroundStyle(T.muted)
                             }
                         }
                     }
@@ -66,7 +66,7 @@ struct WordCard: View {
                     .lineLimit(1).minimumScaleFactor(0.3)
                 if hideReading && !revealed {
                     // 設定 → 卡片上不顯示讀音: tap the card to see it
-                    Text("點一下看讀音").ffFont(.subheadline).foregroundStyle(T.muted)
+                    Text(tr("點一下看讀音")).ffFont(.subheadline).foregroundStyle(T.muted)
                 } else {
                     Text(store.cardRom(card, rom, place)).latFont(compact ? 22 : 34).toneGlow().foregroundStyle(T.greenInk)
                         .lineLimit(1).minimumScaleFactor(0.5)
@@ -76,7 +76,7 @@ struct WordCard: View {
                     }
                     if let x = store.alsoSaid(card, rom, place).first {
                         HStack(spacing: 6) {
-                            Chip(text: "也講", fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                            Chip(text: tr("也講"), fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
                             Text(x.rom).latFont(15).foregroundStyle(T.greenInk.opacity(0.85))
                         }
                     } else if let o = card.o?.first {
@@ -93,7 +93,7 @@ struct WordCard: View {
                 CardChips(card: card, place: place)
                 Spacer()
                 Button { showDetail = true } label: {
-                    Label("詳細", systemImage: "text.book.closed")
+                    Label(tr("詳細"), systemImage: "text.book.closed")
                         .ffFont(.footnote, .semibold)
                         .foregroundStyle(T.greenInk)
                         .padding(.horizontal, 12).padding(.vertical, 7)
@@ -181,15 +181,15 @@ struct CardDetail: View {
                             Text(store.cardZy(card, place)).scaledFont(17).foregroundStyle(T.purpleInk)
                             // other readings, and the 通行 one when a place is shown
                             ForEach(Array(store.alsoSaid(card, rom, place).enumerated()), id: \.offset) { _, x in
-                                OtherRow(label: "也講", rom: x.rom, zy: x.zy)
+                                OtherRow(label: trs("也講"), rom: x.rom, zy: x.zy)
                             }
                             if store.cardDiffers(card, place), !store.alsoSaid(card, rom, place).contains(where: { $0.rom == card.rom(rom) }) {
-                                OtherRow(label: "通行", rom: card.rom(rom), zy: card.z)
+                                OtherRow(label: trs("通行"), rom: card.rom(rom), zy: card.z)
                             }
                             // 華語: the 臺灣 / 大陸 reading that isn't shown, where they differ
                             if card.isZh, let zl = card.zl, let d = store.zh {
                                 let tw = store.zhPlace == 1
-                                OtherRow(label: tw ? "臺灣" : "大陸", rom: d.readingPlain(tw ? card.zs ?? [] : zl, store.zhRom), zy: "")
+                                OtherRow(label: tw ? trs("臺灣") : trs("大陸"), rom: d.readingPlain(tw ? card.zs ?? [] : zl, store.zhRom), zy: "")
                             }
                             ForEach(Array((card.o ?? []).enumerated()), id: \.offset) { _, o in
                                 OtherRow(label: o.l, rom: o.r[min(max(rom, 0), 2)], zy: o.z)
@@ -232,15 +232,15 @@ struct CardDetail: View {
                         Panel { LinkRows(sy: card.sy, an: card.an) }
                     }
                     if card.t == "臺華共同" {
-                        Text("臺華共同詞：意思跟華語一樣。").ffFont(.footnote).foregroundStyle(T.muted)
+                        Text(tr("臺華共同詞：意思跟華語一樣。")).ffFont(.footnote).foregroundStyle(T.muted)
                     }
                     HStack(spacing: 12) {
                         Button { store.mark(card, known: false, undoable: false); dismiss() } label: {
-                            Label("不熟", systemImage: "xmark").frame(maxWidth: .infinity)
+                            Label(tr("不熟"), systemImage: "xmark").frame(maxWidth: .infinity)
                         }
                         .prominentButton(T.rustEdge)
                         Button { store.mark(card, known: true, undoable: false); dismiss() } label: {
-                            Label("熟悉", systemImage: "checkmark").frame(maxWidth: .infinity)
+                            Label(tr("熟悉"), systemImage: "checkmark").frame(maxWidth: .infinity)
                         }
                         .prominentButton(T.btnEdge)
                     }
@@ -255,16 +255,16 @@ struct CardDetail: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { RomButton() }
-                ToolbarItem(placement: .topBarTrailing) { Button("完成") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { dismiss() } }
             }
         }
     }
 
     private var statusText: String {
         switch store.status(card) {
-        case 1?: return "熟悉"
-        case 2?: return "不熟（連續答對 \(store.streak(card)) 次）"
-        default: return "還沒看過"
+        case 1?: return trs("熟悉")
+        case 2?: return tr("不熟（連續答對 \(store.streak(card)) 次）")
+        default: return trs("還沒看過")
         }
     }
 }
@@ -295,7 +295,7 @@ struct WordRow: View {
                         Circle().fill(i < s ? T.greenInk : T.fnEdge).frame(width: 7, height: 7)
                     }
                 }
-                .accessibilityLabel("答對 \(s) 次")
+                .accessibilityLabel(tr("答對 \(s) 次"))
             }
         }
         .padding(.vertical, 2)
@@ -311,11 +311,11 @@ struct CardChips: View {
     var body: some View {
         HStack(spacing: 4) {
             RegChip(reg: card.g)
-            if card.s == 1 { Chip(text: "替", fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
+            if card.s == 1 { Chip(text: tr("替"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
             if let t = card.t { Chip(text: t, fill: T.fn, edge: T.fnEdge, ink: T.muted) }
             if store.cardDiffers(card, place), place < store.places.count {
                 Chip(text: String(store.places[place].prefix(2)), fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
-                if store.isGuessed(card, place) { Chip(text: "推測", fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                if store.isGuessed(card, place) { Chip(text: tr("推測"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
             }
         }
     }
@@ -340,8 +340,8 @@ struct LinkRows: View {
     let an: [[String]]?
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            row("近", sy)
-            row("反", an)
+            row(trs("近"), sy)
+            row(trs("反"), an)
         }
     }
     @ViewBuilder private func row(_ name: String, _ list: [[String]]?) -> some View {

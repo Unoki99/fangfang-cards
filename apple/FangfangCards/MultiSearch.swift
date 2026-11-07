@@ -100,14 +100,14 @@ struct JapaneseWordsPage: View {
     var body: some View {
         List {
             if let list {
-                Section("\(list.count) 個詞") {
+                Section(tr("\(list.count) 個詞")) {
                     ForEach(list, id: \.key) { w in
                         NavigationLink(value: DictKey(k: w.key)) {
                             VStack(alignment: .leading, spacing: 3) {
                                 DictRow(dict: dict, key: w.key)
                                 if !w.from.isEmpty {
                                     HStack(spacing: 6) {
-                                        Chip(text: "日", fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
+                                        Chip(text: tr("日"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
                                         Text(w.from).ffFont(.footnote).foregroundStyle(T.rustInk)
                                     }
                                 }
@@ -115,7 +115,7 @@ struct JapaneseWordsPage: View {
                         }
                         .swipeActions(edge: .leading) {
                             if store.cardStatus(w.key) == 0 {
-                                Button { store.toggleUnknown(w.key) } label: { Label("加到不熟", systemImage: "star") }.tint(T.rustEdge)
+                                Button { store.toggleUnknown(w.key) } label: { Label(tr("加到不熟"), systemImage: "star") }.tint(T.rustEdge)
                             }
                         }
                         .swipeActions(edge: .trailing) {
@@ -132,7 +132,7 @@ struct JapaneseWordsPage: View {
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .navigationTitle("日語借詞")
+        .navigationTitle(tr("日語借詞"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
         .task {

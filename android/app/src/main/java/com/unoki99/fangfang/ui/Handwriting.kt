@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Rect
@@ -92,7 +93,7 @@ object PracticeSave {
 fun ResumedNote(shown: Boolean, onGone: () -> Unit) {
     if (!shown) return
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(2500); onGone() }
-    Txt("接著上次的練習", ff(FF.Footnote, FontWeight.SemiBold), T.btnInk,
+    Txt(tr("接著上次的練習"), ff(FF.Footnote, FontWeight.SemiBold), T.btnInk,
         Modifier.clip(RoundedCornerShape(50)).background(T.btn).border(1.5.dp, T.btnEdge, RoundedCornerShape(50))
             .padding(horizontal = 12.dp, vertical = 5.dp))
 }
@@ -101,7 +102,7 @@ fun ResumedNote(shown: Boolean, onGone: () -> Unit) {
 
 object Kai {
     /** the fonts to choose from (設定 or the 字體 button in 手寫練習); what one doesn't have comes from the system's font */
-    val names = listOf("文楷", "芫荽")
+    val names: List<String> get() = listOf(tr("文楷"), tr("芫荽"))
     // 霞鶩文楷 TC; 芫荽 Iansui (Taiwan's way of writing, for learning) — both SIL OFL
     private val files = listOf(R.font.lxgw_wenkai_tc, R.font.iansui)
     private val faces = HashMap<Int, Typeface>()
@@ -232,9 +233,9 @@ fun HandwritingScreen(only: List<String>? = null, onClose: () -> Unit) {
     }
     LaunchedEffect(idx, list) { if (list != null && only == null) save() }
     Column(Modifier.fillMaxSize()) {
-        TopBar("手寫練習", onClose, close = true, settings = false) {
+        TopBar(tr("手寫練習"), onClose, close = true, settings = false) {
             if (list != null && only == null) TextButton(onClick = { PracticeSave.clear("handwriting", Store.isZh); list = null }) {
-                Icon(Icons.Filled.GridView, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("選字", color = T.btnInk)
+                Icon(Icons.Filled.GridView, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(tr("選字"), color = T.btnInk)
             }
             // 中 / 英 (華語's meanings), standing up next to the spelling / 腔口 buttons
             if (list != null && Store.isZh) { Spacer(Modifier.width(4.dp)); MeaningSwitch(vertical = true) }
@@ -259,14 +260,14 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
     val sources = if (!Store.isZh) {
         // 台語: the characters of your 不熟 / 熟悉 words
         val tw = twCharSets()
-        listOf(Source("unknown", "不熟的詞的字", tw.first), Source("known", "熟悉的詞的字", tw.second),
-            Source("own", "自己選的字", own.cps().filter { Zhuyin.isHan(it.firstCp()) }.distinct()))
+        listOf(Source("unknown", tr("不熟的詞的字"), tw.first), Source("known", tr("熟悉的詞的字"), tw.second),
+            Source("own", tr("自己選的字"), own.cps().filter { Zhuyin.isHan(it.firstCp()) }.distinct()))
     } else buildList {
         val sets = Store.zhCharSets()
-        add(Source("unknown", "不熟的漢字", sets.all.filter { sets.unknown.contains(it) }))
+        add(Source("unknown", tr("不熟的漢字"), sets.all.filter { sets.unknown.contains(it) }))
         for (t in Store.topics) if (t.id > Lang.charTopicBase) add(Source("level${t.id}", t.name, Store.levelCards(t.id).mapNotNull { Lang.charOf(it.k) }))
-        add(Source("known", "認識的漢字", sets.all.filter { sets.known.contains(it) }))
-        add(Source("own", "自己選的字", own.cps().filter { Zhuyin.isHan(it.firstCp()) }.distinct()))
+        add(Source("known", tr("認識的漢字"), sets.all.filter { sets.known.contains(it) }))
+        add(Source("own", tr("自己選的字"), own.cps().filter { Zhuyin.isHan(it.firstCp()) }.distinct()))
     }
     val src = sources.firstOrNull { it.id == listID } ?: sources[0]
     val picked = src.chars.filter { it !in off }
@@ -277,16 +278,16 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // start first, at the top (the list of characters can be long)
                 ProminentButton(onClick = { start(if (shuffle) picked.shuffled() else picked) }, Modifier.fillMaxWidth(), enabled = picked.isNotEmpty()) {
-                    IconLabel(Icons.Filled.Edit, "開始寫（${picked.size} 個字）")
+                    IconLabel(Icons.Filled.Edit, tr("開始寫（{0} 個字）", picked.size))
                 }
                 Row(Modifier.fillMaxWidth().clickable { shuffle = !shuffle }, verticalAlignment = Alignment.CenterVertically) {
-                    Txt("打亂順序", ff(FF.Body), modifier = Modifier.weight(1f))
+                    Txt(tr("打亂順序"), ff(FF.Body), modifier = Modifier.weight(1f))
                     Switch(shuffle, { shuffle = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
                 }
                 Box {
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f)).border(1.dp, T.fnEdge, RoundedCornerShape(12.dp))
                         .clickable { menu = true }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Txt("要寫的字", ff(FF.Body), T.muted, Modifier.weight(1f))
+                        Txt(tr("要寫的字"), ff(FF.Body), T.muted, Modifier.weight(1f))
                         Txt(if (src.id == "own") src.name else "${src.name}（${src.chars.size}）", ff(FF.Body), T.greenInk)
                         Icon(Icons.Filled.UnfoldMore, null, tint = T.muted, modifier = Modifier.size(18.dp))
                     }
@@ -295,12 +296,12 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
                             onClick = { listID = s.id; off.clear(); menu = false })
                     }
                 }
-                if (src.id == "own") SearchField(own, { own = it }, "打你要寫的字，例如：龍鳳書寫")
-                if (src.chars.isEmpty()) Txt(if (src.id == "unknown") "還沒有不熟的漢字。" else if (src.id == "own") "在上面打字。" else "這裡沒有字。", ff(FF.Footnote), T.muted)
+                if (src.id == "own") SearchField(own, { own = it }, tr("打你要寫的字，例如：龍鳳書寫"))
+                if (src.chars.isEmpty()) Txt(if (src.id == "unknown") tr("還沒有不熟的漢字。") else if (src.id == "own") tr("在上面打字。") else tr("這裡沒有字。"), ff(FF.Footnote), T.muted)
                 else Row(verticalAlignment = Alignment.CenterVertically) {
-                    Txt("點字可以不選它。選了 ${picked.size}／${src.chars.size} 個", ff(FF.Footnote), T.muted, Modifier.weight(1f))
-                    TextButton(onClick = { off.clear() }) { Text("全選", color = T.btnInk) }
-                    TextButton(onClick = { off.clear(); off.addAll(src.chars) }) { Text("全不選", color = T.btnInk) }
+                    Txt(tr("點字可以不選它。選了 {0}／{1} 個", picked.size, src.chars.size), ff(FF.Footnote), T.muted, Modifier.weight(1f))
+                    TextButton(onClick = { off.clear() }) { Text(tr("全選"), color = T.btnInk) }
+                    TextButton(onClick = { off.clear(); off.addAll(src.chars) }) { Text(tr("全不選"), color = T.btnInk) }
                 }
             }
         }
@@ -361,12 +362,12 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
     Column(Modifier.weight(1f).fillMaxHeight().widthIn(max = maxOf(640f, padSide + 32f).dp).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.weight(1f)) { PotionBar((idx + 1).toDouble() / chars.size, 20.dp, showMarks = false, label = "手寫進度") }
-            Txt("${idx + 1}／${chars.size}", lat(14f), T.muted)
+            Box(Modifier.weight(1f)) { PotionBar((idx + 1).toDouble() / chars.size, 20.dp, showMarks = false, label = tr("手寫進度")) }
+            Txt(tr("{0}／{1}", idx + 1, chars.size), lat(14f), T.muted)
             Row(Modifier.clip(RoundedCornerShape(50)).background(if (trace) T.btn else T.fn).border(1.5.dp, if (trace) T.btnEdge else T.fnEdge, RoundedCornerShape(50))
                 .clickable { trace = !trace }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Filled.TextFields, null, tint = if (trace) T.btnInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-                Txt("描字", ff(FF.Footnote, FontWeight.SemiBold), if (trace) T.btnInk else T.muted)
+                Txt(tr("描字"), ff(FF.Footnote, FontWeight.SemiBold), if (trace) T.btnInk else T.muted)
             }
             // 字體: 文楷 or 芫荽 (the character at the top and the one to trace)
             Box {
@@ -389,7 +390,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                 Row(Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
                     .clickable { penMenu = true }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Edit, null, tint = T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-                    Txt("筆", ff(FF.Footnote, FontWeight.SemiBold), T.muted)
+                    Txt(tr("筆"), ff(FF.Footnote, FontWeight.SemiBold), T.muted)
                 }
                 DropdownMenu(penMenu, { penMenu = false }, containerColor = T.fn) {
                     Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) { PenControls() }
@@ -413,7 +414,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                 Text(ch, style = sz(64f, FontWeight.Medium).copy(fontFamily = Kai.family), color = T.blueInk)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Filled.Search, null, tint = T.muted, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(2.dp))
-                    Txt("看詞", ff(FF.Caption2, FontWeight.SemiBold), T.muted)
+                    Txt(tr("看詞"), ff(FF.Caption2, FontWeight.SemiBold), T.muted)
                 }
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -488,23 +489,23 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
             }
         }
         if (trace) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Txt("描得像", ff(FF.Footnote, FontWeight.SemiBold), T.muted)
-            Box(Modifier.weight(1f)) { PotionBar(score, 22.dp, showMarks = false, label = "描得像") }
+            Txt(tr("描得像"), ff(FF.Footnote, FontWeight.SemiBold), T.muted)
+            Box(Modifier.weight(1f)) { PotionBar(score, 22.dp, showMarks = false, label = tr("描得像")) }
             Txt(if (strokes.isEmpty()) "—" else "${Math.round(score * 100)}%", lat(15f), T.glyph)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SoftButton(onClick = { setIdx(maxOf(0, idx - 1)) }, Modifier.weight(1f), enabled = idx > 0) { IconLabel(Icons.Filled.ChevronLeft, "上一個", ff(FF.Subheadline)) }
-            SoftButton(onClick = { strokes.clear() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Clear, "清掉", ff(FF.Subheadline)) }
+            SoftButton(onClick = { setIdx(maxOf(0, idx - 1)) }, Modifier.weight(1f), enabled = idx > 0) { IconLabel(Icons.Filled.ChevronLeft, tr("上一個"), ff(FF.Subheadline)) }
+            SoftButton(onClick = { strokes.clear() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Clear, tr("清掉"), ff(FF.Subheadline)) }
             ProminentButton(onClick = { if (idx + 1 >= chars.size) finished() else setIdx(idx + 1) }, Modifier.weight(1f)) {
-                IconLabel(Icons.Filled.ChevronRight, if (idx + 1 >= chars.size) "完成" else "下一個", ff(FF.Subheadline))
+                IconLabel(Icons.Filled.ChevronRight, if (idx + 1 >= chars.size) tr("完成") else tr("下一個"), ff(FF.Subheadline))
             }
         }
         // 格子大小: the writing square, bigger or smaller (the shadow follows)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Filled.ZoomOut, "小一點", tint = T.muted, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.ZoomOut, tr("小一點"), tint = T.muted, modifier = Modifier.size(20.dp))
             Slider(padSide, { padSize = it }, Modifier.weight(1f), valueRange = 180f..maxOf(181f, maxPad),
                 colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
-            Icon(Icons.Filled.ZoomIn, "大一點", tint = T.muted, modifier = Modifier.size(20.dp))
+            Icon(Icons.Filled.ZoomIn, tr("大一點"), tint = T.muted, modifier = Modifier.size(20.dp))
         }
     }
     }
@@ -519,9 +520,9 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
 fun CharWordsSheetRoot(ch: String) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f))
-            Txt("有「$ch」的詞", ff(FF.Headline, FontWeight.SemiBold), T.glyph)
+            Txt(tr("有「{0}」的詞", ch), ff(FF.Headline, FontWeight.SemiBold), T.glyph)
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
@@ -533,7 +534,7 @@ fun CharWordsSheetRoot(ch: String) {
 @Composable
 private fun CharWordsPanel(ch: String, modifier: Modifier) {
     Column(modifier.clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.35f)).border(1.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
-        Txt("有「$ch」的詞", ff(FF.Headline, FontWeight.SemiBold), T.glyph, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
+        Txt(tr("有「{0}」的詞", ch), ff(FF.Headline, FontWeight.SemiBold), T.glyph, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
         CharWordsList(ch, Modifier.fillMaxSize())
     }
 }
@@ -580,7 +581,7 @@ private fun CharWordsList(ch: String, modifier: Modifier) {
                     Row(Modifier.fillMaxWidth().clickable { UI.open(Sheet.ZhWord(ce.k)) }.padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Filled.MenuBook, null, tint = T.oliveInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp))
-                        Txt("「$ch」這個字", ff(FF.Body), T.glyph, Modifier.weight(1f))
+                        Txt(tr("「{0}」這個字", ch), ff(FF.Body), T.glyph, Modifier.weight(1f))
                         Icon(Icons.Filled.ChevronRight, null, tint = T.muted)
                     }
                 }
@@ -589,14 +590,14 @@ private fun CharWordsList(ch: String, modifier: Modifier) {
             if (l == null) item(key = "wait") {
                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = T.greenInk) }
             } else {
-                item(key = "title") { SectionTitle(if (l.isEmpty()) "沒有找到有這個字的詞" else "有「$ch」的詞（${l.size}）") }
+                item(key = "title") { SectionTitle(if (l.isEmpty()) tr("沒有找到有這個字的詞") else tr("有「{0}」的詞（{1}）", ch, l.size)) }
                 itemsIndexed(l, key = { _, i -> "w|$i" }) { n, i ->
                     val e = z.entries[i]
                     rowBox(n, l.size, { UI.open(Sheet.ZhWord(e.k)) }) { ZhWordRow(z, e, meanings = 2) }
                 }
             }
         } else {
-            item(key = "title") { SectionTitle(if (cardWords.isEmpty()) "沒有找到有這個字的詞" else "有「$ch」的詞（${cardWords.size}）") }
+            item(key = "title") { SectionTitle(if (cardWords.isEmpty()) tr("沒有找到有這個字的詞") else tr("有「{0}」的詞（{1}）", ch, cardWords.size)) }
             itemsIndexed(cardWords, key = { _, c -> "c|${c.k}" }) { n, c ->
                 rowBox(n, cardWords.size, { UI.open(Sheet.CardSheet(c)) }) { CharWordCardRow(c) }
             }
@@ -627,7 +628,7 @@ private fun CharWordCardRow(c: Card) {
 fun PenControls() {
     val w = Prefs.handWidth.value
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Txt("粗細", ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Txt(tr("粗細"), ff(FF.Body), T.glyph, Modifier.weight(1f))
         Txt("${w.toInt()}", lat(15f), T.muted)
     }
     Slider(w, { Prefs.handWidth.value = it }, valueRange = 3f..24f,
@@ -649,16 +650,16 @@ fun PenControls() {
     // 筆跡延遲: the writing shows up a moment after the pen
     val dl = Prefs.handDelay.value
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Txt("筆跡延遲", ff(FF.Body), T.glyph, Modifier.weight(1f))
-        Txt(if (dl < 0.025f) "馬上出現" else String.format("%.1f 秒", dl), ff(FF.Body), T.muted)
+        Txt(tr("筆跡延遲"), ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Txt(if (dl < 0.025f) tr("馬上出現") else String.format(tr("%.1f 秒"), dl), ff(FF.Body), T.muted)
     }
     Slider(dl, { Prefs.handDelay.value = Math.round(it * 20) / 20f }, valueRange = 0f..1.5f,
         colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
     Spacer(Modifier.height(10.dp))
     val s = Prefs.handPressure.value
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Txt("觸控筆筆壓", ff(FF.Body), T.glyph, Modifier.weight(1f))
-        Txt(if (s < 0.05f) "粗細不變" else "${Math.round(s * 100)}%", ff(FF.Body), T.muted)
+        Txt(tr("觸控筆筆壓"), ff(FF.Body), T.glyph, Modifier.weight(1f))
+        Txt(if (s < 0.05f) tr("粗細不變") else "${Math.round(s * 100)}%", ff(FF.Body), T.muted)
     }
     Slider(s, { Prefs.handPressure.value = it }, valueRange = 0f..1.5f,
         colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
@@ -675,7 +676,7 @@ fun MeaningSwitch(vertical: Boolean = false) {
         val on = en == e
         Box(Modifier.size(width = if (vertical) 24.dp else 26.dp, height = if (vertical) 19.dp else 22.dp).clip(RoundedCornerShape(50))
             .background(if (on) T.btn else Color.Transparent), contentAlignment = Alignment.Center) {
-            Txt(if (e) "英" else "中", ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.btnInk else T.muted)
+            Txt(if (e) tr("英") else tr("中"), ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.btnInk else T.muted)
         }
     }
     if (vertical) Column(m) { part(false); part(true) } else Row(m) { part(false); part(true) }
@@ -714,7 +715,7 @@ private fun KnowCharButton(c: Card) {
         }
         Box(Modifier.size(40.dp).clip(CircleShape).background(if (known) yellow else T.fn)
             .border(1.5.dp, if (known) yellow.copy(alpha = 0.6f) else T.fnEdge, CircleShape), contentAlignment = Alignment.Center) {
-            Icon(Icons.Filled.Check, if (known) "我會了（再點一下：不熟）" else "我會這個字", tint = if (known) Color(0xFF3A2A00) else T.muted,
+            Icon(Icons.Filled.Check, if (known) tr("我會了（再點一下：不熟）") else tr("我會這個字"), tint = if (known) Color(0xFF3A2A00) else T.muted,
                 modifier = Modifier.size(20.dp))
         }
     }
@@ -736,7 +737,7 @@ fun InkSwatch(size: androidx.compose.ui.unit.Dp) {
 fun InkColorControls() {
     val rainbow = Prefs.handRainbow.value
     val ink = Prefs.handInk.value
-    Txt("筆的顏色", ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(bottom = 8.dp))
+    Txt(tr("筆的顏色"), ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(bottom = 8.dp))
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         @Composable
         fun mode(name: String, on: Boolean, brush: androidx.compose.ui.graphics.Brush, act: () -> Unit) {
@@ -747,8 +748,8 @@ fun InkColorControls() {
                 Txt(name, ff(FF.Subheadline, if (on) FontWeight.Bold else FontWeight.Normal), T.glyph)
             }
         }
-        mode("墨色", !rainbow && ink == 0, androidx.compose.ui.graphics.SolidColor(HandInk.dark)) { Prefs.handRainbow.value = false; Prefs.handInk.value = 0 }
-        mode("彩虹", rainbow, androidx.compose.ui.graphics.Brush.sweepGradient(HandInk.rainbow + HandInk.rainbow[0])) { Prefs.handRainbow.value = true }
+        mode(tr("墨色"), !rainbow && ink == 0, androidx.compose.ui.graphics.SolidColor(HandInk.dark)) { Prefs.handRainbow.value = false; Prefs.handInk.value = 0 }
+        mode(tr("彩虹"), rainbow, androidx.compose.ui.graphics.Brush.sweepGradient(HandInk.rainbow + HandInk.rainbow[0])) { Prefs.handRainbow.value = true }
     }
     Spacer(Modifier.height(12.dp))
     val cols = ToneColors.palette
@@ -765,7 +766,7 @@ fun InkColorControls() {
             }
         }
     }
-    Txt("中間那一排是原本的顏色，往上越淺，往下越深。", ff(FF.Caption), T.muted, Modifier.padding(top = 8.dp))
+    Txt(tr("中間那一排是原本的顏色，往上越淺，往下越深。"), ff(FF.Caption), T.muted, Modifier.padding(top = 8.dp))
 }
 
 /** 手寫練習 from a 台語 side card: the character's word, read as in the big card's word */

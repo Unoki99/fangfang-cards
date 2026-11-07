@@ -563,7 +563,7 @@ final class Store: ObservableObject {
         return u.filter { inTopic($0, t) }
     }
     var practiceName: String {
-        practiceTopics.first(where: { $0.id == practiceTopic })?.name ?? "全部不熟的詞"
+        practiceTopics.first(where: { $0.id == practiceTopic })?.name ?? trs("全部不熟的詞")
     }
     var knownCards: [Card] { list(1) }
 

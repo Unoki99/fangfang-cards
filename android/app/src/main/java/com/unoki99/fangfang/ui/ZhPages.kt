@@ -1,5 +1,7 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
+import com.unoki99.fangfang.UILang
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
@@ -66,11 +68,11 @@ private fun zhKey(): List<Any> = listOf(Prefs.zhRom.value, Prefs.zhPlace.value, 
 @Composable
 fun ZhDictionaryTab() {
     Column(Modifier.fillMaxSize()) {
-        TopBar("詞典")
+        TopBar(tr("詞典"))
         ZhGate { z ->
             var tab by Prefs.zhDictTab
             Column(Modifier.fillMaxSize()) {
-                Segmented(listOf(0 to "查詞", 1 to "收藏"), tab, { tab = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                Segmented(listOf(0 to tr("查詞"), 1 to tr("收藏")), tab, { tab = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                 Box(Modifier.weight(1f)) { if (tab == 1) ZhSavedPane(z) else ZhLookupPane(z) }
             }
         }
@@ -93,27 +95,27 @@ private fun ZhLookupPane(z: ZhDict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             val nav = LocalNav.current
-            SearchField(query, { query = it }, "漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4")
+            SearchField(query, { query = it }, tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
             TileGrid(3) { i, m ->
                 when (i) {
-                    0 -> TileButton(Icons.AutoMirrored.Filled.List, "依詞類列出", m) { nav.push(Route.ZhClasses) }
-                    1 -> TileButton(Icons.Filled.VerticalSplit, "單詞比較", m) { nav.push(Route.ZhCompare) }
-                    else -> TileButton(Icons.Filled.GridView, "部首查字", m) { nav.push(Route.Radicals(true)) }
+                    0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) }
+                    1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) }
+                    else -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(true)) }
                 }
             }
         }
         if (query.isEmpty()) item {
-            Txt("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。",
+            Txt(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
-        } else if (f.empty) item { Txt("找不到「$query」。", ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
-        zhItems(z, "聲調「${f.toneLabel}」（${if (f.tones.size >= 500) "500+" else f.tones.size.toString()}）", f.tones)
+        } else if (f.empty) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
         zhItems(z, "「$query」", f.words)
         for ((i, w) in f.parts.withIndex()) zhItems(z, "「$w」", f.partWords[i])
-        zhItems(z, "開頭是「$query」", f.starts)
-        zhItems(z, "英文「$query」", f.english, english = true)
-        zhItems(z, "裡面有「$query」", f.contains)
-        zhItems(z, "解釋裡有「$query」", f.defs)
+        zhItems(z, tr("開頭是「{0}」", query), f.starts)
+        zhItems(z, tr("英文「{0}」", query), f.english, english = true)
+        zhItems(z, tr("裡面有「{0}」", query), f.contains)
+        zhItems(z, tr("解釋裡有「{0}」", query), f.defs)
         item { Spacer(Modifier.height(40.dp)) }
     }
 }
@@ -128,8 +130,8 @@ private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, eng
         Store.rev
         Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
             SwipeRow(
-                start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) "移回新詞" else "加到不熟", T.rustEdge) else null,
-                end = Pair(if (Store.isSaved(e.k)) "取消收藏" else "收藏", T.oliveEdge),
+                start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) tr("移回新詞") else tr("加到不熟"), T.rustEdge) else null,
+                end = Pair(if (Store.isSaved(e.k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                 onStart = { Store.toggleUnknown(e.k) }, onEnd = { Store.toggleSaved(e.k) },
                 onClick = { nav.push(Route.ZhEntry(e.k)) },
             ) { ZhWordRow(z, e, english) }
@@ -148,7 +150,7 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             Txt(remember(e.k, zk) { z.hanText(e.h, e.syl(place), T.glyph.argbInt()).annotated() }, sz(20f, FontWeight.SemiBold))
             Txt(remember(e.k, zk) { z.reading(e.syl(place), rom).annotated() }, lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
             if (e.spec != 0) ZhSpecChip(e.spec)
-            if (e.level(list) > 0) Txt(Lang.levelName(list, e.level(list)), ff(FF.Caption2, FontWeight.Bold), T.greenInk)
+            if (e.level(list) > 0) Txt(UILang.label(Lang.levelName(list, e.level(list))), ff(FF.Caption2, FontWeight.Bold), T.greenInk)
             Spacer(Modifier.weight(0.01f))
             if (Store.isSaved(e.k)) Icon(Icons.Filled.Bookmark, null, tint = T.oliveInk, modifier = Modifier.size(14.dp))
             if (Store.cardStatus(e.k) == 2) Icon(Icons.Filled.Star, null, tint = T.rustInk, modifier = Modifier.size(14.dp))
@@ -171,7 +173,7 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
 }
 
 @Composable
-fun ZhSpecChip(spec: Int) = Chip(if (spec == 1) "臺灣用語" else "大陸用語", ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
+fun ZhSpecChip(spec: Int) = Chip(if (spec == 1) tr("臺灣用語") else tr("大陸用語"), ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
 
 // MARK: one entry
 
@@ -181,7 +183,7 @@ fun ZhEntryPage(z: ZhDict, key: String, onBack: () -> Unit) {
         TopBar(z.entry(key)?.h ?: "", onBack, settings = false)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             val e = z.entry(key)
-            if (e != null) ZhEntryBody(z, e) else Txt("找不到這個詞。", ff(FF.Body), T.muted)
+            if (e != null) ZhEntryBody(z, e) else Txt(tr("找不到這個詞。"), ff(FF.Body), T.muted)
             Spacer(Modifier.height(40.dp))
         }
     }
@@ -192,13 +194,13 @@ fun ZhEntryPage(z: ZhDict, key: String, onBack: () -> Unit) {
 fun ZhEntrySheetRoot(z: ZhDict, key: String) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             val e = z.entry(key)
-            if (e != null) ZhEntryBody(z, e) else Txt("找不到這個詞。", ff(FF.Body), T.muted)
+            if (e != null) ZhEntryBody(z, e) else Txt(tr("找不到這個詞。"), ff(FF.Body), T.muted)
             Spacer(Modifier.height(60.dp))
         }
     }
@@ -238,11 +240,11 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val on = Store.isSaved(e.k)
-                CapsuleButton(if (on) "已收藏" else "收藏", if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, on,
+                CapsuleButton(if (on) tr("已收藏") else tr("收藏"), if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, on,
                     T.olive, T.oliveEdge, T.oliveInk) { Store.toggleSaved(e.k) }
                 val st = Store.cardStatus(e.k) ?: 0
-                if (st == 1) Chip("卡片：熟悉", T.green, T.greenEdge, T.greenInk)
-                else CapsuleButton(if (st == 2) "在「不熟」" else "加到「不熟」", if (st == 2) Icons.Filled.Star else Icons.Filled.StarBorder,
+                if (st == 1) Chip(tr("卡片：熟悉"), T.green, T.greenEdge, T.greenInk)
+                else CapsuleButton(if (st == 2) tr("在「不熟」") else tr("加到「不熟」"), if (st == 2) Icons.Filled.Star else Icons.Filled.StarBorder,
                     st == 2, T.rust, T.rustEdge, T.rustInk) { Store.toggleUnknown(e.k) }
             }
             Txt(remember(e.k, zk) { z.reading(syl, rom).annotated() }, lat(22f), T.greenInk)
@@ -252,7 +254,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             e.lu?.let { lu ->
                 val other = if (place == 1) e.tw else lu
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Chip(if (place == 1) "臺灣" else "大陸", ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
+                    Chip(if (place == 1) tr("臺灣") else tr("大陸"), ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
                     Txt(z.reading(other, rom).annotated(), lat(17f), T.greenInk)
                     Txt(z.reading(other, if (rom == 0) 1 else 0).annotated(), ff(FF.Footnote), T.purpleInk)
                 }
@@ -260,7 +262,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             InputCodesRow(e.h)
             // the English meanings, one per line
             if (e.enList.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Chip("英", T.fn, T.fnEdge, T.muted)
+                Chip(tr("英"), T.fn, T.fnEdge, T.muted)
                 EnglishList(e.enList)
             }
             // 詞類: tap one for the words of that class
@@ -269,16 +271,16 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (e.hsk > 0) Chip(Lang.hskName(e.hsk), T.green, T.greenEdge, T.greenInk)
-                if (e.tocfl > 0) Chip(Lang.levelName(1, e.tocfl), T.blue, T.blueEdge, T.blueInk)
+                if (e.tocfl > 0) Chip(UILang.label(Lang.levelName(1, e.tocfl)), T.blue, T.blueEdge, T.blueInk)
                 if (e.spec != 0) ZhSpecChip(e.spec)
                 val a = e.alt
-                if (a != null && a != e.h) { Chip("簡", T.fn, T.fnEdge, T.muted); Txt(a, ff(FF.Subheadline), T.glyph.copy(alpha = 0.85f)) }
+                if (a != null && a != e.h) { Chip(tr("簡"), T.fn, T.fnEdge, T.muted); Txt(a, ff(FF.Subheadline), T.glyph.copy(alpha = 0.85f)) }
             }
         }
         // the same 漢字 read another way
         val others = remember(e.k) { z.others(e) }
         if (others.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Chip("又讀", T.fn, T.fnEdge, T.muted)
+            Chip(tr("又讀"), T.fn, T.fnEdge, T.muted)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (o in others) Txt(z.reading(o.syl(place), rom).annotated(), lat(15f), T.greenInk,
                     Modifier.clip(CircleShape).background(T.fn.copy(alpha = 0.8f)).clickable { nav.push(Route.ZhEntry(o.k)) }.padding(horizontal = 8.dp, vertical = 3.dp))
@@ -302,19 +304,19 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         val syn = remember(e.k) { e.syn.mapNotNull { z.usualEntry(it) } }
         val ant = remember(e.k) { e.ant.mapNotNull { z.usualEntry(it) } }
         if (syn.isNotEmpty() || ant.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            ZhLinks(z, "近", syn, T.blue, T.blueEdge, T.blueInk)
-            ZhLinks(z, "反", ant, T.rust, T.rustEdge, T.rustInk)
+            ZhLinks(z, tr("近"), syn, T.blue, T.blueEdge, T.blueInk)
+            ZhLinks(z, tr("反"), ant, T.rust, T.rustEdge, T.rustInk)
         }
-        if (e.extra) Txt("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。",
+        if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),
             ff(FF.Caption), T.muted)
-        Txt("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。", ff(FF.Caption2), T.muted)
+        Txt(tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
         // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
         val ci = if (e.h.cpCount == 1) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
         if (reading != null) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.4f)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Txt("《重編國語辭典修訂本》", ff(FF.Caption, FontWeight.Bold), T.muted)
+                Txt(tr("《重編國語辭典修訂本》"), ff(FF.Caption, FontWeight.Bold), T.muted)
                 for ((n, d) in reading.defs.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Txt("${n + 1}.", ff(FF.Subheadline, FontWeight.Bold), T.muted)
                     if (d.first.isNotEmpty()) Chip(d.first, T.fn, T.fnEdge, T.muted)
@@ -322,7 +324,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 }
             }
         }
-        if (reading != null) Txt("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。", ff(FF.Caption2), T.muted)
+        if (reading != null) Txt(tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"), ff(FF.Caption2), T.muted)
     }
 }
 
@@ -365,29 +367,29 @@ private fun ZhSavedPane(z: ZhDict) {
     val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri -> writeTo(ctx, uri, pending) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         if (keys.isEmpty() && senses.isEmpty()) item {
-            Txt("在詞典裡按「收藏」或意思旁邊的書籤，詞和意思會出現在這裡。", ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
+            Txt(tr("在詞典裡按「收藏」或意思旁邊的書籤，詞和意思會出現在這裡。"), ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
         } else item {
             SoftButton(onClick = { pending = Store.zhSavedCSV(z); saveCsv.launch("方方-華語收藏.csv") }) {
-                IconLabel(Icons.Filled.IosShare, "匯出 CSV", ff(FF.Subheadline), T.oliveInk)
+                IconLabel(Icons.Filled.IosShare, tr("匯出 CSV"), ff(FF.Subheadline), T.oliveInk)
             }
-            Txt("詞、拼音（聲調用數字，音節中間空一格）、意思（有英文的話用英文）、例句（例句中間空一行）。", ff(FF.Caption), T.muted, Modifier.padding(6.dp))
+            Txt(tr("詞、拼音（聲調用數字，音節中間空一格）、意思（有英文的話用英文）、例句（例句中間空一行）。"), ff(FF.Caption), T.muted, Modifier.padding(6.dp))
         }
-        if (keys.isNotEmpty()) item { SectionTitle("${keys.size} 個詞（往左滑刪除）") }
+        if (keys.isNotEmpty()) item { SectionTitle(tr("{0} 個詞（往左滑刪除）", keys.size)) }
         items(keys, key = { "zs|$it" }) { k ->
             val e = z.entry(k)
             if (e != null) {
-                SwipeRow(start = null, end = Pair("刪除", Color(0xFFB3261E)), onEnd = { Store.toggleSaved(k) }, onClick = { nav.push(Route.ZhEntry(k)) }) {
+                SwipeRow(start = null, end = Pair(tr("刪除"), Color(0xFFB3261E)), onEnd = { Store.toggleSaved(k) }, onClick = { nav.push(Route.ZhEntry(k)) }) {
                     ZhWordRow(z, e)
                 }
                 RowDivider()
             }
         }
-        if (senses.isNotEmpty()) item { SectionTitle("${senses.size} 個意思（往左滑刪除）") }
+        if (senses.isNotEmpty()) item { SectionTitle(tr("{0} 個意思（往左滑刪除）", senses.size)) }
         items(senses, key = { "zm|" + it.id }) { s ->
             val e = z.entry(s.key)
             if (e != null && s.sense < e.senses.size) {
                 val m = e.senses[s.sense]
-                SwipeRow(start = null, end = Pair("刪除", Color(0xFFB3261E)), onEnd = { Store.unsave(s) }, onClick = { nav.push(Route.ZhEntry(s.key)) }) {
+                SwipeRow(start = null, end = Pair(tr("刪除"), Color(0xFFB3261E)), onEnd = { Store.unsave(s) }, onClick = { nav.push(Route.ZhEntry(s.key)) }) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Txt(remember(e.k, zk) { z.hanText(e.h, e.syl(Prefs.zhPlace.value), T.glyph.argbInt()).annotated() }, sz(20f, FontWeight.SemiBold))
@@ -442,25 +444,25 @@ fun ZhConvertPane(z: ZhDict) {
         1 -> z.sentence(pieces, 0, place, colours = 0).plain()
         else -> z.sentence(pieces, 1, place, colours = 0).plain()
     }
-    if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf("漢字", "拼音", "注音")) { copySheet = false }
+    if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf(tr("漢字"), tr("拼音"), tr("注音"))) { copySheet = false }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.fillMaxWidth().surface()) {
             TextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 220.dp),
-                placeholder = { Text("輸入或貼上華語（正體或簡體都可以）…", color = T.muted) },
+                placeholder = { Text(tr("輸入或貼上華語（正體或簡體都可以）…"), color = T.muted) },
                 textStyle = TextStyle(fontSize = 18.sp, color = T.glyph),
                 colors = TextFieldDefaults.colors(focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = T.greenInk))
-            if (text.isNotEmpty()) IconButton(onClick = { text = "" }, Modifier.align(Alignment.BottomEnd)) { Icon(Icons.Filled.Cancel, "清除", tint = T.muted) }
+            if (text.isNotEmpty()) IconButton(onClick = { text = "" }, Modifier.align(Alignment.BottomEnd)) { Icon(Icons.Filled.Cancel, tr("清除"), tint = T.muted) }
         }
         if (pieces.isNotEmpty()) {
-            for ((i, title) in listOf(0 to "漢字", 1 to "拼音", 2 to "注音")) {
+            for ((i, title) in listOf(0 to tr("漢字"), 1 to tr("拼音"), 2 to tr("注音"))) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f)).padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Txt(title, ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.weight(1f))
                         if (i == 0) PlayButton("tts:$text", 28.dp)
                         IconButton(onClick = { copyToClipboard(ctx, plain(i)); copied = i }) {
-                            Icon(if (copied == i) Icons.Filled.Check else Icons.Filled.ContentCopy, "複製", tint = T.muted, modifier = Modifier.size(18.dp))
+                            Icon(if (copied == i) Icons.Filled.Check else Icons.Filled.ContentCopy, tr("複製"), tint = T.muted, modifier = Modifier.size(18.dp))
                         }
                     }
                     if (i == 0) {
@@ -488,11 +490,11 @@ fun ZhConvertPane(z: ZhDict) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SoftButton(onClick = { focus.clearFocus(); copyToClipboard(ctx, listOf(plain(0), plain(1), plain(2)).joinToString("\n")); copied = 9 }, Modifier.weight(1f)) {
-                    IconLabel(if (copied == 9) Icons.Filled.Check else Icons.Filled.ContentCopy, if (copied == 9) "已複製" else "全部複製", ff(FF.Subheadline))
+                    IconLabel(if (copied == 9) Icons.Filled.Check else Icons.Filled.ContentCopy, if (copied == 9) tr("已複製") else tr("全部複製"), ff(FF.Subheadline))
                 }
-                SoftButton(onClick = { focus.clearFocus(); copySheet = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Tune, "選擇複製…", ff(FF.Subheadline)) }
+                SoftButton(onClick = { focus.clearFocus(); copySheet = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Tune, tr("選擇複製…"), ff(FF.Subheadline)) }
             }
-            Txt("讀音照詞典裡最常見的唸法，一字多音的地方可能會錯。上面可以切換臺灣／大陸讀音。", ff(FF.Caption), T.muted)
+            Txt(tr("讀音照詞典裡最常見的唸法，一字多音的地方可能會錯。上面可以切換臺灣／大陸讀音。"), ff(FF.Caption), T.muted)
         }
         Spacer(Modifier.height(40.dp))
     }
@@ -511,7 +513,7 @@ fun levelColor(level0: Int): Color {
 
 /** One glass tube with two potions: 熟悉 from the left in the level's colour, 不熟 from the right in a pale one; the glass between is what hasn't been seen yet */
 @Composable
-fun SplitPotionBar(known: Double, unknown: Double, tint: Color, height: Dp = 24.dp, label: String = "進度", modifier: Modifier = Modifier) {
+fun SplitPotionBar(known: Double, unknown: Double, tint: Color, height: Dp = 24.dp, label: String = tr("進度"), modifier: Modifier = Modifier) {
     val k = remember { Animatable(0f) }
     val u = remember { Animatable(0f) }
     LaunchedEffect(known) { k.animateTo(known.toFloat(), spring(dampingRatio = 0.62f, stiffness = 60f)) }
@@ -524,7 +526,7 @@ fun SplitPotionBar(known: Double, unknown: Double, tint: Color, height: Dp = 24.
         while (isActive) withFrameNanos { time = (it - start) / 1e9f }
     }
     Canvas(modifier.fillMaxWidth().padding(vertical = 5.dp).height(height)
-        .semantics { contentDescription = "$label 熟悉 ${(known * 100).roundToInt()}%，不熟 ${(unknown * 100).roundToInt()}%" }) {
+        .semantics { contentDescription = tr("{0} 熟悉 {1}%，不熟 {2}%", label, (known * 100).roundToInt(), (unknown * 100).roundToInt()) }) {
         val w = size.width; val h = size.height
         val tube = Path().apply { addRoundRect(RoundRect(0f, 0f, w, h, CornerRadius(h / 2, h / 2))) }
         val kv = k.value.coerceIn(0f, 1.05f); val uv = u.value.coerceIn(0f, 1.05f)
@@ -589,9 +591,9 @@ fun HSKProgressList() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         if (zh) item { CharMeter { nav.push(Route.ZhChars) } }
         items(list, key = { "h|" + it.id }) { t ->
-            if (zh && t.id == firstChar) Txt("漢字卡", ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))
+            if (zh && t.id == firstChar) Txt(tr("漢字卡"), ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))
             if (!zh && (t.id == Lang.freqWordBase || t.id == Lang.freqCharBase))
-                Txt(if (t.id == Lang.freqWordBase) "常用詞" else "常用字", ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))
+                Txt(if (t.id == Lang.freqWordBase) tr("常用詞") else tr("常用字"), ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))
             val p = all[t.id] ?: Store.LevelProgress(0, 0, 0)
             val isChar = (t.id > Lang.charTopicBase && t.id < Lang.freqWordBase) || t.id >= Lang.freqCharBase
             val k = if (p.total > 0) p.known.toDouble() / p.total else 0.0
@@ -602,17 +604,17 @@ fun HSKProgressList() {
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted, modifier = Modifier.size(16.dp))
                     Txt(t.name, ff(FF.Headline), T.glyph)
                     Txt("${p.total} ${if (isChar) "字" else "詞"}", ff(FF.Caption), T.muted, Modifier.weight(1f))
-                    Txt("熟悉 ${pct(k)}", ff(FF.Subheadline, FontWeight.SemiBold), levelColor(t.id))
-                    Txt("不熟 ${pct(u)}", ff(FF.Subheadline, FontWeight.SemiBold), levelColor(t.id).copy(alpha = 0.6f))
+                    Txt(tr("熟悉 {0}", pct(k)), ff(FF.Subheadline, FontWeight.SemiBold), levelColor(t.id))
+                    Txt(tr("不熟 {0}", pct(u)), ff(FF.Subheadline, FontWeight.SemiBold), levelColor(t.id).copy(alpha = 0.6f))
                 }
                 SplitPotionBar(k, u, levelColor(t.id), label = t.name)
-                Txt("熟悉 ${p.known}　不熟 ${p.unknown}　還沒看 ${p.total - p.known - p.unknown}", ff(FF.Caption), T.muted)
+                Txt(tr("熟悉 {0}　不熟 {1}　還沒看 {2}", p.known, p.unknown, p.total - p.known - p.unknown), ff(FF.Caption), T.muted)
             }
         }
         item {
-            if (zh) Txt("每個等級一個顏色：從左邊來的濃色 = 熟悉（往右滑或練習學會的詞），從右邊來的淡色 = 不熟，中間空的 = 還沒看過。點一個等級可以看全部的詞，或一次把整個等級標成熟悉；點「認識的漢字」可以看每個字。漢字卡在「新詞」右上角的選單選。在「新詞」右上角可以換詞表（HSK／TOCFL）和選等級。詞表：${if (Prefs.zhList.value == 1) "TOCFL 華語八千詞（2023）" else "HSK 3.0（2021）"}。",
+            if (zh) Txt(tr("每個等級一個顏色：從左邊來的濃色 = 熟悉（往右滑或練習學會的詞），從右邊來的淡色 = 不熟，中間空的 = 還沒看過。點一個等級可以看全部的詞，或一次把整個等級標成熟悉；點「認識的漢字」可以看每個字。漢字卡在「新詞」右上角的選單選。在「新詞」右上角可以換詞表（HSK／TOCFL）和選等級。詞表：{0}。", if (Prefs.zhList.value == 1) "TOCFL 華語八千詞（2023）" else "HSK 3.0（2021）"),
                 ff(FF.Caption), T.muted)
-            else Txt("台語的詞照常用的程度分組，每組 ${Lang.freqSize} 個：最常用的在「常用詞 1–${Lang.freqSize}」。單一個字的另外分在「常用字」。在「新詞」右上角可以選一組來滑。點一組可以看全部的詞，或一次把整組標成熟悉。",
+            else Txt(tr("台語的詞照常用的程度分組，每組 {0} 個：最常用的在「常用詞 1–{1}」。單一個字的另外分在「常用字」。在「新詞」右上角可以選一組來滑。點一組可以看全部的詞，或一次把整組標成熟悉。", Lang.freqSize, Lang.freqSize),
                 ff(FF.Caption), T.muted)
         }
     }
@@ -621,7 +623,7 @@ fun HSKProgressList() {
 @Composable
 fun ZhProgressPage(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopBar("學習進度", onBack, settings = false)
+        TopBar(tr("學習進度"), onBack, settings = false)
         HSKProgressList()
     }
 }
@@ -630,7 +632,7 @@ fun ZhProgressPage(onBack: () -> Unit) {
 @Composable
 fun LevelWordsPage(level: Int, onBack: () -> Unit) {
     Store.rev
-    val name = (Store.topics + Store.freqTopics).firstOrNull { it.id == level }?.name ?: Lang.levelName(Prefs.zhList.value, level)
+    val name = (Store.topics + Store.freqTopics).firstOrNull { it.id == level }?.name ?: UILang.label(Lang.levelName(Prefs.zhList.value, level))
     var filter by remember { mutableIntStateOf(0) }       // 0 all, 1 not seen, 2 熟悉, 3 不熟
     var confirm by remember { mutableStateOf<Int?>(null) } // 1 = all to 熟悉, 2 = the unseen ones to 熟悉, 3 = all back to 新詞
     var menu by remember { mutableStateOf(false) }
@@ -646,13 +648,13 @@ fun LevelWordsPage(level: Int, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar(name, onBack, settings = false) {
             Box {
-                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Checklist, "整個等級", tint = T.glyph) }
+                IconButton(onClick = { menu = true }) { Icon(Icons.Filled.Checklist, tr("整個等級"), tint = T.glyph) }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
-                    DropdownMenuItem(text = { Text("全部標成熟悉", color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.CheckCircle, null, tint = T.greenInk) },
+                    DropdownMenuItem(text = { Text(tr("全部標成熟悉"), color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.CheckCircle, null, tint = T.greenInk) },
                         onClick = { confirm = 1; menu = false })
-                    DropdownMenuItem(text = { Text("沒看過的標成熟悉", color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.CheckCircleOutline, null, tint = T.greenInk) },
+                    DropdownMenuItem(text = { Text(tr("沒看過的標成熟悉"), color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.CheckCircleOutline, null, tint = T.greenInk) },
                         onClick = { confirm = 2; menu = false })
-                    DropdownMenuItem(text = { Text("全部移回新詞", color = T.rustInk) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null, tint = T.rustInk) },
+                    DropdownMenuItem(text = { Text(tr("全部移回新詞"), color = T.rustInk) }, leadingIcon = { Icon(Icons.AutoMirrored.Filled.Undo, null, tint = T.rustInk) },
                         onClick = { confirm = 3; menu = false })
                 }
             }
@@ -662,11 +664,11 @@ fun LevelWordsPage(level: Int, onBack: () -> Unit) {
                 val p = Store.hskProgress(level)
                 SplitPotionBar(if (p.total > 0) p.known.toDouble() / p.total else 0.0, if (p.total > 0) p.unknown.toDouble() / p.total else 0.0,
                     levelColor(level), label = name)
-                Segmented(listOf(0 to "全部", 1 to "沒看過", 2 to "熟悉", 3 to "不熟"), filter, { filter = it }, Modifier.padding(vertical = 6.dp))
-                SectionTitle("${shown.size} 個詞（往右滑 = 熟悉，往左滑 = 不熟）")
+                Segmented(listOf(0 to tr("全部"), 1 to tr("沒看過"), 2 to tr("熟悉"), 3 to tr("不熟")), filter, { filter = it }, Modifier.padding(vertical = 6.dp))
+                SectionTitle(tr("{0} 個詞（往右滑 = 熟悉，往左滑 = 不熟）", shown.size))
             }
             items(shown, key = { "l|" + it.k }) { c ->
-                SwipeRow(start = Pair("熟悉", T.greenEdge), end = Pair("不熟", T.rustEdge),
+                SwipeRow(start = Pair(tr("熟悉"), T.greenEdge), end = Pair(tr("不熟"), T.rustEdge),
                     onStart = { Store.mark(c, true, false) }, onEnd = { Store.mark(c, false, false) }, onClick = { UI.open(Sheet.CardSheet(c)) }) {
                     Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         when (Store.status(c)) {
@@ -684,7 +686,7 @@ fun LevelWordsPage(level: Int, onBack: () -> Unit) {
     }
     confirm?.let { cf ->
         AlertDialog(onDismissRequest = { confirm = null }, containerColor = T.fn,
-            title = { Txt(when (cf) { 1 -> "把 $name 的詞全部標成熟悉？"; 2 -> "把 $name 還沒看過的詞標成熟悉？"; else -> "把 $name 的詞全部移回新詞？（熟悉和不熟的都會）" }, ff(FF.Headline)) },
+            title = { Txt(when (cf) { 1 -> tr("把 {0} 的詞全部標成熟悉？", name); 2 -> tr("把 {0} 還沒看過的詞標成熟悉？", name); else -> tr("把 {0} 的詞全部移回新詞？（熟悉和不熟的都會）", name) }, ff(FF.Headline)) },
             confirmButton = {
                 TextButton(onClick = {
                     when (cf) {
@@ -693,9 +695,9 @@ fun LevelWordsPage(level: Int, onBack: () -> Unit) {
                         else -> Store.markAll(all, false)
                     }
                     confirm = null
-                }) { Text(if (cf == 3) "移回新詞" else "標成熟悉", color = if (cf == 3) T.rustInk else T.greenInk) }
+                }) { Text(if (cf == 3) tr("移回新詞") else tr("標成熟悉"), color = if (cf == 3) T.rustInk else T.greenInk) }
             },
-            dismissButton = { TextButton(onClick = { confirm = null }) { Text("取消", color = T.muted) } })
+            dismissButton = { TextButton(onClick = { confirm = null }) { Text(tr("取消"), color = T.muted) } })
     }
 }
 

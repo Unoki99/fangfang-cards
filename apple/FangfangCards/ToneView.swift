@@ -123,11 +123,11 @@ struct ToneView: View {
             .overlay(alignment: .top) { ResumedNote(shown: $resumed).padding(.top, 4) }
             .starBursts(stars)
             .appBackground()
-            .navigationTitle("聲調練習")
+            .navigationTitle(tr("聲調練習"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("結束")
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack {
@@ -162,11 +162,11 @@ struct ToneView: View {
                 HStack {
                     Text("\(idx + 1) / \(queue.count)").ffFont(.footnote).foregroundStyle(T.muted)
                     Spacer()
-                    Text("答對 \(right)").ffFont(.footnote).foregroundStyle(T.greenInk)
+                    Text(tr("答對 \(right)")).ffFont(.footnote).foregroundStyle(T.greenInk)
                 }
                 Panel {
                     VStack(alignment: .leading, spacing: 10) {
-                        Text("聽發音，選出正確的拼法").ffFont(.subheadline, .bold).foregroundStyle(T.oliveInk)
+                        Text(tr("聽發音，選出正確的拼法")).ffFont(.subheadline, .bold).foregroundStyle(T.oliveInk)
                         HStack {
                             Text(q.card.h).scaledFont(56, weight: .medium).foregroundStyle(T.blueInk)
                                 .lineLimit(1).minimumScaleFactor(0.5)
@@ -174,7 +174,7 @@ struct ToneView: View {
                             if let a = q.card.audio { PlayButton(path: a, size: 60) }
                         }
                         if q.card.isZh ? (q.card.zs?.count ?? 1) > 1 : q.card.syllables > 1 {
-                            Text(q.card.isZh ? "只有最後一個字的聲調不一樣" : "只有最後一個字的聲調不一樣（前面的字唸起來會變調）")
+                            Text(q.card.isZh ? trs("只有最後一個字的聲調不一樣") : trs("只有最後一個字的聲調不一樣（前面的字唸起來會變調）"))
                                 .ffFont(.caption).foregroundStyle(T.muted)
                         }
                     }
@@ -208,7 +208,7 @@ struct ToneView: View {
             Text(o.rom[min(max(rom, 0), 2)]).latFont(28).foregroundStyle(T.greenInk)
             Spacer()
             if answered {
-                Text(store.isZh ? (o.tone == 0 ? "輕聲" : "第 \(o.tone) 聲　\(ZH_TONE_NAMES[o.tone] ?? "")") : "\(o.tone)　\(TONE_NAMES[o.tone] ?? "")")
+                Text(store.isZh ? (o.tone == 0 ? trs("輕聲") : tr("第 \(o.tone) 聲　\(ZH_TONE_NAMES[o.tone] ?? "")")) : "\(o.tone)　\(TONE_NAMES[o.tone] ?? "")")
                     .ffFont(.subheadline, .bold)
                     .foregroundStyle(isRight ? T.greenInk : (isPicked ? T.rustInk : T.muted))
             }
@@ -241,16 +241,16 @@ struct ToneView: View {
         return VStack(alignment: .leading, spacing: 14) {
             Panel {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(ok ? "答對了！" : "答錯了").ffFont(.headline).foregroundStyle(ok ? T.greenInk : T.rustInk)
+                    Text(ok ? trs("答對了！") : trs("答錯了")).ffFont(.headline).foregroundStyle(ok ? T.greenInk : T.rustInk)
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(q.card.h).ffFont(.title2, .medium).foregroundStyle(T.blueInk)
                         Text(q.answer.rom[min(max(rom, 0), 2)]).latFont(22).foregroundStyle(T.greenInk)
                         Text(q.card.z).foregroundStyle(T.purpleInk)
                     }
                     if store.isZh {
-                        Text(t == 0 ? "輕聲" : "第 \(t) 聲（\(ZH_TONE_NAMES[t] ?? "")）").ffFont(.subheadline).foregroundStyle(T.glyph)
+                        Text(t == 0 ? trs("輕聲") : tr("第 \(t) 聲（\(ZH_TONE_NAMES[t] ?? "")）")).ffFont(.subheadline).foregroundStyle(T.glyph)
                     } else {
-                        Text("第 \(t) 聲（\(TONE_NAMES[t] ?? "")）\(hint(t))").ffFont(.subheadline).foregroundStyle(T.glyph)
+                        Text(tr("第 \(t) 聲（\(TONE_NAMES[t] ?? "")）\(hint(t))")).ffFont(.subheadline).foregroundStyle(T.glyph)
                     }
                     Text(q.card.firstMeaning).ffFont(.footnote).foregroundStyle(T.muted)
                 }
@@ -259,7 +259,7 @@ struct ToneView: View {
                 chosen = nil
                 idx += 1
             } label: {
-                Text(idx + 1 >= queue.count ? "看結果" : "下一題").ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
+                Text(idx + 1 >= queue.count ? trs("看結果") : trs("下一題")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
             }
             .prominentButton(T.btnEdge)
         }
@@ -268,39 +268,39 @@ struct ToneView: View {
     private func hint(_ t: Int) -> String {
         if rom == 0 {
             switch t {
-            case 8: return "：記號跟第 1 聲一樣，但是結尾有 p／t／k／h"
-            case 1: return "：記號跟第 8 聲一樣，但是結尾沒有 p／t／k／h"
-            case 4: return "：記號跟第 3 聲一樣，但是結尾有 p／t／k／h"
-            case 3: return "：記號跟第 4 聲一樣，但是結尾沒有 p／t／k／h"
+            case 8: return trs("：記號跟第 1 聲一樣，但是結尾有 p／t／k／h")
+            case 1: return trs("：記號跟第 8 聲一樣，但是結尾沒有 p／t／k／h")
+            case 4: return trs("：記號跟第 3 聲一樣，但是結尾有 p／t／k／h")
+            case 3: return trs("：記號跟第 4 聲一樣，但是結尾沒有 p／t／k／h")
             default: return ""
             }
         } else {
             switch t {
-            case 4: return "：跟第 1 聲一樣沒有記號，但是結尾有 p／t／k／h"
-            case 1: return "：跟第 4 聲一樣沒有記號，但是結尾沒有 p／t／k／h"
-            case 8: return "：結尾有 p／t／k／h"
+            case 4: return trs("：跟第 1 聲一樣沒有記號，但是結尾有 p／t／k／h")
+            case 1: return trs("：跟第 4 聲一樣沒有記號，但是結尾沒有 p／t／k／h")
+            case 8: return trs("：結尾有 p／t／k／h")
             default: return ""
             }
         }
     }
 
     private var rule: some View {
-        Text(store.isZh ? "華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。"
+        Text(store.isZh ? trs("華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。")
              : rom == 0
-             ? "皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。"
-             : "台羅／白話字：第 1 聲和第 4 聲都沒有記號；第 4、8 聲結尾有 p／t／k／h。")
+             ? trs("皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。")
+             : trs("台羅／白話字：第 1 聲和第 4 聲都沒有記號；第 4、8 聲結尾有 p／t／k／h。"))
             .ffFont(.caption).foregroundStyle(T.muted)
             .padding(.top, 6)
     }
 
     private var summary: some View {
         VStack(spacing: 18) {
-            Text("練習完了").ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
-            Text("答對 \(right) 題，答錯 \(wrong) 題").foregroundStyle(T.muted)
+            Text(tr("練習完了")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
+            Text(tr("答對 \(right) 題，答錯 \(wrong) 題")).foregroundStyle(T.muted)
             HStack(spacing: 12) {
-                Button { start() } label: { Text("再一輪").frame(maxWidth: .infinity, minHeight: 40) }
+                Button { start() } label: { Text(tr("再一輪")).frame(maxWidth: .infinity, minHeight: 40) }
                     .softButton()
-                Button { dismiss() } label: { Text("完成").frame(maxWidth: .infinity, minHeight: 40) }
+                Button { dismiss() } label: { Text(tr("完成")).frame(maxWidth: .infinity, minHeight: 40) }
                     .prominentButton(T.btnEdge)
             }
         }

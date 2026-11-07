@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -186,22 +187,22 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopBar(if (test) "期末測驗" else if (pool0 != null) "本週學習" else "", { close() }, close = true, settings = false) {
-            if (idx > 0 && idx < queue.size) IconButton(onClick = { start() }) { Icon(Icons.Filled.Refresh, "重新開始", tint = T.glyph) }
+        TopBar(if (test) tr("期末測驗") else if (pool0 != null) tr("本週學習") else "", { close() }, close = true, settings = false) {
+            if (idx > 0 && idx < queue.size) IconButton(onClick = { start() }) { Icon(Icons.Filled.Refresh, tr("重新開始"), tint = T.glyph) }
         }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) { ResumedNote(resumed) { resumed = false } }
         if (queue.isNotEmpty() && idx < queue.size) Row(Modifier.fillMaxWidth().widthIn(max = 700.dp).padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PotionBar(idx.toDouble() / maxOf(queue.size, 1), 22.dp, showMarks = false, label = "練習進度", modifier = Modifier.weight(1f))
-            Txt("${idx + 1}／${queue.size}", lat(14f), T.muted)
+            PotionBar(idx.toDouble() / maxOf(queue.size, 1), 22.dp, showMarks = false, label = tr("練習進度"), modifier = Modifier.weight(1f))
+            Txt(tr("{0}／{1}", idx + 1, queue.size), lat(14f), T.muted)
         }
         Box(Modifier.fillMaxSize()) {
             when {
                 !started -> {}
-                queue.isEmpty() -> Txt(if (blanksOnly) "不熟的詞裡沒有可以填空的例句。" else if (pool0 != null) "本週還沒有選詞。" else "沒有不熟的詞可以練習。",
+                queue.isEmpty() -> Txt(if (blanksOnly) tr("不熟的詞裡沒有可以填空的例句。") else if (pool0 != null) tr("本週還沒有選詞。") else tr("沒有不熟的詞可以練習。"),
                     ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
                 idx >= queue.size && test -> TestSummary(right, wrong, missed)
-                idx >= queue.size -> Summary("答對 $right 題，答錯 $wrong 題", learned, onAgain = { start() },
+                idx >= queue.size -> Summary(tr("答對 {0} 題，答錯 {1} 題", right, wrong), learned, onAgain = { start() },
                     againEnabled = if (pool0 == null) Store.practiceCards.isNotEmpty() else pool0.isNotEmpty())
                 else -> {
                     val q = queue[idx]
@@ -228,14 +229,14 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
     Panel {
         when (q.kind) {
             QuizKind.MEANING_TO_WORD -> {
-                QLabel(if (Store.isZh) "這個意思是哪個詞？" else "這個意思的台語是？"); Spacer(Modifier.height(10.dp))
+                QLabel(if (Store.isZh) tr("這個意思是哪個詞？") else tr("這個意思的台語是？")); Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     c.d.firstOrNull()?.p?.takeIf { it.isNotEmpty() }?.let { Chip(it) }
                     Txt(c.firstMeaning, ff(FF.Title3), T.glyph)
                 }
             }
             QuizKind.WORD_TO_MEANING -> {
-                QLabel("這個詞是什麼意思？")
+                QLabel(tr("這個詞是什麼意思？"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Txt(c.h, sz(52f, FontWeight.Medium), T.blueInk, Modifier.weight(1f))
                     c.audio?.let { PlayButton(it, 44.dp) }
@@ -243,22 +244,22 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
                 Txt(Store.cardRom(c, rom, place).annotated(), lat(24f), T.greenInk)
             }
             QuizKind.LISTEN -> {
-                QLabel("聽發音，選出正確的詞")
+                QLabel(tr("聽發音，選出正確的詞"))
                 Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) { c.audio?.let { PlayButton(it, 84.dp) } }
             }
             QuizKind.FILL_BLANK -> {
-                QLabel("例句填空"); Spacer(Modifier.height(10.dp))
+                QLabel(tr("例句填空")); Spacer(Modifier.height(10.dp))
                 q.example?.let { x ->
                     Txt(x.bh ?: x.h, ff(FF.Title3), T.blueInk)
                     Store.blankRom(c, x, rom, place)?.let { Txt(it.annotated(), lat(17f), T.greenInk) }
                     Txt(x.z, ff(FF.Subheadline), T.muted)
                     Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        PlayButton(Audio.examplePath(x.n), 28.dp); Txt("聽例句（提示）", ff(FF.Caption), T.muted)
+                        PlayButton(Audio.examplePath(x.n), 28.dp); Txt(tr("聽例句（提示）"), ff(FF.Caption), T.muted)
                     }
                 }
             }
             QuizKind.ROMANIZATION -> {
-                QLabel("這個詞怎麼唸？")
+                QLabel(tr("這個詞怎麼唸？"))
                 Txt(c.h, sz(60f, FontWeight.Medium), T.blueInk)
                 Txt(c.firstMeaning, ff(FF.Footnote), T.muted, maxLines = 2)
             }
@@ -302,7 +303,7 @@ private fun Feedback(q: Question, picked: Card, learnedNow: Boolean, rom: Int, p
     val c = q.card
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Panel {
-            Txt(if (ok) (if (learnedNow) "答對了！學會了" else "答對了！") else "答錯了", ff(FF.Headline), if (ok) T.greenInk else T.rustInk)
+            Txt(if (ok) (if (learnedNow) tr("答對了！學會了") else tr("答對了！")) else tr("答錯了"), ff(FF.Headline), if (ok) T.greenInk else T.rustInk)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Txt(c.h, ff(FF.Title, FontWeight.Medium), T.blueInk)
                 Txt(Store.cardRom(c, rom, place).annotated(), lat(20f), T.greenInk)
@@ -320,7 +321,7 @@ private fun Feedback(q: Question, picked: Card, learnedNow: Boolean, rom: Int, p
                 Txt(Store.exampleRom(c, x, rom, place).annotated(), lat(15f), T.greenInk)
             }
         }
-        ProminentButton(onClick = onNext, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(if (last) "看結果" else "下一題", style = ff(FF.Headline)) }
+        ProminentButton(onClick = onNext, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(if (last) tr("看結果") else tr("下一題"), style = ff(FF.Headline)) }
     }
 }
 
@@ -329,20 +330,20 @@ private fun BoxScope.TestSummary(right: Int, wrong: Int, missed: List<Card>) {
     val score = right.toDouble() / maxOf(right + wrong, 1)
     Column(Modifier.align(Alignment.TopCenter).widthIn(max = 560.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Txt("期末測驗", ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
-        Txt("${Math.round(score * 100)} 分", ff(FF.Title, FontWeight.Bold), if (score >= 0.8) T.greenInk else T.rustInk)
-        PotionBar(score, 24.dp, showMarks = false, label = "分數")
-        Txt("答對 $right 個，答錯 $wrong 個", ff(FF.Body), T.muted)
+        Txt(tr("期末測驗"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
+        Txt(tr("{0} 分", Math.round(score * 100)), ff(FF.Title, FontWeight.Bold), if (score >= 0.8) T.greenInk else T.rustInk)
+        PotionBar(score, 24.dp, showMarks = false, label = tr("分數"))
+        Txt(tr("答對 {0} 個，答錯 {1} 個", right, wrong), ff(FF.Body), T.muted)
         if (missed.isNotEmpty()) Panel {
-            Txt("答錯的詞：", ff(FF.Headline), T.rustInk)
+            Txt(tr("答錯的詞："), ff(FF.Headline), T.rustInk)
             for (c in missed) WordRow(c)
         }
         if (missed.isNotEmpty()) ProminentButton(onClick = { Store.finishWeek(missed.map { it.k }); close() }, Modifier.fillMaxWidth()) {
-            Text("開始新的一週（答錯的 ${missed.size} 個詞留下來）")
+            Text(tr("開始新的一週（答錯的 {0} 個詞留下來）", missed.size))
         }
-        SoftButton(onClick = { Store.finishWeek(); close() }, Modifier.fillMaxWidth()) { Text("結束這一週（清空本週的詞）") }
-        SoftButton(onClick = { close() }, Modifier.fillMaxWidth()) { Text("先不要，繼續這一週") }
-        Txt("詞還是會留在「不熟」或「熟悉」，只是不在本週的清單裡。", ff(FF.Caption), T.muted)
+        SoftButton(onClick = { Store.finishWeek(); close() }, Modifier.fillMaxWidth()) { Text(tr("結束這一週（清空本週的詞）")) }
+        SoftButton(onClick = { close() }, Modifier.fillMaxWidth()) { Text(tr("先不要，繼續這一週")) }
+        Txt(tr("詞還是會留在「不熟」或「熟悉」，只是不在本週的清單裡。"), ff(FF.Caption), T.muted)
     }
 }
 
@@ -350,15 +351,15 @@ private fun BoxScope.TestSummary(right: Int, wrong: Int, missed: List<Card>) {
 private fun BoxScope.Summary(line: String, learned: List<Card>, onAgain: () -> Unit, againEnabled: Boolean = true) {
     Column(Modifier.align(Alignment.Center).widthIn(max = 560.dp).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Txt("練習完了", ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
+        Txt(tr("練習完了"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
         Txt(line, ff(FF.Body), T.muted)
         if (learned.isNotEmpty()) Panel {
-            Txt("學會了，移到「熟悉」：", ff(FF.Headline), T.greenInk)
+            Txt(tr("學會了，移到「熟悉」："), ff(FF.Headline), T.greenInk)
             for (c in learned) WordRow(c)
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SoftButton(onClick = onAgain, Modifier.weight(1f), enabled = againEnabled) { Text("再練一次") }
-            ProminentButton(onClick = { close() }, Modifier.weight(1f)) { Text("完成") }
+            SoftButton(onClick = onAgain, Modifier.weight(1f), enabled = againEnabled) { Text(tr("再練一次")) }
+            ProminentButton(onClick = { close() }, Modifier.weight(1f)) { Text(tr("完成")) }
         }
     }
 }
@@ -459,26 +460,26 @@ private fun ToneScreen(stars: StarField) {
     LaunchedEffect(Unit) { if (queue.isEmpty() && !restore()) start() }
     LaunchedEffect(idx) { if (queue.isNotEmpty()) saveNow() }
     Column(Modifier.fillMaxSize()) {
-        TopBar("聲調練習", { close() }, close = true, settings = false) {
-            if (idx > 0 && idx < queue.size) IconButton(onClick = { start() }) { Icon(Icons.Filled.Refresh, "重新開始", tint = T.glyph) }
+        TopBar(tr("聲調練習"), { close() }, close = true, settings = false) {
+            if (idx > 0 && idx < queue.size) IconButton(onClick = { start() }) { Icon(Icons.Filled.Refresh, tr("重新開始"), tint = T.glyph) }
         }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) { ResumedNote(resumed) { resumed = false } }
         Box(Modifier.fillMaxSize()) {
             if (queue.isEmpty()) CircularProgressIndicator(Modifier.align(Alignment.Center), color = T.greenInk)
-            else if (idx >= queue.size) Summary("答對 $right 題，答錯 $wrong 題", emptyList(), onAgain = { start() })
+            else if (idx >= queue.size) Summary(tr("答對 {0} 題，答錯 {1} 題", right, wrong), emptyList(), onAgain = { start() })
             else {
                 val q = queue[idx]
                 LaunchedEffect(q.id) { q.card.audio?.let { Player.play(it) } }
                 Column(Modifier.fillMaxSize().widthIn(max = 640.dp).align(Alignment.TopCenter).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Row { Txt("${idx + 1} / ${queue.size}", ff(FF.Footnote), T.muted, Modifier.weight(1f)); Txt("答對 $right", ff(FF.Footnote), T.greenInk) }
+                    Row { Txt("${idx + 1} / ${queue.size}", ff(FF.Footnote), T.muted, Modifier.weight(1f)); Txt(tr("答對 {0}", right), ff(FF.Footnote), T.greenInk) }
                     Panel {
-                        QLabel("聽發音，選出正確的拼法")
+                        QLabel(tr("聽發音，選出正確的拼法"))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Txt(q.card.h, sz(56f, FontWeight.Medium), T.blueInk, Modifier.weight(1f), maxLines = 1)
                             q.card.audio?.let { PlayButton(it, 60.dp) }
                         }
                         if (if (q.card.isZh) (q.card.zs?.size ?: 1) > 1 else q.card.syllables > 1)
-                            Txt(if (q.card.isZh) "只有最後一個字的聲調不一樣" else "只有最後一個字的聲調不一樣（前面的字唸起來會變調）", ff(FF.Caption), T.muted)
+                            Txt(if (q.card.isZh) tr("只有最後一個字的聲調不一樣") else tr("只有最後一個字的聲調不一樣（前面的字唸起來會變調）"), ff(FF.Caption), T.muted)
                     }
                     for (o in q.options) {
                         val answered = chosen != null; val isRight = o === q.answer; val isPicked = chosen === o
@@ -491,28 +492,28 @@ private fun ToneScreen(stars: StarField) {
                                 saveNow(true)
                             }.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Txt(o.rom[rom.coerceIn(0, 2)], lat(28f), T.greenInk, Modifier.weight(1f))
-                            if (answered) Txt(if (Store.isZh) (if (o.tone == 0) "輕聲" else "第 ${o.tone} 聲　${ZH_TONE_NAMES[o.tone] ?: ""}") else "${o.tone}　${TONE_NAMES[o.tone] ?: ""}", ff(FF.Subheadline, FontWeight.Bold),
+                            if (answered) Txt(if (Store.isZh) (if (o.tone == 0) tr("輕聲") else tr("第 {0} 聲　{1}", o.tone, ZH_TONE_NAMES[o.tone] ?: "")) else "${o.tone}　${TONE_NAMES[o.tone] ?: ""}", ff(FF.Subheadline, FontWeight.Bold),
                                 if (isRight) T.greenInk else if (isPicked) T.rustInk else T.muted)
                         }
                     }
                     chosen?.let { ch ->
                         val ok = ch === q.answer; val t = q.answer.tone
                         Panel {
-                            Txt(if (ok) "答對了！" else "答錯了", ff(FF.Headline), if (ok) T.greenInk else T.rustInk)
+                            Txt(if (ok) tr("答對了！") else tr("答錯了"), ff(FF.Headline), if (ok) T.greenInk else T.rustInk)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Txt(q.card.h, ff(FF.Title2, FontWeight.Medium), T.blueInk)
                                 Txt(q.answer.rom[rom.coerceIn(0, 2)], lat(22f), T.greenInk)
                                 Txt(q.card.z, ff(FF.Body), T.purpleInk)
                             }
-                            Txt(if (Store.isZh) (if (t == 0) "輕聲" else "第 $t 聲（${ZH_TONE_NAMES[t] ?: ""}）") else "第 $t 聲（${TONE_NAMES[t] ?: ""}）${hint(t, rom)}", ff(FF.Subheadline), T.glyph)
+                            Txt(if (Store.isZh) (if (t == 0) tr("輕聲") else tr("第 {0} 聲（{1}）", t, ZH_TONE_NAMES[t] ?: "")) else tr("第 {0} 聲（{1}）{2}", t, TONE_NAMES[t] ?: "", hint(t, rom)), ff(FF.Subheadline), T.glyph)
                             Txt(q.card.firstMeaning, ff(FF.Footnote), T.muted)
                         }
                         ProminentButton(onClick = { chosen = null; idx++ }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            Text(if (idx + 1 >= queue.size) "看結果" else "下一題", style = ff(FF.Headline))
+                            Text(if (idx + 1 >= queue.size) tr("看結果") else tr("下一題"), style = ff(FF.Headline))
                         }
                     }
-                    Txt(if (Store.isZh) "華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。" else if (rom == 0) "皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。"
-                        else "台羅／白話字：第 1 聲和第 4 聲都沒有記號；第 4、8 聲結尾有 p／t／k／h。", ff(FF.Caption), T.muted)
+                    Txt(if (Store.isZh) tr("華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。") else if (rom == 0) tr("皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。")
+                        else tr("台羅／白話字：第 1 聲和第 4 聲都沒有記號；第 4、8 聲結尾有 p／t／k／h。"), ff(FF.Caption), T.muted)
                 }
             }
         }
@@ -520,15 +521,15 @@ private fun ToneScreen(stars: StarField) {
 }
 
 private fun hint(t: Int, rom: Int): String = if (rom == 0) when (t) {
-    8 -> "：記號跟第 1 聲一樣，但是結尾有 p／t／k／h"
-    1 -> "：記號跟第 8 聲一樣，但是結尾沒有 p／t／k／h"
-    4 -> "：記號跟第 3 聲一樣，但是結尾有 p／t／k／h"
-    3 -> "：記號跟第 4 聲一樣，但是結尾沒有 p／t／k／h"
+    8 -> tr("：記號跟第 1 聲一樣，但是結尾有 p／t／k／h")
+    1 -> tr("：記號跟第 8 聲一樣，但是結尾沒有 p／t／k／h")
+    4 -> tr("：記號跟第 3 聲一樣，但是結尾有 p／t／k／h")
+    3 -> tr("：記號跟第 4 聲一樣，但是結尾沒有 p／t／k／h")
     else -> ""
 } else when (t) {
-    4 -> "：跟第 1 聲一樣沒有記號，但是結尾有 p／t／k／h"
-    1 -> "：跟第 4 聲一樣沒有記號，但是結尾沒有 p／t／k／h"
-    8 -> "：結尾有 p／t／k／h"
+    4 -> tr("：跟第 1 聲一樣沒有記號，但是結尾有 p／t／k／h")
+    1 -> tr("：跟第 4 聲一樣沒有記號，但是結尾沒有 p／t／k／h")
+    8 -> tr("：結尾有 p／t／k／h")
     else -> ""
 }
 
@@ -677,19 +678,19 @@ private fun ScrambleScreen(reading: Boolean, stars: StarField) {
     }
     val ps = puzzles
     Column(Modifier.fillMaxSize()) {
-        TopBar(if (ps != null && idx < ps.size) "${if (reading) "看字排讀音" else "排句子"}　${idx + 1}／${ps.size}" else if (reading) "看字排讀音" else "排句子",
+        TopBar(if (ps != null && idx < ps.size) tr("{0}　{1}／{2}", if (reading) tr("看字排讀音") else tr("排句子"), idx + 1, ps.size) else if (reading) tr("看字排讀音") else tr("排句子"),
             { close() }, close = true, settings = false) {
-            if (ps != null && idx > 0 && idx < ps.size) IconButton(onClick = { puzzles = emptyList(); build() }) { Icon(Icons.Filled.Refresh, "重新開始", tint = T.glyph) }
+            if (ps != null && idx > 0 && idx < ps.size) IconButton(onClick = { puzzles = emptyList(); build() }) { Icon(Icons.Filled.Refresh, tr("重新開始"), tint = T.glyph) }
         }
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) { ResumedNote(resumed) { resumed = false } }
         Box(Modifier.fillMaxSize()) {
             if (ps == null) CircularProgressIndicator(Modifier.align(Alignment.Center), color = T.greenInk)
-            else if (ps.isEmpty()) Txt("不熟的詞裡沒有可以排的例句。", ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
+            else if (ps.isEmpty()) Txt(tr("不熟的詞裡沒有可以排的例句。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
             else if (idx >= ps.size) Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Icon(Icons.Filled.AutoAwesome, null, tint = Color(ToneColors.yellow), modifier = Modifier.size(44.dp))
-                Txt("排好了 $solved／${ps.size} 句", ff(FF.Title2, FontWeight.Bold), T.glyph)
-                ProminentButton(onClick = { puzzles = null; build() }, Modifier.widthIn(min = 220.dp)) { IconLabel(Icons.Filled.Refresh, "再來一輪") }
-                TextButton(onClick = { close() }) { Text("結束", color = T.muted) }
+                Txt(tr("排好了 {0}／{1} 句", solved, ps.size), ff(FF.Title2, FontWeight.Bold), T.glyph)
+                ProminentButton(onClick = { puzzles = null; build() }, Modifier.widthIn(min = 220.dp)) { IconLabel(Icons.Filled.Refresh, tr("再來一輪")) }
+                TextButton(onClick = { close() }) { Text(tr("結束"), color = T.muted) }
             } else {
                 val p = ps[idx]
                 val done = pool.isEmpty() && placed.map { it.text } == p.tiles.map { it.text }
@@ -726,9 +727,9 @@ private fun ScrambleScreen(reading: Boolean, stars: StarField) {
                         PlayButton(Audio.examplePath(p.example.n), 34.dp)
                         Txt(p.example.z, ff(FF.Title3), T.glyph, Modifier.weight(1f))
                     }
-                    PotionBar(closeness, 22.dp, showMarks = false, label = "排得多接近", palette = PotionPalette.BLUE)
+                    PotionBar(closeness, 22.dp, showMarks = false, label = tr("排得多接近"), palette = PotionPalette.BLUE)
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Txt(if (done) (if (revealed) "答案（點詞看意思）" else "排對了！點詞看意思") else if (reading) "照上面的字，把讀音照順序排" else "點下面的詞，照順序排",
+                        Txt(if (done) (if (revealed) tr("答案（點詞看意思）") else tr("排對了！點詞看意思")) else if (reading) tr("照上面的字，把讀音照順序排") else tr("點下面的詞，照順序排"),
                             ff(FF.Caption, FontWeight.Bold), if (done) T.greenInk else T.muted)
                         Flow(Modifier.fillMaxWidth().heightIn(min = 70.dp).clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.6f))
                             .border(2.dp, if (done) T.greenEdge else T.fnEdge, RoundedCornerShape(18.dp)).padding(12.dp).animateContentSize(),
@@ -744,21 +745,21 @@ private fun ScrambleScreen(reading: Boolean, stars: StarField) {
                     if (pool.isNotEmpty()) Flow(Modifier.fillMaxWidth().animateContentSize(), spacing = 8.dp, lineSpacing = 10.dp) {
                         for (t in pool.toList()) key(t.id) { TileView(t, reading, wrong = false, right = false) { put(t) } }
                     }
-                    if (pool.isEmpty() && !done) Txt("紅框的詞位置不對，點一下拿回來再排。", ff(FF.Footnote), T.rustInk)
+                    if (pool.isEmpty() && !done) Txt(tr("紅框的詞位置不對，點一下拿回來再排。"), ff(FF.Footnote), T.rustInk)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (!done) {
                             SoftButton(onClick = { val all = (pool + placed).shuffled(); pool.clear(); pool.addAll(all); placed.clear() }, Modifier.weight(1f), enabled = placed.isNotEmpty()) {
-                                IconLabel(Icons.Filled.Refresh, "重來", ff(FF.Subheadline))
+                                IconLabel(Icons.Filled.Refresh, tr("重來"), ff(FF.Subheadline))
                             }
                             SoftButton(onClick = { revealed = true; placed.clear(); placed.addAll(p.tiles); pool.clear() }, Modifier.weight(1f)) {
-                                IconLabel(Icons.Filled.Visibility, "看答案", ff(FF.Subheadline))
+                                IconLabel(Icons.Filled.Visibility, tr("看答案"), ff(FF.Subheadline))
                             }
                         } else ProminentButton(onClick = { idx++; ps.getOrNull(idx)?.let { setUp(it) } }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                            IconLabel(Icons.AutoMirrored.Filled.ArrowForward, if (idx + 1 < ps.size) "下一句" else "完成")
+                            IconLabel(Icons.AutoMirrored.Filled.ArrowForward, if (idx + 1 < ps.size) tr("下一句") else tr("完成"))
                         }
                     }
                     if (done) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Txt("出自", ff(FF.Footnote), T.muted); Txt(p.card.h, ff(FF.Footnote), T.blueInk)
+                        Txt(tr("出自"), ff(FF.Footnote), T.muted); Txt(p.card.h, ff(FF.Footnote), T.blueInk)
                     }
                 }
             }

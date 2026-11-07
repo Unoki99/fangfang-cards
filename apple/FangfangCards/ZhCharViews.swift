@@ -17,7 +17,7 @@ struct ZhCharView: View {
                     .frame(maxWidth: 760)
                     .frame(maxWidth: .infinity)
             } else {
-                Text("找不到這個字。").foregroundStyle(T.muted).padding()
+                Text(tr("找不到這個字。")).foregroundStyle(T.muted).padding()
             }
         }
         .appBackground()
@@ -48,7 +48,7 @@ struct ZhCharSheet: View {
                     ZhCharView(dict: dict, ch: ch)
                 }
             }
-            .toolbar { ToolbarItem(placement: .topBarLeading) { Button("完成") { dismiss() } } }
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { dismiss() } } }
             .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: dict, key: $0.k) }
         }
         .presentationDetents([.medium, .large])
@@ -75,10 +75,10 @@ struct ZhCharBody: View {
                 HStack(spacing: 8) {
                     let st = store.cardStatus(key) ?? 0
                     if st == 1 {
-                        Chip(text: "卡片：熟悉", fill: T.green, edge: T.greenEdge, ink: T.greenInk)
+                        Chip(text: tr("卡片：熟悉"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
                     } else {
                         Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
-                            Label(st == 2 ? "在「不熟」" : "加到「不熟」", systemImage: st == 2 ? "star.fill" : "star")
+                            Label(st == 2 ? trs("在「不熟」") : trs("加到「不熟」"), systemImage: st == 2 ? "star.fill" : "star")
                                 .ffFont(.subheadline, .semibold)
                                 .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -88,19 +88,19 @@ struct ZhCharBody: View {
                         .buttonStyle(.plain)
                     }
                     let known = store.zhCharSets().known.contains(char.h)
-                    if known { Chip(text: "在熟悉的詞裡", fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if known { Chip(text: tr("在熟悉的詞裡"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                 }
                 HStack(spacing: 6) {
-                    if char.hsk > 0 { Chip(text: "漢字 " + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
-                    if char.tocfl > 0 { Chip(text: "漢字 " + Lang.levelName(1, char.tocfl), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
-                    if let r = char.radical { Text("部首 \(r)").ffFont(.footnote).foregroundStyle(T.muted) }
-                    if let n = char.strokes { Text("\(n) 畫").ffFont(.footnote).foregroundStyle(T.muted) }
+                    if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if char.tocfl > 0 { Chip(text: tr("漢字 ") + UILang.label(Lang.levelName(1, char.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if let r = char.radical { Text(tr("部首 \(r)")).ffFont(.footnote).foregroundStyle(T.muted) }
+                    if let n = char.strokes { Text(tr("\(n) 畫")).ffFont(.footnote).foregroundStyle(T.muted) }
                 }
                 InputCodesRow(han: char.h)
             }
             ForEach(Array(char.readings.enumerated()), id: \.offset) { _, r in reading(r) }
             words
-            Text("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。")
+            Text(tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -116,7 +116,7 @@ struct ZhCharBody: View {
                 // the 兩岸 dictionary's entry for the character read this way
                 if let e = dict.entry(char: char.h, zy: r.zy), e.tw.first == r.zy {
                     NavigationLink(value: ZhKey(k: e.k)) {
-                        Label("詞典", systemImage: "character.book.closed").ffFont(.caption, .semibold).foregroundStyle(T.oliveInk)
+                        Label(tr("詞典"), systemImage: "character.book.closed").ffFont(.caption, .semibold).foregroundStyle(T.oliveInk)
                     }
                 }
             }
@@ -138,7 +138,7 @@ struct ZhCharBody: View {
         let ws = Array(store.cards.lazy.filter { Lang.charOf($0.k) == nil && $0.h.count > 1 && $0.h.contains(char.h) }.prefix(40))
         if !ws.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text("有這個字的詞").ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(tr("有這個字的詞")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 FlowLayout(spacing: 6) {
                     ForEach(ws, id: \.k) { c in
                         NavigationLink(value: ZhKey(k: c.k)) {
@@ -179,10 +179,10 @@ struct ZhCharCardRow: View {
                 HStack(spacing: 8) {
                     let st = store.cardStatus(key) ?? 0
                     if st == 1 {
-                        Chip(text: "漢字卡：熟悉", fill: T.green, edge: T.greenEdge, ink: T.greenInk)
+                        Chip(text: tr("漢字卡：熟悉"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
                     } else {
                         Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
-                            Label(st == 2 ? "漢字卡在「不熟」" : "漢字卡加到「不熟」", systemImage: st == 2 ? "star.fill" : "star")
+                            Label(st == 2 ? trs("漢字卡在「不熟」") : trs("漢字卡加到「不熟」"), systemImage: st == 2 ? "star.fill" : "star")
                                 .ffFont(.subheadline, .semibold)
                                 .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
                                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -193,10 +193,10 @@ struct ZhCharCardRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    if char.hsk > 0 { Chip(text: "漢字 " + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
-                    if char.tocfl > 0 { Chip(text: "漢字 " + Lang.levelName(1, char.tocfl), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
-                    if let r = char.radical { Text("部首 \(r)").ffFont(.footnote).foregroundStyle(T.muted) }
-                    if let n = char.strokes { Text("\(n) 畫").ffFont(.footnote).foregroundStyle(T.muted) }
+                    if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if char.tocfl > 0 { Chip(text: tr("漢字 ") + UILang.label(Lang.levelName(1, char.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if let r = char.radical { Text(tr("部首 \(r)")).ffFont(.footnote).foregroundStyle(T.muted) }
+                    if let n = char.strokes { Text(tr("\(n) 畫")).ffFont(.footnote).foregroundStyle(T.muted) }
                 }
             }
         }
@@ -226,17 +226,17 @@ struct ZhCharListView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 SplitPotionBar(known: sets.all.isEmpty ? 0 : Double(sets.known.count) / Double(sets.all.count),
-                               unknown: sets.all.isEmpty ? 0 : Double(sets.unknown.count) / Double(sets.all.count), label: "認識的漢字")
+                               unknown: sets.all.isEmpty ? 0 : Double(sets.unknown.count) / Double(sets.all.count), label: trs("認識的漢字"))
                 Picker("", selection: $filter) {
-                    Text("全部 \(sets.all.count)").tag(0)
-                    Text("熟悉 \(sets.known.count)").tag(1)
-                    Text("不熟 \(sets.unknown.count)").tag(2)
-                    Text("沒看過").tag(3)
+                    Text(tr("全部 \(sets.all.count)")).tag(0)
+                    Text(tr("熟悉 \(sets.known.count)")).tag(1)
+                    Text(tr("不熟 \(sets.unknown.count)")).tag(2)
+                    Text(tr("沒看過")).tag(3)
                 }
                 .pickerStyle(.segmented)
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass").foregroundStyle(T.muted)
-                    TextField("找字，例如：愛", text: $query)
+                    TextField(tr("找字，例如：愛"), text: $query)
                         .autocorrectionDisabled()
                         .submitLabel(.search)
                         .clearButton($query)
@@ -245,7 +245,7 @@ struct ZhCharListView: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.7)))
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
                 if !query.isEmpty && shown.isEmpty {
-                    Text("這裡沒有「\(query)」。").ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("這裡沒有「\(query)」。")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
                     ForEach(shown, id: \.self) { ch in
@@ -264,13 +264,13 @@ struct ZhCharListView: View {
                             }
                             .onTapGesture { open = CharRef(ch: ch) }
                             .accessibilityElement()
-                            .accessibilityLabel(ch + (k ? "，熟悉" : (u ? "，不熟" : "")))
+                            .accessibilityLabel(ch + (k ? trs("，熟悉") : (u ? trs("，不熟") : "")))
                             .accessibilityAddTraits(.isButton)
                             .accessibilityAction { open = CharRef(ch: ch) }
-                            .accessibilityAction(named: k ? "標成不熟" : "標成熟悉") { _ = store.setCharKnown(ch, !k) }
+                            .accessibilityAction(named: k ? trs("標成不熟") : trs("標成熟悉")) { _ = store.setCharKnown(ch, !k) }
                     }
                 }
-                Text("按住一個字可以在熟悉和不熟之間換。藍色 = 熟悉（在熟悉的詞裡，或漢字卡往右滑；熟悉的詞裡的字，漢字卡也會自動標成熟悉）；橘色 = 不熟（只在不熟的詞或漢字卡裡）；沒有顏色 = 還沒看過。這裡是所有可以滑的卡片裡的字（詞卡和漢字卡，每個字只算一次），照卡片的順序排。點一個字看它的意思和有這個字的詞。")
+                Text(tr("按住一個字可以在熟悉和不熟之間換。藍色 = 熟悉（在熟悉的詞裡，或漢字卡往右滑；熟悉的詞裡的字，漢字卡也會自動標成熟悉）；橘色 = 不熟（只在不熟的詞或漢字卡裡）；沒有顏色 = 還沒看過。這裡是所有可以滑的卡片裡的字（詞卡和漢字卡，每個字只算一次），照卡片的順序排。點一個字看它的意思和有這個字的詞。"))
                     .ffFont(.caption).foregroundStyle(T.muted)
             }
             .padding()
@@ -278,7 +278,7 @@ struct ZhCharListView: View {
             .frame(maxWidth: .infinity)
         }
         .appBackground()
-        .navigationTitle("認識的漢字")
+        .navigationTitle(tr("認識的漢字"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $open) { r in
             if let z = store.zh { ZhCharOrWordSheet(dict: z, ch: r.ch).environmentObject(store) }
@@ -296,7 +296,7 @@ struct ZhCharOrWordSheet: View {
         } else if let e = dict.entry(char: ch, zy: "") {
             ZhEntrySheet(dict: dict, key: e.k)
         } else {
-            Text("找不到這個字。").foregroundStyle(T.muted).padding()
+            Text(tr("找不到這個字。")).foregroundStyle(T.muted).padding()
         }
     }
 }

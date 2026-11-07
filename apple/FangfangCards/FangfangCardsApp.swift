@@ -24,6 +24,8 @@ struct FangfangCardsApp: App {
             let _ = AppTheme.sync(theme)
             RootView()
                 .id(theme)
+                // (above the .id: 設定 stays open when the theme, the language or 介面語言 changes)
+                .modifier(SettingsSheet())
                 .fontDesign((AppTheme(rawValue: theme) ?? .night).fontDesign)
                 .onAppear { MacWindow.setUp() }
                 .environmentObject(store)
@@ -49,6 +51,7 @@ struct RootView: View {
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
     @AppStorage("pickedLanguage") private var pickedLanguage = false
+    @AppStorage(UILang.key) private var uiLang = 0
     /// (someone who used the app before this question was added: not asked)
     private var alreadyUsed: Bool {
         UserDefaults.standard.object(forKey: Lang.key) != nil || store.seenCount > 0
@@ -57,15 +60,15 @@ struct RootView: View {
     private var tabs: some View {
         TabView(selection: $router.tab) {
             NavigationStack { NewDeckView() }
-                .tabItem { Label("新詞", systemImage: "rectangle.stack") }.tag(0)
-            NavigationStack { UnknownView().rootPage("不熟") }
-                .tabItem { Label("不熟", systemImage: "questionmark.circle") }.tag(1)
-            NavigationStack { DictionaryView().rootPage("詞典") }
-                .tabItem { Label("詞典", systemImage: "character.book.closed") }.tag(4)
-            NavigationStack { KnownView().rootPage("熟悉") }
-                .tabItem { Label("熟悉", systemImage: "checkmark.circle") }.tag(2)
-            NavigationStack { ConverterView().rootPage("轉換") }
-                .tabItem { Label("轉換", systemImage: "arrow.left.arrow.right") }.tag(3)
+                .tabItem { Label(tr("新詞"), systemImage: "rectangle.stack") }.tag(0)
+            NavigationStack { UnknownView().rootPage(tr("不熟")) }
+                .tabItem { Label(tr("不熟"), systemImage: "questionmark.circle") }.tag(1)
+            NavigationStack { DictionaryView().rootPage(tr("詞典")) }
+                .tabItem { Label(tr("詞典"), systemImage: "character.book.closed") }.tag(4)
+            NavigationStack { KnownView().rootPage(tr("熟悉")) }
+                .tabItem { Label(tr("熟悉"), systemImage: "checkmark.circle") }.tag(2)
+            NavigationStack { ConverterView().rootPage(tr("轉換")) }
+                .tabItem { Label(tr("轉換"), systemImage: "arrow.left.arrow.right") }.tag(3)
         }
     }
 
@@ -76,21 +79,21 @@ struct RootView: View {
                     // iPad and Mac: the tabs can become a sidebar
                     TabView(selection: $router.tab) {
                         // order: 新詞 不熟 詞典 熟悉 轉換 (the values stay the same for Shortcuts)
-                        Tab("新詞", systemImage: "rectangle.stack", value: 0) { NavigationStack { NewDeckView() } }
-                        Tab("不熟", systemImage: "questionmark.circle", value: 1) { NavigationStack { UnknownView().rootPage("不熟") } }
-                        Tab("詞典", systemImage: "character.book.closed", value: 4) { NavigationStack { DictionaryView().rootPage("詞典") } }
-                        Tab("熟悉", systemImage: "checkmark.circle", value: 2) { NavigationStack { KnownView().rootPage("熟悉") } }
-                        Tab("轉換", systemImage: "arrow.left.arrow.right", value: 3) { NavigationStack { ConverterView().rootPage("轉換") } }
+                        Tab(tr("新詞"), systemImage: "rectangle.stack", value: 0) { NavigationStack { NewDeckView() } }
+                        Tab(tr("不熟"), systemImage: "questionmark.circle", value: 1) { NavigationStack { UnknownView().rootPage(tr("不熟")) } }
+                        Tab(tr("詞典"), systemImage: "character.book.closed", value: 4) { NavigationStack { DictionaryView().rootPage(tr("詞典")) } }
+                        Tab(tr("熟悉"), systemImage: "checkmark.circle", value: 2) { NavigationStack { KnownView().rootPage(tr("熟悉")) } }
+                        Tab(tr("轉換"), systemImage: "arrow.left.arrow.right", value: 3) { NavigationStack { ConverterView().rootPage(tr("轉換")) } }
                     }
                     .tabViewStyle(.sidebarAdaptable)
-                    .id(store.isZh)          // 台語 ⇄ 華語: every page starts again with the other deck
+                    .id("\(store.isZh)\(uiLang)")          // 台語 ⇄ 華語 (or 介面語言): every page starts again
                 } else {
-                    tabs.id(store.isZh)
+                    tabs.id("\(store.isZh)\(uiLang)")
                 }
             } else {
                 VStack(spacing: 14) {
                     ProgressView()
-                    Text(store.loadError ?? "載入字典…").foregroundStyle(T.muted)
+                    Text(store.loadError ?? trs("載入字典…")).foregroundStyle(T.muted)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .appBackground()
@@ -111,15 +114,15 @@ struct RootView: View {
             if store.switching {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("載入華語詞典…").ffFont(.subheadline).foregroundStyle(T.glyph)
+                    Text(tr("載入華語詞典…")).ffFont(.subheadline).foregroundStyle(T.glyph)
                 }
                 .padding(24)
                 .background(RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.95)))
                 .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
             }
         }
-        .alert("華語詞典", isPresented: Binding(get: { store.zhError != nil }, set: { if !$0 { store.clearZhError() } })) {
-            Button("好") { store.clearZhError() }
+        .alert(tr("華語詞典"), isPresented: Binding(get: { store.zhError != nil }, set: { if !$0 { store.clearZhError() } })) {
+            Button(tr("好")) { store.clearZhError() }
         } message: { Text(store.zhError ?? "") }
         // a place chosen anywhere: load the dictionary (guessed readings, example sentences)
         .onChange(of: place) {
@@ -143,19 +146,30 @@ struct RootView: View {
 
 /// ⚙︎ in the top bar of every tab opens 設定 (the tab bar has room for five tabs)
 struct SettingsButton: View {
-    @EnvironmentObject var store: Store
-    @State private var show = false
     var body: some View {
-        Button { show = true } label: { Image(systemName: "gearshape").foregroundStyle(T.glyph) }
-            .accessibilityLabel("設定")
-            .sheet(isPresented: $show) {
-                NavigationStack {
-                    SettingsView()
-                        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("完成") { show = false } } }
-                }
-                .environmentObject(store)
-                .macTextSize()
+        Button { Router.shared.settingsOpen = true } label: { Image(systemName: "gearshape").foregroundStyle(T.glyph) }
+            .accessibilityLabel(tr("設定"))
+    }
+}
+
+/// 設定, opened by ⚙︎. It's shown from the app itself, not from the page the ⚙︎ is on: changing the language,
+/// 介面語言 or the theme draws every page again, and a sheet of one of those pages would close with it.
+struct SettingsSheet: ViewModifier {
+    @ObservedObject private var router = Router.shared
+    @AppStorage(UILang.key) private var uiLang = 0
+    @AppStorage(AppTheme.key) private var theme = AppTheme.night.rawValue
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $router.settingsOpen) {
+            NavigationStack {
+                SettingsView()
+                    .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { router.settingsOpen = false } } }
             }
+            .environmentObject(Store.shared)
+            .macTextSize()
+            .fontDesign((AppTheme(rawValue: theme) ?? .night).fontDesign)
+            .preferredColorScheme(.dark)
+            .tint(AppTint.accent)
+        }
     }
 }
 
@@ -226,20 +240,29 @@ enum AppTint {
 /// the very first time the app opens: 台語 or 華語 (can be changed any time in 設定 → 語言)
 struct LanguageWelcome: View {
     let pick: (Bool) -> Void
+    /// the app's own language (介面語言), chosen here too
+    @AppStorage(UILang.key) private var uiLang = 0
     var body: some View {
         VStack(spacing: 28) {
             Spacer(minLength: 0)
+            Picker("", selection: $uiLang) {
+                Text("中文").tag(0)
+                Text("English").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 260)
             VStack(spacing: 10) {
-                Text("方方詞卡").ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
-                Text("你想先學哪一種？").ffFont(.title3).foregroundStyle(T.muted)
-                Text("Which language would you like to start with?").ffFont(.subheadline).foregroundStyle(T.muted)
+                Text(tr("方方詞卡")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
+                Text(tr("你想先學哪一種？")).ffFont(.title3).foregroundStyle(T.muted)
             }
+            .id(uiLang)
             VStack(spacing: 16) {
-                choice(zh: false, title: "台語", sub: "Taiwanese", note: "教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音")
-                choice(zh: true, title: "華語", sub: "Mandarin", note: "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音")
+                choice(zh: false, title: "台語", sub: "Taiwanese", note: tr("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音"))
+                choice(zh: true, title: "華語", sub: "Mandarin", note: tr("《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音"))
             }
+            .id(uiLang)
             .frame(maxWidth: 520)
-            Text("之後可以在「設定 → 語言」換。\nYou can change this later in Settings.")
+            Text(tr("之後可以在「設定 → 語言與讀音」換。")).id(uiLang)
                 .multilineTextAlignment(.center)
                 .ffFont(.footnote).foregroundStyle(T.muted)
             Spacer(minLength: 0)

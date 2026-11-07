@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
@@ -44,7 +45,7 @@ private val blues = listOf(
 
 /** A glowing potion in a glass tube, as a progress bar or a score: it fills up with a little splash, bubbles rise in it */
 @Composable
-fun PotionBar(value: Double, height: Dp = 30.dp, showMarks: Boolean = true, label: String = "通順程度", palette: PotionPalette = PotionPalette.RAINBOW,
+fun PotionBar(value: Double, height: Dp = 30.dp, showMarks: Boolean = true, label: String = tr("通順程度"), palette: PotionPalette = PotionPalette.RAINBOW,
               modifier: Modifier = Modifier) {
     val level = remember { Animatable(0f) }
     LaunchedEffect(value) { level.animateTo(value.toFloat(), spring(dampingRatio = 0.62f, stiffness = 60f)) }

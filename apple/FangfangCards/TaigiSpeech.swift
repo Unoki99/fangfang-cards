@@ -219,6 +219,6 @@ struct TaigiSpeakButton: View {
         .buttonStyle(.plain)
         .disabled(text.isEmpty)
         .task { TaigiSpeech.dropOldDays() }
-        .accessibilityLabel("用鬥拍字唸出來")
+        .accessibilityLabel(tr("用鬥拍字唸出來"))
     }
 }

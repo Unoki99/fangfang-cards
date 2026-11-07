@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -25,7 +26,7 @@ fun DictGate(content: @Composable (Dict) -> Unit) {
         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = T.greenInk)
             Spacer(Modifier.height(12.dp))
-            Txt("載入字典…", ff(FF.Footnote), T.muted)
+            Txt(tr("載入字典…"), ff(FF.Footnote), T.muted)
         }
     }
 }
@@ -41,7 +42,7 @@ fun ZhGate(content: @Composable (com.unoki99.fangfang.engine.ZhDict) -> Unit) {
         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = T.greenInk)
             Spacer(Modifier.height(12.dp))
-            Txt("載入華語詞典…", ff(FF.Footnote), T.muted)
+            Txt(tr("載入華語詞典…"), ff(FF.Footnote), T.muted)
         }
     }
 }

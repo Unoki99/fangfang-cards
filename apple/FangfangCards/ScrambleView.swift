@@ -74,7 +74,7 @@ struct ScrambleView: View {
                 if loading {
                     ProgressView()
                 } else if puzzles.isEmpty {
-                    Text("不熟的詞裡沒有可以排的例句。").foregroundStyle(T.muted)
+                    Text(tr("不熟的詞裡沒有可以排的例句。")).foregroundStyle(T.muted)
                 } else if idx >= puzzles.count {
                     summary
                 } else {
@@ -88,11 +88,11 @@ struct ScrambleView: View {
             .appBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("結束")
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
                 }
                 ToolbarItem(placement: .principal) {
                     if !puzzles.isEmpty && idx < puzzles.count {
-                        Text("\(readingMode ? "看字排讀音" : "排句子")　\(idx + 1)／\(puzzles.count)").ffFont(.subheadline, .bold).foregroundStyle(T.muted)
+                        Text(tr("\(readingMode ? trs("看字排讀音") : trs("排句子"))　\(idx + 1)／\(puzzles.count)")).ffFont(.subheadline, .bold).foregroundStyle(T.muted)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -273,11 +273,11 @@ struct ScrambleView: View {
                     }
                 }
                 // how close: the blue potion
-                PotionBar(value: closeness(p), height: 22, showMarks: false, label: "排得多接近", palette: .blue)
+                PotionBar(value: closeness(p), height: 22, showMarks: false, label: trs("排得多接近"), palette: .blue)
 
                 // the sentence being built
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(done ? (revealed ? "答案（點詞看意思）" : "排對了！點詞看意思") : (readingMode ? "照上面的字，把讀音照順序排" : "點下面的詞，照順序排"))
+                    Text(done ? (revealed ? trs("答案（點詞看意思）") : trs("排對了！點詞看意思")) : (readingMode ? trs("照上面的字，把讀音照順序排") : trs("點下面的詞，照順序排")))
                         .ffFont(.caption, .bold).foregroundStyle(done ? T.greenInk : T.muted)
                     FlowLayout(spacing: 8, lineSpacing: 10) {
                         ForEach(Array(placed.enumerated()), id: \.element.id) { i, t in
@@ -312,23 +312,23 @@ struct ScrambleView: View {
                 }
 
                 if pool.isEmpty && !done {
-                    Text("紅框的詞位置不對，點一下拿回來再排。").ffFont(.footnote).foregroundStyle(T.rustInk)
+                    Text(tr("紅框的詞位置不對，點一下拿回來再排。")).ffFont(.footnote).foregroundStyle(T.rustInk)
                 }
 
                 HStack(spacing: 10) {
                     if !done {
                         Button { withAnimation(.snappy) { pool = (pool + placed).shuffled(); placed = [] } } label: {
-                            Label("重來", systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 40)
+                            Label(tr("重來"), systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 40)
                         }
                         .softButton()
                         .disabled(placed.isEmpty)
                         Button { withAnimation(.snappy) { revealed = true; placed = p.tiles; pool = [] } } label: {
-                            Label("看答案", systemImage: "eye").frame(maxWidth: .infinity, minHeight: 40)
+                            Label(tr("看答案"), systemImage: "eye").frame(maxWidth: .infinity, minHeight: 40)
                         }
                         .softButton()
                     } else {
                         Button { next() } label: {
-                            Label(idx + 1 < puzzles.count ? "下一句" : "完成", systemImage: "arrow.right")
+                            Label(idx + 1 < puzzles.count ? trs("下一句") : trs("完成"), systemImage: "arrow.right")
                                 .ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .prominentButton(T.btnEdge)
@@ -339,7 +339,7 @@ struct ScrambleView: View {
                 // the word the sentence came from
                 if done {
                     HStack(spacing: 6) {
-                        Text("出自").foregroundStyle(T.muted)
+                        Text(tr("出自")).foregroundStyle(T.muted)
                         Text(p.card.h).foregroundStyle(T.blueInk)
                     }
                     .ffFont(.footnote)
@@ -430,12 +430,12 @@ struct ScrambleView: View {
     private var summary: some View {
         VStack(spacing: 14) {
             Image(systemName: "sparkles").font(.system(size: 44)).foregroundStyle(ToneColors.yellow)
-            Text("排好了 \(solved)／\(puzzles.count) 句").ffFont(.title2, .bold).foregroundStyle(T.glyph)
+            Text(tr("排好了 \(solved)／\(puzzles.count) 句")).ffFont(.title2, .bold).foregroundStyle(T.glyph)
             Button { build() } label: {
-                Label("再來一輪", systemImage: "arrow.clockwise").ffFont(.headline).frame(maxWidth: 260, minHeight: 44)
+                Label(tr("再來一輪"), systemImage: "arrow.clockwise").ffFont(.headline).frame(maxWidth: 260, minHeight: 44)
             }
             .prominentButton(T.btnEdge)
-            Button("結束") { dismiss() }.foregroundStyle(T.muted)
+            Button(tr("結束")) { dismiss() }.foregroundStyle(T.muted)
         }
     }
 }

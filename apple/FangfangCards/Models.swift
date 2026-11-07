@@ -35,13 +35,16 @@ struct Other: Decodable {
 
 struct Topic: Decodable, Identifiable, Hashable {
     let id: Int
-    let name: String
+    /// the name as it's made (中文)
+    let rawName: String
     let count: Int
-    init(id: Int, name: String, count: Int) { self.id = id; self.name = name; self.count = count }
+    /// the name in the app's language
+    var name: String { UILang.label(rawName) }
+    init(id: Int, name: String, count: Int) { self.id = id; self.rawName = name; self.count = count }
     init(from decoder: Decoder) throws {
         var c = try decoder.unkeyedContainer()
         id = try c.decode(Int.self)
-        name = try c.decode(String.self)
+        rawName = try c.decode(String.self)
         count = try c.decode(Int.self)
     }
 }

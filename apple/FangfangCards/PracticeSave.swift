@@ -29,7 +29,7 @@ struct RestartPracticeButton: View {
     let action: () -> Void
     var body: some View {
         Button(action: action) { Image(systemName: "arrow.counterclockwise") }
-            .accessibilityLabel("重新開始")
+            .accessibilityLabel(tr("重新開始"))
     }
 }
 
@@ -38,7 +38,7 @@ struct ResumedNote: View {
     @Binding var shown: Bool
     var body: some View {
         if shown {
-            Text("接著上次的練習")
+            Text(tr("接著上次的練習"))
                 .ffFont(.footnote, .semibold).foregroundStyle(T.btnInk)
                 .padding(.horizontal, 12).padding(.vertical, 5)
                 .background(Capsule().fill(T.btn))

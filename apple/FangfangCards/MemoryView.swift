@@ -61,7 +61,7 @@ struct MemoryView: View {
         NavigationStack {
             Group {
                 if tiles.isEmpty {
-                    Text("「不熟」裡至少要有兩個詞才能玩。").foregroundStyle(T.muted)
+                    Text(tr("「不熟」裡至少要有兩個詞才能玩。")).foregroundStyle(T.muted)
                 } else if done {
                     summary
                 } else {
@@ -74,24 +74,24 @@ struct MemoryView: View {
             .appBackground()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel("結束")
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     if !tiles.isEmpty && !done && (moves > 0 || !matched.isEmpty) { RestartPracticeButton { build() } }
                 }
                 ToolbarItem(placement: .principal) {
                     if !tiles.isEmpty && !done {
-                        Text("翻牌配對　\(matched.count)／\(cards.count)　翻了 \(moves) 次")
+                        Text(tr("翻牌配對　\(matched.count)／\(cards.count)　翻了 \(moves) 次"))
                             .ffFont(.subheadline, .bold).foregroundStyle(T.muted)
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Picker("幾對", selection: $pairCount) {
-                            ForEach([4, 6, 8, 10], id: \.self) { Text("\($0) 對").tag($0) }
+                        Picker(tr("幾對"), selection: $pairCount) {
+                            ForEach([4, 6, 8, 10], id: \.self) { Text(tr("\($0) 對")).tag($0) }
                         }
                     } label: { Image(systemName: "square.grid.3x3") }
-                    .accessibilityLabel("幾對")
+                    .accessibilityLabel(tr("幾對"))
                 }
             }
         }
@@ -197,15 +197,15 @@ struct MemoryView: View {
         }
         .rotation3DEffect(.degrees(open ? 0 : 180), axis: (x: 0, y: 1, z: 0))
         .contentShape(RoundedRectangle(cornerRadius: 14))
-        .accessibilityLabel(open ? String(t.text.characters) : (t.isHan ? "漢字牌" : "讀音牌"))
+        .accessibilityLabel(open ? String(t.text.characters) : (t.isHan ? trs("漢字牌") : trs("讀音牌")))
         .accessibilityAddTraits(.isButton)
     }
 
     private var summary: some View {
         VStack(spacing: 16) {
             Image(systemName: "sparkles").font(.system(size: 44)).foregroundStyle(T.greenInk)
-            Text("全部配對了！").ffFont(.title2, .bold).foregroundStyle(T.glyph)
-            Text("\(cards.count) 對，翻了 \(moves) 次").foregroundStyle(T.muted)
+            Text(tr("全部配對了！")).ffFont(.title2, .bold).foregroundStyle(T.glyph)
+            Text(tr("\(cards.count) 對，翻了 \(moves) 次")).foregroundStyle(T.muted)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(cards, id: \.k) { c in
                     HStack(spacing: 10) {
@@ -218,9 +218,9 @@ struct MemoryView: View {
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
             HStack(spacing: 12) {
-                Button { build() } label: { Label("再玩一次", systemImage: "arrow.clockwise").frame(maxWidth: .infinity) }
+                Button { build() } label: { Label(tr("再玩一次"), systemImage: "arrow.clockwise").frame(maxWidth: .infinity) }
                     .softButton()
-                Button { dismiss() } label: { Label("結束", systemImage: "checkmark").frame(maxWidth: .infinity) }
+                Button { dismiss() } label: { Label(tr("結束"), systemImage: "checkmark").frame(maxWidth: .infinity) }
                     .softButton()
             }
         }

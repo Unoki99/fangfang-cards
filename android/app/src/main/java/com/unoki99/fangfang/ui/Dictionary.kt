@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -57,7 +58,7 @@ fun EntryPage(d: Dict, key: String, onBack: () -> Unit) {
 fun EntrySheetRoot(d: Dict, key: String) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { UI.closeSheet() }) { Text("完成", color = T.btnInk) }
+            TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
@@ -88,11 +89,11 @@ fun DictEntryBody(d: Dict, key: String) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val on = Store.isSaved(key)
-                CapsuleButton(if (on) "已收藏" else "收藏", if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, on,
+                CapsuleButton(if (on) tr("已收藏") else tr("收藏"), if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, on,
                     T.olive, T.oliveEdge, T.oliveInk) { Store.toggleSaved(key) }
                 val st = Store.cardStatus(key)
-                if (st == 1) Chip("卡片：熟悉", T.green, T.greenEdge, T.greenInk)
-                else if (st != null) CapsuleButton(if (st == 2) "在「不熟」" else "加到「不熟」", if (st == 2) Icons.Filled.Star else Icons.Filled.StarBorder,
+                if (st == 1) Chip(tr("卡片：熟悉"), T.green, T.greenEdge, T.greenInk)
+                else if (st != null) CapsuleButton(if (st == 2) tr("在「不熟」") else tr("加到「不熟」"), if (st == 2) Icons.Filled.Star else Icons.Filled.StarBorder,
                     st == 2, T.rust, T.rustEdge, T.rustInk) { Store.toggleUnknown(key) }
             }
             val r = remember(key, tk) { d.wordText(key, rom, place).annotated() }
@@ -102,14 +103,14 @@ fun DictEntryBody(d: Dict, key: String) {
             InputCodesRow(han)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 d.raw.reg[key]?.let { RegChip(it) }
-                if (d.subst.contains(key)) Chip("替", T.rust, T.rustEdge, T.rustInk)
+                if (d.subst.contains(key)) Chip(tr("替"), T.rust, T.rustEdge, T.rustInk)
                 val t = d.raw.typ[key]; val types = d.raw.types
                 if (t != null && t > 0 && types != null && t < types.size && t != 1) Chip(types[t], T.fn, T.fnEdge, T.muted)
-                if (d.own.contains(key)) Chip("方方補", T.fn, T.fnEdge, T.muted)
+                if (d.own.contains(key)) Chip(tr("方方補"), T.fn, T.fnEdge, T.muted)
                 if (d.isUser(key)) OwnChip()
                 if (place >= 0 && d.differsFromCommon(key, place) && place < d.raw.places.size) {
                     PlaceChip(d.raw.places[place])
-                    if (!d.isStated(key, place)) Chip("推測", T.fn, T.fnEdge, T.muted)
+                    if (!d.isStated(key, place)) Chip(tr("推測"), T.fn, T.fnEdge, T.muted)
                 }
             }
         }
@@ -127,14 +128,14 @@ fun DictEntryBody(d: Dict, key: String) {
         // 異用字
         val vs = remember(key) { d.raw.variants.filter { it.value.contains(key) }.keys.sorted() }
         if (vs.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip("異用字", T.fn, T.fnEdge, T.muted)
+            Chip(tr("異用字"), T.fn, T.fnEdge, T.muted)
             Txt(vs.joinToString("、"), ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
         }
         // 分類
         val cs = d.raw.cat?.get(key) ?: emptyList()
         val names = d.raw.cats
         if (cs.isNotEmpty() && names != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Chip("分類", T.pink, T.pinkEdge, T.pinkInk)
+            Chip(tr("分類"), T.pink, T.pinkEdge, T.pinkInk)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (i in cs.filter { it < names.size }) {
                     Txt(names[i], ff(FF.Subheadline), T.pinkInk, Modifier.clip(CircleShape).background(T.pink.copy(alpha = 0.6f))
@@ -168,7 +169,7 @@ fun DictEntryBody(d: Dict, key: String) {
         }
         d.gl[key]?.takeIf { it.isNotEmpty() }?.let { g ->
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip("華語", T.fn, T.fnEdge, T.muted)
+                Chip(tr("華語"), T.fn, T.fnEdge, T.muted)
                 Txt(g.joinToString("、") { it.t }, ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
             }
         }
@@ -177,15 +178,15 @@ fun DictEntryBody(d: Dict, key: String) {
         if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()
         val wl = remember(key) { d.wordLinks(key) }
         if (wl.first.isNotEmpty() || wl.second.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            LinkChips(d, "近", wl.first, T.blue, T.blueEdge, T.blueInk)
-            LinkChips(d, "反", wl.second, T.rust, T.rustEdge, T.rustInk)
+            LinkChips(d, tr("近"), wl.first, T.blue, T.blueEdge, T.blueInk)
+            LinkChips(d, tr("反"), wl.second, T.rust, T.rustEdge, T.rustInk)
         }
-        if (d.raw.typ[key] == 1) Txt("臺華共同詞：台語和華語寫法、意思一樣的詞。", ff(FF.Caption), T.muted)
+        if (d.raw.typ[key] == 1) Txt(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。"), ff(FF.Caption), T.muted)
     }
 }
 
 @Composable
-fun GuessNote() = Txt("紅色 = 推測的讀音（辭典沒有寫這個地方怎麼唸這個詞，照規則推出來的）", ff(FF.Caption2), T.muted)
+fun GuessNote() = Txt(tr("紅色 = 推測的讀音（辭典沒有寫這個地方怎麼唸這個詞，照規則推出來的）"), ff(FF.Caption2), T.muted)
 
 @Composable
 fun OtherRow(label: String, rom: String, zy: String) {
@@ -221,7 +222,7 @@ private fun SenseBlock(d: Dict, key: String, s: DictSense) {
                     Chip(ps.joinToString("、") { d.raw.places.getOrNull(it)?.take(2) ?: "" })
                     Txt(d.codes(codes, rom, ps.firstOrNull() ?: -1), lat(15f), T.greenInk)
                     Txt(d.codes(codes, 3, ps.firstOrNull() ?: -1), ff(FF.Footnote), T.purpleInk)
-                    Txt("這個意思", ff(FF.Caption2), T.muted)
+                    Txt(tr("這個意思"), ff(FF.Caption2), T.muted)
                 }
             }
         }
@@ -326,11 +327,11 @@ fun ExampleBlock(d: Dict, ex: List<String>, own: String? = null, boxedOwn: Boole
                     }
                     TextButton(onClick = { chooseSwap(place, w, w); swapWord = null }) {
                         val k = d.hanMap[w]?.firstOrNull()?.let { "$w\t$it" } ?: w
-                        Text("原本的詞：" + w + "　" + d.word(k, rom.coerceIn(0, 2), -1), color = T.glyph)
+                        Text(tr("原本的詞：") + w + "　" + d.word(k, rom.coerceIn(0, 2), -1), color = T.glyph)
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { swapWord = null }) { Text("取消", color = T.muted) } },
+            confirmButton = { TextButton(onClick = { swapWord = null }) { Text(tr("取消"), color = T.muted) } },
         )
     }
 }
@@ -379,7 +380,7 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
     var menu by remember { mutableStateOf(false) }
     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Txt("在地詞", ff(FF.Caption, FontWeight.Bold), if (on) T.pinkInk else T.muted)
+            Txt(tr("在地詞"), ff(FF.Caption, FontWeight.Bold), if (on) T.pinkInk else T.muted)
             Switch(on, { v ->
                 val s = d.swapsOff().toMutableSet()
                 if (v) s.remove(k) else s.add(k)
@@ -389,7 +390,7 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
         if (on) Box {
             Row(Modifier.clip(CircleShape).background(T.pink).border(1.5.dp, T.pinkEdge, CircleShape).clickable { menu = true }
                 .padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Txt("選詞", ff(FF.Caption, FontWeight.SemiBold), T.pinkInk)
+                Txt(tr("選詞"), ff(FF.Caption, FontWeight.SemiBold), T.pinkInk)
                 Icon(Icons.Filled.KeyboardArrowDown, null, tint = T.pinkInk, modifier = Modifier.size(14.dp))
             }
             DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
@@ -401,7 +402,7 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
                             leadingIcon = { if (cur == h) Icon(Icons.Filled.Check, null, tint = T.greenInk) },
                             onClick = { chooseSwap(place, w, h); menu = false })
                     }
-                    DropdownMenuItem(text = { Text("$w（原本的詞）", color = T.glyph) },
+                    DropdownMenuItem(text = { Text(tr("{0}（原本的詞）", w), color = T.glyph) },
                         leadingIcon = { if (cur == w) Icon(Icons.Filled.Check, null, tint = T.greenInk) },
                         onClick = { chooseSwap(place, w, w); menu = false })
                 }
@@ -435,7 +436,7 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
     val commonBoxes = groups.count { it.codes == main }
     val tk = textKey()
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Txt("各地讀音", ff(FF.Caption, FontWeight.Bold), T.muted)
+        Txt(tr("各地讀音"), ff(FF.Caption, FontWeight.Bold), T.muted)
         for (g in groups) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.55f))
                 .border(1.5.dp, if (g.places.contains(place)) T.placeEdge else Color.Transparent, RoundedCornerShape(12.dp)).padding(10.dp),
@@ -449,11 +450,11 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(remember(key, shownIn, tonesIn, tk) { d.wordText(key, rom, shownIn, tonesIn).annotated() }, lat(17f), T.greenInk)
                     Txt(remember(key, shownIn, tonesIn, tk) { d.wordText(key, 3, shownIn, tonesIn).annotated() }, ff(FF.Subheadline), T.purpleInk)
-                    if (g.guessed) Chip("推測", T.fn, T.fnEdge, T.muted)
+                    if (g.guessed) Chip(tr("推測"), T.fn, T.fnEdge, T.muted)
                 }
                 val also = g.places.flatMap { d.alsoSaid(key, it) }.toSet().sorted()
                 for (x in also) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlaceChip("也講")
+                    PlaceChip(tr("也講"))
                     Txt(d.codes(x, rom, g.places[0]), lat(15f), T.greenInk)
                     Txt(d.codes(x, 3, g.places[0]), ff(FF.Footnote), T.purpleInk)
                     val who = g.places.filter { d.alsoSaid(key, it).contains(x) }
@@ -461,8 +462,8 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
                 }
             }
         }
-        Txt(if (colours) "推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。"
-            else "紅色／推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。", ff(FF.Caption2), T.muted)
+        Txt(if (colours) tr("推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。")
+            else tr("紅色／推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。"), ff(FF.Caption2), T.muted)
     }
 }
 
@@ -532,8 +533,8 @@ fun LazyListScope.keyItems(d: Dict, title: String, keys: List<String>) {
         Store.rev
         Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
             SwipeRow(
-                start = if (Store.cardStatus(k) == 0) Pair("加到不熟", T.rustEdge) else null,
-                end = Pair(if (Store.isSaved(k)) "取消收藏" else "收藏", T.oliveEdge),
+                start = if (Store.cardStatus(k) == 0) Pair(tr("加到不熟"), T.rustEdge) else null,
+                end = Pair(if (Store.isSaved(k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                 onStart = { Store.toggleUnknown(k) }, onEnd = { Store.toggleSaved(k) },
                 onClick = { nav.push(Route.Entry(k)) },
             ) { DictRow(d, k) }
@@ -555,13 +556,13 @@ fun SentencesPage(d: Dict, title: String, hits: List<SentenceHit>, onBack: () ->
     Column(Modifier.fillMaxSize()) {
         TopBar(title, onBack, settings = false)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            item { Txt("${hits.size} 句，短的在前面", ff(FF.Caption), T.muted) }
+            item { Txt(tr("{0} 句，短的在前面", hits.size), ff(FF.Caption), T.muted) }
             items(hits) { h ->
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f))
                     .clickable { nav.push(Route.Entry(h.entry)) }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     ExampleBlock(d, h.ex, own = h.word, boxedOwn = true)
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Txt("出自", ff(FF.Caption), T.muted)
+                        Txt(tr("出自"), ff(FF.Caption), T.muted)
                         Txt(Dict.hanOf(h.entry), ff(FF.Caption), T.blueInk)
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted, modifier = Modifier.size(14.dp))
                     }
@@ -597,7 +598,7 @@ fun PlacesBlock(d: Dict, e: PlaceGroup) {
 @Composable
 fun PlacesPage(d: Dict, groups: List<PlaceGroup>, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopBar("各地講法", onBack, settings = false)
+        TopBar(tr("各地講法"), onBack, settings = false)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(groups) { PlacesBlock(d, it) }
         }
@@ -609,7 +610,7 @@ fun PlacesPage(d: Dict, groups: List<PlaceGroup>, onBack: () -> Unit) {
 fun WordClassesPage(d: Dict, onBack: () -> Unit) {
     val nav = LocalNav.current
     Column(Modifier.fillMaxSize()) {
-        TopBar("依詞類列出", onBack, settings = false)
+        TopBar(tr("依詞類列出"), onBack, settings = false)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
             item {
                 ListCard {
@@ -634,9 +635,9 @@ fun WordClassPage(d: Dict, cls: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar(cls, onBack, settings = false)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
-            keyItems(d, if (cls == "離合詞") "動詞裡面有名詞（${keys.size}）" else "${keys.size} 個詞", if (all) keys else keys.take(300))
+            keyItems(d, if (cls == "離合詞") tr("動詞裡面有名詞（{0}）", keys.size) else tr("{0} 個詞", keys.size), if (all) keys else keys.take(300))
             if (!all && keys.size > 300) item {
-                TextButton(onClick = { all = true }) { Text("顯示全部（${keys.size}）", color = T.oliveInk) }
+                TextButton(onClick = { all = true }) { Text(tr("顯示全部（{0}）", keys.size), color = T.oliveInk) }
             }
         }
     }
@@ -653,11 +654,11 @@ fun CategoryWordsPage(d: Dict, cat: Int, onBack: () -> Unit) {
             item {
                 SoftButton(onClick = { Store.addUnknown(keys) }, enabled = newOnes.isNotEmpty(), modifier = Modifier.fillMaxWidth()) {
                     IconLabel(if (newOnes.isEmpty()) Icons.Filled.Star else Icons.Filled.StarBorder,
-                        if (newOnes.isEmpty()) "這個分類的新詞都在卡片裡了" else "新詞全部加到「不熟」（${newOnes.size}）", ff(FF.Subheadline))
+                        if (newOnes.isEmpty()) tr("這個分類的新詞都在卡片裡了") else tr("新詞全部加到「不熟」（{0}）", newOnes.size), ff(FF.Subheadline))
                 }
-                Txt("最常用的在前面。往右滑一個詞加到「不熟」，往左滑收藏。", ff(FF.Footnote), T.muted, Modifier.padding(4.dp))
+                Txt(tr("最常用的在前面。往右滑一個詞加到「不熟」，往左滑收藏。"), ff(FF.Footnote), T.muted, Modifier.padding(4.dp))
             }
-            keyItems(d, "${keys.size} 個詞", keys)
+            keyItems(d, tr("{0} 個詞", keys.size), keys)
         }
     }
 }
@@ -666,16 +667,16 @@ fun CategoryWordsPage(d: Dict, cat: Int, onBack: () -> Unit) {
 @Composable
 fun ComparePage(d: Dict, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopBar("單詞比較", onBack, settings = false)
+        TopBar(tr("單詞比較"), onBack, settings = false)
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (maxWidth > 700.dp) Row(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareA, "第一個詞") }
+                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareA, tr("第一個詞")) }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(T.fnEdge))
-                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareB, "第二個詞") }
+                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareB, tr("第二個詞")) }
             } else Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareA, "第一個詞") }
+                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareA, tr("第一個詞")) }
                 Box(Modifier.height(1.dp).fillMaxWidth().background(T.fnEdge))
-                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareB, "第二個詞") }
+                Box(Modifier.weight(1f)) { ComparePane(d, Prefs.compareB, tr("第二個詞")) }
             }
         }
     }
@@ -703,7 +704,7 @@ private fun ComparePane(d: Dict, slot: com.unoki99.fangfang.Pref<String>, hint: 
             }
         } else if (key.isNotEmpty() && (d.raw.defs.m[key] != null || d.baseKeys.contains(key) || d.isUser(key))) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) { DictEntryBody(d, key); Spacer(Modifier.height(30.dp)) }
-        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Txt("查一個詞，選它。", ff(FF.Body), T.muted) }
+        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Txt(tr("查一個詞，選它。"), ff(FF.Body), T.muted) }
     }
 }
 
@@ -713,11 +714,11 @@ private fun ComparePane(d: Dict, slot: com.unoki99.fangfang.Pref<String>, hint: 
 fun DictionaryTab() {
     if (Store.isZh) { ZhDictionaryTab(); return }
     Column(Modifier.fillMaxSize()) {
-        TopBar("詞典")
+        TopBar(tr("詞典"))
         DictGate { d ->
             var tab by Prefs.dictTab
             Column(Modifier.fillMaxSize()) {
-                Segmented(listOf(0 to "查詞", 3 to "各地讀音", 1 to "分類", 2 to "收藏", 4 to "自訂"), tab, { tab = it },
+                Segmented(listOf(0 to tr("查詞"), 3 to tr("各地讀音"), 1 to tr("分類"), 2 to tr("收藏"), 4 to tr("自訂")), tab, { tab = it },
                     Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                 Box(Modifier.weight(1f)) {
                     when (tab) {
@@ -764,29 +765,29 @@ private fun LookupPane(d: Dict) {
     val r = result
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
-            SearchField(query, { query = it }, "華語、台語漢字、羅馬字或方音")
+            SearchField(query, { query = it }, tr("華語、台語漢字、羅馬字或方音"))
             Spacer(Modifier.height(8.dp))
             TileGrid(4) { i, m ->
                 when (i) {
-                    0 -> TileButton(Icons.AutoMirrored.Filled.List, "依詞類列出", m) { nav.push(Route.WordClasses) }
-                    1 -> TileButton(Icons.Filled.VerticalSplit, "單詞比較", m) { nav.push(Route.Compare) }
-                    2 -> TileButton(Icons.Filled.GridView, "部首查字", m) { nav.push(Route.Radicals(false)) }
-                    else -> TileButton(Icons.Filled.Translate, "日語借詞", m) { nav.push(Route.Japanese) }
+                    0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.WordClasses) }
+                    1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.Compare) }
+                    2 -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(false)) }
+                    else -> TileButton(Icons.Filled.Translate, tr("日語借詞"), m) { nav.push(Route.Japanese) }
                 }
             }
         }
-        if (query.isNotEmpty() && r.empty) item { Txt("找不到「$query」。", ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        if (query.isNotEmpty() && r.empty) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         if (r.isPattern) {
-            keyItems(d, "台語詞「$query」（${if (r.pattern.size == 300) "300+" else r.pattern.size.toString()}）", r.pattern)
-            keyItems(d, "華語「$query」的台語講法", r.patternZh)
+            keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)
+            keyItems(d, tr("華語「{0}」的台語講法", query), r.patternZh)
         } else if (query.isEmpty()) item {
-            Txt("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）或方音。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…",
+            Txt(tr("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）或方音。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
         }
-        if (r.tones.isNotEmpty()) keyItems(d, "聲調「${query.filter { it.isDigit() }.toList().joinToString("-")}」（${if (r.tones.size >= 1000) "1000+" else r.tones.size.toString()}）", r.tones)
+        if (r.tones.isNotEmpty()) keyItems(d, tr("聲調「{0}」（{1}）", query.filter { it.isDigit() }.toList().joinToString("-"), if (r.tones.size >= 1000) "1000+" else r.tones.size.toString()), r.tones)
         r.toneNote?.let { item { Txt(it, ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) } }
-        keyItems(d, "台語「$query」", r.taigi)
-        keyItems(d, "台語講法", r.exact)
+        keyItems(d, tr("台語「{0}」", query), r.taigi)
+        keyItems(d, tr("台語講法"), r.exact)
         // several words searched at once: each word's words, then a capsule for each to see its 更多
         for ((i, w) in r.parts.withIndex()) {
             val pr = r.partResults[i]
@@ -794,7 +795,7 @@ private fun LookupPane(d: Dict) {
         }
         if (r.parts.isNotEmpty()) item {
             Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Txt("點一個詞，看那個詞的更多", ff(FF.Footnote), T.muted, Modifier.padding(start = 4.dp))
+                Txt(tr("點一個詞，看那個詞的更多"), ff(FF.Footnote), T.muted, Modifier.padding(start = 4.dp))
                 WordPickRow(r.parts, picked) { picked = it }
             }
         }
@@ -809,14 +810,14 @@ private fun LazyListScope.moreItems(r: LookupResult, query: String, nav: NavStac
     val words = r.sentenceWords.take(3).joinToString("、")
     if (r.sentences.isEmpty() && r.contains.isEmpty() && r.places.isEmpty() && r.gloss.isEmpty() && r.defs.isEmpty()) return
     item {
-        SectionTitle("更多")
+        SectionTitle(tr("更多"))
         class MoreRow(val icon: androidx.compose.ui.graphics.vector.ImageVector, val title: String, val n: Int, val cap: Int, val route: Route)
         val rows = ArrayList<MoreRow>()
-        if (r.sentences.isNotEmpty()) rows.add(MoreRow(Icons.Filled.FormatQuote, "句子裡有「$words」", r.sentences.size, 300, Route.Sentences("台語句子裡有「$words」", r.sentences)))
-        if (r.contains.isNotEmpty()) rows.add(MoreRow(Icons.Filled.TextFields, "詞裡有「$query」", r.contains.size, 80, Route.Keys("台語詞裡有「$query」", r.contains)))
-        if (r.places.isNotEmpty()) rows.add(MoreRow(Icons.Filled.Map, "各地講法", r.places.size, 6, Route.Places(r.places)))
-        if (r.gloss.isNotEmpty()) rows.add(MoreRow(Icons.Filled.Search, "華語意思有「$query」", r.gloss.size, 60, Route.Keys("華語意思有「$query」", r.gloss)))
-        if (r.defs.isNotEmpty()) rows.add(MoreRow(Icons.Filled.Book, "解釋裡有「$query」", r.defs.size, 60, Route.Keys("解釋裡有「$query」", r.defs)))
+        if (r.sentences.isNotEmpty()) rows.add(MoreRow(Icons.Filled.FormatQuote, tr("句子裡有「{0}」", words), r.sentences.size, 300, Route.Sentences(tr("台語句子裡有「{0}」", words), r.sentences)))
+        if (r.contains.isNotEmpty()) rows.add(MoreRow(Icons.Filled.TextFields, tr("詞裡有「{0}」", query), r.contains.size, 80, Route.Keys(tr("台語詞裡有「{0}」", query), r.contains)))
+        if (r.places.isNotEmpty()) rows.add(MoreRow(Icons.Filled.Map, tr("各地講法"), r.places.size, 6, Route.Places(r.places)))
+        if (r.gloss.isNotEmpty()) rows.add(MoreRow(Icons.Filled.Search, tr("華語意思有「{0}」", query), r.gloss.size, 60, Route.Keys(tr("華語意思有「{0}」", query), r.gloss)))
+        if (r.defs.isNotEmpty()) rows.add(MoreRow(Icons.Filled.Book, tr("解釋裡有「{0}」", query), r.defs.size, 60, Route.Keys(tr("解釋裡有「{0}」", query), r.defs)))
         TileGrid(rows.size) { i, m -> val row = rows[i]; TileButton(row.icon, row.title, m, row.n, row.cap) { nav.push(row.route) } }
     }
 }
@@ -833,16 +834,16 @@ private fun PronunciationPane(d: Dict) {
         keys = withContext(Dispatchers.Default) { Lookup.exact(d, q, Prefs) }
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        item { SearchField(query, { query = it }, "台語漢字、羅馬字或方音，例如：做伙、四界、tsiah") }
+        item { SearchField(query, { query = it }, tr("台語漢字、羅馬字或方音，例如：做伙、四界、tsiah")) }
         if (query.isEmpty()) item {
-            Txt("查一個詞，看它在鹿港、三峽、臺北、宜蘭、臺南、高雄、金門、馬公、新竹、臺中各地的讀音。紅色／推測 = 辭典沒有寫，照規則推出來的。", ff(FF.Footnote), T.muted)
-        } else if (keys.isEmpty()) item { Txt("找不到「$query」。", ff(FF.Body), T.muted) }
+            Txt(tr("查一個詞，看它在鹿港、三峽、臺北、宜蘭、臺南、高雄、金門、馬公、新竹、臺中各地的讀音。紅色／推測 = 辭典沒有寫，照規則推出來的。"), ff(FF.Footnote), T.muted)
+        } else if (keys.isEmpty()) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted) }
         items(keys) { k ->
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(T.fn.copy(alpha = 0.35f)).clickable { nav.push(Route.Entry(k)) }.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(Dict.hanOf(k), sz(24f, FontWeight.SemiBold), T.glyph)
-                    Txt("通行", ff(FF.Caption), T.muted)
+                    Txt(tr("通行"), ff(FF.Caption), T.muted)
                     Txt(d.word(k, rom.coerceIn(0, 2), -1), lat(16f), T.greenInk)
                     Txt(d.word(k, 3, -1), ff(FF.Footnote), T.purpleInk, Modifier.weight(1f))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted)
@@ -861,7 +862,7 @@ private fun CategoryPane(d: Dict) {
     val counts = remember { d.catCounts }
     val shown = names.indices.filter { filter.isEmpty() || names[it].contains(filter) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
-        item { SearchField(filter, { filter = it }, "找分類，例如：食物、稱謂、時間"); SectionTitle("${shown.size} 個分類（教育部辭典）") }
+        item { SearchField(filter, { filter = it }, tr("找分類，例如：食物、稱謂、時間")); SectionTitle(tr("{0} 個分類（教育部辭典）", shown.size)) }
         items(shown) { i ->
             Row(Modifier.fillMaxWidth().background(T.fn.copy(alpha = 0.7f)).clickable { nav.push(Route.Category(i)) }.padding(14.dp)) {
                 Txt(names[i], ff(FF.Body), T.glyph, Modifier.weight(1f))
@@ -890,39 +891,39 @@ private fun SavedPane(d: Dict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         if (keys.isEmpty() && senses.isEmpty()) item {
             Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Txt("還沒有收藏", ff(FF.Headline), T.glyph)
-                Txt("在「轉換」點一個詞，或在「查詞」打開一個詞，按「收藏」就會存在這裡。意思旁邊的書籤可以只收藏那個意思。", ff(FF.Footnote), T.muted)
+                Txt(tr("還沒有收藏"), ff(FF.Headline), T.glyph)
+                Txt(tr("在「轉換」點一個詞，或在「查詞」打開一個詞，按「收藏」就會存在這裡。意思旁邊的書籤可以只收藏那個意思。"), ff(FF.Footnote), T.muted)
             }
         } else {
             item {
                 Box {
-                    SoftButton(onClick = { menu = true }) { IconLabel(Icons.Filled.IosShare, "匯出收藏", ff(FF.Subheadline), T.oliveInk) }
+                    SoftButton(onClick = { menu = true }) { IconLabel(Icons.Filled.IosShare, tr("匯出收藏"), ff(FF.Subheadline), T.oliveInk) }
                     DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
-                        DropdownMenuItem(text = { Text("匯出 CSV（Anki）", color = T.glyph) }, onClick = {
+                        DropdownMenuItem(text = { Text(tr("匯出 CSV（Anki）"), color = T.glyph) }, onClick = {
                             menu = false; pending = Store.savedCSV(d); saveCsv.launch("方方-收藏.csv")
                         })
-                        DropdownMenuItem(text = { Text("匯出文字", color = T.glyph) }, onClick = {
+                        DropdownMenuItem(text = { Text(tr("匯出文字"), color = T.glyph) }, onClick = {
                             menu = false; pending = keys.joinToString("\n") { Dict.hanOf(it) + "\t" + d.word(it, rom, -1) }; saveTxt.launch("方方-收藏.txt")
                         })
                     }
                 }
-                if (keys.isNotEmpty()) SectionTitle("${keys.size} 個詞（往左滑刪除，往右滑加到「不熟」）")
+                if (keys.isNotEmpty()) SectionTitle(tr("{0} 個詞（往左滑刪除，往右滑加到「不熟」）", keys.size))
             }
             items(keys, key = { "s|$it" }) { k ->
                 val st = Store.cardStatus(k)
                 SwipeRow(
-                    start = if (st != null && st != 2) Pair("加到不熟", T.rustEdge) else null, end = Pair("刪除", Color(0xFFB3261E)),
+                    start = if (st != null && st != 2) Pair(tr("加到不熟"), T.rustEdge) else null, end = Pair(tr("刪除"), Color(0xFFB3261E)),
                     onStart = { Store.toggleUnknown(k) }, onEnd = { Store.unsave(listOf(k)) },
                     onClick = { nav.push(Route.Entry(k)) },
                 ) { DictRow(d, k) }
                 RowDivider()
             }
-            if (senses.isNotEmpty()) item { SectionTitle("${senses.size} 個意思（往左滑刪除）") }
+            if (senses.isNotEmpty()) item { SectionTitle(tr("{0} 個意思（往左滑刪除）", senses.size)) }
             items(senses, key = { "m|" + it.id }) { s ->
                 val all = d.senses(s.key)
                 if (s.sense < all.size) {
                     val m = all[s.sense]
-                    SwipeRow(start = null, end = Pair("刪除", Color(0xFFB3261E)), onEnd = { Store.unsave(s) },
+                    SwipeRow(start = null, end = Pair(tr("刪除"), Color(0xFFB3261E)), onEnd = { Store.unsave(s) },
                         onClick = { nav.push(Route.Entry(s.key)) }) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -955,12 +956,12 @@ private fun OwnPane(d: Dict) {
     val keys = Store.ownKeys
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
-            SoftButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) { IconLabel(Icons.Filled.AddCircle, "加一個詞", ff(FF.Headline), T.ownInk) }
-            Txt("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。", ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
-            if (keys.isNotEmpty()) SectionTitle("${keys.size} 個詞（往左滑刪除）")
+            SoftButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) { IconLabel(Icons.Filled.AddCircle, tr("加一個詞"), ff(FF.Headline), T.ownInk) }
+            Txt(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。"), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
+            if (keys.isNotEmpty()) SectionTitle(tr("{0} 個詞（往左滑刪除）", keys.size))
         }
         items(keys, key = { "o|$it" }) { k ->
-            SwipeRow(start = null, end = Pair("刪除", Color(0xFFB3261E)), onEnd = { Store.removeOwn(k) }, onClick = { nav.push(Route.Entry(k)) }) {
+            SwipeRow(start = null, end = Pair(tr("刪除"), Color(0xFFB3261E)), onEnd = { Store.removeOwn(k) }, onClick = { nav.push(Route.Entry(k)) }) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(Dict.hanOf(k), sz(20f, FontWeight.SemiBold), T.ownInk)
                     Txt(d.codes(Dict.codesOf(k), rom.coerceIn(0, 2), -1), lat(16f), T.greenInk)
@@ -986,9 +987,9 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
         val h = han.trim()
         val chars = h.cps()
         when {
-            h.isEmpty() -> Pair(null, "先寫漢字。")
-            chars.any { !ConvertEngine.isHan(it.firstCp()) } -> Pair(null, "漢字欄只能寫漢字。")
-            reading.trim().isEmpty() -> Pair(null, "再寫讀音。")
+            h.isEmpty() -> Pair(null, tr("先寫漢字。"))
+            chars.any { !ConvertEngine.isHan(it.firstCp()) } -> Pair(null, tr("漢字欄只能寫漢字。"))
+            reading.trim().isEmpty() -> Pair(null, tr("再寫讀音。"))
             else -> {
                 var problem: String? = null
                 val codes = ArrayList<String>()
@@ -997,19 +998,19 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
                     val raw = it.raw
                     if (raw != null) {
                         if (raw.trim(' ', '-', '‑', '–').isEmpty()) continue
-                        problem = "看不懂「$raw」這個讀音。"; break
+                        problem = tr("看不懂「{0}」這個讀音。", raw); break
                     }
                     val c = it.current.codes
-                    if (c == null) { problem = "看不懂這個讀音。"; break }
+                    if (c == null) { problem = tr("看不懂這個讀音。"); break }
                     codes.addAll(c)
                 }
                 val key = h + "\t" + codes.joinToString(" ")
                 when {
                     problem != null -> Pair(null, problem)
-                    codes.isEmpty() -> Pair(null, "看不懂這個讀音。")
-                    codes.size != chars.size -> Pair(null, "讀音有 ${codes.size} 個音節，漢字有 ${chars.size} 個字，要一樣多。")
-                    d.baseKeys.contains(key) || d.altParent[key] != null -> Pair(null, "辭典裡已經有這個詞了。")
-                    Store.isOwn(key) -> Pair(null, "這個詞已經在「自訂」裡了。")
+                    codes.isEmpty() -> Pair(null, tr("看不懂這個讀音。"))
+                    codes.size != chars.size -> Pair(null, tr("讀音有 {0} 個音節，漢字有 {1} 個字，要一樣多。", codes.size, chars.size))
+                    d.baseKeys.contains(key) || d.altParent[key] != null -> Pair(null, tr("辭典裡已經有這個詞了。"))
+                    Store.isOwn(key) -> Pair(null, tr("這個詞已經在「自訂」裡了。"))
                     else -> Pair(codes, "")
                 }
             }
@@ -1017,14 +1018,14 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
     }
     AlertDialog(
         onDismissRequest = onDone, containerColor = T.fn,
-        title = { Txt("加一個詞", ff(FF.Headline)) },
+        title = { Txt(tr("加一個詞"), ff(FF.Headline)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(han, { han = it }, Modifier.focusRequester(fHan), label = { Text("漢字") }, placeholder = { Text("例：揣頭路") }, singleLine = true,
+                OutlinedTextField(han, { han = it }, Modifier.focusRequester(fHan), label = { Text(tr("漢字")) }, placeholder = { Text(tr("例：揣頭路")) }, singleLine = true,
                     trailingIcon = { ClearIcon(han, { han = it }, fHan) })
-                OutlinedTextField(reading, { reading = it }, Modifier.focusRequester(fReading), label = { Text("讀音") }, placeholder = { Text("例：tshuē-thâu-lōo") }, singleLine = true,
+                OutlinedTextField(reading, { reading = it }, Modifier.focusRequester(fReading), label = { Text(tr("讀音")) }, placeholder = { Text(tr("例：tshuē-thâu-lōo")) }, singleLine = true,
                     textStyle = lat(17f).copy(color = T.glyph), trailingIcon = { ClearIcon(reading, { reading = it }, fReading) })
-                Txt("用皓羅、台羅、白話字或方音都可以。寫聲調比較準；沒寫聲調的話，請看下面的結果對不對。", ff(FF.Caption), T.muted)
+                Txt(tr("用皓羅、台羅、白話字或方音都可以。寫聲調比較準；沒寫聲調的話，請看下面的結果對不對。"), ff(FF.Caption), T.muted)
                 val codes = check.first
                 if (codes != null) {
                     val cs = codes.joinToString(" ")
@@ -1040,8 +1041,8 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
         confirmButton = {
             TextButton(onClick = {
                 check.first?.let { Store.addOwn(han.trim() + "\t" + it.joinToString(" ")); onDone() }
-            }, enabled = check.first != null) { Text("加入", color = if (check.first != null) T.btnInk else T.muted) }
+            }, enabled = check.first != null) { Text(tr("加入"), color = if (check.first != null) T.btnInk else T.muted) }
         },
-        dismissButton = { TextButton(onClick = onDone) { Text("取消", color = T.muted) } },
+        dismissButton = { TextButton(onClick = onDone) { Text(tr("取消"), color = T.muted) } },
     )
 }

@@ -499,7 +499,7 @@ object Store {
         if (t < 0 || practiceTopics.none { it.id == t }) return u
         return u.filter { inTopic(it, t) }
     }
-    val practiceName: String get() = practiceTopics.firstOrNull { it.id == practiceTopic }?.name ?: "全部不熟的詞"
+    val practiceName: String get() = practiceTopics.firstOrNull { it.id == practiceTopic }?.name ?: tr("全部不熟的詞")
 
     /** many words at once to 熟悉 (or back to 新詞) */
     fun markAll(list: List<Card>, known: Boolean) {

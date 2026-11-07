@@ -425,20 +425,20 @@ struct ToneMenu: View {
     private let glassOn = false   // the Liquid Glass look was taken out
     var body: some View {
         Menu {
-            Picker("聲調顏色", selection: $system) {
-                Text("關").tag(0)
-                Text("七聲（1 2 3 4 5 7 8）").tag(7)
-                Text("五聲（1=8、3=4）").tag(5)
+            Picker(tr("聲調顏色"), selection: $system) {
+                Text(tr("關")).tag(0)
+                Text(tr("七聲（1 2 3 4 5 7 8）")).tag(7)
+                Text(tr("五聲（1=8、3=4）")).tag(5)
             }
             .pickerStyle(.inline)
             if system != 0 {
-                Toggle("聲調符號照變調寫", isOn: $marks)
-                Toggle("聲調光暈", isOn: $glow)
+                Toggle(tr("聲調符號照變調寫"), isOn: $marks)
+                Toggle(tr("聲調光暈"), isOn: $glow)
             }
         } label: {
             label
         }
-        .accessibilityLabel("聲調顏色")
+        .accessibilityLabel(tr("聲調顏色"))
         #if targetEnvironment(macCatalyst)
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -451,9 +451,9 @@ struct ToneMenu: View {
         HStack(spacing: 2) {
             if system == 0 {
                 #if targetEnvironment(macCatalyst)
-                Text("聲調").ffFont(.subheadline, .bold).foregroundStyle(T.glyph)
+                Text(tr("聲調")).ffFont(.subheadline, .bold).foregroundStyle(T.glyph)
                 #else
-                Text("調").ffFont(.subheadline, .bold).foregroundStyle(T.muted)
+                Text(tr("調")).ffFont(.subheadline, .bold).foregroundStyle(T.muted)
                 #endif
             } else {
                 if store.isZh {

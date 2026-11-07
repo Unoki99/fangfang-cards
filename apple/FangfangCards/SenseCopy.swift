@@ -53,7 +53,7 @@ enum SenseCopy {
     /// the name of the layout chosen (or 自訂)
     static func styleName(zh: Bool) -> String {
         let (t, e, sp) = zh ? (zhTpl, zhExTpl, zhSep) : (tpl, exTpl, sep)
-        return (zh ? zhPresets : presets).first { $0.tpl == t && $0.ex == e && $0.sep == sp }?.name ?? "自訂"
+        return (zh ? zhPresets : presets).first { $0.tpl == t && $0.ex == e && $0.sep == sp }.map { trs($0.name) } ?? trs("自訂")
     }
 
     /// fills a template. An empty value takes the brackets or ** around it along with it,
@@ -137,7 +137,7 @@ struct SenseCopyButton: View {
                 .overlay(Circle().stroke(done ? T.greenEdge : T.fnEdge, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(done ? "已複製" : "複製這個意思")
+        .accessibilityLabel(done ? trs("已複製") : trs("複製這個意思"))
     }
 }
 
@@ -176,13 +176,13 @@ struct SenseCopySettings: View {
 
     var body: some View {
         Form {
-            Section("樣式") {
+            Section(tr("樣式")) {
                 ForEach(Array(presets.enumerated()), id: \.offset) { _, p in
                     Button {
                         tpl.wrappedValue = p.tpl; exTpl.wrappedValue = p.ex; sep.wrappedValue = p.sep
                     } label: {
                         HStack {
-                            Text(p.name).foregroundStyle(T.glyph)
+                            Text(trs(p.name)).foregroundStyle(T.glyph)
                             Spacer()
                             if tpl.wrappedValue == p.tpl && exTpl.wrappedValue == p.ex && sep.wrappedValue == p.sep {
                                 Image(systemName: "checkmark").foregroundStyle(T.greenInk)
@@ -202,10 +202,10 @@ struct SenseCopySettings: View {
                     .clearButton(tpl, editor: true)
                 tokenRow(zh ? SenseCopy.zhWordTokens : SenseCopy.wordTokens) { tpl.wrappedValue += $0 }
             } header: {
-                Text("整個意思")
+                Text(tr("整個意思"))
             } footer: {
-                Text("{所有例句} 是例句放的位置（沒寫就放在最後）。值是空的時候，旁邊的括號或 ** 也會一起拿掉。點下面的名字可以加到最後面。"
-                     + (zh ? "{英文} 是英文解釋（用 ; 分開），{英文列表} 是一行一個、有編號。" : ""))
+                Text(tr("{所有例句} 是例句放的位置（沒寫就放在最後）。值是空的時候，旁邊的括號或 ** 也會一起拿掉。點下面的名字可以加到最後面。")
+                     + (zh ? trs("{英文} 是英文解釋（用 ; 分開），{英文列表} 是一行一個、有編號。") : ""))
             }
             .listRowBackground(T.fn.opacity(0.7))
             Section {
@@ -217,18 +217,18 @@ struct SenseCopySettings: View {
                     .textInputAutocapitalization(.never)
                     .clearButton(exTpl, editor: true)
                 tokenRow(zh ? SenseCopy.zhExTokens : SenseCopy.exTokens) { exTpl.wrappedValue += $0 }
-                Picker("例句跟例句中間", selection: sep) {
+                Picker(tr("例句跟例句中間"), selection: sep) {
                     ForEach(0..<SenseCopy.seps.count, id: \.self) { Text(SenseCopy.seps[$0]).tag($0) }
                 }
             } header: {
-                Text("每個例句")
+                Text(tr("每個例句"))
             } footer: {
-                Text((zh ? "{羅馬字} 和 {例句羅馬字} 跟著上面選的拼音或注音；也可以直接用 {拼音}、{注音}。"
-                         : "{羅馬字} 和 {例句羅馬字} 跟著設定裡選的羅馬字；也可以直接用 {皓羅}、{台羅}、{白話字}。")
-                     + "Discord 看得懂 **粗體**、*斜體*、## 標題、> 引用、- 清單、-# 小字。")
+                Text((zh ? trs("{羅馬字} 和 {例句羅馬字} 跟著上面選的拼音或注音；也可以直接用 {拼音}、{注音}。")
+                         : trs("{羅馬字} 和 {例句羅馬字} 跟著設定裡選的羅馬字；也可以直接用 {皓羅}、{台羅}、{白話字}。"))
+                     + trs("Discord 看得懂 **粗體**、*斜體*、## 標題、> 引用、- 清單、-# 小字。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
-            Section("預覽") {
+            Section(tr("預覽")) {
                 if let s = sample, let text = preview(s) {
                     Text(text)
                         .ffFont(.footnote, mono: true)
@@ -236,14 +236,14 @@ struct SenseCopySettings: View {
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    Text("詞典載入中…").foregroundStyle(T.muted)
+                    Text(tr("詞典載入中…")).foregroundStyle(T.muted)
                 }
             }
             .listRowBackground(T.fn.opacity(0.7))
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .navigationTitle(zh ? "複製意思的格式（華語）" : "複製意思的格式（台語）")
+        .navigationTitle(zh ? trs("複製意思的格式（華語）") : trs("複製意思的格式（台語）"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { if zh { store.preloadZh() } else { store.loadDict() } }
     }
@@ -336,6 +336,6 @@ struct ZhSenseCopyButton: View {
                 .overlay(Circle().stroke(done ? T.greenEdge : T.fnEdge, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(done ? "已複製" : "複製這個意思")
+        .accessibilityLabel(done ? trs("已複製") : trs("複製這個意思"))
     }
 }

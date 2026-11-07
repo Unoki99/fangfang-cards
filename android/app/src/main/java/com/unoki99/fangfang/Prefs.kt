@@ -142,6 +142,8 @@ object Prefs : KeyValue {
     val handWidth = Pref("handwritingPenWidth", 9f)
     /** a phone on its side, 新詞: the ✕ ↺ ✓ buttons shown */
     val sidewaysButtons = Pref("sidewaysButtons", false)
+    /** 介面語言: 0 中文, 1 English */
+    val uiLanguage = Pref("uiLanguage", 0)
     /** 筆跡延遲: how many seconds after the pen the writing shows up (0 = right away) */
     val handDelay = Pref("handwritingInkDelay", 0f)
     val radicalMode = Pref("radicalMode", 0)
@@ -156,11 +158,12 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh) + copyOn + copyStyle + copyPreText
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
         sp = ctx.getSharedPreferences("fangfang", Context.MODE_PRIVATE)
+        UILang.init(ctx)
         for (p in all) p.bind(sp)
         if (deviceId.value.isEmpty()) deviceId.value = java.util.UUID.randomUUID().toString().take(4).uppercase()
         syncEngine()

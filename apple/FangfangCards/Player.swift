@@ -106,6 +106,6 @@ struct PlayButton: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("播放")
+        .accessibilityLabel(tr("播放"))
     }
 }

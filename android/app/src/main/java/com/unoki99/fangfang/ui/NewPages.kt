@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,7 +79,7 @@ fun EnglishList(items: List<String>, max: Int = 0, maxLines: Int = Int.MAX_VALUE
             if (items.size > 1) EnNum(i + 1)
             Txt(t, style, T.glyph.copy(alpha = 0.9f), maxLines = maxLines)
         }
-        if (max > 0 && items.size > max) Txt("還有 ${items.size - max} 個意思", ff(FF.Caption), T.muted)
+        if (max > 0 && items.size > max) Txt(tr("還有 {0} 個意思", items.size - max), ff(FF.Caption), T.muted)
     }
 }
 
@@ -107,27 +108,27 @@ fun RadicalPage(zhSearch: Boolean, onBack: () -> Unit) {
         onBack()
     }
     Column(Modifier.fillMaxSize()) {
-        TopBar(if (mode == 1) "組合部首" else radical?.let { "部首「${it.radical}」" } ?: "部首查字", onBack, settings = false) {
-            if (mode == 0 && radical != null) TextButton(onClick = { radical = null }) { Text("換部首", color = T.btnInk) }
-            if (mode == 1 && picked.isNotEmpty()) TextButton(onClick = { picked.clear() }) { Text("清除", color = T.btnInk) }
+        TopBar(if (mode == 1) tr("組合部首") else radical?.let { tr("部首「{0}」", it.radical) } ?: tr("部首查字"), onBack, settings = false) {
+            if (mode == 0 && radical != null) TextButton(onClick = { radical = null }) { Text(tr("換部首"), color = T.btnInk) }
+            if (mode == 1 && picked.isNotEmpty()) TextButton(onClick = { picked.clear() }) { Text(tr("清除"), color = T.btnInk) }
         }
         val z = Store.zh
         if (z == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = T.greenInk); Spacer(Modifier.height(12.dp)); Txt("載入部首資料…", ff(FF.Footnote), T.muted)
+                    CircularProgressIndicator(color = T.greenInk); Spacer(Modifier.height(12.dp)); Txt(tr("載入部首資料…"), ff(FF.Footnote), T.muted)
                 }
             }
             return@Column
         }
-        Segmented(listOf(0 to "一個部首", 1 to "組合部首"), mode, { mode = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+        Segmented(listOf(0 to tr("一個部首"), 1 to tr("組合部首")), mode, { mode = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
         if (mode == 1) RadicalCombine(z, picked, ::has, ::pick)
         else {
             val r = radical
             if (r != null) RadicalChars(r, ::has, ::pick)
             else LazyVerticalGrid(GridCells.Adaptive(48.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                item(span = { GridItemSpan(maxLineSpan) }) { Txt("點一個部首，再點你要的字。字會放進搜尋框。", ff(FF.Footnote), T.muted) }
+                item(span = { GridItemSpan(maxLineSpan) }) { Txt(tr("點一個部首，再點你要的字。字會放進搜尋框。"), ff(FF.Footnote), T.muted) }
                 radicalItems(z.radicals, emptyList(), null) { radical = it }
             }
         }
@@ -139,7 +140,7 @@ private fun androidx.compose.foundation.lazy.grid.LazyGridScope.radicalItems(
 ) {
     val groups = radicals.filter { it.radical != "｜" }.groupBy { it.strokes }.toSortedMap()
     for ((n, rs) in groups) {
-        item(span = { GridItemSpan(maxLineSpan) }) { Txt("$n 畫", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(top = 8.dp)) }
+        item(span = { GridItemSpan(maxLineSpan) }) { Txt(tr("{0} 畫", n), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(top = 8.dp)) }
         items(rs, key = { "r|" + it.radical }) { r ->
             val i = picked.indexOf(r.radical).takeIf { it >= 0 }
             val off = i == null && enabled != null && !enabled.contains(r.radical)
@@ -161,9 +162,9 @@ private fun RadicalChars(r: ZhRadical, has: (String) -> Boolean, onPick: (String
     val groups = remember(r) { r.chars.filter { has(it.first) }.groupBy { it.second }.toSortedMap() }
     LazyVerticalGrid(GridCells.Adaptive(48.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (groups.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Txt("這個詞典沒有這個部首的字。", ff(FF.Footnote), T.muted) }
+        if (groups.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) { Txt(tr("這個詞典沒有這個部首的字。"), ff(FF.Footnote), T.muted) }
         for ((n, cs) in groups) {
-            item(span = { GridItemSpan(maxLineSpan) }) { Txt(if (n == 0) "部首本身" else "再 $n 畫", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(top = 8.dp)) }
+            item(span = { GridItemSpan(maxLineSpan) }) { Txt(if (n == 0) tr("部首本身") else tr("再 {0} 畫", n), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(top = 8.dp)) }
             items(cs, key = { "c|" + it.first }) { c -> CharButton(c.first) { onPick(c.first) } }
         }
     }
@@ -199,7 +200,7 @@ private fun RadicalCombine(z: ZhDict, picked: MutableList<String>, has: (String)
         LazyVerticalGrid(GridCells.Adaptive(48.dp), m, contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (z.radicalInside.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                Txt("這份華語資料沒有字的組成。用新的 zh.json 就有了。", ff(FF.Footnote), T.muted)
+                Txt(tr("這份華語資料沒有字的組成。用新的 zh.json 就有了。"), ff(FF.Footnote), T.muted)
             }
             radicalItems(z.radicals, picked, enabled) { r -> if (picked.contains(r.radical)) picked.remove(r.radical) else picked.add(r.radical) }
         }
@@ -208,32 +209,32 @@ private fun RadicalCombine(z: ZhDict, picked: MutableList<String>, has: (String)
         Column(m.background(T.fn.copy(alpha = 0.25f))) {
             Row(Modifier.fillMaxWidth().background(T.fn.copy(alpha = 0.5f)).padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (picked.isEmpty()) Txt("還沒選部首", ff(FF.Subheadline), T.muted)
+                if (picked.isEmpty()) Txt(tr("還沒選部首"), ff(FF.Subheadline), T.muted)
                 Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((i, r) in picked.withIndex()) Row(Modifier.clip(CircleShape).background(Rainbow.fill(i)).border(2.dp, Rainbow.edge(i), CircleShape)
                         .clickable { picked.remove(r) }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         Txt(r, ff(FF.Headline), Rainbow.ink(i))
-                        Icon(Icons.Filled.Close, "拿掉 $r", tint = Rainbow.ink(i), modifier = Modifier.size(12.dp))
+                        Icon(Icons.Filled.Close, tr("拿掉 {0}", r), tint = Rainbow.ink(i), modifier = Modifier.size(12.dp))
                     }
                 }
-                if (picked.isNotEmpty()) Txt("${found.size} 個字", ff(FF.Footnote), T.muted)
+                if (picked.isNotEmpty()) Txt(tr("{0} 個字", found.size), ff(FF.Footnote), T.muted)
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(T.fnEdge))
-            if (picked.isEmpty()) Txt("點好幾個部首（例如 氵 和 毋），這裡會出現裡面都有這些部首的字。偏旁也算：氵 = 水、亻 = 人、扌 = 手、艹 = 艸、⻌ = 辵、阝 = 阜／邑…不可能再組合的部首會變淡。",
+            if (picked.isEmpty()) Txt(tr("點好幾個部首（例如 氵 和 毋），這裡會出現裡面都有這些部首的字。偏旁也算：氵 = 水、亻 = 人、扌 = 手、艹 = 艸、⻌ = 辵、阝 = 阜／邑…不可能再組合的部首會變淡。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(14.dp))
-            else if (found.isEmpty()) Txt("沒有字同時有這些部首。", ff(FF.Footnote), T.muted, Modifier.padding(14.dp))
+            else if (found.isEmpty()) Txt(tr("沒有字同時有這些部首。"), ff(FF.Footnote), T.muted, Modifier.padding(14.dp))
             else {
                 val shown = found.take(300)
                 val groups = shown.groupBy { z.strokesOf[it] ?: 0 }.toSortedMap()
                 LazyVerticalGrid(GridCells.Adaptive(48.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     for ((n, cs) in groups) {
-                        item(span = { GridItemSpan(maxLineSpan) }) { Txt(if (n == 0) "其他" else "$n 畫", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(top = 6.dp)) }
+                        item(span = { GridItemSpan(maxLineSpan) }) { Txt(if (n == 0) tr("其他") else tr("{0} 畫", n), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(top = 6.dp)) }
                         items(cs, key = { "f|$it" }) { ch -> CharButton(ch) { onPick(ch) } }
                     }
                     if (found.size > 300) item(span = { GridItemSpan(maxLineSpan) }) {
-                        Txt("只列出筆畫最少的 300 個字。再點一個部首可以縮小範圍。", ff(FF.Caption), T.muted)
+                        Txt(tr("只列出筆畫最少的 300 個字。再點一個部首可以縮小範圍。"), ff(FF.Caption), T.muted)
                     }
                 }
             }
@@ -263,17 +264,17 @@ fun JapanesePage(d: Dict, onBack: () -> Unit) {
     var list by remember { mutableStateOf<List<Pair<String, String>>?>(null) }
     LaunchedEffect(Unit) { list = withContext(Dispatchers.Default) { d.japaneseWords() } }
     Column(Modifier.fillMaxSize()) {
-        TopBar("日語借詞", onBack, settings = false)
+        TopBar(tr("日語借詞"), onBack, settings = false)
         val l = list
         if (l == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = T.greenInk) }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
-            item { SectionTitle("${l.size} 個詞") }
+            item { SectionTitle(tr("{0} 個詞", l.size)) }
             items(l, key = { "j|" + it.first }) { (k, from) ->
                 Store.rev
                 Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
                     SwipeRow(
-                        start = if (Store.cardStatus(k) == 0) Pair("加到不熟", T.rustEdge) else null,
-                        end = Pair(if (Store.isSaved(k)) "取消收藏" else "收藏", T.oliveEdge),
+                        start = if (Store.cardStatus(k) == 0) Pair(tr("加到不熟"), T.rustEdge) else null,
+                        end = Pair(if (Store.isSaved(k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                         onStart = { Store.toggleUnknown(k) }, onEnd = { Store.toggleSaved(k) },
                         onClick = { nav.push(Route.Entry(k)) },
                     ) {
@@ -281,7 +282,7 @@ fun JapanesePage(d: Dict, onBack: () -> Unit) {
                             DictRow(d, k)
                             if (from.isNotEmpty()) Row(Modifier.padding(start = 14.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically) {
-                                Chip("日", T.rust, T.rustEdge, T.rustInk)
+                                Chip(tr("日"), T.rust, T.rustEdge, T.rustInk)
                                 Txt(from, ff(FF.Footnote), T.rustInk)
                             }
                         }
@@ -298,16 +299,16 @@ fun JapanesePage(d: Dict, onBack: () -> Unit) {
 @Composable
 fun ZhComparePage(z: ZhDict, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopBar("單詞比較", onBack, settings = false)
+        TopBar(tr("單詞比較"), onBack, settings = false)
         BoxWithConstraints(Modifier.fillMaxSize()) {
             if (maxWidth > 700.dp) Row(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareA, "第一個詞") }
+                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareA, tr("第一個詞")) }
                 Box(Modifier.width(1.dp).fillMaxHeight().background(T.fnEdge))
-                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareB, "第二個詞") }
+                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareB, tr("第二個詞")) }
             } else Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareA, "第一個詞") }
+                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareA, tr("第一個詞")) }
                 Box(Modifier.height(1.dp).fillMaxWidth().background(T.fnEdge))
-                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareB, "第二個詞") }
+                Box(Modifier.weight(1f)) { ZhComparePane(z, Prefs.zhCompareB, tr("第二個詞")) }
             }
         }
     }
@@ -333,7 +334,7 @@ private fun ZhComparePane(z: ZhDict, slot: com.unoki99.fangfang.Pref<String>, hi
             }
         } else if (e != null) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) { ZhEntryBody(z, e); Spacer(Modifier.height(30.dp)) }
-        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Txt("查一個詞，選它。", ff(FF.Body), T.muted) }
+        } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Txt(tr("查一個詞，選它。"), ff(FF.Body), T.muted) }
     }
 }
 
@@ -352,7 +353,7 @@ fun ZhWordClassListPage(z: ZhDict, onBack: () -> Unit) {
         }
     }
     Column(Modifier.fillMaxSize()) {
-        TopBar("依詞類列出", onBack, settings = false)
+        TopBar(tr("依詞類列出"), onBack, settings = false)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
             item {
                 ListCard {
@@ -365,7 +366,7 @@ fun ZhWordClassListPage(z: ZhDict, onBack: () -> Unit) {
                         }
                     }
                 }
-                Txt("詞類來自 HSK 3.0 和 TOCFL 的詞表，所以只有詞表裡的詞有。", ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
+                Txt(tr("詞類來自 HSK 3.0 和 TOCFL 的詞表，所以只有詞表裡的詞有。"), ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
             }
         }
     }
@@ -381,14 +382,14 @@ fun ZhWordClassPage(z: ZhDict, cls: String, onBack: () -> Unit) {
         val l = list
         if (l == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = T.greenInk) }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
-            item { SectionTitle("${l.size} 個詞") }
+            item { SectionTitle(tr("{0} 個詞", l.size)) }
             items(l, key = { "wc|$it" }) { i ->
                 val e = z.entries[i]
                 Store.rev
                 Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
                     SwipeRow(
-                        start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) "移回新詞" else "加到不熟", T.rustEdge) else null,
-                        end = Pair(if (Store.isSaved(e.k)) "取消收藏" else "收藏", T.oliveEdge),
+                        start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) tr("移回新詞") else tr("加到不熟"), T.rustEdge) else null,
+                        end = Pair(if (Store.isSaved(e.k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                         onStart = { Store.toggleUnknown(e.k) }, onEnd = { Store.toggleSaved(e.k) },
                         onClick = { nav.push(Route.ZhEntry(e.k)) },
                     ) { ZhWordRow(z, e) }
@@ -411,13 +412,13 @@ fun CharMeter(onClick: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted, modifier = Modifier.size(16.dp))
-            Txt("認識的漢字", ff(FF.Headline), T.glyph)
-            Txt("$total 字", ff(FF.Caption), T.muted, Modifier.weight(1f))
-            Txt("熟悉 ${p.known.size}", ff(FF.Subheadline, FontWeight.SemiBold), Color(0xFF6EAAFF))
-            Txt("不熟 ${p.unknown.size}", ff(FF.Subheadline, FontWeight.SemiBold), Color(0xFFFFA94D))
+            Txt(tr("認識的漢字"), ff(FF.Headline), T.glyph)
+            Txt(tr("{0} 字", total), ff(FF.Caption), T.muted, Modifier.weight(1f))
+            Txt(tr("熟悉 {0}", p.known.size), ff(FF.Subheadline, FontWeight.SemiBold), Color(0xFF6EAAFF))
+            Txt(tr("不熟 {0}", p.unknown.size), ff(FF.Subheadline, FontWeight.SemiBold), Color(0xFFFFA94D))
         }
-        SplitPotionBar(k, u, Color(0xFF6EAAFF), label = "認識的漢字")
-        Txt("熟悉的詞裡的字都算認識（就算它也在不熟的詞裡）；只在不熟的詞裡出現的字算不熟。還沒看 ${total - p.known.size - p.unknown.size} 字（所有詞卡和漢字卡裡的字，每個字只算一次）。",
+        SplitPotionBar(k, u, Color(0xFF6EAAFF), label = tr("認識的漢字"))
+        Txt(tr("熟悉的詞裡的字都算認識（就算它也在不熟的詞裡）；只在不熟的詞裡出現的字算不熟。還沒看 {0} 字（所有詞卡和漢字卡裡的字，每個字只算一次）。", total - p.known.size - p.unknown.size),
             ff(FF.Caption), T.muted)
     }
 }
@@ -439,17 +440,17 @@ fun ZhCharListPage(onBack: () -> Unit) {
         } && (query.isEmpty() || query.contains(ch))
     }
     Column(Modifier.fillMaxSize()) {
-        TopBar("認識的漢字", onBack, settings = false)
+        TopBar(tr("認識的漢字"), onBack, settings = false)
         LazyVerticalGrid(GridCells.Adaptive(48.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item(span = { GridItemSpan(maxLineSpan) }) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     val total = sets.all.size
                     SplitPotionBar(if (total > 0) sets.known.size.toDouble() / total else 0.0, if (total > 0) sets.unknown.size.toDouble() / total else 0.0,
-                        Color(0xFF6EAAFF), label = "認識的漢字")
-                    Segmented(listOf(0 to "全部 $total", 1 to "熟悉 ${sets.known.size}", 2 to "不熟 ${sets.unknown.size}", 3 to "沒看過"), filter, { filter = it })
-                    SearchField(query, { query = it }, "找字，例如：愛", fontSize = 18.sp)
-                    if (query.isNotEmpty() && shown.isEmpty()) Txt("這裡沒有「$query」。", ff(FF.Footnote), T.muted)
+                        Color(0xFF6EAAFF), label = tr("認識的漢字"))
+                    Segmented(listOf(0 to tr("全部 {0}", total), 1 to tr("熟悉 {0}", sets.known.size), 2 to tr("不熟 {0}", sets.unknown.size), 3 to tr("沒看過")), filter, { filter = it })
+                    SearchField(query, { query = it }, tr("找字，例如：愛"), fontSize = 18.sp)
+                    if (query.isNotEmpty() && shown.isEmpty()) Txt(tr("這裡沒有「{0}」。", query), ff(FF.Footnote), T.muted)
                 }
             }
             items(shown, key = { "ch|$it" }) { ch ->
@@ -470,7 +471,7 @@ fun ZhCharListPage(onBack: () -> Unit) {
                 }
             }
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Txt("按住一個字可以在熟悉和不熟之間換。藍色 = 熟悉（在熟悉的詞裡，或漢字卡往右滑；熟悉的詞裡的字，漢字卡也會自動標成熟悉）；橘色 = 不熟（只在不熟的詞或漢字卡裡）；沒有顏色 = 還沒看過。這裡是所有可以滑的卡片裡的字（詞卡和漢字卡，每個字只算一次），照卡片的順序排。點一個字看它的意思。",
+                Txt(tr("按住一個字可以在熟悉和不熟之間換。藍色 = 熟悉（在熟悉的詞裡，或漢字卡往右滑；熟悉的詞裡的字，漢字卡也會自動標成熟悉）；橘色 = 不熟（只在不熟的詞或漢字卡裡）；沒有顏色 = 還沒看過。這裡是所有可以滑的卡片裡的字（詞卡和漢字卡，每個字只算一次），照卡片的順序排。點一個字看它的意思。"),
                     ff(FF.Caption), T.muted, Modifier.padding(top = 8.dp))
             }
         }
@@ -492,24 +493,24 @@ fun PracticeScopeMenu() {
             .border(1.dp, T.fnEdge, RoundedCornerShape(12.dp)).clickable { open = true }.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(Icons.Filled.Tune, null, tint = T.greenInk, modifier = Modifier.size(20.dp))
-            Txt("練習範圍", ff(FF.Subheadline), T.muted)
+            Txt(tr("練習範圍"), ff(FF.Subheadline), T.muted)
             Txt(Store.practiceName, ff(FF.Subheadline), T.glyph, Modifier.weight(1f), maxLines = 1)
             Txt("${Store.practiceCards.size}", ff(FF.Footnote), T.muted)
             Icon(Icons.Filled.UnfoldMore, null, tint = T.muted, modifier = Modifier.size(18.dp))
         }
         DropdownMenu(open, { open = false }, containerColor = T.fn) {
-            DropdownMenuItem(text = { Text("全部不熟的詞（${Store.unknownCount}）", color = if (Store.practiceTopic < 0) T.greenInk else T.glyph) },
+            DropdownMenuItem(text = { Text(tr("全部不熟的詞（{0}）", Store.unknownCount), color = if (Store.practiceTopic < 0) T.greenInk else T.glyph) },
                 onClick = { Store.practiceTopic = -1; open = false })
             var lastHeader = ""
             for (t in ts) {
                 val isChar = if (zh) t.id > Lang.charTopicBase else t.id >= Lang.freqCharBase
-                val header = if (zh) (if (isChar) "漢字（等級）" else "詞（等級）") else (if (isChar) "常用字" else "常用詞")
+                val header = if (zh) (if (isChar) tr("漢字（等級）") else tr("詞（等級）")) else (if (isChar) tr("常用字") else tr("常用詞"))
                 if (header != lastHeader) {
                     lastHeader = header
                     HorizontalDivider(color = T.fnEdge)
                     Txt(header, ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 }
-                DropdownMenuItem(text = { Text("${t.name}（不熟 ${all[t.id]?.unknown ?: 0}）", color = if (Store.practiceTopic == t.id) T.greenInk else T.glyph) },
+                DropdownMenuItem(text = { Text(tr("{0}（不熟 {1}）", t.name, all[t.id]?.unknown ?: 0), color = if (Store.practiceTopic == t.id) T.greenInk else T.glyph) },
                     onClick = { Store.practiceTopic = t.id; open = false })
             }
         }
@@ -521,7 +522,7 @@ fun PracticeScopeMenu() {
 @Composable
 fun ToneColorPickerPage(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        TopBar("選聲調顏色", onBack, settings = false)
+        TopBar(tr("選聲調顏色"), onBack, settings = false)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             ToneColorPickerBody()
             Spacer(Modifier.height(40.dp))
@@ -546,8 +547,8 @@ fun ToneColorPickerBody() {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         run {
             key(sig) {
-                Segmented(listOf(false to "台語", true to "華語"), zh, { zh = it; tone = null })
-                SectionTitle("看起來")
+                Segmented(listOf(false to tr("台語"), true to tr("華語")), zh, { zh = it; tone = null })
+                SectionTitle(tr("看起來"))
                 ListCard {
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 6.dp)) {
                         if (zh) {
@@ -560,14 +561,14 @@ fun ToneColorPickerBody() {
                             val hs = listOf("番", "返", "販", "法", "凡", "犯", "泛", "罰", "蕃")
                             val rs = listOf("hua̍n", "huàn", "huạn", "huạt", "huán", "hua̱n", "huān", "hua̍t", "--huan")
                             for ((i, t) in ToneColors.twTones.withIndex()) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Txt(if (t == 0) "輕" else "$t", ff(FF.Caption2, FontWeight.Bold), T.muted)
+                                Txt(if (t == 0) tr("輕") else "$t", ff(FF.Caption2, FontWeight.Bold), T.muted)
                                 Txt(hs[i], sz(22f, FontWeight.SemiBold), colorOf(t))
                                 Txt(rs[i], lat(10f), colorOf(t), maxLines = 1)
                             }
                         }
                     }
                 }
-                SectionTitle("每個聲調（點一下選顏色）")
+                SectionTitle(tr("每個聲調（點一下選顏色）"))
                 ListCard {
                     val tones = if (zh) ToneColors.zhTones else ToneColors.twTones
                     for ((i, t) in tones.withIndex()) {
@@ -575,8 +576,8 @@ fun ToneColorPickerBody() {
                         Row(Modifier.fillMaxWidth().clickable { tone = if (tone == t) null else t }.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(22.dp).clip(CircleShape).background(colorOf(t)))
-                            Txt(if (t == 0) (if (zh) "輕聲" else "輕聲（--）") else "第 $t 聲", ff(FF.Body), modifier = Modifier.weight(1f))
-                            if (ToneColors.picked(zh).containsKey(t)) TextButton(onClick = { set(t, null) }) { Text("原本的", color = T.muted) }
+                            Txt(if (t == 0) (if (zh) tr("輕聲") else tr("輕聲（--）")) else tr("第 {0} 聲", t), ff(FF.Body), modifier = Modifier.weight(1f))
+                            if (ToneColors.picked(zh).containsKey(t)) TextButton(onClick = { set(t, null) }) { Text(tr("原本的"), color = T.muted) }
                         }
                         if (tone == t) {
                             // one column per colour, light at the top and dark at the bottom
@@ -596,8 +597,8 @@ fun ToneColorPickerBody() {
                 TextButton(onClick = {
                     if (zh) Prefs.toneColorsZh.value = "" else Prefs.toneColorsTw.value = ""
                     ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value)
-                }) { Text("全部換回原本的顏色", color = T.rustInk) }
-                Txt("原本的顏色：台語一聲紅、二聲紫、三聲藍、四聲橘、五聲綠、六聲青、七聲黃、八聲粉紅、輕聲灰；華語一聲紅、二聲綠、三聲藍、四聲紫、輕聲灰。",
+                }) { Text(tr("全部換回原本的顏色"), color = T.rustInk) }
+                Txt(tr("原本的顏色：台語一聲紅、二聲紫、三聲藍、四聲橘、五聲綠、六聲青、七聲黃、八聲粉紅、輕聲灰；華語一聲紅、二聲綠、三聲藍、四聲紫、輕聲灰。"),
                     ff(FF.Footnote), T.muted)
             }
         }

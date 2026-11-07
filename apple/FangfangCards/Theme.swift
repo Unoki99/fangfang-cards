@@ -18,11 +18,11 @@ enum AppTheme: String, CaseIterable {
     nonisolated(unsafe) static var current: AppTheme = AppTheme(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .night
     var name: String {
         switch self {
-        case .night: return "方方之夜"
-        case .witch: return "女巫小屋"
-        case .space: return "星空"
-        case .goblin: return "苔蘚小窩"
-        case .winter: return "雪夜"
+        case .night: return trs("方方之夜")
+        case .witch: return trs("女巫小屋")
+        case .space: return trs("星空")
+        case .goblin: return trs("苔蘚小窩")
+        case .winter: return trs("雪夜")
         }
     }
     /// letters and numbers in the theme's own style
@@ -162,7 +162,7 @@ struct RomButton: View {
             capsule
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("切換羅馬字")
+        .accessibilityLabel(tr("切換羅馬字"))
     }
 
     private var row: some View {
@@ -173,7 +173,7 @@ struct RomButton: View {
             } label: {
                 label
             }
-            .accessibilityLabel("切換羅馬字")
+            .accessibilityLabel(tr("切換羅馬字"))
             #if targetEnvironment(macCatalyst)
             .buttonStyle(.plain)          // Mac: the same one-tap capsule as on the phone, not a toolbar button
             .fixedSize()
@@ -202,7 +202,7 @@ struct RomButton: View {
         #endif
     }
     private var plainText: some View {
-        Text(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[min(max(rom, 0), 2)])
+        Text(trs(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[min(max(rom, 0), 2)]))
             .ffFont(.subheadline, .bold)
             .foregroundStyle(T.btnInk)
     }
@@ -234,9 +234,9 @@ struct RegChip: View {
     let reg: String
     var body: some View {
         switch reg {
-        case "白": Chip(text: "白", fill: T.green, edge: T.greenEdge, ink: T.greenInk)
-        case "文": Chip(text: "文", fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
-        case "俗": Chip(text: "俗", fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
+        case "白": Chip(text: tr("白"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
+        case "文": Chip(text: tr("文"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
+        case "俗": Chip(text: tr("俗"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
         default: EmptyView()
         }
     }
@@ -274,27 +274,27 @@ struct PlaceMenu: View {
     var body: some View {
         Menu {
             // 台語 / 華語 first, then where it's said
-            Picker("語言", selection: Binding(get: { store.isZh ? 1 : 0 }, set: { store.setLanguage(zh: $0 == 1) })) {
-                Text("台語").tag(0)
-                Text("華語").tag(1)
+            Picker(tr("語言"), selection: Binding(get: { store.isZh ? 1 : 0 }, set: { store.setLanguage(zh: $0 == 1) })) {
+                Text(tr("台語")).tag(0)
+                Text(tr("華語")).tag(1)
             }
             .pickerStyle(.inline)
             if store.isZh {
-                Picker("華語讀音", selection: $store.zhPlace) {
-                    ForEach(0..<Lang.placeNames.count, id: \.self) { Text(Lang.placeNames[$0]).tag($0) }
+                Picker(tr("華語讀音"), selection: $store.zhPlace) {
+                    ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
                 }
                 .pickerStyle(.inline)
             } else {
-                Picker("台語腔口", selection: $place) {
-                    Text("通行").tag(-1)
-                    ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(p).tag(i) }
+                Picker(tr("台語腔口"), selection: $place) {
+                    Text(tr("通行")).tag(-1)
+                    ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
                 }
                 .pickerStyle(.inline)         // the places right in the menu (on the Mac it was a submenu)
             }
         } label: {
             label
         }
-        .accessibilityLabel("腔口")
+        .accessibilityLabel(tr("腔口"))
         #if targetEnvironment(macCatalyst)
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -520,13 +520,13 @@ struct TextSizeCommands: Commands {
     @AppStorage(TextSize.key) private var level = TextSize.standard
     var body: some Commands {
         CommandGroup(after: .toolbar) {
-            Button("放大文字") { level = TextSize.clamp(level + 1) }
+            Button(tr("放大文字")) { level = TextSize.clamp(level + 1) }
                 .keyboardShortcut("=", modifiers: .command)   // ⌘+ (the + key is ⇧=)
                 .disabled(level >= TextSize.levels.count - 1)
-            Button("縮小文字") { level = TextSize.clamp(level - 1) }
+            Button(tr("縮小文字")) { level = TextSize.clamp(level - 1) }
                 .keyboardShortcut("-", modifiers: .command)
                 .disabled(level <= 0)
-            Button("實際大小") { level = TextSize.standard }
+            Button(tr("實際大小")) { level = TextSize.standard }
                 .keyboardShortcut("0", modifiers: .command)
         }
     }
@@ -566,7 +566,7 @@ struct ClearButton: ViewModifier {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("清除")
+        .accessibilityLabel(tr("清除"))
     }
 }
 

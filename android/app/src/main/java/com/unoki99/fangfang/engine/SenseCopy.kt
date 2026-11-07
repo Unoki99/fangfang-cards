@@ -1,5 +1,7 @@
 package com.unoki99.fangfang.engine
 
+import com.unoki99.fangfang.tr
+
 /** Copying one meaning of a word to the clipboard, in a layout set in 設定 (複製意思的格式). */
 object SenseCopy {
     class Preset(val name: String, val tpl: String, val ex: String, val sep: Int)
@@ -91,7 +93,7 @@ object SenseCopy {
 
     /** the name of a layout (or 自訂) */
     fun styleName(zh: Boolean, tpl: String, ex: String, sep: Int): String =
-        (if (zh) zhPresets else presets).firstOrNull { it.tpl == tpl && it.ex == ex && it.sep == sep }?.name ?: "自訂"
+        (if (zh) zhPresets else presets).firstOrNull { it.tpl == tpl && it.ex == ex && it.sep == sep }?.name?.let { tr(it) } ?: tr("自訂")
 
     /** a 華語 meaning, in the 華語 layout: {羅馬字} = 拼音 or 注音 as shown, {拼音}, {注音}, {英文}, {詞類} (from the word
      *  lists). The 台語 names still work ({方音} = 注音, {皓羅}/{台羅}/{白話字} = 拼音, {例句華語} = where it's from). */

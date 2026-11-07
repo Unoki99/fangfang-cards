@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.tr
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,16 +35,16 @@ fun WeekPanel() {
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.CalendarMonth, null, tint = T.glyph, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp))
-            Txt("本週學習", ff(FF.Headline), T.glyph, Modifier.weight(1f))
-            if (words.isNotEmpty()) Txt(if (left == 0) "該考試了！" else "還有 $left 天", ff(FF.Subheadline, FontWeight.SemiBold), if (left == 0) T.rustInk else T.muted)
+            Txt(tr("本週學習"), ff(FF.Headline), T.glyph, Modifier.weight(1f))
+            if (words.isNotEmpty()) Txt(if (left == 0) tr("該考試了！") else tr("還有 {0} 天", left), ff(FF.Subheadline, FontWeight.SemiBold), if (left == 0) T.rustInk else T.muted)
         }
         if (words.isEmpty()) {
-            Txt("從「不熟」選這個星期要學的詞（例如 10–20 個），每天練習，一週後做期末測驗。", ff(FF.Footnote), T.muted)
+            Txt(tr("從「不熟」選這個星期要學的詞（例如 10–20 個），每天練習，一週後做期末測驗。"), ff(FF.Footnote), T.muted)
         } else {
             val known = words.count { Store.status(it) == 1 }
-            Txt("${words.size} 個詞・已經學會 $known 個", ff(FF.Footnote), T.muted)
+            Txt(tr("{0} 個詞・已經學會 {1} 個", words.size, known), ff(FF.Footnote), T.muted)
             // the week: how many of its 7 days have gone
-            PotionBar((7 - left) / 7.0, 16.dp, showMarks = false, label = "這一週", palette = PotionPalette.BLUE)
+            PotionBar((7 - left) / 7.0, 16.dp, showMarks = false, label = tr("這一週"), palette = PotionPalette.BLUE)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (c in words.take(24)) {
                     val k = Store.status(c) == 1
@@ -54,9 +55,9 @@ fun WeekPanel() {
             }
         }
         Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            PracticeTile(if (words.isEmpty()) "選詞" else "改詞", Icons.Filled.Checklist, true, Modifier.weight(1f).fillMaxHeight()) { picking = true }
-            PracticeTile("練習", Icons.Filled.School, words.isNotEmpty(), Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK }
-            PracticeTile("期末測驗", Icons.Filled.WorkspacePremium, words.isNotEmpty(), Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK_TEST }
+            PracticeTile(if (words.isEmpty()) tr("選詞") else tr("改詞"), Icons.Filled.Checklist, true, Modifier.weight(1f).fillMaxHeight()) { picking = true }
+            PracticeTile(tr("練習"), Icons.Filled.School, words.isNotEmpty(), Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK }
+            PracticeTile(tr("期末測驗"), Icons.Filled.WorkspacePremium, words.isNotEmpty(), Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK_TEST }
         }
     }
     if (picking) WeekPicker { picking = false }
@@ -76,23 +77,23 @@ fun WeekPicker(onDone: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDone, containerColor = T.bg, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Txt("本週要學的詞", ff(FF.Headline), T.glyph, Modifier.weight(1f))
-                TextButton(onClick = onDone) { Text("完成", color = T.btnInk) }
+                Txt(tr("本週要學的詞"), ff(FF.Headline), T.glyph, Modifier.weight(1f))
+                TextButton(onClick = onDone) { Text(tr("完成"), color = T.btnInk) }
             }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
                 item {
-                    SearchField(query, { query = it }, "漢字或意思")
+                    SearchField(query, { query = it }, tr("漢字或意思"))
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         for (k in listOf(10, 20)) SoftButton(onClick = {
                             val pick = unknown.filter { !Store.isInWeek(it.k) }.shuffled().take(maxOf(0, k - n)).map { it.k }
                             Store.setWeek(pick, true)
-                        }) { Text("隨機選 $k 個") }
+                        }) { Text(tr("隨機選 {0} 個", k)) }
                         Spacer(Modifier.weight(1f))
-                        if (n > 0) SoftButton(onClick = { Store.setWeek(Store.weekCards.map { it.k }, false) }) { Text("全部取消", color = T.rustInk) }
+                        if (n > 0) SoftButton(onClick = { Store.setWeek(Store.weekCards.map { it.k }, false) }) { Text(tr("全部取消"), color = T.rustInk) }
                     }
-                    Txt("已選 $n 個。建議一週 10–20 個詞。", ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
-                    SectionTitle("不熟的詞（${unknown.size}）")
+                    Txt(tr("已選 {0} 個。建議一週 10–20 個詞。", n), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
+                    SectionTitle(tr("不熟的詞（{0}）", unknown.size))
                 }
                 items(list, key = { "w|" + it.k }) { c ->
                     val on = Store.isInWeek(c.k)
