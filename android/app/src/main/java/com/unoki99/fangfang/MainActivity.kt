@@ -4,7 +4,17 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -100,6 +110,12 @@ private fun Root() {
     UI.practice?.let { PracticeHost(it) }
     if (UI.settingsOpen) SettingsScreen()
     Sheets()
+    // the very first time: which language to learn (later: 設定 → 語言). Not asked of someone who used the app
+    // before this question was added.
+    if (Store.loaded && !Prefs.pickedLanguage.value) {
+        if (Store.seenCount > 0 || Prefs.lang.value == 1) SideEffect { Prefs.pickedLanguage.value = true }
+        else LanguageWelcome { zh -> Store.setLanguage(zh); Prefs.pickedLanguage.value = true }
+    }
 }
 
 private class TabItem(val value: Int, val title: String, val icon: ImageVector, val on: ImageVector)
@@ -143,6 +159,44 @@ private fun Tabs() {
                         indicatorColor = T.green, unselectedIconColor = T.muted, unselectedTextColor = T.muted),
                 )
             }
+        }
+    }
+}
+
+/** the very first time the app opens: 台語 or 華語 (can be changed any time in 設定 → 語言) */
+@Composable
+private fun LanguageWelcome(pick: (Boolean) -> Unit) {
+    BackHandler { }
+    AppBackground {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Txt("方方詞卡", ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
+                Txt("你想先學哪一種？", ff(FF.Title3), T.muted)
+                Txt("Which language would you like to start with?", ff(FF.Subheadline), T.muted)
+            }
+            Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                for (zh in listOf(false, true)) {
+                    val fill = if (zh) T.blue else T.own; val edge = if (zh) T.blueEdge else T.ownEdge; val ink = if (zh) T.blueInk else T.purpleInk
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(fill).border(2.dp, edge, RoundedCornerShape(22.dp))
+                        .clickable { pick(zh) }.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                        Box(Modifier.size(70.dp).clip(CircleShape).background(edge.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                            Txt(if (zh) "華" else "台", sz(44f, FontWeight.Bold), ink)
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Txt(if (zh) "華語" else "台語", ff(FF.Title2, FontWeight.Bold), ink)
+                                Txt(if (zh) "Mandarin" else "Taiwanese", ff(FF.Subheadline), ink.copy(alpha = 0.8f))
+                            }
+                            Txt(if (zh) "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音" else "教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音",
+                                ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
+                        }
+                        Icon(Icons.Filled.ChevronRight, null, tint = ink.copy(alpha = 0.7f))
+                    }
+                }
+            }
+            Txt("之後可以在「設定 → 語言」換。\nYou can change this later in Settings.", ff(FF.Footnote), T.muted)
         }
     }
 }

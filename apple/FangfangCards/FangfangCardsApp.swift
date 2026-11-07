@@ -48,6 +48,11 @@ struct RootView: View {
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
+    @AppStorage("pickedLanguage") private var pickedLanguage = false
+    /// (someone who used the app before this question was added: not asked)
+    private var alreadyUsed: Bool {
+        UserDefaults.standard.object(forKey: Lang.key) != nil || store.seenCount > 0
+    }
 
     private var tabs: some View {
         TabView(selection: $router.tab) {
@@ -91,6 +96,15 @@ struct RootView: View {
                 .appBackground()
                 .task { store.load() }
             }
+        }
+        // the very first time: which language to learn (later: 設定 → 語言)
+        .fullScreenCover(isPresented: Binding(get: { store.loaded && !pickedLanguage && !alreadyUsed },
+                                              set: { if !$0 { pickedLanguage = true } })) {
+            LanguageWelcome { zh in
+                store.setLanguage(zh: zh)
+                pickedLanguage = true
+            }
+            .environmentObject(store)
         }
         .overlay {
             // loading the 華語 dictionary (the first time 華語 is chosen)
@@ -207,4 +221,57 @@ enum AppTint {
     #else
     static var accent: Color { T.btnInk }
     #endif
+}
+
+/// the very first time the app opens: 台語 or 華語 (can be changed any time in 設定 → 語言)
+struct LanguageWelcome: View {
+    let pick: (Bool) -> Void
+    var body: some View {
+        VStack(spacing: 28) {
+            Spacer(minLength: 0)
+            VStack(spacing: 10) {
+                Text("方方詞卡").ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
+                Text("你想先學哪一種？").ffFont(.title3).foregroundStyle(T.muted)
+                Text("Which language would you like to start with?").ffFont(.subheadline).foregroundStyle(T.muted)
+            }
+            VStack(spacing: 16) {
+                choice(zh: false, title: "台語", sub: "Taiwanese", note: "教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音")
+                choice(zh: true, title: "華語", sub: "Mandarin", note: "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音")
+            }
+            .frame(maxWidth: 520)
+            Text("之後可以在「設定 → 語言」換。\nYou can change this later in Settings.")
+                .multilineTextAlignment(.center)
+                .ffFont(.footnote).foregroundStyle(T.muted)
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground()
+        .interactiveDismissDisabled()
+    }
+
+    private func choice(zh: Bool, title: String, sub: String, note: String) -> some View {
+        let fill = zh ? T.blue : Color(hex: P.now.own), edge = zh ? T.blueEdge : Color(hex: P.now.ownEdge), ink = zh ? T.blueInk : T.purpleInk
+        return Button { pick(zh) } label: {
+            HStack(spacing: 18) {
+                Text(zh ? "華" : "台").scaledFont(44, weight: .bold).foregroundStyle(ink)
+                    .frame(width: 70, height: 70)
+                    .background(Circle().fill(edge.opacity(0.35)))
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(title).ffFont(.title2, .bold).foregroundStyle(ink)
+                        Text(sub).ffFont(.subheadline).foregroundStyle(ink.opacity(0.8))
+                    }
+                    Text(note).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right").foregroundStyle(ink.opacity(0.7))
+            }
+            .padding(18)
+            .background(RoundedRectangle(cornerRadius: 22).fill(fill))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(edge, lineWidth: 2))
+            .contentShape(RoundedRectangle(cornerRadius: 22))
+        }
+        .buttonStyle(SwellButtonStyle())
+    }
 }

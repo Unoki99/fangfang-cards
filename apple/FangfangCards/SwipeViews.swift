@@ -377,6 +377,8 @@ struct NewDeckView: View {
                     }, buttons: !sideways || sideButtons)
                     .frame(maxWidth: 560)
                     .environment(\.compactCard, sideways)
+                    // (the big card goes over the side cards when it's swiped)
+                    .zIndex(1)
                     // a phone on its side: a small button to bring the ✕ ↺ ✓ buttons out, or put them away
                     .overlay(alignment: .bottomTrailing) {
                         if sideways {

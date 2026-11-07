@@ -82,6 +82,8 @@ object Prefs : KeyValue {
     // 華語 mode
     /** 0 = 台語, 1 = 華語 */
     val lang = Pref("lang", 0)
+    /** the first time: the language to learn was chosen */
+    val pickedLanguage = Pref("pickedLanguage", false)
     /** 華語 reading: 0 拼音, 1 注音 */
     val zhRom = Pref("zhRom", 0)
     /** 華語 reading of: 0 臺灣, 1 大陸 */

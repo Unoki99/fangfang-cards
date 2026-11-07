@@ -121,7 +121,8 @@ fun NewDeckTab() {
             Row(Modifier.fillMaxSize().widthIn(max = if (sides) 1260.dp else 560.dp).align(Alignment.TopCenter).padding(if (small) 10.dp else 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (sides) CharSideColumn(queue.first(), 0, small, Modifier.width(sideW).fillMaxHeight())
-                Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                // (zIndex: the big card goes over the side cards when it's swiped)
+                Column(Modifier.weight(1f).fillMaxHeight().zIndex(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     if (!sideways) {
                         Txt("已看 ${Store.seenCount} / ${Store.cards.size}　熟悉 ${Store.knownCount}　不熟 ${Store.unknownCount}", ff(FF.Footnote), T.muted)
                         Spacer(Modifier.height(if (small) 6.dp else 12.dp))
