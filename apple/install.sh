@@ -56,12 +56,22 @@ ensure_ios_platform() {
   exit 1
 }
 
+# (defined before anything that builds, so every way of building can stop on an error)
+fail() {
+  echo "✗ 建置失敗。把下面的錯誤訊息傳給 Claude："
+  grep -E "error:|error -|Signing|provision" "$LOG" | sort -u | head -25
+  echo "（完整紀錄：${LOG}）"
+  exit 1
+}
+
 # "install.sh ipa": an app file (.ipa) for someone whose Mac can't build the app; they install it on their
 # iPhone/iPad with Sideloadly and their own Apple ID (Sideloadly signs it, so it's built unsigned here)
 if [ "$WHAT" = "ipa" ]; then
   ensure_ios_platform
   echo "建置 App 檔（.ipa）…"
   IDD="$DD-ipa"
+  # (no app from an earlier build left over: if this build fails, there's no old app to pack by mistake)
+  rm -rf "$IDD/Build/Products"
   xcodebuild -project "$DEST/FangfangCards.xcodeproj" -scheme FangfangCards -configuration Release \
      -destination "generic/platform=iOS" -derivedDataPath "$IDD" \
      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
@@ -104,12 +114,6 @@ if grep -q 'DEVELOPMENT_TEAM = "";' "$DEST/FangfangCards.xcodeproj/project.pbxpr
             -e "s/DEVELOPMENT_TEAM = \"\";/DEVELOPMENT_TEAM = $TEAM;/" "$DEST/FangfangCards.xcodeproj/project.pbxproj"
 fi
 
-fail() {
-  echo "✗ 建置失敗。把下面的錯誤訊息傳給 Claude："
-  grep -E "error:|error -|Signing|provision" "$LOG" | sort -u | head -25
-  echo "（完整紀錄：${LOG}）"
-  exit 1
-}
 
 # Build with signing. If the App Group (the widget's shared folder) isn't registered for your Apple ID
 # yet, build again without it: the app works normally, only the 分類詞卡 widget has no words.
