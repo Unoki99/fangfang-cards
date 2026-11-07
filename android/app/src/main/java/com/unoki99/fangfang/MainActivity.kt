@@ -131,7 +131,7 @@ private fun Tabs() {
                 }
             } }
         }
-        NavigationBar(containerColor = T.fn.copy(alpha = 0.96f), tonalElevation = 0.dp) {
+        if (!(UI.hideTabs && UI.tab == 0)) NavigationBar(containerColor = T.fn.copy(alpha = 0.96f), tonalElevation = 0.dp) {
             for (it in items) {
                 val on = UI.tab == it.value
                 NavigationBarItem(

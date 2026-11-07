@@ -102,17 +102,22 @@ fun NewDeckTab() {
             val sides = queue.isNotEmpty() && (maxWidth >= 1100.dp || (landscape && maxWidth >= 560.dp))
             val sideW = if (maxWidth >= 1100.dp) 290.dp else ((maxWidth - 32.dp - 32.dp) * 0.27f)
             val small = maxHeight < 520.dp
+            // a phone on its side: no counts, no buttons, no tab bar; just the cards
+            val sideways = landscape && maxHeight < 520.dp
+            SideEffect { UI.hideTabs = sideways }
             Row(Modifier.fillMaxSize().widthIn(max = if (sides) 1260.dp else 560.dp).align(Alignment.TopCenter).padding(if (small) 10.dp else 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (sides) CharSideColumn(queue.first(), 0, small, Modifier.width(sideW).fillMaxHeight())
                 Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Txt("已看 ${Store.seenCount} / ${Store.cards.size}　熟悉 ${Store.knownCount}　不熟 ${Store.unknownCount}", ff(FF.Footnote), T.muted)
-                    Spacer(Modifier.height(if (small) 6.dp else 12.dp))
+                    if (!sideways) {
+                        Txt("已看 ${Store.seenCount} / ${Store.cards.size}　熟悉 ${Store.knownCount}　不熟 ${Store.unknownCount}", ff(FF.Footnote), T.muted)
+                        Spacer(Modifier.height(if (small) 6.dp else 12.dp))
+                    }
                     if (queue.isEmpty()) {
                         Spacer(Modifier.weight(1f))
                         Txt(if (topic < 0) "全部的詞都看過了！" else if (zh) "這個等級的詞都看過了！" else "這個主題的詞都看過了！", ff(FF.Title3), T.muted)
                         Spacer(Modifier.weight(1f))
-                    } else DeckArea(queue, onSwipe = { c, right -> Store.mark(c, right) }, undo = { Store.undo() })
+                    } else DeckArea(queue, onSwipe = { c, right -> Store.mark(c, right) }, undo = { Store.undo() }, buttons = !sideways)
                 }
                 if (sides) CharSideColumn(queue.first(), 1, small, Modifier.width(sideW).fillMaxHeight())
             }
@@ -123,7 +128,7 @@ fun NewDeckTab() {
 /** a stack plus its buttons */
 @Composable
 fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = "不熟", rightLabel: String = "認識",
-                         onSwipe: (Card, Boolean) -> Unit, undo: (() -> Unit)? = null) {
+                         onSwipe: (Card, Boolean) -> Unit, undo: (() -> Unit)? = null, buttons: Boolean = true) {
     val scope = rememberCoroutineScope()
     val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     val dens = LocalDensity.current.density
@@ -175,8 +180,8 @@ fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = "不熟", rightL
             }
         }
     }
-    Spacer(Modifier.height(18.dp))
-    cards.firstOrNull()?.let { top ->
+    if (buttons) Spacer(Modifier.height(18.dp))
+    if (buttons) cards.firstOrNull()?.let { top ->
         SwipeButtons(leftLabel, rightLabel, Store.canUndo, { fly(top, false) }, { fly(top, true) }, undo)
     }
 }

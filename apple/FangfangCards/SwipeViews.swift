@@ -349,12 +349,17 @@ struct NewDeckView: View {
     private var sideWidth: CGFloat { size.width >= 1150 ? 290 : max(150, (size.width - 80) * 0.27) }
     /// a phone on its side: smaller side cards
     private var smallSides: Bool { size.height < 520 }
+    /// a phone on its side (short and wide)
+    private var sideways: Bool { size.width > size.height && size.height < 520 && size.height > 0 }
 
     var body: some View {
         let queue = store.newQueue(4, topic: topic)
-        VStack(spacing: 18) {
-            Text("已看 \(store.seenCount) / \(store.cards.count)　熟悉 \(store.knownCount)　不熟 \(store.unknownCount)")
-                .ffFont(.footnote).foregroundStyle(T.muted)
+        VStack(spacing: sideways ? 0 : 18) {
+            // (a phone on its side: no counts, no buttons, no tab bar; just the cards)
+            if !sideways {
+                Text("已看 \(store.seenCount) / \(store.cards.count)　熟悉 \(store.knownCount)　不熟 \(store.unknownCount)")
+                    .ffFont(.footnote).foregroundStyle(T.muted)
+            }
             if queue.isEmpty {
                 Spacer()
                 Text(topic < 0 ? "全部的詞都看過了！" : "這個主題的詞都看過了！").ffFont(.title3).foregroundStyle(T.muted)
@@ -363,12 +368,13 @@ struct NewDeckView: View {
                 HStack(alignment: .top, spacing: smallSides ? 14 : 24) {
                     // iPad (wide enough), 華語: the word's characters beside the card
                     if wideSides, let top = queue.first { CharSideColumn(word: top, side: 0, small: smallSides).frame(width: sideWidth) }
-                    DeckArea(cards: queue) { card, right in
+                    DeckArea(cards: queue, onSwipe: { card, right in
                         store.mark(card, known: right)
-                    } undo: {
+                    }, undo: {
                         store.undo()
-                    }
+                    }, buttons: !sideways)
                     .frame(maxWidth: 560)
+                    .environment(\.compactCard, sideways)
                     if wideSides, let top = queue.first { CharSideColumn(word: top, side: 1, small: smallSides).frame(width: sideWidth) }
                 }
             }
@@ -377,6 +383,8 @@ struct NewDeckView: View {
         .frame(maxWidth: wideSides ? 1260 : 560)
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .toolbar(sideways ? .hidden : .automatic, for: .tabBar)
+        .animation(.snappy, value: sideways)
         .appBackground()
         .rootPage("新詞") {
             if !store.topics.isEmpty {
@@ -439,6 +447,8 @@ struct DeckArea: View {
     var rightLabel = "認識"
     let onSwipe: (Card, Bool) -> Void
     var undo: (() -> Void)? = nil
+    /// the ✕ ↺ ✓ buttons (not on a phone on its side: there's no room)
+    var buttons = true
     @EnvironmentObject var store: Store
 
     @State private var fling: SwipeStack.Fling?
@@ -446,7 +456,7 @@ struct DeckArea: View {
     var body: some View {
         VStack(spacing: 18) {
             SwipeStack(cards: cards, onSwipe: onSwipe, fling: fling).frame(maxHeight: 680).frame(maxHeight: .infinity)
-            if !cards.isEmpty {
+            if !cards.isEmpty && buttons {
                 // the buttons swipe the card too (so it falls apart the same way)
                 SwipeButtons(leftLabel: leftLabel, rightLabel: rightLabel, canUndo: store.canUndo,
                              onLeft: { fling = .init(right: false) },
@@ -630,5 +640,14 @@ extension Store {
             if let p = dict?.altParent[k], Dict.hanOf(p).count == 1 { return card(for: p) }
             return nil
         }
+    }
+}
+
+/// a phone on its side: the big card is drawn smaller (there's little height)
+private struct CompactCardKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var compactCard: Bool {
+        get { self[CompactCardKey.self] }
+        set { self[CompactCardKey.self] = newValue }
     }
 }

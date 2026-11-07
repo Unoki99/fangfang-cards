@@ -57,6 +57,8 @@ object UI {
     /** the app opens on 詞典 */
     var tab by mutableIntStateOf(4)
     var settingsOpen by mutableStateOf(false)
+    /** 新詞 on a phone on its side: no tab bar (only the cards) */
+    var hideTabs by mutableStateOf(false)
     var practice by mutableStateOf<Practice?>(null)
     /** sheets can open on top of each other (a word from a word): the last one is shown */
     val sheets = mutableStateListOf<Sheet>()

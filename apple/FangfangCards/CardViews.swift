@@ -16,12 +16,14 @@ struct WordCard: View {
     @EnvironmentObject var store: Store
 
     /// the characters' size: big, smaller for longer words
+    @Environment(\.compactCard) private var compact
     private var hanSize: CGFloat {
-        switch card.h.count { case 1: 150; case 2: 120; case 3: 92; case 4: 74; default: 58 }
+        let s: CGFloat = switch card.h.count { case 1: 150; case 2: 120; case 3: 92; case 4: 74; default: 58 }
+        return compact ? s * 0.5 : s
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: compact ? 8 : 14) {
             // the top: the meanings (numbered), and ▶
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -35,17 +37,18 @@ struct WordCard: View {
                         }
                         if let ens = englishMeanings {
                             // 設定 → 主要解釋: 英文 (numbered in blue)
-                            ZhEnglishList(items: ens, max: 4, lineLimit: 2, font: .body)
+                            ZhEnglishList(items: ens, max: compact ? 2 : 4, lineLimit: compact ? 1 : 2, font: compact ? .subheadline : .body)
                         } else {
-                            ForEach(Array(card.d.prefix(4).enumerated()), id: \.offset) { i, d in
+                            let n = compact ? 2 : 4
+                            ForEach(Array(card.d.prefix(n).enumerated()), id: \.offset) { i, d in
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     NumBadge(n: i + 1)
                                     if !d.p.isEmpty { Chip(text: d.p) }
-                                    Text(d.t).foregroundStyle(T.glyph).lineLimit(2)
+                                    Text(d.t).foregroundStyle(T.glyph).lineLimit(compact ? 1 : 2)
                                 }
                             }
-                            if card.d.count > 4 {
-                                Text("還有 \(card.d.count - 4) 個意思").ffFont(.caption).foregroundStyle(T.muted)
+                            if card.d.count > n {
+                                Text("還有 \(card.d.count - n) 個意思").ffFont(.caption).foregroundStyle(T.muted)
                             }
                         }
                     }
@@ -57,7 +60,7 @@ struct WordCard: View {
 
             // the word, big in the middle, and how it's read
             Spacer(minLength: 0)
-            VStack(spacing: 10) {
+            VStack(spacing: compact ? 4 : 10) {
                 Text(store.cardHan(card, place, base: T.blueInk)).toneGlow()
                     .scaledFont(hanSize, weight: .medium)
                     .lineLimit(1).minimumScaleFactor(0.3)
@@ -65,7 +68,7 @@ struct WordCard: View {
                     // 設定 → 卡片上不顯示讀音: tap the card to see it
                     Text("點一下看讀音").ffFont(.subheadline).foregroundStyle(T.muted)
                 } else {
-                    Text(store.cardRom(card, rom, place)).latFont(34).toneGlow().foregroundStyle(T.greenInk)
+                    Text(store.cardRom(card, rom, place)).latFont(compact ? 22 : 34).toneGlow().foregroundStyle(T.greenInk)
                         .lineLimit(1).minimumScaleFactor(0.5)
                     if !card.isZh {
                         Text(store.cardZy(card, place)).scaledFont(20).toneGlow().foregroundStyle(T.purpleInk)
@@ -100,7 +103,7 @@ struct WordCard: View {
                 .buttonStyle(.plain)   // frosted, so it doesn't stretch while the card moves
             }
         }
-        .padding(20)
+        .padding(compact ? 12 : 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .modifier(CardSurface(frosted: isTop))
         .contentShape(RoundedRectangle(cornerRadius: 28))
