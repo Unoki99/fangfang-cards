@@ -12,6 +12,8 @@ struct SwipeStack: View {
     @State private var offset: CGSize = .zero
     @State private var touch: CGPoint?
     @State private var bursts: [CardBurst] = []
+    /// the top card's picture, made a moment after it comes up (see CardPicture)
+    @State private var picture: (key: String, pic: CardPicture)?
 
     var body: some View {
         GeometryReader { g in
@@ -24,6 +26,8 @@ struct SwipeStack: View {
                         .overlay(alignment: .top) { if i == 0 { stamp } }
                         .scaleEffect(i == 0 ? 1 : 1 - CGFloat(i) * 0.04)
                         .offset(y: CGFloat(i) * 14)
+                        // (only the stack moves up; the rest of the screen changes without animating)
+                        .animation(.spring(response: 0.32, dampingFraction: 0.8), value: i)
                         .offset(i == 0 ? offset : .zero)
                         .rotationEffect(.degrees(i == 0 ? Double(offset.width / 18) : 0))
                         .allowsHitTesting(i == 0)
@@ -38,6 +42,19 @@ struct SwipeStack: View {
             }
             .onChange(of: fling) { _, f in
                 if let f, let top = cards.first { fly(top, right: f.right, size: g.size) }
+            }
+            // the top card's picture, once the last one has finished falling apart (so nothing stutters)
+            .task(id: cards.first.map { "\($0.k)|\(Int(g.size.width))x\(Int(g.size.height))|\(ToneColors.system)" }) {
+                guard let top = cards.first, g.size.width > 0 else { return }
+                let key = "\(top.k)|\(Int(g.size.width))x\(Int(g.size.height))|\(ToneColors.system)"
+                if picture?.key == key { return }
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                while !bursts.isEmpty || touch != nil {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                    if Task.isCancelled { return }
+                }
+                guard !Task.isCancelled else { return }
+                picture = (key, CardPicture.make(top, g.size, store))
             }
         }
     }
@@ -70,13 +87,14 @@ struct SwipeStack: View {
 
     /// the card falls apart where it is, and the next one comes up right away
     private func fly(_ card: Card, right: Bool, size: CGSize) {
-        let b = CardBurst(card: card, right: right, size: size, offset: offset,
-                          angle: Double(offset.width / 18) * .pi / 180, store: store)
+        let key = "\(card.k)|\(Int(size.width))x\(Int(size.height))|\(ToneColors.system)"
+        let pic = picture?.key == key ? picture!.pic : CardPicture.plain(card, size, store)
+        let b = CardBurst(pic, right: right, offset: offset, angle: Double(offset.width / 18) * .pi / 180)
         bursts.append(b)
         var t = Transaction()
         t.disablesAnimations = true
         withTransaction(t) { offset = .zero; touch = nil }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { onSwipe(card, right) }
+        onSwipe(card, right)
         let id = b.id
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(CardBurst.life * 1_000_000_000) + 100_000_000)
@@ -85,34 +103,32 @@ struct SwipeStack: View {
     }
 }
 
-/// a card falling apart: its picture cut into little squares, each with its own way to go
-struct CardBurst: Identifiable {
-    let id = UUID()
-    let start = Date()
-    let right: Bool
+/// a card's picture as a grid of little squares (one colour each), made ahead of time: drawing the card into a
+/// picture takes a moment, so it's done while nothing moves, not when the card is swiped
+struct CardPicture {
     let size: CGSize
-    let offset: CGSize
-    let angle: Double
     let cell: CGFloat
     let cols: Int, rows: Int
-    /// each square's colour (from the card's picture) and its own little differences
     let colors: [SIMD4<Float>]
-    let rnd: [SIMD4<Float>]
-    /// 聲調顏色: the colour of each character of the word (left to right); empty = blue / red
+    /// 聲調顏色: the word's tone colours; empty = blue / red
     let tones: [SIMD3<Float>]
-    static let life: Double = 1.1
 
-    @MainActor init(card: Card, right: Bool, size: CGSize, offset: CGSize, angle: Double, store: Store) {
-        self.right = right; self.size = size; self.offset = offset; self.angle = angle
-        let cell: CGFloat = max(7, min(12, size.width / 46))
-        self.cell = cell
-        let cols = max(1, Int(size.width / cell)), rows = max(1, Int(size.height / cell))
-        self.cols = cols; self.rows = rows
-        // the card's picture, made as small as the grid: one pixel = one square's colour
+    private static func grid(_ size: CGSize) -> (CGFloat, Int, Int) {
+        let cell: CGFloat = max(8, min(13, size.width / 42))
+        return (cell, max(1, Int(size.width / cell)), max(1, Int(size.height / cell)))
+    }
+    private static var base: SIMD3<Float> {
+        let c = UIColor(T.fn).cgColor.components ?? [0.17, 0.17, 0.18, 1]
+        return SIMD3<Float>(Float(c[0]), Float(c.count > 2 ? c[1] : c[0]), Float(c.count > 2 ? c[2] : c[0]))
+    }
+
+    /// the card drawn into a picture, made as small as the grid (one pixel = one square)
+    @MainActor static func make(_ card: Card, _ size: CGSize, _ store: Store) -> CardPicture {
+        let (cell, cols, rows) = grid(size)
         var px = [UInt8](repeating: 0, count: cols * rows * 4)
         let r = ImageRenderer(content: WordCard(card: card, isTop: true).environmentObject(store)
             .frame(width: size.width, height: size.height))
-        r.scale = 1
+        r.scale = 0.5
         if let img = r.cgImage {
             px.withUnsafeMutableBytes { buf in
                 if let ctx = CGContext(data: buf.baseAddress, width: cols, height: rows, bitsPerComponent: 8, bytesPerRow: cols * 4,
@@ -122,42 +138,73 @@ struct CardBurst: Identifiable {
                 }
             }
         }
-        // (the card's own colour where the picture has nothing)
-        let base = UIColor(T.fn).cgColor.components ?? [0.17, 0.17, 0.18, 1]
-        let bb = SIMD3<Float>(Float(base[0]), Float(base.count > 2 ? base[1] : base[0]), Float(base.count > 2 ? base[2] : base[0]))
-        var cs: [SIMD4<Float>] = [], rs: [SIMD4<Float>] = []
-        cs.reserveCapacity(cols * rows); rs.reserveCapacity(cols * rows)
-        let radius = 28 / cell
+        return build(size, cell, cols, rows, px, tones(card, store))
+    }
+
+    /// no picture yet (swiped very quickly): the card's own colour
+    @MainActor static func plain(_ card: Card, _ size: CGSize, _ store: Store) -> CardPicture {
+        let (cell, cols, rows) = grid(size)
+        return build(size, cell, cols, rows, nil, tones(card, store))
+    }
+
+    private static func build(_ size: CGSize, _ cell: CGFloat, _ cols: Int, _ rows: Int, _ px: [UInt8]?, _ tones: [SIMD3<Float>]) -> CardPicture {
+        let bb = base
+        var cs: [SIMD4<Float>] = []
+        cs.reserveCapacity(cols * rows)
+        let rr = Float(28 / cell)
         for y in 0..<rows {
             for x in 0..<cols {
                 // outside the rounded corners: nothing
                 let fx = Float(x) + 0.5, fy = Float(y) + 0.5
                 let rx = min(fx, Float(cols) - fx), ry = min(fy, Float(rows) - fy)
-                let rr = Float(radius)
                 var inside = true
                 if rx < rr && ry < rr { let dx = rr - rx, dy = rr - ry; inside = dx * dx + dy * dy <= rr * rr }
-                // (CoreGraphics' rows start at the bottom)
-                let o = ((rows - 1 - y) * cols + x) * 4
-                let a = Float(px[o + 3]) / 255
-                let c = SIMD3<Float>(Float(px[o]), Float(px[o + 1]), Float(px[o + 2])) / 255 + bb * (1 - a)
+                var c = bb
+                if let px {
+                    // (CoreGraphics' rows start at the bottom)
+                    let o = ((rows - 1 - y) * cols + x) * 4
+                    let a = Float(px[o + 3]) / 255
+                    c = SIMD3<Float>(Float(px[o]), Float(px[o + 1]), Float(px[o + 2])) / 255 + bb * (1 - a)
+                }
                 cs.append(SIMD4<Float>(c.x, c.y, c.z, inside ? 1 : 0))
-                rs.append(SIMD4<Float>(Float.random(in: 0...1), Float.random(in: 0...1), Float.random(in: 0...1), Float.random(in: 0...1)))
             }
         }
-        colors = cs; rnd = rs
-        // the word's characters in their tone colours (only when 聲調顏色 is on)
+        return CardPicture(size: size, cell: cell, cols: cols, rows: rows, colors: cs, tones: tones)
+    }
+
+    /// the word's characters in their tone colours (only when 聲調顏色 is on)
+    @MainActor private static func tones(_ card: Card, _ store: Store) -> [SIMD3<Float>] {
+        guard ToneColors.system != 0 else { return [] }
         var ts: [SIMD3<Float>] = []
-        if ToneColors.system != 0 {
-            let han = store.cardHan(card, UserDefaults.standard.object(forKey: "place") as? Int ?? -1, base: T.blueInk)
-            for run in han.runs {
-                guard let fg = run.swiftUI.foregroundColor else { continue }
-                var r: CGFloat = 0, g: CGFloat = 0, bl: CGFloat = 0, al: CGFloat = 0
-                UIColor(fg).getRed(&r, green: &g, blue: &bl, alpha: &al)
-                let n = han[run.range].characters.filter { !$0.isWhitespace }.count
-                for _ in 0..<n { ts.append(SIMD3<Float>(Float(r), Float(g), Float(bl))) }
-            }
+        let han = store.cardHan(card, UserDefaults.standard.object(forKey: "place") as? Int ?? -1, base: T.blueInk)
+        for run in han.runs {
+            guard let fg = run.swiftUI.foregroundColor else { continue }
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(fg).getRed(&r, green: &g, blue: &b, alpha: &a)
+            let n = han[run.range].characters.filter { !$0.isWhitespace }.count
+            for _ in 0..<n { ts.append(SIMD3<Float>(Float(r), Float(g), Float(b))) }
         }
-        tones = ts
+        return ts
+    }
+}
+
+/// a card falling apart: its picture's squares, each with its own way to go
+struct CardBurst: Identifiable {
+    let id = UUID()
+    let start = Date()
+    let right: Bool
+    let offset: CGSize
+    let angle: Double
+    let pic: CardPicture
+    let rnd: [SIMD4<Float>]
+    static let life: Double = 1.1
+    var size: CGSize { pic.size }
+
+    init(_ pic: CardPicture, right: Bool, offset: CGSize, angle: Double) {
+        self.pic = pic; self.right = right; self.offset = offset; self.angle = angle
+        rnd = (0..<(pic.cols * pic.rows)).map { _ in
+            SIMD4<Float>(Float.random(in: 0...1), Float.random(in: 0...1), Float.random(in: 0...1), Float.random(in: 0...1))
+        }
     }
 }
 
@@ -172,11 +219,14 @@ struct CardDust: View {
     private static let red = SIMD3<Float>(1.0, 0.42, 0.40)
 
     var body: some View {
-        TimelineView(.animation(paused: bursts.isEmpty)) { tl in
-            Canvas { ctx, size in
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: bursts.isEmpty)) { tl in
+            Canvas(rendersAsynchronously: true) { ctx, size in
                 let now = tl.date
                 for b in bursts { draw(b, now.timeIntervalSince(b.start), in: &ctx, size) }
             }
+            // drawn on the graphics chip (Metal), not by the processor: the drawing covers the whole screen, and the
+            // moving backgrounds underneath are busy too
+            .drawingGroup()
         }
     }
 
@@ -188,15 +238,16 @@ struct CardDust: View {
         let bw = Double(b.size.width), bh = Double(b.size.height)
         let ca = cos(b.angle), sa = sin(b.angle)
         let tint = b.right ? Self.blue : Self.red
-        let tones = b.tones
-        let c = Double(b.cell)
-        for y in 0..<b.rows {
-            for x in 0..<b.cols {
-                let i = y * b.cols + x
-                let col = b.colors[i]
+        let tones = b.pic.tones
+        let c = Double(b.pic.cell)
+        let cols = b.pic.cols, rows = b.pic.rows
+        for y in 0..<rows {
+            for x in 0..<cols {
+                let i = y * cols + x
+                let col = b.pic.colors[i]
                 if col.w == 0 { continue }
                 let r = b.rnd[i]
-                let u = (Double(x) + 0.5) / Double(b.cols)          // 0 = left, 1 = right
+                let u = (Double(x) + 0.5) / Double(cols)          // 0 = left, 1 = right
                 // the side it's going to goes first, like a wind blowing it away
                 let delay = (b.right ? (1 - u) : u) * 0.28 + Double(r.x) * 0.12
                 let s = t - delay
