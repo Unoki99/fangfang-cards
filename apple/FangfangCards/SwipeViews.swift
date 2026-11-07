@@ -1,28 +1,40 @@
 import SwiftUI
 
-/// A stack of cards: drag right = 認識 (known), drag left = 不熟 (unknown).
+/// A stack of cards: drag right = 認識 (known), drag left = 不熟 (unknown). A card swiped away falls apart into
+/// little squares: blue ones floating up on the right (認識), red ones dropping down on the left (不熟).
 struct SwipeStack: View {
     let cards: [Card]                       // top card first
     let onSwipe: (Card, Bool) -> Void       // true = right (known)
+    /// the ✕ / ✓ buttons (and ← →): swipe the top card that way
+    var fling: Fling? = nil
+    struct Fling: Equatable { let right: Bool; let id = UUID() }
+    @EnvironmentObject var store: Store
     @State private var offset: CGSize = .zero
-    @State private var flying = false
     @State private var touch: CGPoint?
+    @State private var bursts: [CardBurst] = []
 
     var body: some View {
-        ZStack {
-            ForEach(Array(cards.prefix(3).enumerated()).reversed(), id: \.element.id) { i, card in
-                WordCard(card: card, isTop: i == 0)
-                    .overlay {
-                        if i == 0 { CardLight(swipe: max(-1, min(1, offset.width / 140)), touch: touch) }
-                    }
-                    .overlay(alignment: .top) { if i == 0 { stamp } }
-                    .scaleEffect(i == 0 ? 1 : 1 - CGFloat(i) * 0.04)
-                    .offset(y: CGFloat(i) * 14)
-                    .offset(i == 0 ? offset : .zero)
-                    .rotationEffect(.degrees(i == 0 ? Double(offset.width / 18) : 0))
-                    .allowsHitTesting(i == 0 && !flying)
-                    .gesture(drag(card))
-                    .zIndex(Double(10 - i))
+        GeometryReader { g in
+            ZStack {
+                ForEach(Array(cards.prefix(3).enumerated()).reversed(), id: \.element.id) { i, card in
+                    WordCard(card: card, isTop: i == 0)
+                        .overlay {
+                            if i == 0 { CardLight(swipe: max(-1, min(1, offset.width / 140)), touch: touch) }
+                        }
+                        .overlay(alignment: .top) { if i == 0 { stamp } }
+                        .scaleEffect(i == 0 ? 1 : 1 - CGFloat(i) * 0.04)
+                        .offset(y: CGFloat(i) * 14)
+                        .offset(i == 0 ? offset : .zero)
+                        .rotationEffect(.degrees(i == 0 ? Double(offset.width / 18) : 0))
+                        .allowsHitTesting(i == 0)
+                        .gesture(drag(card, size: g.size))
+                        .zIndex(Double(10 - i))
+                        .transition(.identity)          // (it turns into the squares instead)
+                }
+                CardDust(bursts: bursts).allowsHitTesting(false).zIndex(20)
+            }
+            .onChange(of: fling) { _, f in
+                if let f, let top = cards.first { fly(top, right: f.right, size: g.size) }
             }
         }
     }
@@ -42,30 +54,153 @@ struct SwipeStack: View {
             .allowsHitTesting(false)
     }
 
-    private func drag(_ card: Card) -> some Gesture {
+    private func drag(_ card: Card, size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { v in offset = v.translation; touch = v.location }
             .onEnded { v in
-                withAnimation(.easeOut(duration: 0.3)) { touch = nil }
+                touch = nil
                 let w = v.translation.width + v.predictedEndTranslation.width * 0.25
-                if abs(w) > 120 { fly(card, right: w > 0) }
+                if abs(w) > 120 { fly(card, right: w > 0, size: size) }
                 else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { offset = .zero } }
             }
     }
 
-    private func fly(_ card: Card, right: Bool) {
-        flying = true
-        withAnimation(.easeIn(duration: 0.2)) {
-            offset = CGSize(width: right ? 700 : -700, height: offset.height + 40)
-        }
+    /// the card falls apart where it is, and the next one comes up right away
+    private func fly(_ card: Card, right: Bool, size: CGSize) {
+        let b = CardBurst(card: card, right: right, size: size, offset: offset,
+                          angle: Double(offset.width / 18) * .pi / 180, store: store)
+        bursts.append(b)
+        var t = Transaction()
+        t.disablesAnimations = true
+        withTransaction(t) { offset = .zero; touch = nil }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) { onSwipe(card, right) }
+        let id = b.id
         Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 200_000_000)
-            var t = Transaction()
-            t.disablesAnimations = true
-            withTransaction(t) {
-                offset = .zero
-                flying = false
-                onSwipe(card, right)
+            try? await Task.sleep(nanoseconds: UInt64(CardBurst.life * 1_000_000_000) + 100_000_000)
+            bursts.removeAll { $0.id == id }
+        }
+    }
+}
+
+/// a card falling apart: its picture cut into little squares, each with its own way to go
+struct CardBurst: Identifiable {
+    let id = UUID()
+    let start = Date()
+    let right: Bool
+    let size: CGSize
+    let offset: CGSize
+    let angle: Double
+    let cell: CGFloat
+    let cols: Int, rows: Int
+    /// each square's colour (from the card's picture) and its own little differences
+    let colors: [SIMD4<Float>]
+    let rnd: [SIMD4<Float>]
+    static let life: Double = 1.1
+
+    @MainActor init(card: Card, right: Bool, size: CGSize, offset: CGSize, angle: Double, store: Store) {
+        self.right = right; self.size = size; self.offset = offset; self.angle = angle
+        let cell: CGFloat = max(7, min(12, size.width / 46))
+        self.cell = cell
+        let cols = max(1, Int(size.width / cell)), rows = max(1, Int(size.height / cell))
+        self.cols = cols; self.rows = rows
+        // the card's picture, made as small as the grid: one pixel = one square's colour
+        var px = [UInt8](repeating: 0, count: cols * rows * 4)
+        let r = ImageRenderer(content: WordCard(card: card, isTop: true).environmentObject(store)
+            .frame(width: size.width, height: size.height))
+        r.scale = 1
+        if let img = r.cgImage {
+            px.withUnsafeMutableBytes { buf in
+                if let ctx = CGContext(data: buf.baseAddress, width: cols, height: rows, bitsPerComponent: 8, bytesPerRow: cols * 4,
+                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                    ctx.interpolationQuality = .medium
+                    ctx.draw(img, in: CGRect(x: 0, y: 0, width: cols, height: rows))
+                }
+            }
+        }
+        // (the card's own colour where the picture has nothing)
+        let base = UIColor(T.fn).cgColor.components ?? [0.17, 0.17, 0.18, 1]
+        let bb = SIMD3<Float>(Float(base[0]), Float(base.count > 2 ? base[1] : base[0]), Float(base.count > 2 ? base[2] : base[0]))
+        var cs: [SIMD4<Float>] = [], rs: [SIMD4<Float>] = []
+        cs.reserveCapacity(cols * rows); rs.reserveCapacity(cols * rows)
+        let radius = 28 / cell
+        for y in 0..<rows {
+            for x in 0..<cols {
+                // outside the rounded corners: nothing
+                let fx = Float(x) + 0.5, fy = Float(y) + 0.5
+                let rx = min(fx, Float(cols) - fx), ry = min(fy, Float(rows) - fy)
+                let rr = Float(radius)
+                var inside = true
+                if rx < rr && ry < rr { let dx = rr - rx, dy = rr - ry; inside = dx * dx + dy * dy <= rr * rr }
+                // (CoreGraphics' rows start at the bottom)
+                let o = ((rows - 1 - y) * cols + x) * 4
+                let a = Float(px[o + 3]) / 255
+                let c = SIMD3<Float>(Float(px[o]), Float(px[o + 1]), Float(px[o + 2])) / 255 + bb * (1 - a)
+                cs.append(SIMD4<Float>(c.x, c.y, c.z, inside ? 1 : 0))
+                rs.append(SIMD4<Float>(Float.random(in: 0...1), Float.random(in: 0...1), Float.random(in: 0...1), Float.random(in: 0...1)))
+            }
+        }
+        colors = cs; rnd = rs
+    }
+}
+
+/// draws the falling-apart cards
+struct CardDust: View {
+    let bursts: [CardBurst]
+    // 認識: blue; 不熟: red
+    private static let blue = SIMD3<Float>(0.43, 0.66, 1.0)
+    private static let red = SIMD3<Float>(1.0, 0.42, 0.40)
+
+    var body: some View {
+        TimelineView(.animation(paused: bursts.isEmpty)) { tl in
+            Canvas { ctx, size in
+                let now = tl.date
+                for b in bursts { draw(b, now.timeIntervalSince(b.start), in: &ctx, size) }
+            }
+        }
+    }
+
+    private func draw(_ b: CardBurst, _ t: Double, in ctx: inout GraphicsContext, _ size: CGSize) {
+        guard t >= 0, t < CardBurst.life else { return }
+        // (the card was moved, then turned about the middle of the stack)
+        let cx = Double(size.width) / 2, cy = Double(size.height) / 2
+        let ox = Double(b.offset.width), oy = Double(b.offset.height)
+        let bw = Double(b.size.width), bh = Double(b.size.height)
+        let ca = cos(b.angle), sa = sin(b.angle)
+        let tint = b.right ? Self.blue : Self.red
+        let c = Double(b.cell)
+        for y in 0..<b.rows {
+            for x in 0..<b.cols {
+                let i = y * b.cols + x
+                let col = b.colors[i]
+                if col.w == 0 { continue }
+                let r = b.rnd[i]
+                let u = (Double(x) + 0.5) / Double(b.cols)          // 0 = left, 1 = right
+                // the side it's going to goes first, like a wind blowing it away
+                let delay = (b.right ? (1 - u) : u) * 0.28 + Double(r.x) * 0.12
+                let s = t - delay
+                // the square's place on the card (turned and moved like the card)
+                let lx = (Double(x) + 0.5) * c - bw / 2 + ox, ly = (Double(y) + 0.5) * c - bh / 2 + oy
+                var px = cx + lx * ca - ly * sa, py = cy + lx * sa + ly * ca
+                var alpha = 1.0, k: Float = 0, sc = 1.0
+                if s > 0 {
+                    k = Float(min(s / 0.22, 1))                         // the colour turns blue / red
+                    let left = CardBurst.life - delay
+                    alpha = max(0, 1 - s / max(left, 0.3))
+                    sc = 1 - 0.45 * s / max(left, 0.3)
+                    if b.right {
+                        // up and away to the right, faster and faster, swaying a little
+                        px += (40 + Double(r.y) * 110) * s + sin(s * 7 + Double(r.z) * 6) * 6
+                        py -= (60 + Double(r.w) * 120) * s + 260 * s * s
+                    } else {
+                        // out to the left, then falling
+                        px -= (50 + Double(r.y) * 120) * s
+                        py += (-40 + Double(r.w) * 60) * s + 620 * s * s
+                    }
+                }
+                let rgb = SIMD3<Float>(col.x, col.y, col.z) * (1 - k) + tint * k
+                let w = c * sc
+                ctx.fill(Path(CGRect(x: px - w / 2, y: py - w / 2, width: w, height: w)),
+                         with: .color(Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z)).opacity(alpha)))
             }
         }
     }
@@ -209,13 +344,16 @@ struct DeckArea: View {
     var undo: (() -> Void)? = nil
     @EnvironmentObject var store: Store
 
+    @State private var fling: SwipeStack.Fling?
+
     var body: some View {
         VStack(spacing: 18) {
-            SwipeStack(cards: cards, onSwipe: onSwipe).frame(maxHeight: 680).frame(maxHeight: .infinity)
-            if let top = cards.first {
+            SwipeStack(cards: cards, onSwipe: onSwipe, fling: fling).frame(maxHeight: 680).frame(maxHeight: .infinity)
+            if !cards.isEmpty {
+                // the buttons swipe the card too (so it falls apart the same way)
                 SwipeButtons(leftLabel: leftLabel, rightLabel: rightLabel, canUndo: store.canUndo,
-                             onLeft: { onSwipe(top, false) },
-                             onRight: { onSwipe(top, true) },
+                             onLeft: { fling = .init(right: false) },
+                             onRight: { fling = .init(right: true) },
                              onUndo: undo)
             }
         }

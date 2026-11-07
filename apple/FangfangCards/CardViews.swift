@@ -15,23 +15,62 @@ struct WordCard: View {
     @State private var showDetail = false
     @EnvironmentObject var store: Store
 
+    /// the characters' size: big, smaller for longer words
+    private var hanSize: CGFloat {
+        switch card.h.count { case 1: 150; case 2: 120; case 3: 92; case 4: 74; default: 58 }
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(store.cardHan(card, place, base: T.blueInk)).toneGlow()
-                    .scaledFont(card.h.count > 3 ? 44 : 60, weight: .medium)
-                    .lineLimit(1).minimumScaleFactor(0.5)
-                Spacer()
-                CardChips(card: card, place: place)
+        VStack(alignment: .leading, spacing: 14) {
+            // the top: the meanings (numbered), and ▶
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if hideMeaning && !revealed {
+                        Text("點一下看意思").ffFont(.headline).foregroundStyle(T.muted)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    } else {
+                        // 華語: the 詞類 (from the word lists)
+                        if card.isZh, let pos = store.zh?.entry(card.k)?.pos, !pos.isEmpty {
+                            HStack(spacing: 6) { ForEach(pos, id: \.self) { Chip(text: $0) } }
+                        }
+                        if let ens = englishMeanings {
+                            // 設定 → 主要解釋: 英文 (numbered in blue)
+                            ZhEnglishList(items: ens, max: 4, lineLimit: 2, font: .body)
+                        } else {
+                            ForEach(Array(card.d.prefix(4).enumerated()), id: \.offset) { i, d in
+                                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                    NumBadge(n: i + 1)
+                                    if !d.p.isEmpty { Chip(text: d.p) }
+                                    Text(d.t).foregroundStyle(T.glyph).lineLimit(2)
+                                }
+                            }
+                            if card.d.count > 4 {
+                                Text("還有 \(card.d.count - 4) 個意思").ffFont(.caption).foregroundStyle(T.muted)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let a = card.audio { PlayButton(path: a, size: 44, onCard: true) }
             }
-            HStack(alignment: .center, spacing: 12) {
+            Rectangle().fill(T.fnEdge).frame(height: 2)
+
+            // the word, big in the middle, and how it's read
+            Spacer(minLength: 0)
+            VStack(spacing: 10) {
+                Text(store.cardHan(card, place, base: T.blueInk)).toneGlow()
+                    .scaledFont(hanSize, weight: .medium)
+                    .lineLimit(1).minimumScaleFactor(0.3)
                 if hideReading && !revealed {
                     // 設定 → 卡片上不顯示讀音: tap the card to see it
                     Text("點一下看讀音").ffFont(.subheadline).foregroundStyle(T.muted)
                 } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(store.cardRom(card, rom, place)).latFont(26).toneGlow().foregroundStyle(T.greenInk)
-                    Text(store.cardZy(card, place)).scaledFont(18).toneGlow().foregroundStyle(T.purpleInk)
+                    Text(store.cardRom(card, rom, place)).latFont(34).toneGlow().foregroundStyle(T.greenInk)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                    if !card.isZh {
+                        Text(store.cardZy(card, place)).scaledFont(20).toneGlow().foregroundStyle(T.purpleInk)
+                            .lineLimit(1).minimumScaleFactor(0.5)
+                    }
                     if let x = store.alsoSaid(card, rom, place).first {
                         HStack(spacing: 6) {
                             Chip(text: "也講", fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
@@ -44,62 +83,11 @@ struct WordCard: View {
                         }
                     }
                 }
-                }
-                Spacer()
-                if let a = card.audio { PlayButton(path: a, size: 44, onCard: true) }
             }
-            Rectangle().fill(T.fnEdge).frame(height: 2)
-
-            if hideMeaning && !revealed {
-                Spacer()
-                Text("點一下看意思")
-                    .ffFont(.headline).foregroundStyle(T.muted)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                // 華語: the 詞類 (from the word lists)
-                if card.isZh, let pos = store.zh?.entry(card.k)?.pos, !pos.isEmpty {
-                    HStack(spacing: 6) { ForEach(pos, id: \.self) { Chip(text: $0) } }
-                }
-                let ens = englishMeanings
-                if let ens {
-                    // 設定 → 主要解釋: 英文 (up to 5, numbered)
-                    ZhEnglishList(items: ens, max: 5, lineLimit: 1, font: .body)
-                } else {
-                    ForEach(Array(card.d.prefix(3).enumerated()), id: \.offset) { i, d in
-                        HStack(alignment: .firstTextBaseline, spacing: 8) {
-                            NumBadge(n: i + 1)
-                            if !d.p.isEmpty { Chip(text: d.p) }
-                            Text(d.t).foregroundStyle(T.glyph).lineLimit(card.cardExamples.count > 1 ? 2 : 3)
-                        }
-                    }
-                    if card.d.count > 3 {
-                        Text("還有 \(card.d.count - 3) 個意思").ffFont(.caption).foregroundStyle(T.muted)
-                    }
-                }
-                // two example sentences, from two different meanings when there are (the number = which meaning);
-                // one under the English meanings
-                let exs = Array(card.cardExamples.prefix(ens == nil ? 2 : 1))
-                ForEach(Array(exs.enumerated()), id: \.offset) { _, e in
-                    HStack(alignment: .top, spacing: 10) {
-                        VStack(spacing: 4) {
-                            PlayButton(path: Audio.examplePath(e.x.n), size: 28, onCard: true)
-                            if card.d.count > 1 { NumBadge(n: e.n) }
-                        }
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(store.exampleHan(card, e.x, place)).toneGlow()
-                            if !hideReading || revealed {
-                                Text(store.exampleRom(card, e.x, rom, place)).latFont(15).toneGlow().foregroundStyle(T.greenInk)
-                            }
-                            Text(e.x.z).ffFont(.footnote).foregroundStyle(T.muted)
-                        }
-                        .lineLimit(2)
-                    }
-                    .padding(.top, 4)
-                }
-                Spacer(minLength: 0)
-            }
+            .frame(maxWidth: .infinity)
+            Spacer(minLength: 0)
             HStack {
+                CardChips(card: card, place: place)
                 Spacer()
                 Button { showDetail = true } label: {
                     Label("詳細", systemImage: "text.book.closed")

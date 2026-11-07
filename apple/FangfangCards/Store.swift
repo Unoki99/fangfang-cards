@@ -107,8 +107,9 @@ final class Store: ObservableObject {
     }
 
     /// saves a moment later, off the main thread, so swiping never waits for the disk
-    func save() {
-        syncCharCards()
+    func save(syncChars: Bool = true) {
+        // (a swipe does its own word's characters only: going through every 熟悉 word each time was slow)
+        if syncChars { syncCharCards() }
         WidgetBridge.progressChanged(self)
         saveTask?.cancel()
         saveTask = Task { [weak self] in
@@ -575,19 +576,41 @@ final class Store: ObservableObject {
             if undoStack.count > 50 { undoStack.removeFirst() }
             canUndo = true
         }
-        progress.status[c.k] = known ? 1 : 2
-        progress.added[c.k] = Date().timeIntervalSince1970
-        if known { progress.streak[c.k] = nil } else if progress.streak[c.k] == nil { progress.streak[c.k] = 0 }
-        save()
+        // one change to progress (so the counts are worked out, and the screen redrawn, once)
+        var p = progress
+        p.status[c.k] = known ? 1 : 2
+        p.added[c.k] = Date().timeIntervalSince1970
+        if known { p.streak[c.k] = nil } else if p.streak[c.k] == nil { p.streak[c.k] = 0 }
+        if known { knowChars(of: c.k, in: &p) }
+        progress = p
+        save(syncChars: false)
+    }
+
+    /// 華語: a word marked 熟悉 makes its characters' cards 熟悉 too (what syncCharCards does, for one word)
+    private func knowChars(of k: String, in p: inout Progress) {
+        guard let d = zh, !d.chars.isEmpty, Lang.charOf(k) == nil, Lang.isZhKey(k), let t = k.firstIndex(of: "\t") else { return }
+        let now = Date().timeIntervalSince1970
+        for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
+            let ch = String(u)
+            guard d.charIndex[ch] != nil else { continue }
+            let ck = Lang.charKey(ch)
+            switch p.status[ck] {
+            case 1?: break
+            case 2? where (p.added[ck] ?? 0) >= (p.added[k] ?? 0): break
+            default: p.status[ck] = 1; p.added[ck] = now; p.streak[ck] = nil
+            }
+        }
     }
 
     func undo() {
         guard let u = undoStack.popLast() else { return }
-        progress.status[u.key] = u.status
-        progress.added[u.key] = u.added
-        progress.streak[u.key] = u.streak
+        var p = progress
+        p.status[u.key] = u.status
+        p.added[u.key] = u.added
+        p.streak[u.key] = u.streak
+        progress = p
         canUndo = !undoStack.isEmpty
-        save()
+        save(syncChars: false)
     }
 
     /// back to the new-word pile (kept as status 0 so other devices learn about it when syncing)
