@@ -34,7 +34,9 @@ struct SettingsView: View {
     private var topics: [Topic] {
         let themeName = (AppTheme(rawValue: theme) ?? .night).name
         let tones = toneSys == 7 ? trs("七聲") : (toneSys == 5 ? trs("五聲") : trs("聲調顏色關"))
-        let lang: String = store.isZh
+        let lang: String = store.isYue
+            ? trs("粵語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
+            : store.isZh
             ? trs("華語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.placeNames[min(max(store.zhPlace, 0), 1)]) + "・" + Lang.listNames[min(max(store.zhList, 0), 1)]
             : trs("台語") + "・" + trs(ROM_NAMES[min(max(rom, 0), 2)]) + "・" + (place >= 0 && place < PLACE_NAMES.count ? trs(String(PLACE_NAMES[place].prefix(2))) : trs("通行"))
         let _ = copyTpl + copyEx + zhCopyTpl + zhCopyEx + "\(copySep)\(zhCopySep)"   // redraw when a layout changes
@@ -219,13 +221,17 @@ private struct LanguageSettings: View {
     @AppStorage("place") private var place = -1
 
     @AppStorage(UILang.key) private var uiLang = 0
+    // each of 華語 and 粵語 has its own spelling (the one shown now is also store.zhRom, so the pages redraw)
+    @AppStorage("zhRom") private var zhRomSaved = 0
+    @AppStorage(Lang.yueRomKey) private var yueRomSaved = 0
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
             Section {
-                Picker(tr("語言"), selection: Binding(get: { store.isZh ? 1 : 0 }, set: { store.setLanguage(zh: $0 == 1) })) {
+                Picker(tr("語言"), selection: Binding(get: { store.lang }, set: { store.setLanguage($0) })) {
                     Text(tr("台語")).tag(0)
                     Text(tr("華語")).tag(1)
+                    Text(tr("粵語")).tag(2)
                 }
                 .pickerStyle(.segmented)
             } header: {
@@ -255,10 +261,12 @@ private struct LanguageSettings: View {
                 .onChange(of: place) { if place >= 0 { store.loadDict() } }
             }
             Section(tr("華語")) {
-                Picker(tr("拼寫"), selection: $store.zhRom) {
-                    ForEach(0..<Lang.romNames.count, id: \.self) { Text(trs(Lang.romNames[$0])).tag($0) }
+                Picker(tr("拼寫"), selection: $zhRomSaved) {
+                    Text(trs("拼音")).tag(0)
+                    Text(trs("注音")).tag(1)
                 }
                 .pickerStyle(.segmented)
+                .onChange(of: zhRomSaved) { if store.lang == 1 { store.zhRom = zhRomSaved } }
                 Picker(tr("讀音"), selection: $store.zhPlace) {
                     ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
                 }
@@ -267,6 +275,18 @@ private struct LanguageSettings: View {
                     ForEach(0..<Lang.listNames.count, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                 }
                 .pickerStyle(.segmented)
+            }
+            Section {
+                Picker(tr("拼寫"), selection: $yueRomSaved) {
+                    Text(trs("粵拼")).tag(0)
+                    Text(trs("耶魯")).tag(1)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: yueRomSaved) { if store.lang == 2 { store.zhRom = yueRomSaved } }
+            } header: {
+                Text(tr("粵語"))
+            } footer: {
+                Text(tr("粵拼（香港語言學學會）或耶魯拼音。詞是照常用的程度分組，每組 500 個。"))
             }
         }
     }
@@ -543,6 +563,13 @@ private struct AboutSettings: View {
                 credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
                 credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
                 credit(tr("發音"), "裝置內建的語音")
+            }
+            Section(tr("粵語")) {
+                credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
+                credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
+                credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
+                credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
+                credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
             }
             Section(tr("其他")) {
                 credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")

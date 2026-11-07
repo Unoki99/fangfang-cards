@@ -69,11 +69,13 @@ struct Card: Decodable, Identifiable, Hashable {
     /// 華語: the 注音 syllables (臺灣, and 大陸 where it differs)
     var zs: [String]? = nil
     var zl: [String]? = nil
+    /// 粵語: a recording of the word (a web address, Wikimedia Commons)
+    var web: String? = nil
 
     var id: String { k }
     var isZh: Bool { zs != nil }
-    /// the word's recording (台語), or the device's voice (華語)
-    var audio: String? { isZh ? "tts:" + h : a.map { Audio.wordPath($0) } }
+    /// the word's recording (台語), or the device's voice (華語; 粵語 when the word has no recording)
+    var audio: String? { isZh ? (web ?? "tts:" + h) : a.map { Audio.wordPath($0) } }
     static func == (l: Card, r: Card) -> Bool { l.k == r.k }
     func hash(into h: inout Hasher) { h.combine(k) }
 

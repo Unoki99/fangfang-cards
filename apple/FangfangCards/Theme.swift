@@ -105,9 +105,11 @@ enum T {
     /// buttons (what used to be green): 華語 blue, 台語 purple
     /// 華語 or 台語 now (kept in step by Store, readable from anywhere)
     nonisolated(unsafe) static var zh = false
-    static var btn: Color { zh ? blue : own }
-    static var btnEdge: Color { zh ? blueEdge : ownEdge }
-    static var btnInk: Color { zh ? blueInk : purpleInk }
+    /// 粵語 shown (its buttons are yellow)
+    nonisolated(unsafe) static var yue = false
+    static var btn: Color { yue ? olive : (zh ? blue : own) }
+    static var btnEdge: Color { yue ? oliveEdge : (zh ? blueEdge : ownEdge) }
+    static var btnInk: Color { yue ? oliveInk : (zh ? blueInk : purpleInk) }
     static var olive: Color { Color(hex: P.now.olive) }
     static var oliveEdge: Color { Color(hex: P.now.oliveEdge) }
     static var oliveInk: Color { Color(hex: P.now.oliveInk) }
@@ -273,13 +275,16 @@ struct PlaceMenu: View {
     @ObservedObject private var store = Store.shared
     var body: some View {
         Menu {
-            // 台語 / 華語 first, then where it's said
-            Picker(tr("語言"), selection: Binding(get: { store.isZh ? 1 : 0 }, set: { store.setLanguage(zh: $0 == 1) })) {
+            // 台語 / 華語 / 粵語 first, then where it's said
+            Picker(tr("語言"), selection: Binding(get: { store.lang }, set: { store.setLanguage($0) })) {
                 Text(tr("台語")).tag(0)
                 Text(tr("華語")).tag(1)
+                Text(tr("粵語")).tag(2)
             }
             .pickerStyle(.inline)
-            if store.isZh {
+            if store.isYue {
+                EmptyView()       // (粵語: one reading)
+            } else if store.isZh {
                 Picker(tr("華語讀音"), selection: $store.zhPlace) {
                     ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
                 }
@@ -304,6 +309,7 @@ struct PlaceMenu: View {
     }
 
     private var name: String {
+        if store.isYue { return "粵語" }
         if store.isZh { return "華・" + Lang.placeNames[min(max(store.zhPlace, 0), 1)] }
         return "台・" + (place >= 0 && place < PLACE_NAMES.count ? String(PLACE_NAMES[place].prefix(2)) : "通行")
     }
@@ -314,8 +320,8 @@ struct PlaceMenu: View {
     private var capsule: some View {
         plainText
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(store.isZh ? Color(hex: 0x1f3d6b) : Color(hex: 0x4c3a5b)))
-            .overlay(Capsule().stroke(store.isZh ? Color(hex: 0x4f7dff) : Color(hex: 0x7b3c9b), lineWidth: 2))
+            .background(Capsule().fill(store.isYue ? Color(hex: 0x5a4a14) : store.isZh ? Color(hex: 0x1f3d6b) : Color(hex: 0x4c3a5b)))
+            .overlay(Capsule().stroke(store.isYue ? Color(hex: 0xc9a227) : store.isZh ? Color(hex: 0x4f7dff) : Color(hex: 0x7b3c9b), lineWidth: 2))
     }
     private var plainText: some View {
         HStack(spacing: 2) {
@@ -323,7 +329,7 @@ struct PlaceMenu: View {
             Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
         }
         .frame(maxWidth: fill ? .infinity : nil)
-        .foregroundStyle(store.isZh ? Color(hex: 0x9ad0ff) : T.purpleInk)
+        .foregroundStyle(store.isYue ? Color(hex: 0xffe58a) : store.isZh ? Color(hex: 0x9ad0ff) : T.purpleInk)
     }
 }
 

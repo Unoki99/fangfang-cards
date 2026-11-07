@@ -53,12 +53,22 @@ final class Player: ObservableObject {
     }
 
     private func load(_ path: String) async throws -> Data {
-        let file = cacheDir.appendingPathComponent(path.replacingOccurrences(of: "/", with: "_"))
+        // a whole web address (粵語 recordings on Wikimedia Commons) or a file of the 台語 recordings
+        let web = path.hasPrefix("https://")
+        let name = web ? "web-" + String(path.split(separator: "/").last ?? "") : path.replacingOccurrences(of: "/", with: "_")
+        let file = cacheDir.appendingPathComponent(String(name.suffix(200)))
         if let d = try? Data(contentsOf: file), !d.isEmpty { return d }
-        let base = UserDefaults.standard.string(forKey: "audioBase") ?? Audio.defaultBase
-        let b = base.hasSuffix("/") ? base : base + "/"
-        let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
-        guard let url = URL(string: b + encoded) else { throw URLError(.badURL) }
+        let url: URL
+        if web {
+            guard let u = URL(string: path) ?? URL(string: path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? path) else { throw URLError(.badURL) }
+            url = u
+        } else {
+            let base = UserDefaults.standard.string(forKey: "audioBase") ?? Audio.defaultBase
+            let b = base.hasSuffix("/") ? base : base + "/"
+            let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+            guard let u = URL(string: b + encoded) else { throw URLError(.badURL) }
+            url = u
+        }
         let (data, resp) = try await URLSession.shared.data(from: url)
         guard (resp as? HTTPURLResponse)?.statusCode == 200, !data.isEmpty else { throw URLError(.fileDoesNotExist) }
         try? data.write(to: file, options: .atomic)

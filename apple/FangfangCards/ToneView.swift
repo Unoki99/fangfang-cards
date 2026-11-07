@@ -15,6 +15,7 @@ struct ToneQuestion: Identifiable {
 }
 
 let TONE_NAMES: [Int: String] = [1: "陰平", 2: "陰上", 3: "陰去", 4: "陰入", 5: "陽平", 7: "陽去", 8: "陽入"]
+let YUE_TONE_NAMES: [Int: String] = [1: "陰平", 2: "陰上", 3: "陰去", 4: "陽平", 5: "陽上", 6: "陽去"]
 let ZH_TONE_NAMES: [Int: String] = [0: "輕聲", 1: "陰平", 2: "陽平", 3: "上聲", 4: "去聲"]
 
 extension Store {
@@ -44,7 +45,7 @@ extension Store {
         guard let li = syl.lastIndex(where: { $0 != "-" && $0 != "_" }) else { return nil }
         let tone = Zhuyin.tone(syl[li])
         var all: [ToneOption] = [], answer: ToneOption?
-        for t in [1, 2, 3, 4, 0] where t != 0 || tone == 0 {
+        for t in (d.isYue ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 0]) where t != 0 || tone == 0 {
             var s = syl; s[li] = Zhuyin.withTone(syl[li], t)
             let r = String(d.reading(s, zhRom, colours: 0).characters)
             let o = ToneOption(id: "zh\(t)", tone: t, rom: [r, r, r])
@@ -208,7 +209,7 @@ struct ToneView: View {
             Text(o.rom[min(max(rom, 0), 2)]).latFont(28).foregroundStyle(T.greenInk)
             Spacer()
             if answered {
-                Text(store.isZh ? (o.tone == 0 ? trs("輕聲") : tr("第 \(o.tone) 聲　\(ZH_TONE_NAMES[o.tone] ?? "")")) : "\(o.tone)　\(TONE_NAMES[o.tone] ?? "")")
+                Text(store.isYue ? tr("第 \(o.tone) 聲　\(YUE_TONE_NAMES[o.tone] ?? "")") : store.isZh ? (o.tone == 0 ? trs("輕聲") : tr("第 \(o.tone) 聲　\(ZH_TONE_NAMES[o.tone] ?? "")")) : "\(o.tone)　\(TONE_NAMES[o.tone] ?? "")")
                     .ffFont(.subheadline, .bold)
                     .foregroundStyle(isRight ? T.greenInk : (isPicked ? T.rustInk : T.muted))
             }
@@ -247,7 +248,9 @@ struct ToneView: View {
                         Text(q.answer.rom[min(max(rom, 0), 2)]).latFont(22).foregroundStyle(T.greenInk)
                         Text(q.card.z).foregroundStyle(T.purpleInk)
                     }
-                    if store.isZh {
+                    if store.isYue {
+                        Text(tr("第 \(t) 聲（\(YUE_TONE_NAMES[t] ?? "")）")).ffFont(.subheadline).foregroundStyle(T.glyph)
+                    } else if store.isZh {
                         Text(t == 0 ? trs("輕聲") : tr("第 \(t) 聲（\(ZH_TONE_NAMES[t] ?? "")）")).ffFont(.subheadline).foregroundStyle(T.glyph)
                     } else {
                         Text(tr("第 \(t) 聲（\(TONE_NAMES[t] ?? "")）\(hint(t))")).ffFont(.subheadline).foregroundStyle(T.glyph)
@@ -285,7 +288,8 @@ struct ToneView: View {
     }
 
     private var rule: some View {
-        Text(store.isZh ? trs("華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。")
+        Text(store.isYue ? trs("粵語：第 1 聲高平、第 2 聲高升、第 3 聲中平、第 4 聲低降、第 5 聲低升、第 6 聲低平（粵拼寫數字，耶魯用記號和 h）。")
+             : store.isZh ? trs("華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。")
              : rom == 0
              ? trs("皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。")
              : trs("台羅／白話字：第 1 聲和第 4 聲都沒有記號；第 4、8 聲結尾有 p／t／k／h。"))

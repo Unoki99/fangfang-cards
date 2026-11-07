@@ -19,8 +19,8 @@ if [ "$HERE" != "$DEST" ]; then
   mkdir -p "$DEST"
   # keep word data that was already built there
   rsync -a --delete --exclude ".DS_Store" --exclude "xcuserdata" --exclude "project.xcworkspace" \
-        --exclude "FangfangCards/dict.json" --exclude "FangfangCards/cards.json" --exclude "FangfangCards/zh.json" --exclude "FangfangCards/inputcodes.json" "$HERE/" "$DEST/"
-  for f in dict.json cards.json zh.json inputcodes.json; do
+        --exclude "FangfangCards/dict.json" --exclude "FangfangCards/cards.json" --exclude "FangfangCards/zh.json" --exclude "FangfangCards/inputcodes.json" --exclude "FangfangCards/yue.json" "$HERE/" "$DEST/"
+  for f in dict.json cards.json zh.json inputcodes.json yue.json; do
     [ -f "$HERE/FangfangCards/$f" ] && cp "$HERE/FangfangCards/$f" "$DEST/FangfangCards/$f"
   done
 fi
@@ -44,6 +44,10 @@ fi
 # 華語 data (《兩岸常用詞典》)
 if [ ! -f "$DEST/FangfangCards/zh.json" ]; then
   bash "$DEST/build-data.sh" zh || { echo "✗ 沒辦法建立華語資料。"; exit 1; }
+fi
+# 粵語 data (CC-Canto, CC-CEDICT, Wiktionary…)
+if [ ! -f "$DEST/FangfangCards/yue.json" ]; then
+  bash "$DEST/build-data.sh" yue || echo "（沒辦法建立粵語資料，先跳過：App 裡的粵語會打不開）"
 fi
 if [ ! -f "$DEST/FangfangCards/inputcodes.json" ]; then
   bash "$DEST/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"

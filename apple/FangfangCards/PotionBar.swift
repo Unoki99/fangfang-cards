@@ -382,5 +382,5 @@ func levelColor(_ level0: Int) -> Color {
     let level = Lang.isFreqTopic(level0) ? (level0 % Lang.freqWordBase) % 8 + 1
         : (level0 > Lang.charTopicBase ? level0 - Lang.charTopicBase : level0)
     let colors: [UInt32] = [0xff5c5c, 0xff9a3c, 0xffd84a, 0x6fdc7f, 0x3fd6c6, 0x4f8dff, 0xa66bff, 0xff7ac6]
-    return Color(hex: colors[max(0, min(level - 1, colors.count - 1))])
+    return Color(hex: colors[max(0, level - 1) % colors.count])
 }

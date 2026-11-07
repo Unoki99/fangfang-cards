@@ -29,7 +29,7 @@ struct ZhGate<Content: View>: View {
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text(tr("載入華語詞典…")).ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("載入\(trs(Lang.names[Lang.current == 2 ? 2 : 1]))詞典…")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
         }
@@ -71,7 +71,7 @@ struct ZhLookupPane: View {
     var body: some View {
         List {
             Section {
-                TextField(tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
+                TextField(Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
                     .scaledFont(18)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -102,12 +102,14 @@ struct ZhLookupPane: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
             if query.isEmpty {
-                Text(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"))
+                Text(Lang.isYue ? tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞　*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                     : tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"))
                     .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
             } else if found.empty {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
             group(tr("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）"), found.tones)
+            group(tr("華語「\(query)」的粵語講法"), found.mandarin)
             group("「\(query)」", found.words)
             ForEach(Array(found.parts.enumerated()), id: \.offset) { i, w in
                 group("「\(w)」", found.partWords[i])
@@ -279,7 +281,7 @@ struct ZhEntryBody: View {
                     // tap a character to see it on its own (the entry with the same reading)
                     TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl)) { tapped = ZhKey(k: $0) }
                         .toneGlow()
-                    PlayButton(path: "tts:" + entry.h)
+                    PlayButton(path: entry.audio ?? "tts:" + entry.h)
                     Spacer()
                 }
                 HStack(spacing: 8) {
@@ -309,6 +311,13 @@ struct ZhEntryBody: View {
                         ZhEnglishList(items: ens)
                     }
                 }
+                // 粵語: the 華語 word(s) with the same meaning
+                if !entry.eq.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Chip(text: tr("華"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
+                        Text(entry.eq.joined(separator: "、")).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
+                    }
+                }
                 // 詞類: tap one for the words of that class
                 if !entry.pos.isEmpty {
                     HStack(spacing: 6) {
@@ -319,8 +328,10 @@ struct ZhEntryBody: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    if entry.hsk > 0 { Chip(text: Lang.hskName(entry.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
-                    if entry.tocfl > 0 { Chip(text: UILang.label(Lang.levelName(1, entry.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if dict.isYue {
+                        if entry.hsk > 0 { Chip(text: UILang.label(Lang.levelName(0, entry.hsk)), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    } else if entry.hsk > 0 { Chip(text: Lang.hskName(entry.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if entry.tocfl > 0 && !dict.isYue { Chip(text: UILang.label(Lang.levelName(1, entry.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if entry.spec != 0 { ZhSpecChip(spec: entry.spec) }
                     if let a = entry.alt, a != entry.h {
                         Chip(text: tr("簡"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
@@ -359,7 +370,9 @@ struct ZhEntryBody: View {
                 Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
                     .ffFont(.caption).foregroundStyle(T.muted)
             }
-            Text(tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"))
+            Text(dict.isYue
+                 ? tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
+                 : tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
             // 《重編國語辭典修訂本》 always at the very bottom
             moeChar
@@ -373,7 +386,7 @@ struct ZhEntryBody: View {
         if entry.h.count == 1, let i = dict.charIndex[entry.h],
            let r = dict.chars[i].readings.first(where: { $0.zy == entry.tw.first }) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(tr("《重編國語辭典修訂本》")).ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(dict.isYue ? tr("開放粵語字典") : tr("《重編國語辭典修訂本》")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 ForEach(Array(r.defs.enumerated()), id: \.offset) { n, d in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("\(n + 1).").ffFont(.subheadline, .bold).foregroundStyle(T.muted)
@@ -385,7 +398,7 @@ struct ZhEntryBody: View {
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.4)))
-            Text(tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
+            Text(dict.isYue ? tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") : tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
     }
@@ -617,7 +630,7 @@ struct ZhConvertPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 ZStack(alignment: .topLeading) {
                     if text.isEmpty {
-                        Text(tr("輸入或貼上華語（正體或簡體都可以）…")).foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
+                        Text(Lang.isYue ? tr("輸入或貼上粵語（正體或簡體都可以）…") : tr("輸入或貼上華語（正體或簡體都可以）…")).foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
                     }
                     TextEditor(text: $text)
                         .scaledFont(18)
@@ -644,8 +657,8 @@ struct ZhConvertPane: View {
                 }
                 if !pieces.isEmpty {
                     panel(0, trs("漢字"), dict.sentenceHan(pieces, store.zhPlace, base: T.glyph))
-                    panel(1, trs("拼音"), dict.sentence(pieces, 0, store.zhPlace))
-                    panel(2, trs("注音"), dict.sentence(pieces, 1, store.zhPlace))
+                    panel(1, trs(Lang.romNames[0]), dict.sentence(pieces, 0, store.zhPlace))
+                    panel(2, trs(Lang.romNames[1]), dict.sentence(pieces, 1, store.zhPlace))
                     HStack(spacing: 10) {
                         Button { copy(all: true) } label: {
                             Label(copied == 9 ? trs("已複製") : trs("全部複製"), systemImage: copied == 9 ? "checkmark" : "doc.on.doc").frame(maxWidth: .infinity)
@@ -669,7 +682,7 @@ struct ZhConvertPane: View {
         .onChange(of: text) { run() }
         .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }
         .sheet(isPresented: $copySheet) {
-            CopyOptionsSheet(texts: [plain(0), plain(1), plain(2)], names: [trs("漢字"), trs("拼音"), trs("注音")])
+            CopyOptionsSheet(texts: [plain(0), plain(1), plain(2)], names: [trs("漢字"), trs(Lang.romNames[0]), trs(Lang.romNames[1])])
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }

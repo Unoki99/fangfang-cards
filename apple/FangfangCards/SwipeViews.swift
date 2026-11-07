@@ -410,14 +410,14 @@ struct NewDeckView: View {
         .rootPage(tr("新詞")) {
             if !store.topics.isEmpty {
             Menu {
-                if store.isZh {
+                if store.isZh && !store.isYue {
                     Picker(tr("詞表"), selection: $store.zhList) {
                         ForEach(0..<Lang.listNames.count, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                     }
                     .pickerStyle(.inline)
                 }
-                Picker(store.isZh ? trs("等級") : trs("主題"), selection: topicBinding) {
-                    Text(store.isZh ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
+                Picker(store.isYue ? trs("常用詞") : (store.isZh ? trs("等級") : trs("主題")), selection: topicBinding) {
+                    Text(store.isZh && !store.isYue ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
                     ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
                 }
                 // 華語: the character cards, one level at a time
@@ -446,6 +446,8 @@ struct NewDeckView: View {
             } label: {
                 Label(topicName, systemImage: "square.stack.3d.up").labelStyle(.titleAndIcon)
                     .ffFont(.subheadline, .semibold)
+                    .lineLimit(1)
+                    .frame(maxWidth: 130)        // (a long group name doesn't push the other buttons away)
             }
             }
         }
@@ -457,7 +459,7 @@ struct NewDeckView: View {
 
 extension NewDeckView {
     var topicName: String {
-        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.isZh ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
+        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.isZh && !store.isYue ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
     }
 }
 

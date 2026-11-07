@@ -7,6 +7,8 @@
 #   bash build-data.sh ~/Downloads/kautian.ods
 #   bash build-data.sh zh              (only the 華語 data, FangfangCards/zh.json)
 #   bash build-data.sh ime             (only the input method codes, FangfangCards/inputcodes.json)
+#   bash build-data.sh yue             (only the 粵語 data, FangfangCards/yue.json)
+#   bash build-data.sh yue ~/Downloads/kaikki.org-dictionary-Chinese.jsonl   (with that Wiktionary file)
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d)"
@@ -26,6 +28,36 @@ build_ime() {
     "${LIU:--}" $([ -f "$TMP/cedict_ts.u8" ] && echo "$TMP/cedict_ts.u8") > /dev/null
 }
 if [ "$ODS" = "ime" ]; then build_ime; echo "✓ 完成：FangfangCards/inputcodes.json"; exit 0; fi
+# 粵語: CC-CEDICT + CC-Canto (CC BY-SA), rime-cantonese (CC BY), 開放粵語字典 (CC BY), and Wiktionary's Chinese
+# entries as extracted by kaikki.org (CC BY-SA): meanings, example sentences, the 華語 words, recordings
+build_yue() {
+  D="$TMP/yue"; mkdir -p "$D"
+  G="https://raw.githubusercontent.com"
+  echo "下載粵語資料（CC-CEDICT、CC-Canto、rime-cantonese、開放粵語字典）…"
+  curl -fsSL -o "$D/cedict_ts.u8" "$G/cschiller/zhongwen/main/data/cedict_ts.u8"
+  curl -fsSL -o "$D/CC-CANTO.txt" "$G/aaronhktan/jyut-dict/main/src/dictionaries/cedict/data/CC-CANTO.txt"
+  curl -fsSL -o "$D/READINGS.txt" "$G/aaronhktan/jyut-dict/main/src/dictionaries/cedict/data/READINGS.txt"
+  for f in jyut6ping3.words.dict.yaml jyut6ping3.chars.dict.yaml essay-cantonese.txt; do
+    curl -fsSL -o "$D/$f" "$G/rime/rime-cantonese/main/$f"
+  done
+  curl -fsSL -o "$D/yyzd.txt" "$G/kfcd/yyzd/master/dist/tsv/%E7%B9%81%E9%AB%94/%E7%B2%B5%E8%AA%9E%E5%AD%97%E5%85%B8_%28%E7%B2%B5%E6%8B%BC%29.txt"
+  # Wiktionary (kaikki.org): the file given, or one in Downloads / on the Desktop, or downloaded (large)
+  K="${1:-}"
+  for c in "$HOME/Downloads/kaikki.org-dictionary-Chinese.jsonl" "$HOME/Desktop/kaikki.org-dictionary-Chinese.jsonl"; do
+    [ -z "$K" ] && [ -f "$c" ] && K="$c"
+  done
+  if [ -z "$K" ]; then
+    echo "下載維基詞典的中文資料（kaikki.org，檔案很大，要等一下）…"
+    if curl -fL --progress-bar -o "$D/kaikki.jsonl" "https://kaikki.org/dictionary/Chinese/kaikki.org-dictionary-Chinese.jsonl"; then
+      K="$D/kaikki.jsonl"
+    else
+      echo "（下載不到維基詞典的資料，先不用：沒有例句和華語對照）"; K="-"
+    fi
+  fi
+  echo "整理粵語資料中…（大概一兩分鐘）"
+  /usr/bin/env python3 "$HERE/tools/build_cantonese.py" "$D" "$HERE/FangfangCards/yue.json" "$K"
+}
+if [ "$ODS" = "yue" ]; then build_yue "$2"; echo "✓ 完成：FangfangCards/yue.json"; exit 0; fi
 if [ -n "$ONLY_ZH" ]; then :; elif [ -z "$ODS" ]; then
   ODS="$TMP/kautian.ods"
   echo "下載教育部《臺灣台語常用詞辭典》資料（kautian.ods）…"

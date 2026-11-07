@@ -1,45 +1,47 @@
 import SwiftUI
 
-/// 設定 → 選聲調顏色: pick the colour of each tone, for 台語 and 華語, from a grid of balls
+/// 設定 → 選聲調顏色: pick the colour of each tone, for 台語, 華語 and 粵語, from a grid of balls
 /// (one column per colour in rainbow order, light at the top and dark at the bottom)
 struct ToneColorPicker: View {
     @EnvironmentObject var store: Store
     @AppStorage(ToneColors.versionKey) private var version = 0
     @AppStorage(ToneColors.key) private var toneSys = 0
-    @State private var zh = Store.shared.isZh
+    /// whose colours: 0 台語, 1 華語, 2 粵語
+    @State private var set = Lang.current
     @State private var selected = 1
 
-    private var tones: [Int] { zh ? ToneColors.zhTones : ToneColors.twTones }
+    private var tones: [Int] { ToneColors.tones(set: set) }
 
     private func name(_ t: Int) -> String {
-        if zh { return t == 0 ? trs("輕聲") : ["", trs("一聲"), trs("二聲"), trs("三聲"), trs("四聲")][t] }
+        if set == 1 { return t == 0 ? trs("輕聲") : ["", trs("一聲"), trs("二聲"), trs("三聲"), trs("四聲")][t] }
         return t == 0 ? trs("輕聲") : tr("第 \(t) 聲")
     }
 
     /// the tones that already use a colour
-    private func users(_ hex: UInt32) -> [Int] { tones.filter { ToneColors.hex(zh: zh, $0) == hex } }
+    private func users(_ hex: UInt32) -> [Int] { tones.filter { ToneColors.hex(set: set, $0) == hex } }
 
     var body: some View {
         let _ = version
         Form {
             Section {
-                Picker("", selection: $zh) {
-                    Text(tr("台語")).tag(false)
-                    Text(tr("華語")).tag(true)
+                Picker("", selection: $set) {
+                    Text(tr("台語")).tag(0)
+                    Text(tr("華語")).tag(1)
+                    Text(tr("粵語")).tag(2)
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: zh) { selected = 1 }
+                .onChange(of: set) { selected = 1 }
             }
             .listRowBackground(Color.clear)
 
             Section {
                 // the tones: tap one, then tap a ball below
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 5), spacing: 10) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: set == 2 ? 6 : 5), spacing: 10) {
                     ForEach(tones, id: \.self) { t in
                         let on = selected == t
                         Button { withAnimation(.snappy) { selected = t } } label: {
                             VStack(spacing: 4) {
-                                Circle().fill(Color(hex: ToneColors.hex(zh: zh, t)))
+                                Circle().fill(Color(hex: ToneColors.hex(set: set, t)))
                                     .frame(width: 28, height: 28)
                                     .overlay(Circle().stroke(on ? T.glyph : Color.clear, lineWidth: 2.5).padding(-4))
                                 Text(name(t)).ffFont(.caption, on ? Font.Weight.bold : Font.Weight.regular).foregroundStyle(on ? T.glyph : T.muted)
@@ -57,7 +59,7 @@ struct ToneColorPicker: View {
             } header: {
                 Text(tr("聲調（點一個，再點下面的顏色）"))
             } footer: {
-                if !zh && toneSys == 5 { Text(tr("五聲：第 8 聲用第 1 聲的顏色，第 4 聲用第 3 聲的顏色。")) }
+                if set == 0 && toneSys == 5 { Text(tr("五聲：第 8 聲用第 1 聲的顏色，第 4 聲用第 3 聲的顏色。")) }
             }
             .listRowBackground(T.fn.opacity(0.7))
 
@@ -89,7 +91,7 @@ struct ToneColorPicker: View {
             .listRowBackground(T.fn.opacity(0.7))
 
             Section {
-                Button(tr("恢復原本的顏色（\(zh ? trs("華語") : trs("台語"))）")) { ToneColors.resetAll(zh: zh) }
+                Button(tr("恢復原本的顏色（\(trs(Lang.names[set]))）")) { ToneColors.resetAll(set: set) }
                     .foregroundStyle(T.rustInk)
             }
             .listRowBackground(T.fn.opacity(0.7))
@@ -101,10 +103,10 @@ struct ToneColorPicker: View {
     }
 
     private func ball(_ hex: UInt32, label: String) -> some View {
-        let picked = ToneColors.hex(zh: zh, selected) == hex
+        let picked = ToneColors.hex(set: set, selected) == hex
         let who = users(hex)
         return Button {
-            withAnimation(.snappy) { ToneColors.set(zh: zh, selected, hex) }
+            withAnimation(.snappy) { ToneColors.set(set: set, selected, hex) }
         } label: {
             Circle().fill(Color(hex: hex))
                 .frame(width: 27, height: 27)
@@ -130,7 +132,19 @@ struct ToneColorPicker: View {
 
     /// every tone in its colour, on a word
     @ViewBuilder private var sample: some View {
-        if zh {
+        if set == 2 {
+            // 詩 史 試 時 市 事: si1–si6
+            HStack(spacing: 14) {
+                ForEach(Array(zip(["詩", "史", "試", "時", "市", "事"], [1, 2, 3, 4, 5, 6])), id: \.0) { h, t in
+                    let c = Color(hex: ToneColors.hex(set: 2, t))
+                    VStack(spacing: 2) {
+                        Text(h).scaledFont(26, weight: .semibold).foregroundStyle(c)
+                        Text("si\(t)").latFont(15).foregroundStyle(c)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+        } else if set == 1 {
             // 媽 麻 馬 罵 嗎
             HStack(spacing: 14) {
                 ForEach(Array(zip(["媽", "麻", "馬", "罵", "嗎"], [1, 2, 3, 4, 0])), id: \.0) { h, t in

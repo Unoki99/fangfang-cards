@@ -39,6 +39,13 @@ final class Store: ObservableObject {
     // MARK: 華語 mode
     /// the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile)
     @Published private(set) var isZh = false { didSet { T.zh = isZh } }
+    /// the language shown: 0 台語, 1 華語, 2 粵語 (粵語 uses the 華語 pages, with its own dictionary)
+    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2 } }
+    /// a hint to show (粵語 without a Cantonese voice on the device)
+    @Published var speechHint: String?
+    var isYue: Bool { lang == 2 }
+    /// which of 華語 / 粵語 the dictionary in `zh` is (1 or 2)
+    private var zhKind: Int { zh?.isYue == true ? 2 : 1 }
     /// switching language: the other deck is being loaded
     @Published private(set) var switching = false
     /// the 華語 dictionary (zh.json), once loaded
@@ -59,7 +66,11 @@ final class Store: ObservableObject {
     @Published private(set) var listVersion = 0
     /// 華語 reading of: 0 臺灣, 1 大陸
     @Published var zhPlace = Lang.zhPlace { didSet { UserDefaults.standard.set(zhPlace, forKey: Lang.placeKey) } }
-    private struct Deck { var cards: [Card] = []; var byKey: [String: Card] = [:]; var rank: [String: Int] = [:]; var pools: [Int: [Card]] = [:]; var topics: [Topic] = [] }
+    private struct Deck { var cards: [Card] = []; var byKey: [String: Card] = [:]; var rank: [String: Int] = [:]; var pools: [Int: [Card]] = [:]; var topics: [Topic] = []; var kind = 0 }
+    /// which language the deck waiting in `other` is (0 台語, 1 華語, 2 粵語)
+    private var otherKind: Int { other?.kind ?? -1 }
+    /// the one of 華語 / 粵語 used last (read in the background in 台語 mode, ready for switching)
+    private static let lastZhKey = "lastZhKind"
     private var other: Deck?
     /// how many 華語 words are cards to swipe (the most common ones; every word is in the dictionary)
     static let zhDeckSize = 20000
@@ -97,7 +108,7 @@ final class Store: ObservableObject {
             progress = p
         }
         loaded = true
-        if Lang.isZh { setLanguage(zh: true) }
+        if Lang.isZh { setLanguage(Lang.current) }
         // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
         loadDict()
         if !Lang.isZh { preloadZh() }
@@ -131,7 +142,7 @@ final class Store: ObservableObject {
     private func recount() {
         var s = 0, u = 0, k = 0
         // only the language shown (台語 and 華語 words are counted apart)
-        for (key, v) in progress.status where Lang.isZhKey(key) == isZh {
+        for (key, v) in progress.status where Lang.kind(key) == lang {
             if v != 0 { s += 1 }
             if v == 1 { k += 1 } else if v == 2 { u += 1 }
         }
@@ -143,26 +154,34 @@ final class Store: ObservableObject {
 
     // MARK: switching language
 
-    func setLanguage(zh wantZh: Bool) {
-        UserDefaults.standard.set(wantZh ? 1 : 0, forKey: Lang.key)
-        guard wantZh != isZh, !switching else { return }
-        if !wantZh {
-            swapDecks(); isZh = false; undoStack = []; canUndo = false; recount()
+    func setLanguage(zh wantZh: Bool) { setLanguage(wantZh ? 1 : 0) }
+
+    /// 0 台語, 1 華語, 2 粵語
+    func setLanguage(_ want0: Int) {
+        let want = min(max(want0, 0), 2)
+        UserDefaults.standard.set(want, forKey: Lang.key)
+        guard want != lang, !switching else { return }
+        if want != 0 { UserDefaults.standard.set(want, forKey: Store.lastZhKey) }
+        func shown(_ l: Int) { lang = l; isZh = l != 0; zhRom = Lang.zhRom; undoStack = []; canUndo = false; recount() }
+        if want == 0 {
+            if otherKind == 0 { swapDecks() }
+            shown(0)
             return
         }
-        if let o = other, o.cards.first?.isZh == true {
-            swapDecks(); isZh = true; undoStack = []; canUndo = false; recount()
+        // the deck waiting is the one wanted (台語 → 華語 / 粵語)
+        if lang == 0, otherKind == want {
+            swapDecks(); shown(want)
             return
         }
         switching = true
         Task {
-            let result = await zhLoadTask(priority: .userInitiated).value
+            let result = await zhLoadTask(priority: .userInitiated, kind: want).value
             switch result {
             case .success(let (d, deck)):
                 useZh(d, deck: deck)
             case .failure(let e):
-                zhError = "華語詞典讀取失敗：\(e.localizedDescription)"
-                UserDefaults.standard.set(0, forKey: Lang.key)
+                zhError = "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
+                UserDefaults.standard.set(lang, forKey: Lang.key)
                 zhLoad = nil
             }
             switching = false
@@ -172,49 +191,63 @@ final class Store: ObservableObject {
     /// the 華語 dictionary and deck being read (shared, so reading it at start-up and switching to 華語 meanwhile
     /// read it only once)
     private var zhLoad: Task<Result<(ZhDict, Deck), Error>, Never>?
+    private var zhLoadKind = 0
 
-    private func zhLoadTask(priority: TaskPriority) -> Task<Result<(ZhDict, Deck), Error>, Never> {
-        if let t = zhLoad { return t }
-        let keys = Array(progress.status.keys.filter(Lang.isZhKey)) + Array(progress.saved.keys.filter(Lang.isZhKey))
+    /// kind: 1 華語 (zh.json), 2 粵語 (yue.json)
+    private func zhLoadTask(priority: TaskPriority, kind: Int) -> Task<Result<(ZhDict, Deck), Error>, Never> {
+        if let t = zhLoad, zhLoadKind == kind { return t }
+        let keys = Array(progress.status.keys.filter { Lang.kind($0) == kind }) + Array(progress.saved.keys.filter { Lang.kind($0) == kind })
         let size = Store.zhDeckSize
-        let loadedDict = zh
+        let loadedDict = zh?.isYue == (kind == 2) ? zh : nil
         let list = zhList
         let t = Task.detached(priority: priority) { () -> Result<(ZhDict, Deck), Error> in
             do {
                 let d: ZhDict
                 if let have = loadedDict { d = have } else {
-                    guard let url = Bundle.main.url(forResource: "zh", withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
+                    guard let url = Bundle.main.url(forResource: kind == 2 ? "yue" : "zh", withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
                     d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe))
+                    // 粵語: the radicals (部首查字) from the 華語 data, if it's there
+                    if d.isYue, let zu = Bundle.main.url(forResource: "zh", withExtension: "json"),
+                       let zd = try? Data(contentsOf: zu, options: .mappedIfSafe) { d.borrowRadicals(from: zd) }
                 }
                 return .success((d, Store.makeZhDeck(d, list: list, keys: keys, size: size)))
             } catch { return .failure(error) }
         }
-        zhLoad = t
+        zhLoad = t; zhLoadKind = kind
         return t
     }
 
-    /// reads the 華語 dictionary in the background (at start-up, in 台語 mode), ready for switching
+    /// reads the 華語 (or 粵語, if that was used last) dictionary in the background (at start-up, in 台語 mode),
+    /// ready for switching
     func preloadZh() {
         guard zh == nil else { return }
+        let kind = UserDefaults.standard.integer(forKey: Store.lastZhKey) == 2 ? 2 : 1
         Task {
-            if case .success(let (d, deck)) = await zhLoadTask(priority: .utility).value { useZh(d, deck: deck) }
+            if case .success(let (d, deck)) = await zhLoadTask(priority: .utility, kind: kind).value { useZh(d, deck: deck) }
         }
     }
 
-    /// the 華語 dictionary is read: keep it, and use its deck now (華語 mode) or keep it for switching
-    private func useZh(_ d: ZhDict, deck: Deck) {
+    /// a 華語 / 粵語 dictionary is read: keep it, and use its deck now (if that language is wanted) or keep it
+    /// for switching
+    private func useZh(_ d: ZhDict, deck d0: Deck) {
+        var deck = d0
+        let kind = d.isYue ? 2 : 1
+        deck.kind = kind
+        // (the other one of 華語 / 粵語, read in the background, finishing after this one was chosen: not kept)
+        if lang != 0, kind != Lang.current { return }
         let first = zh == nil
         zh = d
         zhLoad = nil
         // words already in 熟悉: their characters' cards too (and saved, so other devices get them)
         if first { save() }        // (save() first marks the character cards)
-        if Lang.isZh {
-            guard !isZh else { return }
-            other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics)
+        if Lang.current == kind {
+            guard lang != kind else { return }
+            if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }
             cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
-            isZh = true; undoStack = []; canUndo = false; recount()
+            lang = kind; isZh = true; zhRom = Lang.zhRom; undoStack = []; canUndo = false; recount()
             newStart = 0; queueTopic = -1
-        } else if other == nil || other?.cards.first?.isZh != true {
+            save()
+        } else if lang == 0 {
             other = deck
         }
         WidgetBridge.rebuildIfNeeded(self)      // the widgets can have the 華語 levels now
@@ -240,7 +273,7 @@ final class Store: ObservableObject {
             let l = d.entries[i].level(list)
             if l > 0 { counts[l, default: 0] += 1 }
         }
-        deck.topics = counts.keys.sorted().map { Topic(id: $0, name: Lang.levelName(list, $0), count: counts[$0]!) }
+        deck.topics = counts.keys.sorted().map { Topic(id: $0, name: d.isYue ? "常用詞 \(($0 - 1) * Lang.yueGroup + 1)–\($0 * Lang.yueGroup)" : Lang.levelName(list, $0), count: counts[$0]!) }
         // the character cards, after the words: level by level of the word list's character list, the more
         // common first; then the more common characters the list doesn't have
         let corder = d.chars.indices.sorted { a, b in
@@ -256,7 +289,8 @@ final class Store: ObservableObject {
             if let t = c.cats?.first { ccounts[t, default: 0] += 1 }
         }
         deck.topics += ccounts.keys.sorted().map { t in
-            Topic(id: t, name: t == Lang.moreChars ? "漢字・更多常用字" : "漢字・" + Lang.levelName(list, t - Lang.charTopicBase), count: ccounts[t]!)
+            Topic(id: t, name: t == Lang.moreChars ? "漢字・更多常用字"
+                    : "漢字・" + (d.isYue ? Lang.yueCharLevelName(t - Lang.charTopicBase) : Lang.levelName(list, t - Lang.charTopicBase)), count: ccounts[t]!)
         }
         // rarer words you already have in 不熟 / 熟悉 / 收藏
         for k in keys where deck.byKey[k] == nil {
@@ -269,11 +303,13 @@ final class Store: ObservableObject {
     private func rebuildZhDeck() {
         guard let d = zh, !switching else { return }
         switching = true
-        let keys = Array(progress.status.keys.filter(Lang.isZhKey)) + Array(progress.saved.keys.filter(Lang.isZhKey))
+        let kind = zhKind
+        let keys = Array(progress.status.keys.filter { Lang.kind($0) == kind }) + Array(progress.saved.keys.filter { Lang.kind($0) == kind })
         let list = zhList, size = Store.zhDeckSize
         Task {
-            let deck = await Task.detached(priority: .userInitiated) { Store.makeZhDeck(d, list: list, keys: keys, size: size) }.value
-            if isZh {
+            var deck = await Task.detached(priority: .userInitiated) { Store.makeZhDeck(d, list: list, keys: keys, size: size) }.value
+            deck.kind = kind
+            if lang == kind {
                 cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
                 newStart = 0; queueTopic = -1; undoStack = []; canUndo = false
             } else {
@@ -286,7 +322,7 @@ final class Store: ObservableObject {
 
     private func swapDecks() {
         guard let o = other else { return }
-        other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics)
+        other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: lang)
         cards = o.cards; byKey = o.byKey; rank = o.rank; pools = o.pools; topics = o.topics
         newStart = 0; queueTopic = -1
     }
@@ -295,12 +331,12 @@ final class Store: ObservableObject {
     func card(for k: String) -> Card? {
         if let c = byKey[k] { return c }
         if let c = other?.byKey[k] { return c }          // the other language's word (from Shortcuts, widgets)
-        if isZh, let ch = Lang.charOf(k), let d = zh, let i = d.charIndex[ch] {
+        if isZh, Lang.kind(k) == lang, lang == zhKind, let ch = Lang.charOf(k), let d = zh, let i = d.charIndex[ch] {
             let c = d.charCard(i, list: zhList)
             byKey[k] = c
             return c
         }
-        guard isZh, Lang.isZhKey(k), let d = zh, let i = d.index[k] else { return nil }
+        guard isZh, Lang.kind(k) == lang, lang == zhKind, let d = zh, let i = d.index[k] else { return nil }
         let c = d.card(i, list: zhList)
         byKey[k] = c
         return c
@@ -309,12 +345,12 @@ final class Store: ObservableObject {
     /// a word of either language (for syncing: the other language's words are kept too)
     private func isWord(_ k: String) -> Bool {
         byKey[k] != nil || other?.byKey[k] != nil
-            || (Lang.isZhKey(k) && (zh == nil || zh?.index[k] != nil || Lang.charOf(k).map { zh?.charIndex[$0] != nil } == true))
+            || (Lang.isZhKey(k) && (zh == nil || Lang.kind(k) != zhKind || zh?.index[k] != nil || Lang.charOf(k).map { zh?.charIndex[$0] != nil } == true))
     }
 
     // MARK: 本週學習 (this week's words)
 
-    private var weekLang: String { isZh ? "zh" : "tw" }
+    private var weekLang: String { ["tw", "zh", "yue"][lang] }
 
     /// this week's words (in the language shown), in the order they were picked
     var weekCards: [Card] {
@@ -448,7 +484,7 @@ final class Store: ObservableObject {
         func add(_ cs: [String]) { for ch in cs where seen.insert(ch).inserted { all.append(ch) } }
         // every card you can swipe: the word list's words and all the character cards
         for c in cards { add(hans(c.h)) }
-        for (k, v) in progress.status where v != 0 && Lang.isZhKey(k) {
+        for (k, v) in progress.status where v != 0 && Lang.kind(k) == lang {
             let cs = hans(String(k.split(separator: "\t", maxSplits: 1).first ?? ""))
             add(cs)
             if v == 1 { known.formUnion(cs) } else if v == 2 { unknown.formUnion(cs) }
@@ -466,14 +502,15 @@ final class Store: ObservableObject {
     /// to mark it again in the character lists). Done in one go, so the counts are worked out once.
     func syncCharCards() {
         guard let d = zh, !d.chars.isEmpty else { return }
+        let kind = d.isYue ? 2 : 1
         var want: [String] = []
         var seen = Set<String>()
-        for (k, v) in progress.status where v == 1 && Lang.charOf(k) == nil && Lang.isZhKey(k) {
+        for (k, v) in progress.status where v == 1 && Lang.charOf(k) == nil && Lang.kind(k) == kind {
             guard let t = k.firstIndex(of: "\t") else { continue }
             for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
                 let ch = String(u)
                 guard seen.insert(ch).inserted, d.charIndex[ch] != nil else { continue }
-                let ck = Lang.charKey(ch)
+                let ck = Lang.charKey(ch, yue: d.isYue)
                 switch progress.status[ck] {
                 case 1?: break
                 // marked 不熟 by hand after the word was learned: left as it is
@@ -500,17 +537,17 @@ final class Store: ObservableObject {
     /// each language's cards and topics, whichever is shown now (for the widgets; 華語 once it has loaded)
     var twDeck: (cards: [Card], topics: [Topic]) {
         if !isZh { return (cards, topics) }
-        if let o = other, o.cards.first?.isZh != true { return (o.cards, o.topics) }
+        if let o = other, o.kind == 0 { return (o.cards, o.topics) }
         return ([], [])
     }
     var zhDeck: (cards: [Card], topics: [Topic]) {
         if isZh { return (cards, topics) }
-        if let o = other, o.cards.first?.isZh == true { return (o.cards, o.topics) }
+        if let o = other, o.kind != 0 { return (o.cards, o.topics) }
         return ([], [])
     }
 
     /// the words of the language shown
-    func isShownLanguage(_ k: String) -> Bool { Lang.isZhKey(k) == isZh }
+    func isShownLanguage(_ k: String) -> Bool { Lang.kind(k) == lang }
 
     func status(_ c: Card) -> Int? { progress.status[c.k] }
     func streak(_ c: Card) -> Int { progress.streak[c.k] ?? 0 }
@@ -588,12 +625,12 @@ final class Store: ObservableObject {
 
     /// 華語: a word marked 熟悉 makes its characters' cards 熟悉 too (what syncCharCards does, for one word)
     private func knowChars(of k: String, in p: inout Progress) {
-        guard let d = zh, !d.chars.isEmpty, Lang.charOf(k) == nil, Lang.isZhKey(k), let t = k.firstIndex(of: "\t") else { return }
+        guard let d = zh, !d.chars.isEmpty, Lang.charOf(k) == nil, Lang.kind(k) == (d.isYue ? 2 : 1), let t = k.firstIndex(of: "\t") else { return }
         let now = Date().timeIntervalSince1970
         for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
             let ch = String(u)
             guard d.charIndex[ch] != nil else { continue }
-            let ck = Lang.charKey(ch)
+            let ck = Lang.charKey(ch, yue: d.isYue)
             switch p.status[ck] {
             case 1?: break
             case 2? where (p.added[ck] ?? 0) >= (p.added[k] ?? 0): break

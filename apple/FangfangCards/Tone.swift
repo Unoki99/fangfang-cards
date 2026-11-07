@@ -55,6 +55,12 @@ enum ToneColors {
                                             6: 0x4fd8c4, 7: 0xffe066, 8: 0xff8cc6, 0: 0x8e8e93]
     /// 華語: 1 red, 2 green (like 台語 5), 3 blue, 4 purple (like 台語 2), 輕聲 grey
     static let zhStandard: [Int: UInt32] = [1: 0xff6b6b, 2: 0x6fdc7f, 3: 0x6eaaff, 4: 0xc39bff, 0: 0x8e8e93]
+    /// 粵語 1–6: 1 high level red, 2 high rising green, 3 mid level yellow, 4 low falling blue, 5 low rising
+    /// purple, 6 low level teal
+    static let yueTones = [1, 2, 3, 4, 5, 6]
+    static let yueStandard: [Int: UInt32] = [1: 0xff6b6b, 2: 0x6fdc7f, 3: 0xffe066, 4: 0x6eaaff, 5: 0xc39bff, 6: 0x4fd8c4]
+    /// the tones of a set of colours: 0 台語, 1 華語, 2 粵語
+    static func tones(set: Int) -> [Int] { set == 2 ? yueTones : (set == 1 ? zhTones : twTones) }
 
     /// the balls to pick from: one column per colour, in rainbow order, light at the top and dark at the bottom
     /// (the middle row is the standard colour)
@@ -70,47 +76,47 @@ enum ToneColors {
         ("灰", [0xd1d1d6, 0xaeaeb2, 0x8e8e93, 0x636366, 0x48484a]),
     ]
 
-    private static func storeKey(_ zh: Bool, _ t: Int) -> String { "toneColor." + (zh ? "zh." : "tw.") + String(t) }
+    private static func storeKey(_ set: Int, _ t: Int) -> String { "toneColor." + ["tw.", "zh.", "yue."][set] + String(t) }
 
-    /// the colour picked for a tone (as hex)
-    static func hex(zh: Bool, _ t: Int) -> UInt32 {
-        let std = (zh ? zhStandard : twStandard)[t] ?? 0x8e8e93
-        guard let v = UserDefaults.standard.object(forKey: storeKey(zh, t)) as? Int else { return std }
+    /// the colour picked for a tone (as hex); set 0 台語, 1 華語, 2 粵語
+    static func hex(set: Int, _ t: Int) -> UInt32 {
+        let std = [twStandard, zhStandard, yueStandard][set][t] ?? 0x8e8e93
+        guard let v = UserDefaults.standard.object(forKey: storeKey(set, t)) as? Int else { return std }
         return UInt32(truncatingIfNeeded: v)
     }
+    static func hex(zh: Bool, _ t: Int) -> UInt32 { hex(set: zh ? 1 : 0, t) }
 
     // read once (the colours are used for every syllable), made again when one is picked
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var twCache: [Int: Color]?
-    nonisolated(unsafe) private static var zhCache: [Int: Color]?
+    nonisolated(unsafe) private static var caches: [Int: [Int: Color]] = [:]
 
-    private static func table(zh: Bool) -> [Int: Color] {
+    private static func table(_ set: Int) -> [Int: Color] {
         lock.lock(); defer { lock.unlock() }
-        if zh, let c = zhCache { return c }
-        if !zh, let c = twCache { return c }
+        if let c = caches[set] { return c }
         var t: [Int: Color] = [:]
-        for tone in zh ? zhTones : twTones { t[tone] = Color(hex: hex(zh: zh, tone)) }
-        if zh { zhCache = t } else { twCache = t }
+        for tone in tones(set: set) { t[tone] = Color(hex: hex(set: set, tone)) }
+        caches[set] = t
         return t
     }
 
-    static func twColor(_ t: Int) -> Color? { table(zh: false)[t] }
-    static func zhColor(_ t: Int) -> Color? { table(zh: true)[t] }
+    static func twColor(_ t: Int) -> Color? { table(0)[t] }
+    static func zhColor(_ t: Int) -> Color? { table(1)[t] }
+    static func yueColor(_ t: Int) -> Color? { table(2)[t] }
 
     /// picks a colour for a tone (nil = back to the standard one); everything is drawn again
-    @MainActor static func set(zh: Bool, _ t: Int, _ v: UInt32?) {
-        if let v { UserDefaults.standard.set(Int(v), forKey: storeKey(zh, t)) }
-        else { UserDefaults.standard.removeObject(forKey: storeKey(zh, t)) }
+    @MainActor static func set(set: Int, _ t: Int, _ v: UInt32?) {
+        if let v { UserDefaults.standard.set(Int(v), forKey: storeKey(set, t)) }
+        else { UserDefaults.standard.removeObject(forKey: storeKey(set, t)) }
         changed()
     }
 
-    @MainActor static func resetAll(zh: Bool) {
-        for t in zh ? zhTones : twTones { UserDefaults.standard.removeObject(forKey: storeKey(zh, t)) }
+    @MainActor static func resetAll(set: Int) {
+        for t in tones(set: set) { UserDefaults.standard.removeObject(forKey: storeKey(set, t)) }
         changed()
     }
 
     @MainActor private static func changed() {
-        lock.lock(); twCache = nil; zhCache = nil; lock.unlock()
+        lock.lock(); caches = [:]; lock.unlock()
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: versionKey) + 1, forKey: versionKey)
         Store.shared.objectWillChange.send()
         WidgetBridge.rebuildIfNeeded(Store.shared)
@@ -120,7 +126,7 @@ enum ToneColors {
     static let versionKey = "toneColorVersion"
     /// all the picked colours, for knowing when the widgets' words must be made again
     static var signature: String {
-        (twTones.map { String(hex(zh: false, $0), radix: 16) } + zhTones.map { String(hex(zh: true, $0), radix: 16) }).joined(separator: ",")
+        (0...2).flatMap { set in tones(set: set).map { String(hex(set: set, $0), radix: 16) } }.joined(separator: ",")
     }
 }
 
@@ -456,7 +462,11 @@ struct ToneMenu: View {
                 Text(tr("調")).ffFont(.subheadline, .bold).foregroundStyle(T.muted)
                 #endif
             } else {
-                if store.isZh {
+                if store.isYue {
+                    ForEach([1, 2, 3, 4, 5, 6], id: \.self) { t in
+                        Circle().fill(ToneColors.yueColor(t) ?? T.muted).frame(width: 5, height: 5)
+                    }
+                } else if store.isZh {
                     ForEach([1, 2, 3, 4], id: \.self) { t in
                         Circle().fill(ToneColors.zhColor(t) ?? T.muted).frame(width: 5, height: 5)
                     }
