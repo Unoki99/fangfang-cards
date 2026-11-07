@@ -96,15 +96,26 @@ fun NewDeckTab() {
                 }
             }
         })
-        Column(Modifier.fillMaxSize().widthIn(max = 560.dp).align(Alignment.CenterHorizontally).padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Txt("已看 ${Store.seenCount} / ${Store.cards.size}　熟悉 ${Store.knownCount}　不熟 ${Store.unknownCount}", ff(FF.Footnote), T.muted)
-            Spacer(Modifier.height(12.dp))
-            if (queue.isEmpty()) {
-                Spacer(Modifier.weight(1f))
-                Txt(if (topic < 0) "全部的詞都看過了！" else if (zh) "這個等級的詞都看過了！" else "這個主題的詞都看過了！", ff(FF.Title3), T.muted)
-                Spacer(Modifier.weight(1f))
-            } else DeckArea(queue, onSwipe = { c, right -> Store.mark(c, right) }, undo = { Store.undo() })
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            // a tablet, or a phone on its side (華語): the word's characters as small cards beside the big one
+            val landscape = maxWidth > maxHeight
+            val sides = zh && queue.isNotEmpty() && (maxWidth >= 1100.dp || (landscape && maxWidth >= 640.dp))
+            val sideW = if (maxWidth >= 1100.dp) 290.dp else ((maxWidth - 32.dp - 32.dp) * 0.27f)
+            val small = maxHeight < 520.dp
+            Row(Modifier.fillMaxSize().widthIn(max = if (sides) 1260.dp else 560.dp).align(Alignment.TopCenter).padding(if (small) 10.dp else 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (sides) CharSideColumn(queue.first(), 0, small, Modifier.width(sideW).fillMaxHeight())
+                Column(Modifier.weight(1f).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Txt("已看 ${Store.seenCount} / ${Store.cards.size}　熟悉 ${Store.knownCount}　不熟 ${Store.unknownCount}", ff(FF.Footnote), T.muted)
+                    Spacer(Modifier.height(if (small) 6.dp else 12.dp))
+                    if (queue.isEmpty()) {
+                        Spacer(Modifier.weight(1f))
+                        Txt(if (topic < 0) "全部的詞都看過了！" else if (zh) "這個等級的詞都看過了！" else "這個主題的詞都看過了！", ff(FF.Title3), T.muted)
+                        Spacer(Modifier.weight(1f))
+                    } else DeckArea(queue, onSwipe = { c, right -> Store.mark(c, right) }, undo = { Store.undo() })
+                }
+                if (sides) CharSideColumn(queue.first(), 1, small, Modifier.width(sideW).fillMaxHeight())
+            }
         }
     }
 }
@@ -420,10 +431,13 @@ fun UnknownTab() {
                         PT("翻牌配對", Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         if (Store.isZh) PT("手寫練習", Icons.Filled.Edit, true, Practice.HANDWRITING) else null,
                     )
-                    TileGrid(tiles.size) { i, m -> val t = tiles[i]; PracticeTile(t.title, t.icon, t.enabled, m) { UI.practice = t.p } }
-                    Txt("本週學習：從不熟的詞選這個星期要學的（或點詞旁邊的月曆），一週後做期末測驗；答錯的詞可以留到下一週。練習時連續答對 $goal 次，詞就會移到「熟悉」。往右滑可以直接移過去。例句填空：只做例句填空題。排句子：例句被打亂了，照華語的意思把詞排回去。看字排讀音：只看漢字，把讀音照順序排。聲調練習：聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。翻牌配對：漢字和讀音配成一對。練習範圍：只練一個等級（或一組）的不熟的詞或字，下面的列表也只列那些詞。" +
-                        (if (Store.isZh) "手寫練習：選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或觸控筆在格子裡寫；「描字」會在格子裡放一個淡淡的楷體字，藥水條顯示描得多像。" else ""),
-                        ff(FF.Footnote), T.muted)
+                    // the last tile: 怎麼練習, what each way of practising does
+                    var help by remember { mutableStateOf(false) }
+                    TileGrid(tiles.size + 1) { i, m ->
+                        if (i == tiles.size) PracticeTile("怎麼練習", Icons.Filled.HelpOutline, true, m) { help = true }
+                        else { val t = tiles[i]; PracticeTile(t.title, t.icon, t.enabled, m) { UI.practice = t.p } }
+                    }
+                    if (help) PracticeHelp(goal) { help = false }
                     SearchField(query, { query = it }, "漢字、羅馬字或意思", fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp))
                     SectionTitle(if (Store.practiceName == "全部不熟的詞") "不熟的詞（${Store.unknownCount}）"
                         else "${Store.practiceName}・不熟的詞（${all.size}／${Store.unknownCount}）")
@@ -514,5 +528,117 @@ fun PracticeTile(title: String, icon: androidx.compose.ui.graphics.vector.ImageV
         Icon(icon, null, tint = if (enabled) T.greenInk else T.muted, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(6.dp))
         Txt(title, ff(FF.Subheadline, FontWeight.SemiBold), if (enabled) T.greenInk else T.muted, maxLines = 1)
+    }
+}
+
+/** 不熟 → 怎麼練習: what each way of practising does, one box each */
+@Composable
+private fun PracticeHelp(goal: Int, close: () -> Unit) {
+    val items = buildList {
+        add("本週學習" to "從不熟的詞選這個星期要學的（或點詞旁邊的月曆），一週後做期末測驗；答錯的詞可以留到下一週。")
+        add("開始練習" to "各種題目混在一起練。連續答對 $goal 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。")
+        add("例句填空" to "只做例句填空題。")
+        add("排句子" to "例句被打亂了，照華語的意思把詞排回去。")
+        add("看字排讀音" to "只看漢字，把讀音照順序排。")
+        add("聲調練習" to "聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。")
+        add("翻牌配對" to "不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。")
+        if (Store.isZh) add("手寫練習" to "選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。")
+        add("練習範圍" to "只練一個等級（或一組）的不熟的詞或字。")
+    }
+    AlertDialog(onDismissRequest = close, containerColor = T.bg,
+        confirmButton = { TextButton(onClick = close) { Text("完成", color = T.greenInk) } },
+        title = { Txt("怎麼練習", ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                for ((t, x) in items) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.7f))
+                    .border(1.dp, T.fnEdge, RoundedCornerShape(14.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Txt(t, ff(FF.Headline, FontWeight.SemiBold), T.glyph)
+                    Txt(x, ff(FF.Subheadline), T.muted)
+                }
+            }
+        })
+}
+
+// MARK: - the characters of the word beside the card (tablet, or a phone on its side)
+
+/** the side cards of a word's characters: the 1st, 3rd, 5th… on the left (side 0), the 2nd, 4th, 6th… on the right */
+@Composable
+private fun CharSideColumn(word: Card, side: Int, small: Boolean, modifier: Modifier) {
+    val chars = word.h.codePoints().toArray().filter { Zhuyin.isHan(it) }.map { String(Character.toChars(it)) }
+    val cards = if (chars.size > 1) chars.mapNotNull { Store.cardFor(Lang.charKey(it)) } else emptyList()
+    Column(modifier.padding(top = if (small) 22.dp else 32.dp), verticalArrangement = Arrangement.spacedBy(if (small) 10.dp else 16.dp)) {
+        for ((i, c) in cards.withIndex()) if (i % 2 == side) key(word.k + "|" + c.k) {
+            CharSideSwipe(c, small, Modifier.fillMaxWidth().height(if (small) 140.dp else 210.dp))
+        }
+    }
+}
+
+/** a side card you can swipe: right = 認識, left = 不熟 (the character card); it flies off and comes back, as it's
+ *  part of the word on the big card (which stays until that one is swiped) */
+@Composable
+private fun CharSideSwipe(card: Card, small: Boolean, modifier: Modifier) {
+    val scope = rememberCoroutineScope()
+    val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val shown = remember { Animatable(1f) }
+    val dens = LocalDensity.current.density
+    var flying by remember { mutableStateOf(false) }
+    val ch = Lang.charOf(card.k) ?: card.h
+    fun fly(right: Boolean) {
+        if (flying) return
+        flying = true
+        scope.launch {
+            offset.animateTo(Offset(if (right) 1600f else -1600f, offset.value.y + 60f), tween(220))
+            Store.setCharKnown(ch, right)
+            offset.snapTo(Offset.Zero); shown.snapTo(0f)
+            shown.animateTo(1f, androidx.compose.animation.core.spring(0.7f, 300f))
+            flying = false
+        }
+    }
+    Box(modifier.graphicsLayer {
+        translationX = offset.value.x; translationY = offset.value.y
+        rotationZ = offset.value.x / 22f / density
+        val k = 0.85f + 0.15f * shown.value
+        scaleX = k; scaleY = k; alpha = shown.value
+    }.pointerInput(card.k) {
+        detectDragGestures(
+            onDragEnd = {
+                val w = offset.value.x / density
+                if (abs(w) > 90) fly(w > 0) else scope.launch { offset.animateTo(Offset.Zero, androidx.compose.animation.core.spring(0.7f, 400f)) }
+            },
+            onDragCancel = { scope.launch { offset.animateTo(Offset.Zero) } },
+        ) { change, drag -> change.consume(); scope.launch { offset.snapTo(offset.value + drag) } }
+    }) {
+        CharSideCard(card, small)
+        CardLight((offset.value.x / dens / 110f).coerceIn(-1f, 1f))
+    }
+}
+
+/** a character as a small card: the character, its reading and up to 4 meanings */
+@Composable
+private fun CharSideCard(card: Card, small: Boolean) {
+    val rom = Prefs.rom.value; val place = Prefs.place.value
+    val tk = textKey()
+    val ch = Lang.charOf(card.k) ?: card.h
+    val en = if (Prefs.zhEnglish.value) Store.zh?.entryForChar(ch, "")?.enList?.takeIf { it.isNotEmpty() } else null
+    Row(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(T.fn).border(2.dp, T.keyEdge, RoundedCornerShape(24.dp))
+        .padding(if (small) 10.dp else 16.dp), horizontalArrangement = Arrangement.spacedBy(if (small) 8.dp else 14.dp)) {
+        Column(Modifier.widthIn(min = if (small) 48.dp else 70.dp), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Txt(remember(card.k, tk) { Store.cardHan(card, place, T.blueInk.argbInt()).annotated() }, sz(if (small) 38f else 56f, FontWeight.Medium), T.blueInk, maxLines = 1)
+            Txt(remember(card.k, tk) { Store.cardRom(card, rom, place).annotated() }, lat(if (small) 15f else 20f), T.greenInk, maxLines = 1)
+            when (Store.status(card)) {
+                1 -> Chip("熟悉", T.blue, T.blueEdge, T.blueInk)
+                2 -> Chip("不熟", T.rust, T.rustEdge, T.rustInk)
+                else -> {}
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (small) 3.dp else 6.dp)) {
+            val n = if (small) 3 else 4
+            if (en != null) for ((i, t) in en.take(n).withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                EnNum(i + 1); Txt(t, ff(if (small) FF.Footnote else FF.Subheadline), T.glyph, maxLines = 2)
+            } else for ((i, d) in card.d.take(n).withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                NumBadge(i + 1); Txt(d.t, ff(if (small) FF.Footnote else FF.Subheadline), T.glyph, maxLines = 2)
+            }
+        }
     }
 }

@@ -101,6 +101,8 @@ fun SettingsScreen() {
                                 PenControls()
                             }
                             RowDivider()
+                            Column(Modifier.padding(14.dp)) { InkColorControls() }
+                            RowDivider()
                             MenuRow("手寫：字體", Kai.names[Kai.style], Kai.names.withIndex().map { it.index to it.value }) { Prefs.handFont.value = it }
                             RowDivider(); StepRow("連續答對 ${Prefs.goal.value} 次算學會", Prefs.goal, 1, 6, 1)
                             RowDivider(); StepRow("每次練習 ${Prefs.sessionSize.value} 個詞", Prefs.sessionSize, 5, 40, 5)

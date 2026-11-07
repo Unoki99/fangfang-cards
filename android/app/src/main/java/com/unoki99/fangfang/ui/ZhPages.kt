@@ -305,7 +305,10 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             ZhLinks(z, "近", syn, T.blue, T.blueEdge, T.blueInk)
             ZhLinks(z, "反", ant, T.rust, T.rustEdge, T.rustInk)
         }
-        // a single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
+        if (e.extra) Txt("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。",
+            ff(FF.Caption), T.muted)
+        Txt("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。", ff(FF.Caption2), T.muted)
+        // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
         val ci = if (e.h.cpCount == 1) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
         if (reading != null) {
@@ -319,9 +322,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 }
             }
         }
-        if (e.extra) Txt("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。",
-            ff(FF.Caption), T.muted)
-        Txt("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。", ff(FF.Caption2), T.muted)
+        if (reading != null) Txt("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。", ff(FF.Caption2), T.muted)
     }
 }
 

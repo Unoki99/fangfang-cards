@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Typeface
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -25,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -188,6 +192,8 @@ class InkStroke(val pts: List<Offset>, val ws: List<Float>, val ts: List<Long> =
 /** the ink of 手寫練習: always the dark ink of the original theme, or (彩色) the app's rainbow along the strokes */
 object HandInk {
     val dark = Color(0xFF1A1A1C)
+    /** the ink when it isn't the rainbow: the colour picked (0xRRGGBB), or the dark ink */
+    val solid: Color get() = Prefs.handInk.value.let { if (it > 0) Color(0xFF000000L or it.toLong()) else dark }
     /** red, orange, yellow, green, teal, blue, purple, pink (the standard tone colours) */
     val rainbow: List<Color> = listOf(1, 2, 3, 4, 5, 6, 7, 0).map { Color(ToneColors.palette[it].second[2]) }
     /** the rainbow colour at a distance along the writing (one round every `period`) */
@@ -228,6 +234,8 @@ fun HandwritingScreen(onClose: () -> Unit) {
             if (list != null) TextButton(onClick = { PracticeSave.clear("handwriting", true); list = null }) {
                 Icon(Icons.Filled.GridView, null, tint = T.greenInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("選字", color = T.greenInk)
             }
+            // 中 / 英 (華語's meanings), standing up next to the spelling / 腔口 buttons
+            if (list != null && Store.isZh) { Spacer(Modifier.width(4.dp)); MeaningSwitch(vertical = true) }
         }
         Box(Modifier.fillMaxSize()) {
             val l = list
@@ -315,6 +323,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
     val penWidth = with(androidx.compose.ui.platform.LocalDensity.current) { Prefs.handWidth.value.dp.toPx() }
     // 筆跡延遲: the writing shows up a moment after the pen (redrawn every frame while it's on)
     val delayMs = (Prefs.handDelay.value * 1000).toLong()
+    val inkColor = HandInk.solid
     var frameNow by remember { mutableLongStateOf(0L) }
     LaunchedEffect(delayMs) {
         if (delayMs > 0) while (true) { withFrameMillis { }; frameNow = android.os.SystemClock.uptimeMillis() }
@@ -366,16 +375,25 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                         onClick = { Prefs.handFont.value = i; fontMenu = false })
                 }
             }
-            // 筆: how thick, how much a stylus's pressure changes it, 彩色
+            // 筆: how thick, how much a stylus's pressure changes it
             Box {
                 var penMenu by remember { mutableStateOf(false) }
-                Row(Modifier.clip(RoundedCornerShape(50)).background(if (rainbow) T.green else T.fn).border(1.5.dp, if (rainbow) T.greenEdge else T.fnEdge, RoundedCornerShape(50))
+                Row(Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
                     .clickable { penMenu = true }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Filled.Edit, null, tint = if (rainbow) T.greenInk else T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
-                    Txt("筆", ff(FF.Footnote, FontWeight.SemiBold), if (rainbow) T.greenInk else T.muted)
+                    Icon(Icons.Filled.Edit, null, tint = T.muted, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp))
+                    Txt("筆", ff(FF.Footnote, FontWeight.SemiBold), T.muted)
                 }
                 DropdownMenu(penMenu, { penMenu = false }, containerColor = T.fn) {
                     Column(Modifier.width(300.dp).padding(horizontal = 16.dp, vertical = 8.dp)) { PenControls() }
+                }
+            }
+            // 顏色: the dark ink, the rainbow (a new colour along the writing) or a colour of its own
+            Box {
+                var colorMenu by remember { mutableStateOf(false) }
+                Box(Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
+                    .clickable { colorMenu = true }.padding(horizontal = 10.dp, vertical = 5.dp)) { InkSwatch(18.dp) }
+                DropdownMenu(colorMenu, { colorMenu = false }, containerColor = T.fn) {
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) { InkColorControls() }
                 }
             }
         }
@@ -400,7 +418,8 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 PlayButton("tts:$ch", 40.dp)
-                if (Store.isZh) MeaningSwitch()
+                // 我會了: the character is known (its card 熟悉); tap again: 不熟
+                if (Store.cardFor(Lang.charKey(ch)) != null) KnowCharButton(ch)
             }
         }
         // the grid to write in (米字格), the faint character to trace, and the writing
@@ -441,6 +460,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                 // the writing: the dark ink, or (彩色) the rainbow along the whole writing
                 // 筆跡延遲: only what was written at least that long ago
                 val until = if (delayMs > 0) frameNow - delayMs else Long.MAX_VALUE
+                val ink = inkColor
                 var dist = 0f
                 for (s0 in strokes) {
                     val s = if (delayMs > 0 && s0.ts.size == s0.pts.size) {
@@ -448,11 +468,11 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
                         if (n == 0) continue
                         if (n < s0.pts.size) InkStroke(s0.pts.take(n), s0.ws.take(n)) else s0
                     } else s0
-                    if (s.pts.size == 1) { drawCircle(if (rainbow) HandInk.color(dist, period) else HandInk.dark, s.ws[0] / 2, s.pts[0]); continue }
+                    if (s.pts.size == 1) { drawCircle(if (rainbow) HandInk.color(dist, period) else ink, s.ws[0] / 2, s.pts[0]); continue }
                     for (i in 1 until s.pts.size) {
                         val a = s.pts[i - 1]; val b = s.pts[i]
                         val len = (b - a).getDistance()
-                        drawLine(if (rainbow) HandInk.color(dist + len / 2, period) else HandInk.dark, a, b,
+                        drawLine(if (rainbow) HandInk.color(dist + len / 2, period) else ink, a, b,
                             (s.ws[i - 1] + s.ws[i]) / 2, cap = StrokeCap.Round)
                         dist += len
                     }
@@ -594,7 +614,7 @@ private fun CharWordCardRow(c: Card) {
     }
 }
 
-/** 筆: 粗細, 筆壓 (a stylus) and 彩色; in 設定 and behind 筆 at the top of 手寫練習 */
+/** 筆: 粗細, 筆跡延遲 and 筆壓 (a stylus); in 設定 and behind 筆 at the top of 手寫練習 */
 @Composable
 fun PenControls() {
     val w = Prefs.handWidth.value
@@ -615,7 +635,7 @@ fun PenControls() {
             val y = size.height / 2 + kotlin.math.sin(t * Math.PI.toFloat() * 2) * size.height * 0.22f
             if (k == 0) p.moveTo(x, y) else p.lineTo(x, y)
         }
-        drawPath(p, if (rainbow) HandInk.rainbow[0] else HandInk.dark, style = Stroke(w.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(p, if (rainbow) HandInk.rainbow[0] else HandInk.solid, style = Stroke(w.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
     }
     Spacer(Modifier.height(10.dp))
     // 筆跡延遲: the writing shows up a moment after the pen
@@ -634,24 +654,108 @@ fun PenControls() {
     }
     Slider(s, { Prefs.handPressure.value = it }, valueRange = 0f..1.5f,
         colors = SliderDefaults.colors(thumbColor = T.greenInk, activeTrackColor = T.greenEdge))
-    Row(Modifier.fillMaxWidth().clickable { Prefs.handRainbow.value = !rainbow }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Txt("彩色筆跡", ff(FF.Body), T.glyph, Modifier.weight(1f))
-        Switch(rainbow, { Prefs.handRainbow.value = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.greenEdge))
+}
+
+/** 中 | 英: 華語's meanings in 華語 or English (設定 → 主要解釋); standing up (中 over 英) in the top bar */
+@Composable
+fun MeaningSwitch(vertical: Boolean = false) {
+    val en = Prefs.zhEnglish.value
+    val m = Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
+        .clickable { Prefs.zhEnglish.value = !en }.padding(2.dp)
+    @Composable
+    fun part(e: Boolean) {
+        val on = en == e
+        Box(Modifier.size(width = if (vertical) 24.dp else 26.dp, height = if (vertical) 19.dp else 22.dp).clip(RoundedCornerShape(50))
+            .background(if (on) T.green else Color.Transparent), contentAlignment = Alignment.Center) {
+            Txt(if (e) "英" else "中", ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.greenInk else T.muted)
+        }
+    }
+    if (vertical) Column(m) { part(false); part(true) } else Row(m) { part(false); part(true) }
+}
+
+/** 手寫練習: 我會了. Tap: the character is known (its card 熟悉), yellow with little rainbow rays around it;
+ *  tap again: 不熟. */
+@Composable
+private fun KnowCharButton(ch: String) {
+    val c = Store.cardFor(Lang.charKey(ch)) ?: return
+    val known = Store.status(c) == 1
+    val yellow = Color(0xFFF6C945)
+    var pop by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (pop) 1.12f else 1f, spring(dampingRatio = 0.5f), label = "pop")
+    val rays by animateFloatAsState(if (known) 1f else 0f, spring(dampingRatio = 0.6f), label = "rays")
+    LaunchedEffect(pop) { if (pop) { kotlinx.coroutines.delay(350); pop = false } }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Box(Modifier.size(58.dp).graphicsLayer { scaleX = scale; scaleY = scale }.clip(CircleShape)
+        .clickable {
+            val now = !known
+            Store.setCharKnown(ch, now)
+            if (now) pop = true
+            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }, contentAlignment = Alignment.Center) {
+        // the rays: the rainbow, all the way round
+        if (rays > 0.01f) Canvas(Modifier.fillMaxSize()) {
+            val r0 = 21.dp.toPx() + (if (pop) 3.dp.toPx() else 0f)
+            val len = 6.dp.toPx() * rays
+            for (i in 0 until 12) {
+                val a = Math.toRadians(i * 30.0 - 90)
+                val cx = size.width / 2; val cy = size.height / 2
+                val ux = kotlin.math.cos(a).toFloat(); val uy = kotlin.math.sin(a).toFloat()
+                drawLine(HandInk.rainbow[i % HandInk.rainbow.size].copy(alpha = rays), Offset(cx + ux * r0, cy + uy * r0),
+                    Offset(cx + ux * (r0 + len), cy + uy * (r0 + len)), strokeWidth = 2.5.dp.toPx(), cap = StrokeCap.Round)
+            }
+        }
+        Box(Modifier.size(40.dp).clip(CircleShape).background(if (known) yellow else T.fn)
+            .border(1.5.dp, if (known) yellow.copy(alpha = 0.6f) else T.fnEdge, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Filled.Check, if (known) "我會了（再點一下：不熟）" else "我會這個字", tint = if (known) Color(0xFF3A2A00) else T.muted,
+                modifier = Modifier.size(20.dp))
+        }
     }
 }
 
-/** 手寫練習 (華語): 中 | 英, the meanings in 華語 or English (設定 → 主要解釋) */
+/** the ink's colour as a little ball: the colour, or the rainbow */
 @Composable
-private fun MeaningSwitch() {
-    val en = Prefs.zhEnglish.value
-    Row(Modifier.clip(RoundedCornerShape(50)).background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(50))
-        .clickable { Prefs.zhEnglish.value = !en }.padding(2.dp)) {
-        for (e in listOf(false, true)) {
-            val on = en == e
-            Box(Modifier.size(width = 26.dp, height = 22.dp).clip(RoundedCornerShape(50)).background(if (on) T.green else Color.Transparent),
-                contentAlignment = Alignment.Center) {
-                Txt(if (e) "英" else "中", ff(FF.Caption, if (on) FontWeight.Bold else FontWeight.Normal), if (on) T.greenInk else T.muted)
+fun InkSwatch(size: androidx.compose.ui.unit.Dp) {
+    val rainbow = Prefs.handRainbow.value
+    val ink = HandInk.solid
+    Box(Modifier.size(size).clip(CircleShape).background(
+        if (rainbow) androidx.compose.ui.graphics.Brush.sweepGradient(HandInk.rainbow + HandInk.rainbow[0])
+        else androidx.compose.ui.graphics.SolidColor(ink)).border(1.dp, Color.White.copy(alpha = 0.55f), CircleShape))
+}
+
+/** 筆的顏色: 墨色 (the dark ink), 彩虹 or one colour from the grid of balls (the same colours as 選聲調顏色:
+ *  one column per colour in rainbow order, light at the top and dark at the bottom) */
+@Composable
+fun InkColorControls() {
+    val rainbow = Prefs.handRainbow.value
+    val ink = Prefs.handInk.value
+    Txt("筆的顏色", ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(bottom = 8.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        @Composable
+        fun mode(name: String, on: Boolean, brush: androidx.compose.ui.graphics.Brush, act: () -> Unit) {
+            Row(Modifier.clip(RoundedCornerShape(50)).background(if (on) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.05f))
+                .border(if (on) 1.5.dp else 1.dp, Color.White.copy(alpha = if (on) 0.7f else 0.15f), RoundedCornerShape(50))
+                .clickable(onClick = act).padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(16.dp).clip(CircleShape).background(brush)); Spacer(Modifier.width(8.dp))
+                Txt(name, ff(FF.Subheadline, if (on) FontWeight.Bold else FontWeight.Normal), T.glyph)
+            }
+        }
+        mode("墨色", !rainbow && ink == 0, androidx.compose.ui.graphics.SolidColor(HandInk.dark)) { Prefs.handRainbow.value = false; Prefs.handInk.value = 0 }
+        mode("彩虹", rainbow, androidx.compose.ui.graphics.Brush.sweepGradient(HandInk.rainbow + HandInk.rainbow[0])) { Prefs.handRainbow.value = true }
+    }
+    Spacer(Modifier.height(12.dp))
+    val cols = ToneColors.palette
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in 0 until 5) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (c in cols) {
+                val hex = c.second[row]
+                val picked = !rainbow && ink == hex
+                Box(Modifier.size(31.dp).clip(CircleShape).clickable { Prefs.handInk.value = hex; Prefs.handRainbow.value = false },
+                    contentAlignment = Alignment.Center) {
+                    if (picked) Box(Modifier.size(31.dp).border(2.5.dp, T.glyph, CircleShape))
+                    Box(Modifier.size(25.dp).clip(CircleShape).background(Color(0xFF000000L or hex.toLong())))
+                }
             }
         }
     }
+    Txt("中間那一排是原本的顏色，往上越淺，往下越深。", ff(FF.Caption), T.muted, Modifier.padding(top = 8.dp))
 }

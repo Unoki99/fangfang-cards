@@ -132,6 +132,8 @@ object Prefs : KeyValue {
     val handPressure = Pref("handwritingPressure", 0.6f)
     /** the writing in the rainbow instead of the dark ink */
     val handRainbow = Pref("handwritingRainbow", false)
+    /** 筆的顏色: a colour of the tone colours' grid (0xRRGGBB); 0 = the dark ink */
+    val handInk = Pref("handwritingInkColor", 0)
     /** 手寫練習's font: 0 文楷, 1 芫荽 */
     val handFont = Pref("handwritingFont", 0)
     /** how thick the pen is (dp) */
@@ -150,7 +152,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh) + copyOn + copyStyle + copyPreText
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh) + copyOn + copyStyle + copyPreText
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
