@@ -36,9 +36,12 @@ struct SwipeStack: View {
                         .transition(.identity)          // (it turns into the squares instead)
                 }
                 // (much bigger than the stack, so the squares can fly off over the whole screen)
-                CardDust(bursts: bursts, pad: CardDust.pad)
-                    .padding(-CardDust.pad)
-                    .allowsHitTesting(false).zIndex(20)
+                // (only while something is falling apart: it's a big picture to keep around)
+                if !bursts.isEmpty {
+                    CardDust(bursts: bursts, pad: CardDust.pad)
+                        .padding(-CardDust.pad)
+                        .allowsHitTesting(false).zIndex(20)
+                }
             }
             .onChange(of: fling) { _, f in
                 if let f, let top = cards.first { fly(top, right: f.right, size: g.size) }
@@ -124,10 +127,13 @@ struct CardPicture {
 
     /// the card drawn into a picture, made as small as the grid (one pixel = one square)
     @MainActor static func make(_ card: Card, _ size: CGSize, _ store: Store) -> CardPicture {
+        make(card, size, store, WordCard(card: card, isTop: true).environmentObject(store))
+    }
+    /// any card's look drawn into a picture (the side cards of the characters)
+    @MainActor static func make<V: View>(_ card: Card, _ size: CGSize, _ store: Store, _ view: V) -> CardPicture {
         let (cell, cols, rows) = grid(size)
         var px = [UInt8](repeating: 0, count: cols * rows * 4)
-        let r = ImageRenderer(content: WordCard(card: card, isTop: true).environmentObject(store)
-            .frame(width: size.width, height: size.height))
+        let r = ImageRenderer(content: view.frame(width: size.width, height: size.height))
         r.scale = 0.5
         if let img = r.cgImage {
             px.withUnsafeMutableBytes { buf in
@@ -337,6 +343,9 @@ struct NewDeckView: View {
     @AppStorage("zhTopic") private var zhTopic = -1
     private var topicBinding: Binding<Int> { store.isZh ? $zhTopic : $taigiTopic }
     private var topic: Int { store.isZh ? zhTopic : taigiTopic }
+    @State private var width: CGFloat = 0
+    /// room for the characters' cards on both sides of the big card
+    private var wideSides: Bool { store.isZh && width >= 1150 }
 
     var body: some View {
         let queue = store.newQueue(4, topic: topic)
@@ -348,16 +357,23 @@ struct NewDeckView: View {
                 Text(topic < 0 ? "全部的詞都看過了！" : "這個主題的詞都看過了！").ffFont(.title3).foregroundStyle(T.muted)
                 Spacer()
             } else {
-                DeckArea(cards: queue) { card, right in
-                    store.mark(card, known: right)
-                } undo: {
-                    store.undo()
+                HStack(alignment: .top, spacing: 24) {
+                    // iPad (wide enough), 華語: the word's characters beside the card
+                    if wideSides, let top = queue.first { CharSideColumn(word: top, side: 0).frame(width: 290) }
+                    DeckArea(cards: queue) { card, right in
+                        store.mark(card, known: right)
+                    } undo: {
+                        store.undo()
+                    }
+                    .frame(maxWidth: 560)
+                    if wideSides, let top = queue.first { CharSideColumn(word: top, side: 1).frame(width: 290) }
                 }
             }
         }
         .padding()
-        .frame(maxWidth: 560)
+        .frame(maxWidth: wideSides ? 1260 : 560)
         .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .appBackground()
         .rootPage("新詞") {
             if !store.topics.isEmpty {
@@ -447,6 +463,143 @@ struct GlassBar: ViewModifier {
             content
                 .background(Capsule().fill(.ultraThinMaterial))
                 .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
+        }
+    }
+}
+
+// MARK: - iPad, 新詞: the characters of the word beside the card
+
+/// a character of the word on the card, as a small card of its own: the character, its reading and meanings.
+/// Swipe it to mark the character card 認識 / 不熟; it falls apart like the big card and comes back (it's part of
+/// the word on the big card, which stays until that one is swiped).
+struct CharSideCard: View {
+    let card: Card
+    @EnvironmentObject var store: Store
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    @AppStorage(ZhMeaning.key) private var zhEnglish = false
+
+    private var ch: String { Lang.charOf(card.k) ?? card.h }
+    private var english: [String]? {
+        guard zhEnglish, let d = store.zh, let e = ZhCharSheet.entry(d, ch) else { return nil }
+        return e.enList.isEmpty ? nil : e.enList
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(spacing: 4) {
+                Text(store.cardHan(card, place, base: T.blueInk)).toneGlow()
+                    .scaledFont(56, weight: .medium)
+                Text(store.cardRom(card, rom, place)).latFont(20).toneGlow().foregroundStyle(T.greenInk)
+                    .lineLimit(1).minimumScaleFactor(0.5)
+                // the character card's place now
+                switch store.status(card) {
+                case 1?: Chip(text: "熟悉", fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
+                case 2?: Chip(text: "不熟", fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
+                default: EmptyView()
+                }
+            }
+            .frame(minWidth: 70)
+            VStack(alignment: .leading, spacing: 6) {
+                if let en = english {
+                    ForEach(Array(en.prefix(4).enumerated()), id: \.offset) { i, t in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            EnNum(n: i + 1)
+                            Text(t).ffFont(.subheadline).foregroundStyle(T.glyph).lineLimit(2)
+                        }
+                    }
+                } else {
+                    ForEach(Array(card.d.prefix(4).enumerated()), id: \.offset) { i, d in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            NumBadge(n: i + 1)
+                            Text(d.t).ffFont(.subheadline).foregroundStyle(T.glyph).lineLimit(2)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .modifier(CardSurface(frosted: true))
+        .contentShape(RoundedRectangle(cornerRadius: 28))
+    }
+}
+
+/// a side card you can swipe: right = 認識, left = 不熟 (the character card); then it comes back
+struct CharSideSwipe: View {
+    let card: Card
+    @EnvironmentObject var store: Store
+    @State private var offset: CGSize = .zero
+    @State private var bursts: [CardBurst] = []
+    @State private var gone = false
+    @State private var picture: (key: String, pic: CardPicture)?
+
+    var body: some View {
+        GeometryReader { g in
+            ZStack {
+                if !gone {
+                    CharSideCard(card: card)
+                        .overlay { CardLight(swipe: max(-1, min(1, offset.width / 110)), touch: nil) }
+                        .offset(offset)
+                        .rotationEffect(.degrees(Double(offset.width / 22)))
+                        .gesture(
+                            DragGesture(minimumDistance: 12)
+                                .onChanged { offset = $0.translation }
+                                .onEnded { v in
+                                    let w = v.translation.width + v.predictedEndTranslation.width * 0.25
+                                    if abs(w) > 90 { fly(right: w > 0, size: g.size) }
+                                    else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { offset = .zero } }
+                                })
+                        .transition(.asymmetric(insertion: .scale(scale: 0.85).combined(with: .opacity), removal: .identity))
+                }
+                if !bursts.isEmpty {
+                    CardDust(bursts: bursts, pad: CardDust.pad).padding(-CardDust.pad).allowsHitTesting(false)
+                }
+            }
+            // its picture, made ahead of time (see CardPicture)
+            .task(id: "\(card.k)|\(Int(g.size.width))x\(Int(g.size.height))|\(ToneColors.system)|\(store.status(card) ?? 0)") {
+                let key = "\(card.k)|\(Int(g.size.width))x\(Int(g.size.height))|\(ToneColors.system)|\(store.status(card) ?? 0)"
+                guard g.size.width > 0, picture?.key != key else { return }
+                try? await Task.sleep(nanoseconds: 900_000_000)
+                guard !Task.isCancelled else { return }
+                picture = (key, CardPicture.make(card, g.size, store, CharSideCard(card: card).environmentObject(store)))
+            }
+        }
+    }
+
+    private func fly(right: Bool, size: CGSize) {
+        let pic = picture?.pic.size == size ? picture!.pic : CardPicture.plain(card, size, store)
+        let b = CardBurst(pic, right: right, offset: offset, angle: Double(offset.width / 22) * .pi / 180)
+        bursts.append(b)
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { gone = true; offset = .zero }
+        store.setCharKnown(Lang.charOf(card.k) ?? card.h, right)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let id = b.id
+        Task { @MainActor in
+            // back again once the squares are mostly gone
+            try? await Task.sleep(nanoseconds: 750_000_000)
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) { gone = false }
+            try? await Task.sleep(nanoseconds: UInt64(CardBurst.life * 1_000_000_000) - 650_000_000)
+            bursts.removeAll { $0.id == id }
+        }
+    }
+}
+
+/// the side cards of a word's characters: the 1st, 3rd, 5th… on the left (side 0), the 2nd, 4th, 6th… on the right
+struct CharSideColumn: View {
+    let word: Card
+    let side: Int
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let chars = word.h.unicodeScalars.filter { Zhuyin.isHan($0) }.map(String.init)
+        let cards = chars.count > 1 ? chars.compactMap { store.card(for: Lang.charKey($0)) } : []
+        VStack(spacing: 16) {
+            ForEach(Array(cards.enumerated()).filter { $0.offset % 2 == side }, id: \.offset) { _, c in
+                CharSideSwipe(card: c).frame(height: 210).id(word.k + "|" + c.k)
+            }
+            Spacer(minLength: 0)
         }
     }
 }
