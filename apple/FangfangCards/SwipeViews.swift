@@ -31,7 +31,10 @@ struct SwipeStack: View {
                         .zIndex(Double(10 - i))
                         .transition(.identity)          // (it turns into the squares instead)
                 }
-                CardDust(bursts: bursts).allowsHitTesting(false).zIndex(20)
+                // (much bigger than the stack, so the squares can fly off over the whole screen)
+                CardDust(bursts: bursts, pad: CardDust.pad)
+                    .padding(-CardDust.pad)
+                    .allowsHitTesting(false).zIndex(20)
             }
             .onChange(of: fling) { _, f in
                 if let f, let top = cards.first { fly(top, right: f.right, size: g.size) }
@@ -95,6 +98,8 @@ struct CardBurst: Identifiable {
     /// each square's colour (from the card's picture) and its own little differences
     let colors: [SIMD4<Float>]
     let rnd: [SIMD4<Float>]
+    /// 聲調顏色: the colour of each character of the word (left to right); empty = blue / red
+    let tones: [SIMD3<Float>]
     static let life: Double = 1.1
 
     @MainActor init(card: Card, right: Bool, size: CGSize, offset: CGSize, angle: Double, store: Store) {
@@ -140,12 +145,28 @@ struct CardBurst: Identifiable {
             }
         }
         colors = cs; rnd = rs
+        // the word's characters in their tone colours (only when 聲調顏色 is on)
+        var ts: [SIMD3<Float>] = []
+        if ToneColors.system != 0 {
+            let han = store.cardHan(card, UserDefaults.standard.object(forKey: "place") as? Int ?? -1, base: T.blueInk)
+            for run in han.runs {
+                guard let fg = run.swiftUI.foregroundColor else { continue }
+                var r: CGFloat = 0, g: CGFloat = 0, bl: CGFloat = 0, al: CGFloat = 0
+                UIColor(fg).getRed(&r, green: &g, blue: &bl, alpha: &al)
+                let n = han[run.range].characters.filter { !$0.isWhitespace }.count
+                for _ in 0..<n { ts.append(SIMD3<Float>(Float(r), Float(g), Float(bl))) }
+            }
+        }
+        tones = ts
     }
 }
 
 /// draws the falling-apart cards
 struct CardDust: View {
     let bursts: [CardBurst]
+    /// how far past the stack it draws
+    var pad: CGFloat = 0
+    static let pad: CGFloat = 700
     // 認識: blue; 不熟: red
     private static let blue = SIMD3<Float>(0.43, 0.66, 1.0)
     private static let red = SIMD3<Float>(1.0, 0.42, 0.40)
@@ -162,11 +183,12 @@ struct CardDust: View {
     private func draw(_ b: CardBurst, _ t: Double, in ctx: inout GraphicsContext, _ size: CGSize) {
         guard t >= 0, t < CardBurst.life else { return }
         // (the card was moved, then turned about the middle of the stack)
-        let cx = Double(size.width) / 2, cy = Double(size.height) / 2
+        let cx = Double(size.width) / 2, cy = Double(size.height) / 2      // (the padding is the same all round)
         let ox = Double(b.offset.width), oy = Double(b.offset.height)
         let bw = Double(b.size.width), bh = Double(b.size.height)
         let ca = cos(b.angle), sa = sin(b.angle)
         let tint = b.right ? Self.blue : Self.red
+        let tones = b.tones
         let c = Double(b.cell)
         for y in 0..<b.rows {
             for x in 0..<b.cols {
@@ -197,7 +219,9 @@ struct CardDust: View {
                         py += (-40 + Double(r.w) * 60) * s + 620 * s * s
                     }
                 }
-                let rgb = SIMD3<Float>(col.x, col.y, col.z) * (1 - k) + tint * k
+                // 聲調顏色 on: each character's part of the card turns that character's tone colour
+                let to = tones.isEmpty ? tint : tones[min(Int(u * Double(tones.count)), tones.count - 1)]
+                let rgb = SIMD3<Float>(col.x, col.y, col.z) * (1 - k) + to * k
                 let w = c * sc
                 ctx.fill(Path(CGRect(x: px - w / 2, y: py - w / 2, width: w, height: w)),
                          with: .color(Color(red: Double(rgb.x), green: Double(rgb.y), blue: Double(rgb.z)).opacity(alpha)))
@@ -231,9 +255,12 @@ struct SwipeButtons: View {
                 .keyboardShortcut("z", modifiers: .command)
                 .accessibilityLabel("復原")
             }
-            round("checkmark", rightLabel, T.green, T.greenEdge, T.greenInk, onRight)
+            round("checkmark", rightLabel, T.blue, T.blueEdge, T.blueInk, onRight)
                 .keyboardShortcut(.rightArrow, modifiers: [])
         }
+        // one piece of Liquid Glass across the three
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .modifier(GlassBar())
     }
 
     private func round(_ icon: String, _ label: String, _ fill: Color, _ edge: Color, _ ink: Color, _ action: @escaping () -> Void) -> some View {
@@ -356,6 +383,19 @@ struct DeckArea: View {
                              onRight: { fling = .init(right: true) },
                              onUndo: undo)
             }
+        }
+    }
+}
+
+/// a capsule of Liquid Glass behind a row of buttons (iOS 26; frosted glass before)
+struct GlassBar: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer { content.glassEffect(.regular, in: Capsule()) }
+        } else {
+            content
+                .background(Capsule().fill(.ultraThinMaterial))
+                .overlay(Capsule().strokeBorder(.white.opacity(0.18), lineWidth: 1))
         }
     }
 }
