@@ -38,7 +38,7 @@ final class Store: ObservableObject {
 
     // MARK: 華語 mode
     /// the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile)
-    @Published private(set) var isZh = false
+    @Published private(set) var isZh = false { didSet { T.zh = isZh } }
     /// switching language: the other deck is being loaded
     @Published private(set) var switching = false
     /// the 華語 dictionary (zh.json), once loaded
