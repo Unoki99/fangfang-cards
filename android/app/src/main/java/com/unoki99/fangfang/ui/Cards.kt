@@ -121,7 +121,13 @@ fun NewDeckTab() {
             SideEffect { UI.hideTabs = sideways }
             Row(Modifier.fillMaxSize().widthIn(max = if (sides) 1260.dp else 560.dp).align(Alignment.TopCenter).padding(if (small) 10.dp else 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (sides) CharSideColumn(queue.first(), 0, small, Modifier.width(sideW).fillMaxHeight())
+                if (sides) Column(Modifier.width(sideW).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    CharSideColumn(queue.first(), 0, small, Modifier.fillMaxWidth().weight(1f))
+                    // a tablet: write the whole word on the card
+                    val top = queue.first()
+                    if (maxWidth >= 1100.dp && Store.canWrite(top.h)) SoftButton(onClick = { UI.writeCard = top; UI.practice = Practice.WORD_WRITE },
+                        Modifier.fillMaxWidth().heightIn(min = 44.dp)) { IconLabel(Icons.Filled.Draw, tr("寫整個詞"), ff(FF.Subheadline)) }
+                }
                 // (zIndex: the big card goes over the side cards when it's swiped)
                 Column(Modifier.weight(1f).fillMaxHeight().zIndex(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     if (!sideways) {

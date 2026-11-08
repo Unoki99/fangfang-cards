@@ -8,6 +8,7 @@ struct WeekPanel: View {
     @State private var picking = false
     @State private var practising = false
     @State private var testing = false
+    @State private var writing = false
 
     var body: some View {
         let words = store.weekCards
@@ -42,6 +43,7 @@ struct WeekPanel: View {
             HStack(spacing: 10) {
                 PracticeTile(title: words.isEmpty ? trs("選詞") : trs("改詞"), icon: "checklist", enabled: true) { picking = true }
                 PracticeTile(title: tr("練習"), icon: "graduationcap.fill", enabled: !words.isEmpty) { practising = true }
+                PracticeTile(title: tr("寫字"), icon: "pencil.line", enabled: words.contains { Store.canWrite($0.h) }) { writing = true }
                 PracticeTile(title: tr("期末測驗"), icon: "rosette", enabled: !words.isEmpty) { testing = true }
             }
         }
@@ -50,6 +52,7 @@ struct WeekPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(words.isEmpty || left > 0 ? T.fnEdge : T.rustEdge, lineWidth: 1.5))
         .sheet(isPresented: $picking) { WeekPicker().environmentObject(store) }
         .fullScreenCover(isPresented: $practising) { StudyView(words: store.weekCards).environmentObject(store) }
+        .fullScreenCover(isPresented: $writing) { StudyView(words: store.weekCards, writeOnly: true).environmentObject(store) }
         .fullScreenCover(isPresented: $testing) { StudyView(words: store.weekCards, test: true).environmentObject(store) }
     }
 }

@@ -1437,6 +1437,8 @@ struct WordWriteArea: View {
     /// the question has been graded (only the small squares stay, with the answer in them)
     let answered: Bool
     let grade: (Bool) -> Void
+    /// just practising (a card's 寫整個詞): after 對答案, 再寫一次 (grade(false)) or 完成 (grade(true))
+    var practiceOnly = false
     @State private var drawings: [PKDrawing]
     /// changes when a square is cleared (清掉)
     @State private var clears: [Int]
@@ -1447,8 +1449,8 @@ struct WordWriteArea: View {
     @AppStorage(Kaiti.styleKey) private var fontStyle = 0
     @Environment(\.horizontalSizeClass) private var hSize
 
-    init(chars: [String], answered: Bool, grade: @escaping (Bool) -> Void) {
-        self.chars = chars; self.answered = answered; self.grade = grade
+    init(chars: [String], answered: Bool, practiceOnly: Bool = false, grade: @escaping (Bool) -> Void) {
+        self.chars = chars; self.answered = answered; self.practiceOnly = practiceOnly; self.grade = grade
         _drawings = State(initialValue: Array(repeating: PKDrawing(), count: chars.count))
         _clears = State(initialValue: Array(repeating: 0, count: chars.count))
     }
@@ -1498,11 +1500,12 @@ struct WordWriteArea: View {
                         .frame(maxWidth: .infinity, alignment: wide ? .center : .leading)
                     HStack(spacing: 12) {
                         Button { grade(false) } label: {
-                            Label(tr("寫錯了"), systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 44)
+                            Label(practiceOnly ? trs("再寫一次") : trs("寫錯了"), systemImage: practiceOnly ? "arrow.counterclockwise" : "xmark")
+                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .softButton()
                         Button { grade(true) } label: {
-                            Label(tr("寫對了"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 44)
+                            Label(practiceOnly ? trs("完成") : trs("寫對了"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .prominentButton(T.btnEdge)
                     }
@@ -1611,5 +1614,65 @@ struct WordWriteArea: View {
             img = d.image(from: CGRect(x: 0, y: 0, width: side, height: side), scale: 2)
         }
         return img
+    }
+}
+
+/// 新詞 on an iPad: write the whole word on the card (the word, its reading and meaning above the squares)
+struct WordWriteSheet: View {
+    let card: Card
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    @AppStorage(ZhMeaning.key) private var zhEnglish = false
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
+    /// the word hidden: write it from the reading and meaning
+    @State private var hidden = false
+    @State private var round = 0
+    @State private var kaiti = Kaiti.ready
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 14) {
+                Panel {
+                    HStack(alignment: .center, spacing: 16) {
+                        Text(hidden ? String(repeating: "？", count: card.h.count) : card.h)
+                            .font(Kaiti.swiftUI(56)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(store.cardRom(card, rom, place)).latFont(22).toneGlow().foregroundStyle(T.greenInk)
+                            let m = store.practiceMeaning(card)
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                if !m.p.isEmpty { Chip(text: m.p) }
+                                Text(m.t).ffFont(.subheadline).foregroundStyle(T.glyph).lineLimit(2)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        if let a = card.audio { PlayButton(path: a, size: 40) }
+                    }
+                }
+                WordWriteArea(chars: card.h.map(String.init), answered: false, practiceOnly: true) { done in
+                    if done { dismiss() } else { round += 1 }
+                }
+                .id(round)
+            }
+            .padding()
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .appBackground()
+            .navigationTitle(tr("寫整個詞"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    // 藏字: write it from memory
+                    Button { withAnimation(.snappy) { hidden.toggle() } } label: {
+                        Label(hidden ? trs("顯示字") : trs("藏字"), systemImage: hidden ? "eye" : "eye.slash").labelStyle(.titleAndIcon)
+                    }
+                }
+            }
+            .onAppear { if !Kaiti.ready { Kaiti.prepare { ok in kaiti = ok } } }
+        }
     }
 }

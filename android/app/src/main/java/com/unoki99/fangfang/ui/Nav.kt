@@ -50,7 +50,7 @@ sealed class Sheet {
     data class CharWords(val ch: String) : Sheet()
 }
 
-enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS }
+enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE }
 
 /** the app's screens that open over everything */
 object UI {
@@ -62,6 +62,8 @@ object UI {
     var practice by mutableStateOf<Practice?>(null)
     /** 手寫練習 opened from a side card (新詞): just these characters, then back to the cards */
     var handwritingOnly by mutableStateOf<List<String>?>(null)
+    /** 寫整個詞 (a tablet's 新詞): the card whose word is written */
+    var writeCard by mutableStateOf<Card?>(null)
     /** sheets can open on top of each other (a word from a word): the last one is shown */
     val sheets = mutableStateListOf<Sheet>()
     fun open(s: Sheet) { sheets.add(s) }

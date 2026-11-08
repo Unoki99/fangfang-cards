@@ -52,6 +52,8 @@ fun PracticeHost(p: Practice) {
                 Practice.READING -> ScrambleScreen(true, stars)
                 Practice.TONES -> ToneScreen(stars)
                 Practice.STATS -> ReviewStatsScreen { close() }
+                Practice.WEEK_WRITE -> StudyScreen(false, stars, words = Store.weekCards, writeOnly = true)
+                Practice.WORD_WRITE -> UI.writeCard?.let { WordWriteScreen(it) { UI.writeCard = null; close() } }
                 Practice.HANDWRITING -> HandwritingScreen(only = UI.handwritingOnly) { UI.handwritingOnly = null; handwritingGiven = emptyMap(); close() }
             }
         }
@@ -81,7 +83,7 @@ private fun make(c: Card, k: QuizKind) = Question(c, k, (Store.distractors(c) + 
 
 /** words = only these (本週學習); test = 本週學習's final test: one question per word, nothing asked again, a score at the end */
 @Composable
-private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>? = null, test: Boolean = false) {
+private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>? = null, test: Boolean = false, writeOnly: Boolean = false) {
     val rom = Prefs.rom.value; val place = Prefs.place.value
     val goal = Prefs.goal.value; val size = Prefs.sessionSize.value
     val queue = remember { mutableStateListOf<Question>() }
@@ -99,7 +101,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     var resumed by remember { mutableStateOf(false) }
 
     // a round left half way
-    val saveName = if (test) "test" else if (blanksOnly) "blanks" else if (pool0 != null) "week" else "study"
+    val saveName = if (test) "test" else if (blanksOnly) "blanks" else if (writeOnly) "write" else if (pool0 != null) "week" else "study"
     val saveScope = if (pool0 != null) -1 else Store.practiceTopic
     /** next: the question on show has been answered (it isn't asked again when the round is picked up) */
     fun saveNow(next: Boolean = false) {
@@ -139,6 +141,14 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
 
     fun start() {
         missed.clear(); wroteRight = null
+        if (writeOnly) {
+            // every word that can be written, once (one wrong is asked again later)
+            queue.clear(); queue.addAll((pool0 ?: Store.studyCards).filter { Store.canWrite(it.h) }.shuffled().map { make(it, QuizKind.WRITE) })
+            idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear()
+            started = true
+            saveNow()
+            return
+        }
         if (test) {
             // every word of the week once, in a random way
             queue.clear()
@@ -184,7 +194,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
             queue.clear(); queue.addAll(head + rest)
         } else if (!ok && !retried.contains(q.card.k)) {
             retried.add(q.card.k)
-            val other = kinds(q.card).filter { it != q.kind }.randomOrNull() ?: q.kind
+            val other = if (writeOnly) QuizKind.WRITE else kinds(q.card).filter { it != q.kind }.randomOrNull() ?: q.kind
             queue.add(make(q.card, other))
         }
         saveNow(true)
@@ -214,7 +224,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
         Box(Modifier.fillMaxSize()) {
             when {
                 !started -> {}
-                queue.isEmpty() -> Txt(if (blanksOnly) tr("不熟的詞裡沒有可以填空的例句。") else if (pool0 != null) tr("本週還沒有選詞。") else tr("沒有不熟的詞可以練習。"),
+                queue.isEmpty() -> Txt(if (blanksOnly) tr("不熟的詞裡沒有可以填空的例句。") else if (writeOnly) tr("這些詞裡沒有可以寫的詞。") else if (pool0 != null) tr("本週還沒有選詞。") else tr("沒有不熟的詞可以練習。"),
                     ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
                 idx >= queue.size && test -> TestSummary(right, wrong, missed)
                 idx >= queue.size -> Summary(tr("答對 {0} 題，答錯 {1} 題", right, wrong), learned, onAgain = { start() },

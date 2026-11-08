@@ -867,7 +867,7 @@ private fun WordPad(strokes: androidx.compose.runtime.snapshots.SnapshotStateLis
  *  characters faintly over the writing, and you say whether you got it.
  *  answered: the question has been graded (only the small squares stay, with the answer in them) */
 @Composable
-fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = Modifier, grade: (Boolean) -> Unit) {
+fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = Modifier, practiceOnly: Boolean = false, grade: (Boolean) -> Unit) {
     val drawings = remember(chars) { chars.map { mutableStateListOf<InkStroke>() } }
     var cur by remember(chars) { mutableIntStateOf(0) }
     var checked by remember(chars) { mutableStateOf(false) }
@@ -930,10 +930,51 @@ fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = M
         } else if (!answered) {
             Txt(tr("淡淡的字是正確的寫法，和你寫的比一比。"), ff(FF.Footnote), T.muted)
             Row(Modifier.widthIn(max = if (wide) 560.dp else 2000.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                SoftButton(onClick = { grade(false) }, Modifier.weight(1f).heightIn(min = 44.dp)) { IconLabel(Icons.Filled.Close, tr("寫錯了"), ff(FF.Subheadline)) }
-                ProminentButton(onClick = { grade(true) }, Modifier.weight(1f).heightIn(min = 44.dp)) { IconLabel(Icons.Filled.Check, tr("寫對了"), ff(FF.Subheadline)) }
+                SoftButton(onClick = { grade(false) }, Modifier.weight(1f).heightIn(min = 44.dp)) {
+                    if (practiceOnly) IconLabel(Icons.Filled.Refresh, tr("再寫一次"), ff(FF.Subheadline)) else IconLabel(Icons.Filled.Close, tr("寫錯了"), ff(FF.Subheadline))
+                }
+                ProminentButton(onClick = { grade(true) }, Modifier.weight(1f).heightIn(min = 44.dp)) {
+                    IconLabel(Icons.Filled.Check, if (practiceOnly) tr("完成") else tr("寫對了"), ff(FF.Subheadline))
+                }
             }
         }
     }
+    }
+}
+
+/** 新詞 on a tablet: write the whole word on the card (the word, its reading and meaning above the squares) */
+@Composable
+fun WordWriteScreen(card: Card, onClose: () -> Unit) {
+    var hidden by remember { mutableStateOf(false) }
+    var round by remember { mutableIntStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        TopBar(tr("寫整個詞"), onClose, close = true, settings = false) {
+            // 藏字: write it from memory
+            TextButton(onClick = { hidden = !hidden }) {
+                IconLabel(if (hidden) Icons.Filled.Visibility else Icons.Filled.VisibilityOff, if (hidden) tr("顯示字") else tr("藏字"), ff(FF.Subheadline), T.btnInk)
+            }
+        }
+        Column(Modifier.fillMaxSize().widthIn(max = 1100.dp).align(Alignment.CenterHorizontally).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Panel {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(if (hidden) "？".repeat(card.h.codePointCount(0, card.h.length)) else card.h,
+                        style = sz(56f, FontWeight.Medium).copy(fontFamily = Kai.family), color = T.blueInk)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Txt(Store.cardRom(card, Prefs.rom.value, Prefs.place.value).annotated(), lat(22f), T.greenInk)
+                        val (p, t) = Store.practiceMeaning(card)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (p.isNotEmpty()) Chip(p)
+                            Txt(t, ff(FF.Subheadline), T.glyph, maxLines = 2)
+                        }
+                    }
+                    card.audio?.let { PlayButton(it, 40.dp) }
+                }
+            }
+            key(round) {
+                WordWriteArea(card.h.codePoints().toArray().map { String(Character.toChars(it)) }, false, Modifier.weight(1f), practiceOnly = true) { done ->
+                    if (done) onClose() else round++
+                }
+            }
+        }
     }
 }

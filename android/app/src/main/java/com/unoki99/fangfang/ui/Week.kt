@@ -57,6 +57,7 @@ fun WeekPanel() {
         Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PracticeTile(if (words.isEmpty()) tr("選詞") else tr("改詞"), Icons.Filled.Checklist, true, Modifier.weight(1f).fillMaxHeight()) { picking = true }
             PracticeTile(tr("練習"), Icons.Filled.School, words.isNotEmpty(), Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK }
+            PracticeTile(tr("寫字"), Icons.Filled.Draw, words.any { Store.canWrite(it.h) }, Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK_WRITE }
             PracticeTile(tr("期末測驗"), Icons.Filled.WorkspacePremium, words.isNotEmpty(), Modifier.weight(1f).fillMaxHeight()) { UI.practice = Practice.WEEK_TEST }
         }
     }

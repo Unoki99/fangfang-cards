@@ -351,6 +351,9 @@ struct NewDeckView: View {
     private var sideWidth: CGFloat { size.width >= 1150 ? 290 : max(150, (size.width - 80) * 0.27) }
     /// a phone on its side: smaller side cards
     private var smallSides: Bool { size.height < 520 }
+    @Environment(\.horizontalSizeClass) private var hSize
+    /// 寫整個詞: the card whose word is being written
+    @State private var writing: Card?
     /// a phone on its side (short and wide)
     private var sideways: Bool { size.width > size.height && size.height < 520 && size.height > 0 }
 
@@ -369,7 +372,20 @@ struct NewDeckView: View {
             } else {
                 HStack(alignment: .top, spacing: smallSides ? 14 : 24) {
                     // iPad (wide enough), 華語: the word's characters beside the card
-                    if wideSides, let top = queue.first { CharSideColumn(word: top, side: 0, small: smallSides).frame(width: sideWidth) }
+                    if wideSides, let top = queue.first {
+                        VStack(spacing: 12) {
+                            CharSideColumn(word: top, side: 0, small: smallSides)
+                            // an iPad: write the whole word on the card
+                            if hSize == .regular && Store.canWrite(top.h) {
+                                Button { writing = top } label: {
+                                    Label(tr("寫整個詞"), systemImage: "pencil.line").ffFont(.subheadline, .semibold)
+                                        .frame(maxWidth: .infinity, minHeight: 44)
+                                }
+                                .softButton()
+                            }
+                        }
+                        .frame(width: sideWidth)
+                    }
                     DeckArea(cards: queue, onSwipe: { card, right in
                         store.mark(card, known: right)
                     }, undo: {
@@ -404,6 +420,7 @@ struct NewDeckView: View {
         .frame(maxWidth: wideSides ? 1260 : 560)
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
+        .fullScreenCover(item: $writing) { WordWriteSheet(card: $0).environmentObject(store) }
         .toolbar(sideways ? .hidden : .automatic, for: .tabBar)
         .animation(.snappy, value: sideways)
         .appBackground()

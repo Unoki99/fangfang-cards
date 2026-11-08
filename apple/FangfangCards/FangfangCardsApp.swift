@@ -193,15 +193,24 @@ struct RootPageBar<Extra: View>: ViewModifier {
     let title: String
     let extra: Extra
     @Environment(\.horizontalSizeClass) private var hsc
+    /// an iPad (not the Mac, where the window's toolbar has room)
+    private var onPad: Bool {
+        #if targetEnvironment(macCatalyst)
+        return false
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #endif
+    }
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) { Text("") }
-                if hsc == .compact {
-                    // a narrow top bar (iPhone held upright): the page's own button (新詞's group) on the left,
-                    // the spelling, language and tone colours in one menu on the right
+                if hsc == .compact || onPad {
+                    // a narrow top bar (iPhone held upright), or an iPad (its tabs float in the middle of the top
+                    // bar): the page's own button (新詞's group) on the left, the spelling, language and tone colours
+                    // in one menu on the right
                     ToolbarItem(placement: .topBarLeading) { extra.fixedSize() }
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 10) {

@@ -24,6 +24,8 @@ struct StudyView: View {
     var words: [Card]? = nil
     /// 本週學習's final test: one question per word, nothing asked again, a score at the end
     var test = false
+    /// only 寫字題 (本週學習 → 寫字)
+    var writeOnly = false
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @AppStorage("rom") private var rom = 0
@@ -56,7 +58,7 @@ struct StudyView: View {
         let qs: [SavedQ]; let idx: Int; let right: Int; let wrong: Int
         let learned: [String]; let retried: [String]; let missed: [String]
     }
-    private var saveName: String { test ? "test" : (blanksOnly ? "blanks" : (words != nil ? "week" : "study")) }
+    private var saveName: String { test ? "test" : (blanksOnly ? "blanks" : (writeOnly ? "write" : (words != nil ? "week" : "study"))) }
     private var saveScope: Int { words != nil ? -1 : store.practiceTopic }
 
     /// next: the question on show has been answered (it isn't asked again when the round is picked up)
@@ -111,7 +113,7 @@ struct StudyView: View {
                 }
                 Group {
                     if queue.isEmpty {
-                        Text(blanksOnly ? trs("不熟的詞裡沒有可以填空的例句。") : (words != nil ? trs("本週還沒有選詞。") : trs("沒有不熟的詞可以練習。"))).foregroundStyle(T.muted)
+                        Text(blanksOnly ? trs("不熟的詞裡沒有可以填空的例句。") : (writeOnly ? trs("這些詞裡沒有可以寫的詞。") : (words != nil ? trs("本週還沒有選詞。") : trs("沒有不熟的詞可以練習。")))).foregroundStyle(T.muted)
                     } else if idx >= queue.count {
                         summary
                     } else {
@@ -146,6 +148,13 @@ struct StudyView: View {
 
     private func begin() {
         if blanksOnly { startBlanks(); return }
+        if writeOnly {
+            // every word that can be written, once (one wrong is asked again later)
+            missed = []
+            queue = (words ?? store.studyCards).filter { Store.canWrite($0.h) }.shuffled().map { make($0, .write) }
+            idx = 0; chosen = nil; right = 0; wrong = 0; learned = []; retried = []
+            return
+        }
         missed = []
         if test {
             // every word of the week once, in a random way
@@ -194,7 +203,7 @@ struct StudyView: View {
             switch $0 {
             case .listen: return c.audio != nil
             case .fillBlank: return !c.blankExamples.isEmpty
-            case .write: return practiceWrite && Store.canWrite(c.h)
+            case .write: return (practiceWrite || writeOnly) && Store.canWrite(c.h)
             default: return !c.d.isEmpty
             }
         }
@@ -395,7 +404,7 @@ struct StudyView: View {
         } else if !ok && !retried.contains(q.card.k) {
             // ask once more later, in another way
             retried.insert(q.card.k)
-            let other = kinds(for: q.card).filter { $0 != q.kind }.randomElement() ?? q.kind
+            let other = writeOnly ? .write : (kinds(for: q.card).filter { $0 != q.kind }.randomElement() ?? q.kind)
             queue.append(make(q.card, other))
         }
         saveNow(next: true)
