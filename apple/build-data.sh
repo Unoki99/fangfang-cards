@@ -83,8 +83,15 @@ echo "下載 HSK 3.0 詞表…"
 curl -fsSL -o "$TMP/hsk30.csv" "https://raw.githubusercontent.com/ivankra/hsk30/master/hsk30-expanded.csv" || rm -f "$TMP/hsk30.csv"
 echo "下載 TOCFL 詞表…"
 # (the list has moved before: try each place it has been)
+# (a file there can be a link to another one, e.g. expanded/tocfl.csv → tocfl-202307.csv: GitHub then gives the
+# name of the file it points to, which is followed)
 for u in expanded/tocfl.csv tocfl.csv expanded/tbcl.csv tbcl.csv; do
-  curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$u" && break || rm -f "$TMP/tocfl.csv"
+  curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$u" || { rm -f "$TMP/tocfl.csv"; continue; }
+  if [ "$(wc -c < "$TMP/tocfl.csv")" -lt 300 ] && grep -qE '^[A-Za-z0-9_./-]+\.csv$' "$TMP/tocfl.csv"; then
+    T="$(tr -d '\r\n' < "$TMP/tocfl.csv")"; D="$(dirname "$u")"; [ "$D" = "." ] && D="" || D="$D/"
+    curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$D$T" || { rm -f "$TMP/tocfl.csv"; continue; }
+  fi
+  break
 done
 [ -f "$TMP/tocfl.csv" ] || echo "  ⚠ 下載不到 TOCFL 詞表：華語的 TOCFL 只會有漢字卡，沒有詞的等級。"
 echo "下載《重編國語辭典修訂本》（漢字卡的字義）和漢字表…"

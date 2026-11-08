@@ -503,7 +503,7 @@ if HSK:
 # the TOCFL word list (ivankra/tocfl: expanded/tocfl.csv): 準備一級 … 流利級 = levels 1–7
 TOCFL_LEVELS = {"L0-1": 1, "L0-2": 2, "L1": 3, "L2": 4, "L3": 5, "L4": 6, "L5": 7}
 # (the level written out, in the other ways the list has had it)
-TOCFL_NAMES = [("準備一", 1), ("準備1", 1), ("novice 1", 1), ("novice1", 1), ("準備二", 2), ("準備2", 2), ("novice 2", 2),
+TOCFL_NAMES = [("準備級一", 1), ("準備級1", 1), ("準備級二", 2), ("準備級2", 2), ("準備一", 1), ("準備1", 1), ("novice 1", 1), ("novice1", 1), ("準備二", 2), ("準備2", 2), ("novice 2", 2),
                ("novice2", 2), ("入門", 3), ("基礎", 4), ("進階", 5), ("高階", 6), ("流利", 7)]
 
 def tocfl_level(row):

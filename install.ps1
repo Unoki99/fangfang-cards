@@ -198,7 +198,16 @@ if ($need) {
         $toc = "-"
         foreach ($u in @("expanded/tocfl.csv", "tocfl.csv", "expanded/tbcl.csv", "tbcl.csv")) {
             $toc = Get-File "$raw/ivankra/tocfl/master/$u" "tocfl.csv" -Optional
-            if ($toc -ne "-") { break }
+            if ($toc -eq "-") { continue }
+            # (a link to another file, e.g. expanded/tocfl.csv -> tocfl-202307.csv: GitHub gives the name it points to)
+            $txt = (Get-Content $toc -Raw -Encoding UTF8).Trim()
+            if ((Get-Item $toc).Length -lt 300 -and $txt -match '^[A-Za-z0-9_./-]+\.csv$') {
+                $dir = Split-Path $u -Parent
+                $to = if ($dir) { "$dir/$txt".Replace('\', '/') } else { $txt }
+                $toc = Get-File "$raw/ivankra/tocfl/master/$to" "tocfl.csv" -Optional
+                if ($toc -eq "-") { continue }
+            }
+            break
         }
         if ($toc -eq "-") { Write-Host "  ⚠ 下載不到 TOCFL 詞表：華語的 TOCFL 只會有漢字卡，沒有詞的等級。" }
         $rev = Get-File "$raw/g0v/moedict-data/master/dict-revised.json.xz" "dict-revised.json.xz" -Optional
