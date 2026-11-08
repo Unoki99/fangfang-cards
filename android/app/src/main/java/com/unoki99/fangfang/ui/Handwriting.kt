@@ -877,12 +877,14 @@ fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = M
     val ink = HandInk.solid
     val period = with(androidx.compose.ui.platform.LocalDensity.current) { 420.dp.toPx() }
     BoxWithConstraints(modifier) {
+    // (taken out here: the Column below can't reach the box's size)
+    val boxW = maxWidth; val boxH = maxHeight
     // a tablet: every character gets a big square at once
-    val wide = maxWidth >= 700.dp
+    val wide = boxW >= 700.dp
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         if (!show && wide) {
             val n = chars.size; val gap = 16.dp
-            val s = minOf(420.dp, (maxWidth - gap * (n - 1)) / n, maxHeight - 130.dp).coerceAtLeast(120.dp)
+            val s = minOf(420.dp, (boxW - gap * (n - 1)) / n, boxH - 130.dp).coerceAtLeast(120.dp)
             Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
                 for (i in chars.indices) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     WordPad(drawings[i], Modifier.size(s)) { side = it }
@@ -917,7 +919,7 @@ fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = M
         }
         if (!show) {
             // the big square for the character being written
-            val padS = minOf(420.dp, maxWidth, maxHeight - 140.dp).coerceAtLeast(160.dp)
+            val padS = minOf(420.dp, boxW, boxH - 140.dp).coerceAtLeast(160.dp)
             key(cur) { WordPad(drawings[cur], Modifier.size(padS)) { side = it } }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SoftButton(onClick = { drawings[cur].clear() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Clear, tr("清掉"), ff(FF.Subheadline)) }

@@ -113,6 +113,7 @@ fun NewDeckTab() {
             // a tablet, or a phone on its side (華語): the word's characters as small cards beside the big one
             val landscape = maxWidth > maxHeight
             val sides = queue.isNotEmpty() && (maxWidth >= 1100.dp || (landscape && maxWidth >= 560.dp))
+            val tablet = maxWidth >= 1100.dp
             val sideW = if (maxWidth >= 1100.dp) 290.dp else ((maxWidth - 32.dp - 32.dp) * 0.27f)
             val small = maxHeight < 520.dp
             // a phone on its side: no counts, no buttons, no tab bar; just the cards
@@ -125,7 +126,7 @@ fun NewDeckTab() {
                     CharSideColumn(queue.first(), 0, small, Modifier.fillMaxWidth().weight(1f))
                     // a tablet: write the whole word on the card
                     val top = queue.first()
-                    if (maxWidth >= 1100.dp && Store.canWrite(top.h)) SoftButton(onClick = { UI.writeCard = top; UI.practice = Practice.WORD_WRITE },
+                    if (tablet && Store.canWrite(top.h)) SoftButton(onClick = { UI.writeCard = top; UI.practice = Practice.WORD_WRITE },
                         Modifier.fillMaxWidth().heightIn(min = 44.dp)) { IconLabel(Icons.Filled.Draw, tr("寫整個詞"), ff(FF.Subheadline)) }
                 }
                 // (zIndex: the big card goes over the side cards when it's swiped)
