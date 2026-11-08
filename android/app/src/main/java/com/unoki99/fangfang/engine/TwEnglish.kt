@@ -45,7 +45,7 @@ object TwEnglish {
      *  the meaning is to the word, the higher ("quality" before "good quality" before a long description that has
      *  "quality" somewhere in it); among equals, Hokkien's own meanings first, then the shorter words */
     fun search(q0: String, limit: Int = 200): List<String> {
-        val q = q0.lowercase().trim()
+        val q = q0.enFold().trim()
         if (!(q.length >= 2 || q == "i" || q == "a") || q.any { it.code > 127 }) return emptyList()
         val t = all
         val wantVerb = q.startsWith("to ")
@@ -56,7 +56,7 @@ object TwEnglish {
         class Hit(val tier: Int, val later: Int, val hok: Int, val len: Int, val k: String)
         val hits = ArrayList<Hit>()
         for ((k, en0) in t) {
-            val en = en0.lowercase()
+            val en = en0.enFold()
             if (!en.contains(bare)) continue
             var best = 99; var bestPos = 1
             for ((pos, g0) in en.split("; ").withIndex()) {
@@ -94,11 +94,11 @@ object TwEnglish {
  *  "to anchor (a vessel)"); the rest keep their order */
 object EnglishMatch {
     fun first(list: List<String>, q0: String): List<String> {
-        var q = q0.lowercase().trim()
+        var q = q0.enFold().trim()
         if (q.startsWith("to ")) q = q.drop(3)
         if (q.isEmpty()) return list
         val pat = Regex("(^|[^a-z])" + Regex.escape(q) + "($|[^a-z])")
-        val hit = list.filter { pat.containsMatchIn(it.lowercase()) }
+        val hit = list.filter { pat.containsMatchIn(it.enFold()) }
         return hit + list.filter { it !in hit }
     }
 
@@ -107,3 +107,7 @@ object EnglishMatch {
         return list.filter { it.isNotEmpty() && seen.add(it.lowercase()) }
     }
 }
+
+/** English for searching: small letters, and the curly apostrophe a keyboard may type ("one’s") the same as the
+ *  straight one in the dictionaries ("one's") */
+fun String.enFold(): String = lowercase().replace('\u2019', '\'').replace('\u2018', '\'').replace('\u02BC', '\'')

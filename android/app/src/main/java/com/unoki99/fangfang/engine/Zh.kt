@@ -855,14 +855,14 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
     /** each entry's English, in small letters (粵語: Wiktionary's meanings too), for the English search: made the
      *  first time it's needed, not every search (127,000 粵語 words made the search slow) */
     private val englishTexts: List<String> by lazy {
-        entries.map { e -> (if (isYue) e.senses.joinToString(";") { it.text } + ";" + (e.en ?: "") else (e.en ?: "")).lowercase() }
+        entries.map { e -> (if (isYue) e.senses.joinToString(";") { it.text } + ";" + (e.en ?: "") else (e.en ?: "")).enFold() }
     }
     /** (made ahead of the first English search, when the dictionary page opens) */
     fun warmEnglish() { englishTexts.size }
 
     /** (and how close the best one is: 0 = a meaning that's exactly the words) */
     fun englishHits(q0: String): Pair<List<Int>, Int> {
-        val q = q0.lowercase().trim()
+        val q = q0.enFold().trim()
         if (q.length < 2 && q != "i" && q != "a") return emptyList<Int>() to 9
         val wantVerb = q.startsWith("to ")
         val bare = if (wantVerb) q.drop(3) else q

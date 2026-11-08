@@ -923,11 +923,11 @@ struct HakAccentRows: View {
 /// "to anchor (a vessel)"); the rest keep their order
 enum EnglishMatch {
     static func first(_ list: [String], _ q0: String) -> [String] {
-        var q = q0.lowercased().trimmingCharacters(in: .whitespaces)
+        var q = q0.enFold.trimmingCharacters(in: .whitespaces)
         if q.hasPrefix("to ") { q = String(q.dropFirst(3)) }
         guard !q.isEmpty else { return list }
         let pat = #"(^|[^a-z])"# + NSRegularExpression.escapedPattern(for: q) + #"($|[^a-z])"#
-        let hit = list.filter { $0.lowercased().range(of: pat, options: .regularExpression) != nil }
+        let hit = list.filter { $0.enFold.range(of: pat, options: .regularExpression) != nil }
         return hit + list.filter { !hit.contains($0) }
     }
 
@@ -935,5 +935,14 @@ enum EnglishMatch {
         var seen = Set<String>(), out: [String] = []
         for x in list where !x.isEmpty && seen.insert(x.lowercased()).inserted { out.append(x) }
         return out
+    }
+}
+
+extension String {
+    /// English for searching: small letters, and the curly apostrophe the keyboard types ("one’s") the same as the
+    /// straight one in the dictionaries ("one's")
+    var enFold: String {
+        lowercased().replacingOccurrences(of: "\u{2019}", with: "'").replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{02BC}", with: "'")
     }
 }

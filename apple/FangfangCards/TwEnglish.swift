@@ -42,7 +42,7 @@ enum TwEnglish {
     /// the closer the meaning is to the word, the higher ("quality" before "good quality" before a long description
     /// that has "quality" somewhere in it); among equals, Hokkien's own meanings first, then the shorter words
     static func search(_ q0: String, limit: Int = 200) -> [String] {
-        let q = q0.lowercased().trimmingCharacters(in: .whitespaces)
+        let q = q0.enFold.trimmingCharacters(in: .whitespaces)
         guard q.count >= 2 || q == "i" || q == "a", q.unicodeScalars.allSatisfy({ $0.isASCII }) else { return [] }
         let t = all
         let wantVerb = q.hasPrefix("to ")
@@ -51,7 +51,7 @@ enum TwEnglish {
         let qWords = bare.split(separator: " ").count
         var hits: [(tier: Int, later: Int, hok: Int, len: Int, k: String)] = []
         for (k, en0) in t {
-            let en = en0.lowercased()
+            let en = en0.enFold
             guard en.contains(bare) else { continue }
             var best = 99, bestPos = 1
             for (pos, g0) in en.components(separatedBy: "; ").enumerated() {

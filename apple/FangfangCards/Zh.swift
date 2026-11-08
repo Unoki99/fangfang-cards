@@ -445,7 +445,7 @@ final class ZhDict: @unchecked Sendable {
         englishLock.lock(); defer { englishLock.unlock() }
         if let c = englishCache { return c }
         let c = entries.map { e in
-            (isYue ? (e.senses.map { $0.text }.joined(separator: ";") + ";" + (e.en ?? "")) : (e.en ?? "")).lowercased()
+            (isYue ? (e.senses.map { $0.text }.joined(separator: ";") + ";" + (e.en ?? "")) : (e.en ?? "")).enFold
         }
         englishCache = c
         return c
@@ -981,7 +981,7 @@ final class ZhDict: @unchecked Sendable {
 
     /// (and how close the best one is: 0 = a meaning that's exactly the words)
     func englishHits(_ q0: String) -> (list: [Int], best: Int) {
-        let q = q0.lowercased().trimmingCharacters(in: .whitespaces)
+        let q = q0.enFold.trimmingCharacters(in: .whitespaces)
         guard q.count >= 2 || q == "i" || q == "a" else { return ([], 9) }
         var hits: [(tier: Int, later: Int, i: Int)] = []
         let wantVerb = q.hasPrefix("to ")
