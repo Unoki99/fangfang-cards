@@ -13,7 +13,6 @@ struct SettingsView: View {
     @AppStorage(UILang.key) private var uiLangNow = 0
     @AppStorage("goal") private var goal = 3
     @AppStorage("sessionSize") private var sessionSize = 10
-    @AppStorage(WordWrite.key) private var practiceWrite = true
     @AppStorage("autoPlay") private var autoPlay = false
     @AppStorage("volume") private var volume = 0.8
     @AppStorage(InputCodes.onKey) private var imeOn = false
@@ -318,6 +317,7 @@ private struct PracticeSettings: View {
     @AppStorage(Kaiti.styleKey) private var handFont = 0
     @AppStorage("goal") private var goal = 3
     @AppStorage("sessionSize") private var sessionSize = 10
+    @AppStorage(WordWrite.key) private var practiceWrite = true
     @State private var confirmReset = false
 
     var body: some View {
