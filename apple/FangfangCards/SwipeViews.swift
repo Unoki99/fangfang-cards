@@ -700,7 +700,9 @@ extension Store {
     /// word in the dictionary with the reading it has in this word (a character is often read several ways)
     func sideCards(_ word: Card) -> [Card] {
         if word.isZh {
-            let chars = word.h.unicodeScalars.filter { Zhuyin.isHan($0) }.map(String.init)
+            // (from the key: the 正體 characters, also when 簡體 is shown)
+            let han = word.k.split(separator: "\t").first.map(String.init) ?? word.h
+            let chars = han.unicodeScalars.filter { Zhuyin.isHan($0) }.map(String.init)
             return chars.count > 1 ? chars.compactMap { card(for: Lang.charKey($0)) } : []
         }
         let han = Dict.hanOf(word.k).map(String.init)

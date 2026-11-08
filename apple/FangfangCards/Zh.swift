@@ -205,10 +205,10 @@ enum Zhuyin {
     }
 
     /// the colour of a 華語 tone (the 台語 colours: 1 red, 2 like 台語 5, 3 blue, 4 like 台語 2, light grey)
-    static func color(_ t: Int, _ sys: Int) -> Color? {
+    static func color(_ t: Int, _ sys: Int, yue: Bool = Lang.isYue) -> Color? {
         guard sys != 0 else { return nil }
         // 粵語: tones 1–6 (in the colours picked for 粵語)
-        if Lang.isYue { return (1...6).contains(t) ? ToneColors.yueColor(t) : nil }
+        if yue { return (1...6).contains(t) ? ToneColors.yueColor(t) : nil }
         switch t {
         case 0...4: return ToneColors.zhColor(t)       // the colours picked in 設定 (red, green, blue, purple, grey)
         default: return nil
@@ -218,6 +218,42 @@ enum Zhuyin {
     static func isHan(_ u: Unicode.Scalar) -> Bool {
         let v = u.value
         return (0x3400...0x9FFF).contains(v) || (0x20000...0x3FFFF).contains(v) || (0xF900...0xFAFF).contains(v)
+    }
+}
+
+// MARK: - 簡體
+
+/// 設定 → 字形: 華語 and 粵語 shown in 簡體字. The keys and the data stay 正體; what's shown is changed, character by
+/// character, with the pairs the dictionaries give (後→后, 開→开…).
+enum Simp {
+    static let key = "simplified"
+    static var on: Bool { Lang.isZh && UserDefaults.standard.bool(forKey: key) }
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var table: [Character: Character] = [:]
+
+    /// the pairs of a dictionary's words (正體 and 簡體 of the same length)
+    static func learn(_ pairs: [(String, String)]) {
+        var t: [Character: Character] = [:]
+        for (h, a) in pairs where h.count == a.count {
+            for (x, y) in zip(h, a) where x != y { t[x] = y }
+        }
+        lock.lock(); table.merge(t) { old, _ in old }; back = [:]; lock.unlock()
+    }
+
+    /// a 簡體 character's 正體 one (the first the dictionaries gave)
+    static func reverse(_ c: Character) -> Character? {
+        lock.lock(); defer { lock.unlock() }
+        if back.isEmpty { for (t, s) in table where back[s] == nil { back[s] = t } }
+        return back[c]
+    }
+    nonisolated(unsafe) private static var back: [Character: Character] = [:]
+
+    /// in 簡體 (when that's chosen)
+    static func show(_ s: String) -> String { on ? convert(s) : s }
+    static func convert(_ s: String) -> String {
+        lock.lock(); defer { lock.unlock() }
+        guard !table.isEmpty else { return s }
+        return String(s.map { table[$0] ?? $0 })
     }
 }
 
@@ -479,6 +515,7 @@ final class ZhDict: @unchecked Sendable {
             }
         }
         entries = out
+        Simp.learn(out.compactMap { e in e.alt.map { (e.h, $0) } })
         var byM: [String: [Int]] = [:]
         for (i, e) in out.enumerated() { for m in e.eq where byM[m]?.last != i { byM[m, default: []].append(i) } }
         byMandarin = byM
@@ -517,7 +554,7 @@ final class ZhDict: @unchecked Sendable {
         let l = c.level(list)
         let topic = l > 0 ? Lang.charTopicBase + l : Lang.moreChars
         // (粵語: zy is the 粵拼 syllable, z its 耶魯)
-        return Card(k: c.h + (isYue ? "\t粵字" : "\t字"), h: c.h, r: [main.py], z: isYue ? Yale.of(main.zy) : main.zy, a: nil, g: "", d: defs,
+        return Card(k: c.h + (isYue ? "\t粵字" : "\t字"), h: Simp.show(c.h), r: [main.py], z: isYue ? Yale.of(main.zy) : main.zy, a: nil, g: "", d: defs,
                     c: nil, zo: nil, v: nil, o: others.isEmpty ? nil : Array(others), s: nil, t: "漢字",
                     sy: nil, an: nil, cats: [topic], zs: [main.zy], zl: nil)
     }
@@ -555,7 +592,7 @@ final class ZhDict: @unchecked Sendable {
                 let apos = !first && (p.first.map { "aāáǎàoōóǒòeēéěèê".contains($0) } ?? false)
                 a = AttributedString((apos ? "'" : "") + p)
             }
-            if let c = Zhuyin.color(Zhuyin.tone(s), colours) { a.swiftUI.foregroundColor = c }
+            if let c = Zhuyin.color(Zhuyin.tone(s), colours, yue: isYue) { a.swiftUI.foregroundColor = c }
             out += a
             first = false
         }
@@ -565,15 +602,16 @@ final class ZhDict: @unchecked Sendable {
     func readingPlain(_ syl: [String], _ mode: Int) -> String { String(reading(syl, mode, colours: 0).characters) }
 
     /// 漢字 in tone colours (one syllable per 漢字; 兒 after -ㄦ takes the colour before it)
-    func hanText(_ han: String, _ syl: [String], base: Color?, colours: Int = ToneColors.system) -> AttributedString {
+    func hanText(_ han0: String, _ syl: [String], base: Color?, colours: Int = ToneColors.system) -> AttributedString {
         var out = AttributedString(), i = 0, last = 1
+        let han = Simp.show(han0)       // (簡體, when chosen: one character for one)
         for u in han.unicodeScalars {
             var a = AttributedString(String(u))
             if Zhuyin.isHan(u), i < syl.count {
                 let s = syl[i]; i += 1
                 let t = s == "-" ? last : Zhuyin.tone(s)
                 last = t
-                if let c = Zhuyin.color(t, colours) { a.swiftUI.foregroundColor = c } else if let base { a.swiftUI.foregroundColor = base }
+                if let c = Zhuyin.color(t, colours, yue: isYue) { a.swiftUI.foregroundColor = c } else if let base { a.swiftUI.foregroundColor = base }
             } else if let base { a.swiftUI.foregroundColor = base }
             out += a
         }
@@ -670,11 +708,11 @@ final class ZhDict: @unchecked Sendable {
             }
             var last = 1
             for (i, ch) in p.text.enumerated() {
-                var a = AttributedString(ch)
+                var a = AttributedString(Simp.show(ch))
                 if let syl = p.syl(place), i < syl.count, syl[i] != "_" {
                     let t = syl[i] == "-" ? last : Zhuyin.tone(syl[i])
                     last = t
-                    a.swiftUI.foregroundColor = Zhuyin.color(t, colours) ?? base
+                    a.swiftUI.foregroundColor = Zhuyin.color(t, colours, yue: isYue) ?? base
                 } else {
                     a.swiftUI.foregroundColor = base
                 }
@@ -693,15 +731,15 @@ final class ZhDict: @unchecked Sendable {
             Def(p: "", t: s.text, x: s.ex.map { x in
                 let blankable = x.h != e.h && x.h.contains(e.h) && Self.pieces(x).contains { $0.text.joined() == e.h }
                 // (the reading is worked out when it's shown: Store.exampleRom)
-                return Example(h: x.h, r: [""], z: x.src, n: "tts:" + x.h,
-                               bh: blankable ? x.h.replacingOccurrences(of: e.h, with: "＿＿") : nil,
+                return Example(h: Simp.show(x.h), r: [""], z: x.src, n: "tts:" + x.h,
+                               bh: blankable ? Simp.show(x.h.replacingOccurrences(of: e.h, with: "＿＿")) : nil,
                                br: blankable ? [""] : nil, w: x.code)
             }, sy: nil, an: nil)
         }
         let variant: [String: Variant]? = e.lu.map { lu in
             ["1": Variant(r: [readingPlain(lu, 0)], z: readingPlain(lu, 1))]
         }
-        return Card(k: e.k, h: e.h, r: [readingPlain(e.tw, 0)], z: readingPlain(e.tw, 1), a: nil, g: "", d: defs,
+        return Card(k: e.k, h: Simp.show(e.h), r: [readingPlain(e.tw, 0)], z: readingPlain(e.tw, 1), a: nil, g: "", d: defs,
                     c: nil, zo: nil, v: variant, o: nil, s: nil,
                     t: e.spec == 1 ? "臺灣特有" : (e.spec == 2 ? "大陸特有" : nil),
                     sy: nil, an: nil, cats: e.level(list) > 0 ? [e.level(list)] : nil, zs: e.tw, zl: e.lu, web: e.audio)
@@ -716,6 +754,7 @@ final class ZhDict: @unchecked Sendable {
         var defs: [Int] = []           // meanings that mention it
         var english: [Int] = []        // English meanings with the word
         var mandarin: [Int] = []       // 粵語: the words for this 華語 word (華語 → 粵語)
+        var englishFirst = false       // the English meanings shown before the readings
         var tones: [Int] = []          // words with these tones
         var toneLabel = ""
         /// several words searched at once (陰謀論 → 陰謀, 論; or 陰謀 論): each word and its entries
@@ -811,7 +850,13 @@ final class ZhDict: @unchecked Sendable {
             }
             f.starts.sort()
         }
-        if !toned { f.english = english(q) }
+        if !toned {
+            let h = englishHits(q)
+            f.english = h.list
+            // an English word that's also spelled like a syllable ("me", "I"): the English first, when a meaning is
+            // just that word
+            f.englishFirst = h.best <= 1
+        }
         return f
     }
 
@@ -819,14 +864,22 @@ final class ZhDict: @unchecked Sendable {
     /// then meanings that start with it, then the rest. Within each: words that give it as their first meaning
     /// first, then the more common words (the entries are in order of how common they are). A meaning with a
     /// note in brackets ("(computing) (coll.) slow") counts one step lower, so 慢 comes before 卡 for "slow".
-    func english(_ q0: String) -> [Int] {
+    /// "to park" (a verb) puts "to park" before "park" (a noun), and the other way round.
+    func english(_ q0: String) -> [Int] { englishHits(q0).list }
+
+    /// (and how close the best one is: 0 = a meaning that's exactly the words)
+    func englishHits(_ q0: String) -> (list: [Int], best: Int) {
         let q = q0.lowercased().trimmingCharacters(in: .whitespaces)
-        guard q.count >= 2 else { return [] }
+        guard q.count >= 2 || q == "i" || q == "a" else { return ([], 9) }
         var hits: [(tier: Int, later: Int, i: Int)] = []
-        let bare = q.hasPrefix("to ") ? String(q.dropFirst(3)) : q
+        let wantVerb = q.hasPrefix("to ")
+        let bare = wantVerb ? String(q.dropFirst(3)) : q
         let inWord = #"[^a-z]"# + NSRegularExpression.escapedPattern(for: bare) + #"[^a-z]"#
         for (i, e) in entries.enumerated() {
-            guard let en = e.en?.lowercased(), en.contains(bare) else { continue }
+            // (粵語: Wiktionary's meanings are the senses, CC-Canto's / CC-CEDICT's the English)
+            let all = isYue ? (e.senses.map { $0.text }.joined(separator: ";") + ";" + (e.en ?? "")) : (e.en ?? "")
+            let en = all.lowercased()
+            guard en.contains(bare) else { continue }
             var best = 9, bestPos = 1
             for (pos, g0) in en.components(separatedBy: ";").enumerated() {
                 // without notes in brackets: "(bound form) to walk" → "to walk"
@@ -834,19 +887,22 @@ final class ZhDict: @unchecked Sendable {
                 var noted = false
                 while let r = g.range(of: #"\([^()]*\)"#, options: .regularExpression) { g.removeSubrange(r); noted = true }
                 g = g.trimmingCharacters(in: .whitespaces)
-                let v = g.hasPrefix("to ") ? String(g.dropFirst(3)) : g
+                let isVerb = g.hasPrefix("to ")
+                let v = isVerb ? String(g.dropFirst(3)) : g
                 var t = 9
                 if v == bare { t = 0 }
-                else if v.hasPrefix(bare + " ") || v.hasPrefix(bare + ",") { t = 1 }
-                else if (" " + v + " ").range(of: inWord, options: .regularExpression) != nil { t = 2 }
+                else if v.hasPrefix(bare + " ") || v.hasPrefix(bare + ",") { t = 2 }
+                else if (" " + v + " ").range(of: inWord, options: .regularExpression) != nil { t = 4 }
+                // a verb asked for and a noun found (or the other way round): one step lower
+                if t < 9 && isVerb != wantVerb && (wantVerb || t == 0) { t += wantVerb ? 2 : 1 }
                 if t < 9 && noted { t += 1 }
                 let p = pos == 0 ? 0 : 1
                 if t < best || (t == best && p < bestPos) { best = t; bestPos = p }
             }
-            if best <= 3 { hits.append((min(best, 3), bestPos, i)) }
+            if best <= 5 { hits.append((best, bestPos, i)) }
         }
         hits.sort { ($0.tier, $0.later, $0.i) < ($1.tier, $1.later, $1.i) }
-        return Array(hits.prefix(250).map { $0.i })
+        return (Array(hits.prefix(250).map { $0.i }), hits.first?.tier ?? 9)
     }
 
     /// the entry for a word of a sentence: the one read the way the sentence reads it

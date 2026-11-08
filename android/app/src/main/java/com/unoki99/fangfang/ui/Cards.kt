@@ -75,11 +75,11 @@ fun NewDeckTab() {
                 TextButton(onClick = { menu = true }) {
                     Icon(Icons.Filled.Layers, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                     Text((Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
-                        ?: (if (zh) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
+                        ?: (if (zh && !Store.isYue) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
                         color = T.btnInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
                 }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
-                    if (zh) {
+                    if (zh && !Store.isYue) {
                         Txt(tr("詞表"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         Lang.listNames.forEachIndexed { i, n ->
                             DropdownMenuItem(text = { Text(n, color = if (Prefs.zhList.value == i) T.greenInk else T.glyph) },
@@ -88,7 +88,7 @@ fun NewDeckTab() {
                         HorizontalDivider(color = T.fnEdge)
                         Txt(tr("等級"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                     }
-                    DropdownMenuItem(text = { Text(if (zh) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
+                    DropdownMenuItem(text = { Text(if (zh && !Store.isYue) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
                     for (t in Store.topics) {
                         if (zh && t.id == Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id) {
                             HorizontalDivider(color = T.fnEdge)
@@ -704,7 +704,8 @@ private fun CharSideCard(card: Card, small: Boolean) {
  *  the dictionary with the reading it has in this word (a character is often read several ways) */
 private fun sideCards(word: Card): List<Card> {
     if (word.isZh) {
-        val chars = word.h.codePoints().toArray().filter { Zhuyin.isHan(it) }.map { String(Character.toChars(it)) }
+        // (from the key: the 正體 characters, also when 簡體 is shown)
+        val chars = word.k.substringBefore('\t').codePoints().toArray().filter { Zhuyin.isHan(it) }.map { String(Character.toChars(it)) }
         return if (chars.size > 1) chars.mapNotNull { Store.cardFor(Lang.charKey(it)) } else emptyList()
     }
     val tab = word.k.indexOf('\t')

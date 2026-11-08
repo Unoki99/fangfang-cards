@@ -530,28 +530,40 @@ fun ToneColorPickerPage(onBack: () -> Unit) {
     }
 }
 
-/** 設定 → 顏色與外觀 → 選聲調顏色: every tone of 台語 and 華語 can have a colour of its own */
+/** 設定 → 顏色與外觀 → 選聲調顏色: every tone of 台語, 華語 and 粵語 can have a colour of its own */
 @Composable
 fun ToneColorPickerBody() {
-    var zh by remember { mutableStateOf(Store.isZh) }
+    /** 0 台語, 1 華語, 2 粵語 */
+    var which by remember { mutableStateOf(Store.lang) }
+    val zh = which == 1
     var tone by remember { mutableStateOf<Int?>(null) }
     // (read so the page redraws when a colour changes)
-    val sig = Prefs.toneColorsTw.value + Prefs.toneColorsZh.value
-    fun set(t: Int, c: Int?) {
-        val m = HashMap(ToneColors.picked(zh))
-        if (c == null) m.remove(t) else m[t] = c
-        if (zh) Prefs.toneColorsZh.value = ToneColors.encode(m) else Prefs.toneColorsTw.value = ToneColors.encode(m)
-        ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value)
+    val sig = Prefs.toneColorsTw.value + Prefs.toneColorsZh.value + Prefs.toneColorsYue.value
+    fun reload() = ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value, Prefs.toneColorsYue.value)
+    fun save(m: Map<Int, Int>) {
+        when (which) { 2 -> Prefs.toneColorsYue.value = ToneColors.encode(m); 1 -> Prefs.toneColorsZh.value = ToneColors.encode(m); else -> Prefs.toneColorsTw.value = ToneColors.encode(m) }
+        reload()
     }
-    fun colorOf(t: Int) = Color(if (zh) ToneColors.zhColor(t) else ToneColors.twColor(t))
+    fun set(t: Int, c: Int?) {
+        val m = HashMap(ToneColors.picked(which))
+        if (c == null) m.remove(t) else m[t] = c
+        save(m)
+    }
+    fun colorOf(t: Int) = Color(ToneColors.colorOf(which, t))
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         run {
             key(sig) {
-                Segmented(listOf(false to tr("台語"), true to tr("華語")), zh, { zh = it; tone = null })
+                Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語")), which, { which = it; tone = null })
                 SectionTitle(tr("看起來"))
                 ListCard {
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 6.dp)) {
-                        if (zh) {
+                        if (which == 2) {
+                            // 詩 史 試 時 市 事: si1–si6
+                            for ((h, t) in listOf("詩" to 1, "史" to 2, "試" to 3, "時" to 4, "市" to 5, "事" to 6)) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Txt(h, sz(26f, FontWeight.SemiBold), colorOf(t))
+                                Txt("si$t", lat(15f), colorOf(t))
+                            }
+                        } else if (zh) {
                             for ((h, t) in listOf("媽" to 1, "麻" to 2, "馬" to 3, "罵" to 4, "嗎" to 0)) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Txt(h, sz(26f, FontWeight.SemiBold), colorOf(t))
                                 Txt(listOf("mā", "má", "mǎ", "mà", "ma")[if (t == 0) 4 else t - 1], lat(15f), colorOf(t))
@@ -570,14 +582,14 @@ fun ToneColorPickerBody() {
                 }
                 SectionTitle(tr("每個聲調（點一下選顏色）"))
                 ListCard {
-                    val tones = if (zh) ToneColors.zhTones else ToneColors.twTones
+                    val tones = ToneColors.tones(which)
                     for ((i, t) in tones.withIndex()) {
                         if (i > 0) RowDivider()
                         Row(Modifier.fillMaxWidth().clickable { tone = if (tone == t) null else t }.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(22.dp).clip(CircleShape).background(colorOf(t)))
                             Txt(if (t == 0) (if (zh) tr("輕聲") else tr("輕聲（--）")) else tr("第 {0} 聲", t), ff(FF.Body), modifier = Modifier.weight(1f))
-                            if (ToneColors.picked(zh).containsKey(t)) TextButton(onClick = { set(t, null) }) { Text(tr("原本的"), color = T.muted) }
+                            if (ToneColors.picked(which).containsKey(t)) TextButton(onClick = { set(t, null) }) { Text(tr("原本的"), color = T.muted) }
                         }
                         if (tone == t) {
                             // one column per colour, light at the top and dark at the bottom
@@ -595,8 +607,7 @@ fun ToneColorPickerBody() {
                     }
                 }
                 TextButton(onClick = {
-                    if (zh) Prefs.toneColorsZh.value = "" else Prefs.toneColorsTw.value = ""
-                    ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value)
+                    save(emptyMap())
                 }) { Text(tr("全部換回原本的顏色"), color = T.rustInk) }
                 Txt(tr("原本的顏色：台語一聲紅、二聲紫、三聲藍、四聲橘、五聲綠、六聲青、七聲黃、八聲粉紅、輕聲灰；華語一聲紅、二聲綠、三聲藍、四聲紫、輕聲灰。"),
                     ff(FF.Footnote), T.muted)

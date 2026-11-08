@@ -152,13 +152,24 @@ object Prefs : KeyValue {
     /** the colours picked for each tone ("" = the standard ones): "1:ff6b6b,2:…" */
     val toneColorsTw = Pref("toneColorsTw", "")
     val toneColorsZh = Pref("toneColorsZh", "")
+    val toneColorsYue = Pref("toneColorsYue", "")
+    /** the other spellings kept while one language is shown (zhRom is the one shown: 華語 拼音/注音, 粵語 粵拼/耶魯) */
+    val mandRom = Pref("mandRom", 0)
+    val yueRom = Pref("yueRom", 0)
+    /** the one of 華語 / 粵語 used last (read in the background in 台語 mode) */
+    val lastZh = Pref("lastZh", 1)
+    /** 轉換: 0 轉換, 1 讀音 */
+    val convertTab = Pref("convertTab", 0)
+    val readingsQuery = Pref("readingsQuery", "學生")
+    /** 設定 → 字形: 簡體字 (華語 and 粵語) */
+    val simplified = Pref("simplified", false)
 
     private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, toneGlow, hideMeaning, autoPlay, volume, goal, sessionSize,
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, mandRom, yueRom, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -169,12 +180,14 @@ object Prefs : KeyValue {
         syncEngine()
         toneSys.onChange = { syncEngine() }
         toneMarks.onChange = { syncEngine() }
-        com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value)
+        com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value)
+        simplified.onChange = { syncEngine() }
     }
 
     fun syncEngine() {
         EngineSettings.toneSystem = toneSys.value
         EngineSettings.toneMarks = toneMarks.value
+        EngineSettings.simplified = simplified.value
     }
 
     // the engine's own settings (remembered converter picks and the like)

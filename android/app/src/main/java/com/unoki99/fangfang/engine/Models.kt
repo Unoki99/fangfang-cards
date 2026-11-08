@@ -51,12 +51,14 @@ class Card(
     /** 華語: the 注音 syllables (臺灣, and 大陸 where it differs) */
     val zs: List<String>? = null,
     val zl: List<String>? = null,
+    /** 粵語: a recording of the word (a web address, Wikimedia Commons) */
+    val web: String? = null,
 ) {
     override fun equals(other: Any?) = other is Card && other.k == k
     override fun hashCode() = k.hashCode()
     val isZh: Boolean get() = zs != null
-    /** the word's recording (台語), or the device's voice (華語) */
-    val audio: String? get() = if (isZh) "tts:$h" else a?.let { Audio.wordPath(it) }
+    /** the word's recording (台語), or the device's voice (華語; 粵語 when the word has no recording) */
+    val audio: String? get() = if (isZh) (web ?: "tts:$h") else a?.let { Audio.wordPath(it) }
 
     fun rom(i: Int, place: Int = -1): String {
         val j = i.coerceIn(0, r.size - 1)

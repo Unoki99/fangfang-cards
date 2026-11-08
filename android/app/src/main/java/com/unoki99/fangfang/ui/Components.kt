@@ -200,10 +200,11 @@ fun PlaceMenu() {
     val store = com.unoki99.fangfang.Store
     val zh = store.isZh
     var open by remember { mutableStateOf(false) }
-    val fill = if (zh) Color(0xFF1F3D6B) else T.placeFill
-    val edge = if (zh) Color(0xFF4F7DFF) else T.placeEdge
-    val ink = if (zh) Color(0xFF9AD0FF) else T.purpleInk
-    val name = if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames[zhPlace.coerceIn(0, 1)]
+    val yue = store.isYue
+    val fill = if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.placeFill
+    val edge = if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.placeEdge
+    val ink = if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.purpleInk
+    val name = if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames[zhPlace.coerceIn(0, 1)]
         else "台・" + (if (place in PLACE_NAMES.indices) PLACE_NAMES[place].take(2) else "通行")
     Box {
         Row(Modifier.clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { open = true }
@@ -218,13 +219,17 @@ fun PlaceMenu() {
                     leadingIcon = { if (on) Icon(Icons.Filled.Check, null, tint = T.greenInk) else Spacer(Modifier.size(24.dp)) },
                     onClick = onClick)
             Text(tr("語言"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
-            item(tr("台語"), !zh) { store.setLanguage(false); open = false }
-            item(tr("華語"), zh) { store.setLanguage(true); open = false }
-            HorizontalDivider(color = T.fnEdge)
-            if (zh) {
+            item(tr("台語"), store.lang == 0) { store.setLanguage(0); open = false }
+            item(tr("華語"), store.lang == 1) { store.setLanguage(1); open = false }
+            item(tr("粵語"), store.lang == 2) { store.setLanguage(2); open = false }
+            if (yue) {
+                // (粵語: one reading)
+            } else if (zh) {
+                HorizontalDivider(color = T.fnEdge)
                 Text(tr("華語讀音"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 com.unoki99.fangfang.engine.Lang.placeNames.forEachIndexed { i, p -> item(tr(p), zhPlace == i) { zhPlace = i; open = false } }
             } else {
+                HorizontalDivider(color = T.fnEdge)
                 Text(tr("台語腔口"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                 item(tr("通行"), place < 0) { place = -1; open = false }
                 PLACE_NAMES.forEachIndexed { i, p -> item(tr(p), place == i) { place = i; open = false } }
@@ -243,7 +248,11 @@ fun ToneMenu() {
         Row(Modifier.clip(CircleShape).background(T.fn).border(2.dp, T.fnEdge, CircleShape).clickable { open = true }
             .padding(horizontal = 9.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
             if (system == 0) Text(tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
-            else for (t in if (system == 5) listOf(1, 2, 3, 5, 6, 7) else listOf(1, 2, 3, 4, 5, 6, 7, 8)) {
+            else if (com.unoki99.fangfang.Store.isYue) for (t in 1..6) {
+                Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.yueColor(t)), CircleShape))
+            } else if (com.unoki99.fangfang.Store.isZh) for (t in 1..4) {
+                Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.zhColor(t)), CircleShape))
+            } else for (t in if (system == 5) listOf(1, 2, 3, 5, 6, 7) else listOf(1, 2, 3, 4, 5, 6, 7, 8)) {
                 Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.color(t, system) ?: 0xFF888888.toInt()), CircleShape))
             }
         }

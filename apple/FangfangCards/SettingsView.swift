@@ -224,6 +224,7 @@ private struct LanguageSettings: View {
     // each of 華語 and 粵語 has its own spelling (the one shown now is also store.zhRom, so the pages redraw)
     @AppStorage("zhRom") private var zhRomSaved = 0
     @AppStorage(Lang.yueRomKey) private var yueRomSaved = 0
+    @AppStorage(Simp.key) private var simplified = false
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
@@ -259,6 +260,18 @@ private struct LanguageSettings: View {
                     ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
                 }
                 .onChange(of: place) { if place >= 0 { store.loadDict() } }
+            }
+            Section {
+                Picker(tr("字形"), selection: $simplified) {
+                    Text(tr("正體字")).tag(false)
+                    Text(tr("簡體字")).tag(true)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: simplified) { store.simplifiedChanged() }
+            } header: {
+                Text(tr("字形"))
+            } footer: {
+                Text(tr("華語和粵語的卡片、詞典和例句用哪一種字寫。台語一直用正體字；手寫練習也是正體字。"))
             }
             Section(tr("華語")) {
                 Picker(tr("拼寫"), selection: $zhRomSaved) {

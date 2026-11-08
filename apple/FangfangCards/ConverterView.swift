@@ -90,12 +90,28 @@ struct DictGate<Content: View>: View {
 /// 轉換: 漢字 ⇄ 皓羅 ⇄ 方音, all native and offline (only audio uses the network).
 struct ConverterView: View {
     @EnvironmentObject var store: Store
+    /// 0 轉換, 1 讀音 (a word in 台語, 華語 and 粵語 side by side)
+    @AppStorage("convertTab") private var tab = 0
     var body: some View {
-        if store.isZh {
-            ZhGate { z in ZhConvertPane(dict: z) }
-        } else {
-            DictGate { d in ConvertPane(dict: d) }
+        VStack(spacing: 0) {
+            Picker("", selection: $tab) {
+                Text(tr("轉換")).tag(0)
+                Text(tr("讀音")).tag(1)
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
+            Group {
+                if tab == 1 {
+                    ReadingsPane()
+                } else if store.isZh {
+                    ZhGate { z in ZhConvertPane(dict: z) }
+                } else {
+                    DictGate { d in ConvertPane(dict: d) }
+                }
+            }
+            .frame(maxHeight: .infinity)
         }
+        .appBackground()
     }
 }
 

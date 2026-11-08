@@ -93,7 +93,14 @@ echo "sdk.dir=$SDK" > "$A/local.properties"
 ASSETS="$A/app/src/main/assets"
 mkdir -p "$ASSETS"
 APD="$HERE/apple/FangfangCards"
-if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASSETS/zh.json" ]; then
+# the data made once is kept in ~/FangfangCards/FangfangCards (the same place the Apple version keeps it), so a new
+# download of the project, dragged over the old one, doesn't have to make it again
+KEEP="$HOME/FangfangCards/FangfangCards"
+mkdir -p "$KEEP"
+for f in dict.json cards.json zh.json inputcodes.json yue.json; do
+  if [ ! -f "$APD/$f" ] && [ -f "$KEEP/$f" ]; then cp "$KEEP/$f" "$APD/$f"; fi
+done
+if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASSETS/zh.json" ] || [ ! -f "$ASSETS/yue.json" ]; then
   echo "建立詞典資料…（第一次要下載詞典，幾分鐘）"
   if [ ! -f "$APD/dict.json" ] || [ ! -f "$APD/cards.json" ]; then
     bash "$HERE/apple/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
@@ -104,8 +111,15 @@ if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASS
   if [ ! -f "$APD/inputcodes.json" ]; then
     bash "$HERE/apple/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"
   fi
-  for f in dict.json cards.json zh.json inputcodes.json; do
-    [ -f "$APD/$f" ] && cp "$APD/$f" "$ASSETS/$f"
+  # 粵語 (in the project already when it's on GitHub; else made here)
+  if [ ! -f "$APD/yue.json" ]; then
+    bash "$HERE/apple/build-data.sh" yue || echo "（沒辦法建立粵語資料，先跳過：App 裡的粵語會打不開）"
+  fi
+  for f in dict.json cards.json zh.json inputcodes.json yue.json; do
+    if [ -f "$APD/$f" ]; then
+      cp "$APD/$f" "$ASSETS/$f"
+      [ -f "$KEEP/$f" ] || cp "$APD/$f" "$KEEP/$f"
+    fi
   done
 fi
 

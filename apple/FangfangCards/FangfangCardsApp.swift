@@ -192,21 +192,34 @@ extension View {
 struct RootPageBar<Extra: View>: ViewModifier {
     let title: String
     let extra: Extra
+    @Environment(\.horizontalSizeClass) private var hsc
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) { Text("") }
-                // one item, at its full width: as separate items, the ones that didn't fit were dropped (longer
-                // English names)
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 10) {
-                        extra
-                        RomButton()
-                        SettingsButton()
+                if hsc == .compact {
+                    // a narrow top bar (iPhone held upright): the page's own button (新詞's group) on the left,
+                    // the spelling, language and tone colours in one menu on the right
+                    ToolbarItem(placement: .topBarLeading) { extra.fixedSize() }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HStack(spacing: 10) {
+                            CompactReadingMenu()
+                            SettingsButton()
+                        }
+                        .fixedSize()
                     }
-                    .fixedSize()
+                } else {
+                    // one item, at its full width: as separate items, the ones that didn't fit were dropped
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HStack(spacing: 10) {
+                            extra
+                            RomButton()
+                            SettingsButton()
+                        }
+                        .fixedSize()
+                    }
                 }
             }
     }

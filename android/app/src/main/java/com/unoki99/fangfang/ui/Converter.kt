@@ -76,8 +76,14 @@ private fun copyText(ctx: Context, s: String) {
 fun ConverterTab() {
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("轉換"))
-        if (Store.isZh) ZhGate { z -> ZhConvertPane(z) }
-        else DictGate { d -> ConvertPane(d) }
+        // 轉換, or 讀音 (a word in 台語, 華語 and 粵語 side by side)
+        var tab by Prefs.convertTab
+        Segmented(listOf(0 to tr("轉換"), 1 to tr("讀音")), tab, { tab = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+        Box(Modifier.weight(1f)) {
+            if (tab == 1) ReadingsPane()
+            else if (Store.isZh) ZhGate { z -> ZhConvertPane(z) }
+            else DictGate { d -> ConvertPane(d) }
+        }
     }
 }
 

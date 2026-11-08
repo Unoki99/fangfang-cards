@@ -267,6 +267,81 @@ struct Panel<Content: View>: View {
 }
 
 /// 腔口: 通行 or one of the 10 places
+/// the language, then where it's said (in PlaceMenu, and in the one menu of a narrow top bar)
+struct PlaceMenuItems: View {
+    @AppStorage("place") private var place = -1
+    @ObservedObject private var store = Store.shared
+    var body: some View {
+        // 台語 / 華語 / 粵語 first, then where it's said
+        Picker(tr("語言"), selection: Binding(get: { store.lang }, set: { store.setLanguage($0) })) {
+            Text(tr("台語")).tag(0)
+            Text(tr("華語")).tag(1)
+            Text(tr("粵語")).tag(2)
+        }
+        .pickerStyle(.inline)
+        if store.isYue {
+            EmptyView()       // (粵語: one reading)
+        } else if store.isZh {
+            Picker(tr("華語讀音"), selection: $store.zhPlace) {
+                ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
+            }
+            .pickerStyle(.inline)
+        } else {
+            Picker(tr("台語腔口"), selection: $place) {
+                Text(tr("通行")).tag(-1)
+                ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
+            }
+            .pickerStyle(.inline)         // the places right in the menu (on the Mac it was a submenu)
+        }
+    }
+}
+
+/// a narrow top bar (iPhone held upright): the spelling, the language and place and the tone colours in one
+/// menu; its button shows the spelling and the tone colours, in the language's colour (台語 purple, 華語 blue,
+/// 粵語 yellow)
+struct CompactReadingMenu: View {
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    @AppStorage(ToneColors.key) private var system = 0
+    @AppStorage(ToneColors.versionKey) private var colorVersion = 0
+    @ObservedObject private var store = Store.shared
+    var body: some View {
+        Menu {
+            Section(tr("拼寫")) {
+                if store.isZh {
+                    Picker(tr("拼寫"), selection: $store.zhRom) {
+                        ForEach(0..<Lang.romNames.count, id: \.self) { Text(trs(Lang.romNames[$0])).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                } else {
+                    Picker(tr("拼寫"), selection: $rom) {
+                        ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0])).tag($0) }
+                    }
+                    .pickerStyle(.inline)
+                }
+            }
+            PlaceMenuItems()
+            Menu {
+                ToneMenuItems()
+            } label: { Label(tr("聲調顏色"), systemImage: "paintpalette") }
+        } label: {
+            HStack(spacing: 5) {
+                Text(trs(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[min(max(rom, 0), 2)]))
+                    .ffFont(.subheadline, .bold)
+                    .lineLimit(1)
+                ToneDots(system: system)
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
+            }
+            .foregroundStyle(store.isYue ? Color(hex: 0xffe58a) : store.isZh ? Color(hex: 0x9ad0ff) : T.purpleInk)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(Capsule().fill(store.isYue ? Color(hex: 0x5a4a14) : store.isZh ? Color(hex: 0x1f3d6b) : Color(hex: 0x4c3a5b)))
+            .overlay(Capsule().stroke(store.isYue ? Color(hex: 0xc9a227) : store.isZh ? Color(hex: 0x4f7dff) : Color(hex: 0x7b3c9b), lineWidth: 2))
+            .id(colorVersion)
+        }
+        .accessibilityLabel(tr("讀音和聲調顏色"))
+    }
+}
+
 struct PlaceMenu: View {
     /// as wide as there's room for (RomButton stacked: as wide as the buttons above it)
     var fill = false
@@ -275,27 +350,7 @@ struct PlaceMenu: View {
     @ObservedObject private var store = Store.shared
     var body: some View {
         Menu {
-            // 台語 / 華語 / 粵語 first, then where it's said
-            Picker(tr("語言"), selection: Binding(get: { store.lang }, set: { store.setLanguage($0) })) {
-                Text(tr("台語")).tag(0)
-                Text(tr("華語")).tag(1)
-                Text(tr("粵語")).tag(2)
-            }
-            .pickerStyle(.inline)
-            if store.isYue {
-                EmptyView()       // (粵語: one reading)
-            } else if store.isZh {
-                Picker(tr("華語讀音"), selection: $store.zhPlace) {
-                    ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
-                }
-                .pickerStyle(.inline)
-            } else {
-                Picker(tr("台語腔口"), selection: $place) {
-                    Text(tr("通行")).tag(-1)
-                    ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
-                }
-                .pickerStyle(.inline)         // the places right in the menu (on the Mac it was a submenu)
-            }
+            PlaceMenuItems()
         } label: {
             label
         }
@@ -308,7 +363,8 @@ struct PlaceMenu: View {
         #endif
     }
 
-    private var name: String {
+    private var name: String { PlaceMenu.name(store, place) }
+    static func name(_ store: Store, _ place: Int) -> String {
         if store.isYue { return "粵語" }
         if store.isZh { return "華・" + Lang.placeNames[min(max(store.zhPlace, 0), 1)] }
         return "台・" + (place >= 0 && place < PLACE_NAMES.count ? String(PLACE_NAMES[place].prefix(2)) : "通行")

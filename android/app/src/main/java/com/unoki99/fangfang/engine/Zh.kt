@@ -7,18 +7,26 @@ import java.text.Normalizer
 // 漢語拼音 is spelled from it here, by rule.
 
 object Lang {
-    val romNames = listOf("拼音", "注音")
+    /** 0 台語, 1 華語, 2 粵語 (粵語 uses the 華語 pages, with its own dictionary, yue.json) */
+    val names = listOf("台語", "華語", "粵語")
+    val isYue: Boolean get() = EngineSettings.yue
+    /** 華語: 拼音 / 注音; 粵語: 粵拼 / 耶魯 */
+    val romNames: List<String> get() = if (isYue) listOf("粵拼", "耶魯") else listOf("拼音", "注音")
+    /** 粵語: the words and characters come in groups of how common they are (no official lists) */
+    const val yueGroup = 500
+    fun yueLevelName(l: Int) = "常用詞 ${(l - 1) * yueGroup + 1}–${l * yueGroup}"
+    fun yueCharLevelName(l: Int) = "常用字 ${(l - 1) * yueGroup + 1}–${l * yueGroup}"
     val placeNames = listOf("臺灣", "大陸")
     val listNames = listOf("HSK", "TOCFL")
     private val tocflNames = listOf("", "準備一級", "準備二級", "入門級", "基礎級", "進階級", "高階級", "流利級")
     fun hskName(l: Int) = if (l >= 7) "HSK 7–9" else "HSK $l"
     fun tocflName(l: Int) = tocflNames.getOrElse(l) { "" }
-    fun levelName(list: Int, l: Int) = if (list == 1) "TOCFL " + tocflName(l) else hskName(l)
+    fun levelName(list: Int, l: Int) = if (isYue) yueLevelName(l) else if (list == 1) "TOCFL " + tocflName(l) else hskName(l)
 
-    /** a character card's key: "字\t字" */
-    fun charKey(ch: String) = ch + "\t字"
+    /** a character card's key: "字\t字" (粵語: "字\t粵字") */
+    fun charKey(ch: String, yue: Boolean = isYue) = ch + (if (yue) "\t粵字" else "\t字")
     /** the character of a character card's key (null = a word) */
-    fun charOf(k: String): String? = if (k.endsWith("\t字")) k.dropLast(2) else null
+    fun charOf(k: String): String? = if (k.endsWith("\t粵字")) k.dropLast(3) else if (k.endsWith("\t字")) k.dropLast(2) else null
     /** the 新詞 topics of the character cards: 100 + level, 108 = more characters */
     const val charTopicBase = 100
     const val moreChars = 108
@@ -32,13 +40,73 @@ object Lang {
         return (if (t >= freqCharBase) "常用字 " else "常用詞 ") + "${g * freqSize + 1}–${g * freqSize + count}"
     }
 
-    /** a 華語 word's key: "漢字\t注音" (台語 keys have syllable codes in letters after the tab) */
+    /** a 華語 or 粵語 word's key: "漢字\t注音", "漢字\t粵jyut6 ping3" (台語 keys have syllable codes in letters after the tab) */
     fun isZhKey(k: String): Boolean {
         val t = k.indexOf('\t')
         if (t < 0 || t + 1 >= k.length) return false
         if (k.endsWith("\t字")) return true
         val c = k.codePointAt(t + 1)
-        return c in 0x3100..0x312F || c in 0x31A0..0x31BF || c == '˙'.code
+        return c in 0x3100..0x312F || c in 0x31A0..0x31BF || c == '˙'.code || c == '粵'.code
+    }
+    /** a 粵語 word's or character's key ("漢字\t粵…") */
+    fun isYueKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("粵", t + 1) }
+    /** which language a key is of: 0 台語, 1 華語, 2 粵語 */
+    fun kind(k: String): Int = if (isYueKey(k)) 2 else if (isZhKey(k)) 1 else 0
+}
+
+/** 設定 → 字形: 華語 and 粵語 shown in 簡體字. The keys and the data stay 正體; what's shown is changed, character by
+ *  character, with the pairs the dictionaries give (後→后, 開→开…) */
+object Simp {
+    private val table = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    private val back = java.util.concurrent.ConcurrentHashMap<Int, Int>()
+    val on: Boolean get() = EngineSettings.simplified && EngineSettings.zhShown
+
+    fun learn(pairs: List<Pair<String, String>>) {
+        for ((h, a) in pairs) {
+            val x = h.codePoints().toArray(); val y = a.codePoints().toArray()
+            if (x.size != y.size) continue
+            for (i in x.indices) if (x[i] != y[i]) { table.putIfAbsent(x[i], y[i]); back.putIfAbsent(y[i], x[i]) }
+        }
+    }
+    fun show(s: String): String = if (on) convert(s) else s
+    fun convert(s: String): String {
+        if (table.isEmpty()) return s
+        val sb = StringBuilder()
+        s.codePoints().forEach { sb.appendCodePoint(table[it] ?: it) }
+        return sb.toString()
+    }
+    /** a 簡體 character's 正體 one */
+    fun reverse(cp: Int): Int? = back[cp]
+}
+
+/** 粵拼 → 耶魯 */
+object Yale {
+    private val marks = mapOf(1 to "\u0304", 2 to "\u0301", 3 to "", 4 to "\u0300", 5 to "\u0301", 6 to "")
+    private val initials = listOf("gw", "kw", "ng", "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h", "w", "z", "c", "s", "j")
+
+    /** one Jyutping syllable in Yale with tone marks: goi1 → gōi, m4 → m̀h, sik6 → sihk, zyu1 → jyū */
+    fun of(s: String): String {
+        if (!Zhuyin.isJyut(s)) return s
+        val t = s.last().digitToInt()
+        val b = s.dropLast(1)
+        var ini = initials.firstOrNull { b.startsWith(it) && b.length > it.length } ?: ""
+        var fin = b.drop(ini.length)
+        ini = mapOf("z" to "j", "c" to "ch", "j" to "y")[ini] ?: ini
+        if (ini == "y" && fin.startsWith("yu")) ini = ""
+        if (fin == "aa") fin = "a"
+        if (fin.startsWith("eo") || fin.startsWith("oe")) fin = "eu" + fin.drop(2)
+        val nasal = ini.isEmpty() && (fin == "m" || fin == "ng")
+        val syl = ini + fin
+        val v = if (nasal) 0 else syl.indexOfFirst { it in "aeiou" }.let { if (it < 0) ini.length else it }
+        var out = syl.substring(0, v + 1) + (marks[t] ?: "")
+        var rest = syl.substring(v + 1)
+        if (t >= 4) {
+            if (nasal) { out += rest + "h"; rest = "" } else {
+                val vowels = rest.takeWhile { it in "aeiouy" }
+                out += vowels + "h"; rest = rest.drop(vowels.length)
+            }
+        }
+        return Normalizer.normalize(out + rest, Normalizer.Form.NFC)
     }
 }
 
@@ -66,21 +134,26 @@ object Zhuyin {
     private val cache = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val plainCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
-    /** the tone of a syllable: 1–4, 0 = light tone (˙) */
+    /** a 粵語 syllable (Jyutping: letters and a tone number, "goi1") */
+    fun isJyut(s: String): Boolean = s.length >= 2 && s[0] in 'a'..'z' && s.last() in '1'..'6'
+
+    /** the tone of a syllable: 1–4, 0 = light tone (˙); 粵語 1–6 */
     fun tone(s: String): Int {
+        if (isJyut(s)) return s.last().digitToInt()
         if (s.startsWith("˙") || s.endsWith("˙")) return 0
         return when (s.lastOrNull()) { 'ˊ' -> 2; 'ˇ' -> 3; 'ˋ' -> 4; else -> 1 }
     }
 
-    fun bare(s: String): String = s.filter { it !in "ˊˇˋ˙" }
+    fun bare(s: String): String = if (isJyut(s)) s.dropLast(1) else s.filter { it !in "ˊˇˋ˙" }
 
     fun withTone(s: String, t: Int): String {
+        if (isJyut(s)) return s.dropLast(1) + t
         val b = bare(s)
         return when (t) { 0 -> "˙$b"; 2 -> b + "ˊ"; 3 -> b + "ˇ"; 4 -> b + "ˋ"; else -> b }
     }
 
     /** one 注音 syllable in 拼音 with its tone mark */
-    fun pinyin(s: String): String = cache.getOrPut(s) { spell(s) }
+    fun pinyin(s: String): String = if (isJyut(s)) s else cache.getOrPut(s) { spell(s) }
 
     private fun spell(s0: String): String {
         val t = tone(s0)
@@ -131,11 +204,13 @@ object Zhuyin {
         return n.filter { it.isLetterOrDigit() }
     }
 
-    fun plainSyllable(s: String): String { val b = bare(s); return plainCache.getOrPut(b) { plain(pinyin(b)) } }
+    fun plainSyllable(s: String): String { if (isJyut(s)) return s.dropLast(1); val b = bare(s); return plainCache.getOrPut(b) { plain(pinyin(b)) } }
 
-    /** the colour of a 華語 tone (the 台語 colours: 1 red, 2 like 台語 5, 3 blue, 4 like 台語 2, light grey) */
-    fun color(t: Int, sys: Int): Int? {
+    /** the colour of a 華語 tone (the 台語 colours: 1 red, 2 like 台語 5, 3 blue, 4 like 台語 2, light grey);
+     *  粵語 1–6 in its own colours */
+    fun color(t: Int, sys: Int, yue: Boolean = EngineSettings.yue): Int? {
         if (sys == 0) return null
+        if (yue) return if (t in 1..6) ToneColors.yueColor(t) else null
         return when (t) {
             0, 1, 2, 3, 4 -> ToneColors.zhColor(t); else -> null
         }
@@ -167,6 +242,10 @@ class ZhEntry(
     /** 近義詞 / 反義詞 (教育部《重編國語辭典修訂本》) */
     val syn: List<String> = emptyList(),
     val ant: List<String> = emptyList(),
+    /** 粵語: the 華語 words with the same meaning (Wiktionary's dialect tables) */
+    val eq: List<String> = emptyList(),
+    /** 粵語: a recording of the word (Wikimedia Commons), when there is one */
+    val audio: String? = null,
 ) {
     /** the English meanings, one each (CC-CEDICT separates them with ;) */
     val enList: List<String> by lazy { (en ?: "").split(";").map { it.trim() }.filter { it.isNotEmpty() } }
@@ -190,6 +269,10 @@ class ZhPiece(val text: List<String>, val tw: List<String>?, val lu: List<String
 
 class ZhDict(text: String) {
     val entries: List<ZhEntry>
+    /** the 粵語 dictionary (yue.json, tools/build_cantonese.py), not the 華語 one */
+    var isYue = false; private set
+    /** 粵語: a 華語 word → the 粵語 words for it */
+    val byMandarin = HashMap<String, MutableList<Int>>()
     /** how many of the first entries are common words (the rest are rare words and references) */
     val cardCount: Int
     val index = HashMap<String, Int>()
@@ -204,12 +287,40 @@ class ZhDict(text: String) {
     val chars: List<ZhChar>
     val charIndex = HashMap<String, Int>()
     /** 部首 lookup: the radicals (fewest strokes first) with their characters */
-    val radicals: List<ZhRadical>
+    var radicals: List<ZhRadical>; private set
     /** 部首組合: radical → every character with it anywhere inside (fewest strokes first) */
-    val radicalInside: Map<String, List<String>>
+    var radicalInside: Map<String, List<String>>; private set
     /** a character's number of strokes */
     val strokesOf = HashMap<String, Int>()
-    val radicalSets: Map<String, Set<String>> by lazy { radicalInside.mapValues { it.value.toHashSet() } }
+    private var radicalSetsCache: Map<String, Set<String>>? = null
+    val radicalSets: Map<String, Set<String>> get() = radicalSetsCache ?: radicalInside.mapValues { it.value.toHashSet() }.also { radicalSetsCache = it }
+
+    /** 粵語: yue.json doesn't carry the radicals (they're the 華語 data's, whose licence doesn't allow sharing them in
+     *  another file), so they're read from the beginning of zh.json when it's there */
+    fun borrowRadicals(zhText: String) {
+        if (radicals.isNotEmpty()) return
+        val mi = zhText.indexOf(",\"e\":[\n"); if (mi < 0) return
+        val rads = ArrayList<ZhRadical>(); val rx = HashMap<String, List<String>>()
+        val j = JReader(zhText.substring(0, mi) + "}")
+        j.obj { key ->
+            when (key) {
+                "r" -> j.arr {
+                    j.beginArray()
+                    j.hasNext(); val rad = j.nextString()
+                    j.hasNext(); val n = j.nextInt()
+                    j.hasNext(); val chs = j.nextString().cps()
+                    j.hasNext(); val res = j.intList()
+                    while (j.hasNext()) j.skip()
+                    j.endArray()
+                    rads.add(ZhRadical(rad, n, chs.zip(res)))
+                }
+                "rx" -> j.obj { r -> rx[r] = j.nextString().cps() }
+                else -> j.skip()
+            }
+        }
+        radicals = rads; radicalInside = rx; radicalSetsCache = null
+        for (r in rads) for ((ch, rest) in r.chars) if (!strokesOf.containsKey(ch)) strokesOf[ch] = r.strokes + rest
+    }
 
     /** the characters that have all these radicals inside them (fewest strokes first) */
     fun charsWith(rs: List<String>): List<String> {
@@ -227,6 +338,7 @@ class ZhDict(text: String) {
         fun head(j: JReader, key: String): Boolean {
             when (key) {
                 "nc" -> nc = j.nextInt()
+                "lang" -> isYue = j.nextString() == "yue"
                 "r" -> j.arr {
                     j.beginArray()
                     j.hasNext(); val rad = j.nextString()
@@ -248,8 +360,10 @@ class ZhDict(text: String) {
                             "n" -> n = if (j.isNull()) null else j.nextInt()
                             "m" -> j.arr {
                                 j.beginArray()
-                                j.hasNext(); val zy = j.nextString()
+                                j.hasNext(); var zy = j.nextString()
                                 j.hasNext(); val py = j.nextString()
+                                // 粵語: [耶魯, 粵拼, …]; the 粵拼 syllable is kept, the readings are made from it
+                                if (isYue) zy = py
                                 j.hasNext(); val ds = j.strList2().map { Pair(it.getOrElse(0) { "" }, it.getOrElse(1) { "" }) }
                                 var label: String? = null
                                 if (j.hasNext()) label = if (j.isNull()) null else j.nextString()
@@ -304,6 +418,8 @@ class ZhDict(text: String) {
         radicalInside = rx
         for (r in rads) for ((ch, rest) in r.chars) if (!strokesOf.containsKey(ch)) strokesOf[ch] = r.strokes + rest
         entries = out
+        Simp.learn(out.mapNotNull { e -> e.alt?.let { e.h to it } })
+        for ((i, e) in out.withIndex()) for (m in e.eq) { val l = byMandarin.getOrPut(m) { ArrayList() }; if (l.lastOrNull() != i) l.add(i) }
         cardCount = if (nc > 0) nc else out.size
         var m = 1
         for ((i, e) in out.withIndex()) {
@@ -314,7 +430,7 @@ class ZhDict(text: String) {
             for (syl in listOfNotNull(e.tw, e.lu)) {
                 val ss = syl.filter { it != "-" }
                 val py = ss.map { Zhuyin.plainSyllable(it) }
-                val toned = ss.zip(py).map { (z, p) -> p + (Zhuyin.tone(z).let { t -> if (t in 1..4) "$t" else "" }) }
+                val toned = ss.zip(py).map { (z, p) -> p + (Zhuyin.tone(z).let { t -> if (t in 1..4 || Zhuyin.isJyut(z)) "$t" else "" }) }
                 add(byPlain, py.joinToString(""), i)
                 add(byToned, toned.joinToString(""), i)
                 add(byZy, ss.joinToString("") { Zhuyin.bare(it) }, i)
@@ -329,6 +445,7 @@ class ZhDict(text: String) {
         var k = ""; var h = ""; var s = ""; var l: String? = null; var p = 0; var a: String? = null
         var en: String? = null; var x = 0; var y = 0; var q = 0
         var w: List<String> = emptyList(); var sy: List<String> = emptyList(); var an: List<String> = emptyList()
+        var eq: List<String> = emptyList(); var u: String? = null
         val senses = ArrayList<ZhSense>()
         j.obj { f ->
             when (f) {
@@ -336,6 +453,7 @@ class ZhDict(text: String) {
                 "l" -> l = j.nextString(); "p" -> p = j.nextInt(); "a" -> a = j.nextString()
                 "n" -> en = j.nextString(); "x" -> x = j.nextInt(); "y" -> y = j.nextInt(); "q" -> q = j.nextInt()
                 "w" -> w = j.strList(); "j" -> sy = j.strList(); "f" -> an = j.strList()
+                "m" -> eq = j.strList(); "u" -> u = j.nextString()
                 "d" -> j.arr {
                     j.beginArray()
                     j.hasNext(); val t = j.nextString()
@@ -352,7 +470,7 @@ class ZhDict(text: String) {
             }
         }
         if (k.isEmpty()) return null
-        return ZhEntry(k, h, s.split(" "), l?.split(" "), p, a, senses, en, x, y, q == 1, w, sy, an)
+        return ZhEntry(k, h, s.split(" "), l?.split(" "), p, a, senses, en, x, y, q == 1, w, sy, an, eq, u)
     }
 
     private fun add(d: HashMap<String, MutableList<Int>>, k: String, i: Int) {
@@ -371,11 +489,12 @@ class ZhDict(text: String) {
         var first = true
         for (s in syl) {
             if (s == "-" || s == "_") continue
-            val t = if (mode == 1) (if (first) "" else " ") + s else {
+            val t = if (Zhuyin.isJyut(s)) (if (first) "" else " ") + (if (mode == 1) Yale.of(s) else s)
+            else if (mode == 1) (if (first) "" else " ") + s else {
                 val p = Zhuyin.pinyin(s)
                 (if (!first && p.isNotEmpty() && p[0] in "aāáǎàoōóǒòeēéěèê") "'" else "") + p
             }
-            b.add(t, Zhuyin.color(Zhuyin.tone(s), colours))
+            b.add(t, Zhuyin.color(Zhuyin.tone(s), colours, isYue))
             first = false
         }
         return b.build()
@@ -387,12 +506,12 @@ class ZhDict(text: String) {
     fun hanText(han: String, syl: List<String>, base: Int?, colours: Int = EngineSettings.toneSystem): Styled {
         val b = StyledBuilder()
         var i = 0; var last = 1
-        for (ch in han.cps()) {
+        for (ch in Simp.show(han).cps()) {
             if (Zhuyin.isHan(ch.firstCp()) && i < syl.size) {
                 val s = syl[i]; i++
                 val t = if (s == "-") last else Zhuyin.tone(s)
                 last = t
-                b.add(ch, Zhuyin.color(t, colours) ?: base)
+                b.add(ch, Zhuyin.color(t, colours, isYue) ?: base)
             } else b.add(ch, base)
         }
         return b.build()
@@ -443,7 +562,7 @@ class ZhDict(text: String) {
             var s = t
             if (!started) { s = s.trimStart(); if (s.isEmpty()) return }
             // a sentence in 拼音 starts with a capital letter
-            if (!started && mode == 0) {
+            if (!started && mode == 0 && !isYue) {
                 val i = s.indexOfFirst { it.isLetter() }
                 if (i >= 0) { s = s.substring(0, i) + s[i].uppercaseChar() + s.substring(i + 1); started = true }
                 else started = s.isNotEmpty()
@@ -502,8 +621,8 @@ class ZhDict(text: String) {
                 if (syl != null && i < syl.size && syl[i] != "_") {
                     val t = if (syl[i] == "-") last else Zhuyin.tone(syl[i])
                     last = t
-                    b.add(ch, Zhuyin.color(t, colours) ?: base)
-                } else b.add(ch, base)
+                    b.add(Simp.show(ch), Zhuyin.color(t, colours, isYue) ?: base)
+                } else b.add(Simp.show(ch), base)
             }
         }
         return b.build()
@@ -517,16 +636,16 @@ class ZhDict(text: String) {
         val defs = e.senses.map { s ->
             Def("", s.text, s.ex.map { x ->
                 val blankable = x.h != e.h && x.h.contains(e.h) && pieces(x).any { it.text.joinToString("") == e.h }
-                Example(x.h, listOf(""), x.src, "tts:" + x.h,
-                    if (blankable) x.h.replace(e.h, "＿＿") else null, if (blankable) listOf("") else null, x.code)
+                Example(Simp.show(x.h), listOf(""), x.src, "tts:" + x.h,
+                    if (blankable) Simp.show(x.h.replace(e.h, "＿＿")) else null, if (blankable) listOf("") else null, x.code)
             })
         }
         val variant = e.lu?.let { lu -> mapOf("1" to Variant(listOf(readingPlain(lu, 0)), readingPlain(lu, 1))) }
         val lvl = e.level(list)
-        return Card(e.k, e.h, listOf(readingPlain(e.tw, 0)), readingPlain(e.tw, 1), null, "", defs,
+        return Card(e.k, Simp.show(e.h), listOf(readingPlain(e.tw, 0)), readingPlain(e.tw, 1), null, "", defs,
             null, null, variant, null, null,
             if (e.spec == 1) "臺灣特有" else if (e.spec == 2) "大陸特有" else null,
-            null, null, if (lvl > 0) listOf(lvl) else null, e.tw, e.lu)
+            null, null, if (lvl > 0) listOf(lvl) else null, e.tw, e.lu, e.audio)
     }
 
     /** a character as a card: its readings and meanings from 《重編國語辭典修訂本》; cats = its character level */
@@ -534,10 +653,10 @@ class ZhDict(text: String) {
         val c = chars[i]
         val main = c.readings[0]
         val defs = main.defs.map { Def(it.first, it.second, emptyList()) }
-        val others = c.readings.drop(1).map { Other(it.label ?: "又", listOf(it.py), it.zy) }
+        val others = c.readings.drop(1).map { Other(it.label ?: "又", listOf(it.py), if (isYue) Yale.of(it.zy) else it.zy) }
         val l = c.level(list)
         val topic = if (l > 0) Lang.charTopicBase + l else Lang.moreChars
-        return Card(Lang.charKey(c.h), c.h, listOf(main.py), main.zy, null, "", defs, null, null, null,
+        return Card(Lang.charKey(c.h, isYue), Simp.show(c.h), listOf(main.py), if (isYue) Yale.of(main.zy) else main.zy, null, "", defs, null, null, null,
             others.ifEmpty { null }, null, "漢字", null, null, listOf(topic), listOf(main.zy), null)
     }
 
@@ -562,7 +681,11 @@ class ZhDict(text: String) {
         /** several words searched at once (陰謀論 → 陰謀, 論; or 陰謀 論): each word and its entries */
         var parts: List<String> = emptyList()
         var partWords: List<List<Int>> = emptyList()
-        val empty: Boolean get() = parts.isEmpty() && words.isEmpty() && starts.isEmpty() && contains.isEmpty() && defs.isEmpty() && english.isEmpty() && tones.isEmpty()
+        /** 粵語: the words for this 華語 word (華語 → 粵語) */
+        val mandarin = ArrayList<Int>()
+        /** the English meanings shown before the readings ("me", "I") */
+        var englishFirst = false
+        val empty: Boolean get() = mandarin.isEmpty() && parts.isEmpty() && words.isEmpty() && starts.isEmpty() && contains.isEmpty() && defs.isEmpty() && english.isEmpty() && tones.isEmpty()
     }
 
     fun toneDigits(e: ZhEntry, place: Int): String =
@@ -573,8 +696,8 @@ class ZhDict(text: String) {
         val f = Found()
         if (q.isEmpty()) return f
         // only tone numbers: words with those tones (0 or 5 = light tone): 34、3-4、1 0
-        if (q.all { it in "012345 -,，、" } && q.any { it.isDigit() }) {
-            val want = q.filter { it.isDigit() }.map { if (it == '5') '0' else it }.joinToString("")
+        if (q.all { it in "0123456 -,，、" } && q.any { it.isDigit() }) {
+            val want = if (isYue) q.filter { it.isDigit() } else q.filter { it.isDigit() }.map { if (it == '5') '0' else it }.joinToString("")
             f.toneLabel = want.toList().joinToString("-")
             for ((i, e) in entries.withIndex()) {
                 if (e.senses.all { it.text.startsWith("參見") }) continue
@@ -594,6 +717,8 @@ class ZhDict(text: String) {
             }
             return f
         }
+        // 粵語: the words for a 華語 word (聊天 → 傾偈, 吹水…)
+        if (isYue) byMandarin[q]?.let { f.mandarin.addAll(it) }
         Segmenter.parts(q, maxLen) { byHan.containsKey(it) }?.let { ps ->
             f.parts = ps
             f.partWords = ps.map { byHan[it] ?: emptyList<Int>() }
@@ -628,7 +753,7 @@ class ZhDict(text: String) {
             return f
         }
         // 拼音 (with or without tone numbers), and English
-        val p = Zhuyin.plain(q).replace("5", "").replace("0", "")
+        val p = if (isYue) Zhuyin.plain(q) else Zhuyin.plain(q).replace("5", "").replace("0", "")
         val toned = p.any { it.isDigit() }
         (if (toned) byToned[p] else byPlain[p])?.let { f.words.addAll(it) }
         if (!toned && f.words.size < 30) {
@@ -639,24 +764,34 @@ class ZhDict(text: String) {
             }
             f.starts.sort()
         }
-        if (!toned) f.english.addAll(english(q))
+        if (!toned) {
+            val (list, best) = englishHits(q)
+            f.english.addAll(list)
+            f.englishFirst = best <= 1
+        }
         return f
     }
 
     /** words whose English meaning has the word(s): a meaning that is just the word first ("eat", "to eat"),
      *  then meanings that start with it, then the rest. Within each: words that give it as their first meaning
      *  first, then the more common words. A meaning with a note in brackets ("(computing) (coll.) slow") counts
-     *  one step lower, so 慢 comes before 卡 for "slow". */
-    fun english(q0: String): List<Int> {
+     *  one step lower, so 慢 comes before 卡 for "slow". "to park" (a verb) puts "to park" before "park" (a noun). */
+    fun english(q0: String): List<Int> = englishHits(q0).first
+
+    /** (and how close the best one is: 0 = a meaning that's exactly the words) */
+    fun englishHits(q0: String): Pair<List<Int>, Int> {
         val q = q0.lowercase().trim()
-        if (q.length < 2) return emptyList()
-        val bare = if (q.startsWith("to ")) q.drop(3) else q
+        if (q.length < 2 && q != "i" && q != "a") return emptyList<Int>() to 9
+        val wantVerb = q.startsWith("to ")
+        val bare = if (wantVerb) q.drop(3) else q
         val wordRe = Regex("[^a-z]" + Regex.escape(bare) + "[^a-z]")
         val paren = Regex("\\([^()]*\\)")
         class Hit(val tier: Int, val later: Int, val i: Int)
         val hits = ArrayList<Hit>()
         for ((i, e) in entries.withIndex()) {
-            val en = e.en?.lowercase() ?: continue
+            // (粵語: Wiktionary's meanings are the senses, CC-Canto's / CC-CEDICT's the English)
+            val all = if (isYue) e.senses.joinToString(";") { it.text } + ";" + (e.en ?: "") else (e.en ?: continue)
+            val en = all.lowercase()
             if (!en.contains(bare)) continue
             var best = 9; var bestPos = 1
             for ((pos, g0) in en.split(";").withIndex()) {
@@ -664,21 +799,23 @@ class ZhDict(text: String) {
                 var noted = false
                 while (paren.containsMatchIn(g)) { g = paren.replace(g, ""); noted = true }
                 g = g.trim()
-                val v = if (g.startsWith("to ")) g.drop(3) else g
+                val isVerb = g.startsWith("to ")
+                val v = if (isVerb) g.drop(3) else g
                 var t = when {
                     v == bare -> 0
-                    v.startsWith("$bare ") || v.startsWith("$bare,") -> 1
-                    wordRe.containsMatchIn(" $v ") -> 2
+                    v.startsWith("$bare ") || v.startsWith("$bare,") -> 2
+                    wordRe.containsMatchIn(" $v ") -> 4
                     else -> 9
                 }
+                if (t < 9 && isVerb != wantVerb && (wantVerb || t == 0)) t += if (wantVerb) 2 else 1
                 if (t < 9 && noted) t += 1
                 val p = if (pos == 0) 0 else 1
                 if (t < best || (t == best && p < bestPos)) { best = t; bestPos = p }
             }
-            if (best <= 3) hits.add(Hit(minOf(best, 3), bestPos, i))
+            if (best <= 5) hits.add(Hit(best, bestPos, i))
         }
         hits.sortWith(compareBy<Hit>({ it.tier }, { it.later }, { it.i }))
-        return hits.take(250).map { it.i }
+        return hits.take(250).map { it.i } to (hits.firstOrNull()?.tier ?: 9)
     }
 
     /** the entry for a word of a sentence: the one read the way the sentence reads it */
@@ -696,7 +833,7 @@ class ZhDict(text: String) {
         val l = (byHan[han] ?: return null).filter { entries[it].h == han || entries[it].alt == han }
         if (l.isEmpty()) return null
         if (l.size == 1) return l[0]
-        aloneReading[han]?.let { want -> l.firstOrNull { entries[it].tw.firstOrNull() == want }?.let { return it } }
+        if (!isYue) aloneReading[han]?.let { want -> l.firstOrNull { entries[it].tw.firstOrNull() == want }?.let { return it } }
         return l.maxByOrNull { entries[it].senses.size }
     }
 
@@ -748,6 +885,7 @@ class ZhDict(text: String) {
                 ps.add(ZhPiece(chars, tw, if (en.lu == null) null else lu))
             } else for (ch in chars) ps.add(ZhPiece(listOf(ch), null, null))
         }
+        if (isYue) return ps       // (一 / 不 changing tone is 華語's)
         val num = "〇零一二三四五六七八九十百千萬億兩第".map { it.toString() }.toSet()
         for (i in ps.indices) {
             if (ps[i].text != listOf("一") && ps[i].text != listOf("不")) continue

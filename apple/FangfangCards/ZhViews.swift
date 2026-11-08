@@ -21,6 +21,9 @@ struct ZhGate<Content: View>: View {
         Group {
             if let d = store.zh {
                 content(d)
+                    // (a new dictionary (華語 ↔ 粵語): everything made again, nothing kept from the other one, such as
+                    // search results pointing into it)
+                    .id(ObjectIdentifier(d))
                     .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: d, key: $0.k) }
                     .navigationDestination(for: ZhCompareRef.self) { _ in ZhComparePage(dict: d) }
                     .navigationDestination(for: ZhClassRef.self) { r in
@@ -110,12 +113,13 @@ struct ZhLookupPane: View {
             }
             group(tr("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）"), found.tones)
             group(tr("華語「\(query)」的粵語講法"), found.mandarin)
+            if found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
             group("「\(query)」", found.words)
             ForEach(Array(found.parts.enumerated()), id: \.offset) { i, w in
                 group("「\(w)」", found.partWords[i])
             }
             group(tr("開頭是「\(query)」"), found.starts)
-            group(tr("英文「\(query)」"), found.english, english: true)
+            if !found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
             group(tr("裡面有「\(query)」"), found.contains)
             group(tr("解釋裡有「\(query)」"), found.defs)
         }
@@ -129,7 +133,7 @@ struct ZhLookupPane: View {
     @ViewBuilder private func group(_ title: String, _ list: [Int], english: Bool = false) -> some View {
         if !list.isEmpty {
             Section(title) {
-                ForEach(list.prefix(english ? 250 : 500), id: \.self) { i in
+                ForEach(list.prefix(english ? 250 : 500).filter { $0 < dict.entries.count }, id: \.self) { i in
                     let e = dict.entries[i]
                     NavigationLink(value: ZhKey(k: e.k)) { ZhWordRow(dict: dict, entry: e, english: english) }
                         .swipeActions(edge: .leading) {
@@ -430,7 +434,7 @@ struct ZhEntryBody: View {
                     ForEach(es, id: \.k) { e in
                         NavigationLink(value: ZhKey(k: e.k)) {
                             HStack(spacing: 4) {
-                                Text(e.h).foregroundStyle(T.glyph)
+                                Text(Simp.show(e.h)).foregroundStyle(T.glyph)
                                 Text(dict.reading(e.syl(store.zhPlace), store.zhRom)).latFont(13).foregroundStyle(ink)
                             }
                             .ffFont(.subheadline)

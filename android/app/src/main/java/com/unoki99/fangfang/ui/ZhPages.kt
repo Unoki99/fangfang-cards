@@ -85,8 +85,9 @@ fun ZhDictionaryTab() {
 private fun ZhLookupPane(z: ZhDict) {
     var query by Prefs.zhLookupQuery
     val place = Prefs.zhPlace.value
-    var found by remember { mutableStateOf(ZhDict.Found()) }
-    LaunchedEffect(query, place) {
+    // (a new dictionary (華語 ↔ 粵語): nothing kept from the other one, such as results pointing into it)
+    var found by remember(z) { mutableStateOf(ZhDict.Found()) }
+    LaunchedEffect(query, place, z) {
         delay(200)
         val q = query
         found = withContext(Dispatchers.Default) { z.search(q, place) }
@@ -95,7 +96,7 @@ private fun ZhLookupPane(z: ZhDict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             val nav = LocalNav.current
-            SearchField(query, { query = it }, tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
+            SearchField(query, { query = it }, if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
             TileGrid(3) { i, m ->
                 when (i) {
@@ -106,14 +107,18 @@ private fun ZhLookupPane(z: ZhDict) {
             }
         }
         if (query.isEmpty()) item {
+            if (z.isYue) Txt(tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞\u3000*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             Txt(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
         } else if (f.empty) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
+        zhItems(z, tr("華語「{0}」的粵語講法", query), f.mandarin)
+        if (f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true)
         zhItems(z, "「$query」", f.words)
         for ((i, w) in f.parts.withIndex()) zhItems(z, "「$w」", f.partWords[i])
         zhItems(z, tr("開頭是「{0}」", query), f.starts)
-        zhItems(z, tr("英文「{0}」", query), f.english, english = true)
+        if (!f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true)
         zhItems(z, tr("裡面有「{0}」", query), f.contains)
         zhItems(z, tr("解釋裡有「{0}」", query), f.defs)
         item { Spacer(Modifier.height(40.dp)) }
@@ -124,7 +129,7 @@ private fun ZhLookupPane(z: ZhDict) {
 private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, english: Boolean = false) {
     if (list.isEmpty()) return
     item { SectionTitle(title) }
-    items(list.take(if (english) 250 else 500), key = { "z|$title|$it" }) { i ->
+    items(list.take(if (english) 250 else 500).filter { it < z.entries.size }, key = { "z|$title|$it" }) { i ->
         val nav = LocalNav.current
         val e = z.entries[i]
         Store.rev
@@ -236,7 +241,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 // tap a character to see it on its own (the entry with the same reading)
                 val h = remember(e.k, zk) { z.hanText(e.h, syl, T.glyph.argbInt()).annotated() }
                 TappableHeadword(h, remember(e.k, place) { zhCharKeys(z, e, syl) }) { k -> nav.push(Route.ZhEntry(k)) }
-                PlayButton("tts:" + e.h)
+                PlayButton(e.audio ?: ("tts:" + e.h))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val on = Store.isSaved(e.k)
@@ -265,13 +270,21 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 Chip(tr("英"), T.fn, T.fnEdge, T.muted)
                 EnglishList(e.enList)
             }
+            // 粵語: the 華語 word(s) with the same meaning
+            if (e.eq.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Chip(tr("華"), T.blue, T.blueEdge, T.blueInk)
+                Txt(e.eq.joinToString("、"), ff(FF.Body), T.glyph)
+            }
             // 詞類: tap one for the words of that class
             if (e.pos.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 for (p in e.pos) Box(Modifier.clip(RoundedCornerShape(6.dp)).clickable { nav.push(Route.ZhClass(p)) }) { Chip(p, T.fn, T.fnEdge, T.muted) }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (e.hsk > 0) Chip(Lang.hskName(e.hsk), T.green, T.greenEdge, T.greenInk)
-                if (e.tocfl > 0) Chip(UILang.label(Lang.levelName(1, e.tocfl)), T.blue, T.blueEdge, T.blueInk)
+                if (z.isYue) { if (e.hsk > 0) Chip(UILang.label(Lang.yueLevelName(e.hsk)), T.green, T.greenEdge, T.greenInk) }
+                else {
+                    if (e.hsk > 0) Chip(Lang.hskName(e.hsk), T.green, T.greenEdge, T.greenInk)
+                    if (e.tocfl > 0) Chip(UILang.label(Lang.levelName(1, e.tocfl)), T.blue, T.blueEdge, T.blueInk)
+                }
                 if (e.spec != 0) ZhSpecChip(e.spec)
                 val a = e.alt
                 if (a != null && a != e.h) { Chip(tr("簡"), T.fn, T.fnEdge, T.muted); Txt(a, ff(FF.Subheadline), T.glyph.copy(alpha = 0.85f)) }
@@ -309,14 +322,15 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         }
         if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),
             ff(FF.Caption), T.muted)
-        Txt(tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
+        Txt(if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
+            else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
         // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
         val ci = if (e.h.cpCount == 1) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
         if (reading != null) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.4f)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Txt(tr("《重編國語辭典修訂本》"), ff(FF.Caption, FontWeight.Bold), T.muted)
+                Txt(if (z.isYue) tr("開放粵語字典") else tr("《重編國語辭典修訂本》"), ff(FF.Caption, FontWeight.Bold), T.muted)
                 for ((n, d) in reading.defs.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Txt("${n + 1}.", ff(FF.Subheadline, FontWeight.Bold), T.muted)
                     if (d.first.isNotEmpty()) Chip(d.first, T.fn, T.fnEdge, T.muted)
@@ -324,7 +338,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 }
             }
         }
-        if (reading != null) Txt(tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"), ff(FF.Caption2), T.muted)
+        if (reading != null) Txt(if (z.isYue) tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") else tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"), ff(FF.Caption2), T.muted)
     }
 }
 

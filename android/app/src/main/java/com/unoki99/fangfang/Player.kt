@@ -83,11 +83,21 @@ object ZhSpeech {
     /** speaks the text; false when the device has no Chinese voice */
     suspend fun speakAndWait(text: String): Boolean {
         val t = engine() ?: return false
+        val bad = listOf(android.speech.tts.TextToSpeech.LANG_MISSING_DATA, android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED)
+        if (Store.isYue) {
+            // 粵語: a Cantonese (香港) voice; none: say how to get one (instead of reading it in 華語)
+            val got = listOf(Locale("yue", "HK"), Locale("zh", "HK")).any { t.setLanguage(it) !in bad }
+            if (!got) {
+                Store.speechHint = com.unoki99.fangfang.tr("這支手機還沒有粵語的語音。到「設定 → 系統 → 語言 → 文字轉語音輸出」，在語音引擎的設定裡安裝「粵語（香港）」的語音，再回來就可以聽了。")
+                return true
+            }
+        } else {
         val loc = if (Prefs.zhPlace.value == 1) Locale.CHINA else Locale.TAIWAN
         val ok = t.setLanguage(loc)
-        if (ok == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || ok == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) {
+        if (ok in bad) {
             val o2 = t.setLanguage(Locale.CHINESE)
-            if (o2 == android.speech.tts.TextToSpeech.LANG_MISSING_DATA || o2 == android.speech.tts.TextToSpeech.LANG_NOT_SUPPORTED) return false
+            if (o2 in bad) return false
+        }
         }
         t.setSpeechRate(0.9f)
         val id = "zh" + (++n)
@@ -146,11 +156,15 @@ object Player {
     }
 
     suspend fun load(path: String): File = withContext(Dispatchers.IO) {
-        val f = File(cacheDir, path.replace("/", "_"))
+        // a whole web address (粵語 recordings on Wikimedia Commons) or a file of the 台語 recordings
+        val web = path.startsWith("https://")
+        val f = File(cacheDir, (if (web) "web-" + path.substringAfterLast('/') else path.replace("/", "_")).takeLast(200))
         if (f.exists() && f.length() > 0) return@withContext f
-        val base = Prefs.audioBase.value.let { if (it.endsWith("/")) it else "$it/" }
-        val enc = path.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20").replace("%28", "(").replace("%29", ")") }
-        val data = Net.get(base + enc)
+        val data = if (web) Net.get(path) else {
+            val base = Prefs.audioBase.value.let { if (it.endsWith("/")) it else "$it/" }
+            val enc = path.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20").replace("%28", "(").replace("%29", ")") }
+            Net.get(base + enc)
+        }
         if (data.isEmpty()) throw java.io.IOException("empty")
         f.writeBytes(data)
         f

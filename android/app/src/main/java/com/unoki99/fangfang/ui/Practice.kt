@@ -372,6 +372,7 @@ class ToneQuestion(val card: Card, val options: List<ToneOption>, val answer: To
 private val TONE_NAMES = mapOf(1 to "陰平", 2 to "陰上", 3 to "陰去", 4 to "陰入", 5 to "陽平", 7 to "陽去", 8 to "陽入")
 
 private val ZH_TONE_NAMES = mapOf(0 to "輕聲", 1 to "陰平", 2 to "陽平", 3 to "上聲", 4 to "去聲")
+private val YUE_TONE_NAMES = mapOf(1 to "陰平", 2 to "陰上", 3 to "陰去", 4 to "陽平", 5 to "陽上", 6 to "陽去")
 
 /** 華語: the word with each tone on its last syllable (in 拼音 or 注音, as shown) */
 private fun zhToneQuestion(c: Card): ToneQuestion? {
@@ -382,7 +383,7 @@ private fun zhToneQuestion(c: Card): ToneQuestion? {
     if (li < 0) return null
     val tone = Zhuyin.tone(syl[li])
     val all = ArrayList<ToneOption>(); var answer: ToneOption? = null
-    for (t in listOf(1, 2, 3, 4, 0)) {
+    for (t in if (d.isYue) listOf(1, 2, 3, 4, 5, 6) else listOf(1, 2, 3, 4, 0)) {
         if (t == 0 && tone != 0) continue
         val s = syl.toMutableList(); s[li] = Zhuyin.withTone(syl[li], t)
         val r = d.readingPlain(s, Prefs.zhRom.value)
@@ -492,7 +493,7 @@ private fun ToneScreen(stars: StarField) {
                                 saveNow(true)
                             }.padding(horizontal = 18.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                             Txt(o.rom[rom.coerceIn(0, 2)], lat(28f), T.greenInk, Modifier.weight(1f))
-                            if (answered) Txt(if (Store.isZh) (if (o.tone == 0) tr("輕聲") else tr("第 {0} 聲　{1}", o.tone, ZH_TONE_NAMES[o.tone] ?: "")) else "${o.tone}　${TONE_NAMES[o.tone] ?: ""}", ff(FF.Subheadline, FontWeight.Bold),
+                            if (answered) Txt(if (Store.isYue) tr("第 {0} 聲　{1}", o.tone, YUE_TONE_NAMES[o.tone] ?: "") else if (Store.isZh) (if (o.tone == 0) tr("輕聲") else tr("第 {0} 聲　{1}", o.tone, ZH_TONE_NAMES[o.tone] ?: "")) else "${o.tone}　${TONE_NAMES[o.tone] ?: ""}", ff(FF.Subheadline, FontWeight.Bold),
                                 if (isRight) T.greenInk else if (isPicked) T.rustInk else T.muted)
                         }
                     }
@@ -505,14 +506,14 @@ private fun ToneScreen(stars: StarField) {
                                 Txt(q.answer.rom[rom.coerceIn(0, 2)], lat(22f), T.greenInk)
                                 Txt(q.card.z, ff(FF.Body), T.purpleInk)
                             }
-                            Txt(if (Store.isZh) (if (t == 0) tr("輕聲") else tr("第 {0} 聲（{1}）", t, ZH_TONE_NAMES[t] ?: "")) else tr("第 {0} 聲（{1}）{2}", t, TONE_NAMES[t] ?: "", hint(t, rom)), ff(FF.Subheadline), T.glyph)
+                            Txt(if (Store.isYue) tr("第 {0} 聲（{1}）", t, YUE_TONE_NAMES[t] ?: "") else if (Store.isZh) (if (t == 0) tr("輕聲") else tr("第 {0} 聲（{1}）", t, ZH_TONE_NAMES[t] ?: "")) else tr("第 {0} 聲（{1}）{2}", t, TONE_NAMES[t] ?: "", hint(t, rom)), ff(FF.Subheadline), T.glyph)
                             Txt(q.card.firstMeaning, ff(FF.Footnote), T.muted)
                         }
                         ProminentButton(onClick = { chosen = null; idx++ }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                             Text(if (idx + 1 >= queue.size) tr("看結果") else tr("下一題"), style = ff(FF.Headline))
                         }
                     }
-                    Txt(if (Store.isZh) tr("華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。") else if (rom == 0) tr("皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。")
+                    Txt(if (Store.isYue) tr("粵語：第 1 聲高平、第 2 聲高升、第 3 聲中平、第 4 聲低降、第 5 聲低升、第 6 聲低平（粵拼寫數字，耶魯用記號和 h）。") else if (Store.isZh) tr("華語：第 1 聲 ā／ㄚ（注音不標）、第 2 聲 á／ˊ、第 3 聲 ǎ／ˇ、第 4 聲 à／ˋ、輕聲 a／˙。") else if (rom == 0) tr("皓羅：第 1 聲和第 8 聲記號一樣，第 3 聲和第 4 聲記號一樣；第 4、8 聲結尾有 p／t／k／h。")
                         else tr("台羅／白話字：第 1 聲和第 4 聲都沒有記號；第 4、8 聲結尾有 p／t／k／h。"), ff(FF.Caption), T.muted)
                 }
             }

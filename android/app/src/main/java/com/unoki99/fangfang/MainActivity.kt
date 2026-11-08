@@ -104,8 +104,13 @@ private fun Root() {
     }
     Store.zhError?.let { e ->
         AlertDialog(onDismissRequest = { Store.zhError = null }, containerColor = T.fn,
-            title = { Txt(tr("華語"), ff(FF.Headline)) }, text = { Txt(e, ff(FF.Body)) },
+            title = { Txt(tr("詞典"), ff(FF.Headline)) }, text = { Txt(e, ff(FF.Body)) },
             confirmButton = { TextButton(onClick = { Store.zhError = null }) { Text(tr("好"), color = T.btnInk) } })
+    }
+    Store.speechHint?.let { e ->
+        AlertDialog(onDismissRequest = { Store.speechHint = null }, containerColor = T.fn,
+            title = { Txt(tr("粵語的語音"), ff(FF.Headline)) }, text = { Txt(e, ff(FF.Body)) },
+            confirmButton = { TextButton(onClick = { Store.speechHint = null }) { Text(tr("好"), color = T.btnInk) } })
     }
     UI.practice?.let { PracticeHost(it) }
     if (UI.settingsOpen) SettingsScreen()
@@ -113,8 +118,8 @@ private fun Root() {
     // the very first time: which language to learn (later: 設定 → 語言). Not asked of someone who used the app
     // before this question was added.
     if (Store.loaded && !Prefs.pickedLanguage.value) {
-        if (Store.seenCount > 0 || Prefs.lang.value == 1) SideEffect { Prefs.pickedLanguage.value = true }
-        else LanguageWelcome { zh -> Store.setLanguage(zh); Prefs.pickedLanguage.value = true }
+        if (Store.seenCount > 0 || Prefs.lang.value != 0) SideEffect { Prefs.pickedLanguage.value = true }
+        else LanguageWelcome { l -> Store.setLanguage(l); Prefs.pickedLanguage.value = true }
     }
 }
 
@@ -133,8 +138,8 @@ private fun Tabs() {
     Column(Modifier.fillMaxSize().imePadding()) {
         Box(Modifier.weight(1f)) {
             val tab = UI.tab
-            // 台語 ⇄ 華語: every page starts again with the other deck
-            val zh = Store.isZh
+            // 台語 ⇄ 華語 ⇄ 粵語: every page starts again with the other deck
+            val zh = Store.lang
             val lv = Store.listVersion
             LaunchedEffect(zh) { for (t in UI.tabs) t.stack.clear() }
             key(tab, zh, lv, Prefs.uiLanguage.value) { StackHost(UI.tabs[tab]) {
@@ -163,9 +168,9 @@ private fun Tabs() {
     }
 }
 
-/** the very first time the app opens: 台語 or 華語 (can be changed any time in 設定 → 語言) */
+/** the very first time the app opens: 台語, 華語 or 粵語 (can be changed any time in 設定 → 語言), and the app's language */
 @Composable
-private fun LanguageWelcome(pick: (Boolean) -> Unit) {
+private fun LanguageWelcome(pick: (Int) -> Unit) {
     BackHandler { }
     AppBackground {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -173,25 +178,27 @@ private fun LanguageWelcome(pick: (Boolean) -> Unit) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
                 Txt(tr("你想先學哪一種？"), ff(FF.Title3), T.muted)
-                Txt("Which language would you like to start with?", ff(FF.Subheadline), T.muted)
+            }
+            Box(Modifier.widthIn(max = 320.dp)) {
+                Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it })
             }
             Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                for (zh in listOf(false, true)) {
-                    val fill = if (zh) T.blue else T.own; val edge = if (zh) T.blueEdge else T.ownEdge; val ink = if (zh) T.blueInk else T.purpleInk
+                for (l in 0..2) {
+                    val fill = listOf(T.own, T.blue, T.olive)[l]; val edge = listOf(T.ownEdge, T.blueEdge, T.oliveEdge)[l]
+                    val ink = listOf(T.purpleInk, T.blueInk, T.oliveInk)[l]
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(fill).border(2.dp, edge, RoundedCornerShape(22.dp))
-                        .clickable { pick(zh) }.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
+                        .clickable { pick(l) }.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         Box(Modifier.size(70.dp).clip(CircleShape).background(edge.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-                            Txt(if (zh) "華" else "台", sz(44f, FontWeight.Bold), ink)
+                            Txt(listOf("台", "華", "粵")[l], sz(44f, FontWeight.Bold), ink)
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Txt(if (zh) "華語" else "台語", ff(FF.Title2, FontWeight.Bold), ink)
-                                if (!UILang.english) Txt(if (zh) "Mandarin" else "Taiwanese", ff(FF.Subheadline), ink.copy(alpha = 0.8f))
-                                else Txt(if (zh) "Mandarin" else "Taiwanese", ff(FF.Subheadline, FontWeight.SemiBold), ink)
+                                Txt(listOf("台語", "華語", "粵語")[l], ff(FF.Title2, FontWeight.Bold), ink)
+                                Txt(listOf("Taiwanese", "Mandarin", "Cantonese")[l], ff(FF.Subheadline), ink.copy(alpha = 0.8f))
                             }
-                            Txt(tr(if (zh) "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音" else "教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音"),
-                                ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
+                            Txt(tr(listOf("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音", "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音",
+                                "CC-Canto、CC-CEDICT 和維基詞典的詞，粵拼或耶魯拼音")[l]), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
                         }
                         Icon(Icons.Filled.ChevronRight, null, tint = ink.copy(alpha = 0.7f))
                     }

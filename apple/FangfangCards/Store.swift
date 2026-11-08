@@ -299,6 +299,9 @@ final class Store: ObservableObject {
         return deck
     }
 
+    /// 設定 → 簡體字 changed: the 華語 / 粵語 cards are made again (their 漢字 shown the new way)
+    func simplifiedChanged() { rebuildZhDeck(); objectWillChange.send() }
+
     /// another word list for the 華語 cards (HSK ⇄ TOCFL): the deck is made again
     private func rebuildZhDeck() {
         guard let d = zh, !switching else { return }

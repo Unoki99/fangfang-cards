@@ -232,7 +232,8 @@ private fun copyStyleName(zh: Boolean = Store.isZh): String =
 private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
     val ts = Prefs.toneSys.value
     val tones = when (ts) { 7 -> tr("七聲"); 5 -> tr("五聲"); else -> tr("聲調顏色關") }
-    val lang = if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames[Prefs.zhPlace.value.coerceIn(0, 1)]) +
+    val lang = if (Store.isYue) tr("粵語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
+        else if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames[Prefs.zhPlace.value.coerceIn(0, 1)]) +
         "・" + Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)]
         else tr("台語") + "・" + tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]) + "・" + (if (Prefs.place.value in PLACE_NAMES.indices) tr(PLACE_NAMES[Prefs.place.value].take(2)) else tr("通行"))
     val summaries = listOf(
@@ -312,7 +313,7 @@ private fun LanguagePage() {
         Column(Modifier.padding(14.dp)) {
             Txt(tr("要學的語言"), ff(FF.Body))
             Spacer(Modifier.height(6.dp))
-            Segmented(listOf(0 to tr("台語"), 1 to tr("華語")), if (Store.isZh) 1 else 0, { Store.setLanguage(it == 1) })
+            Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語")), Store.lang, { Store.setLanguage(it) })
         }
         RowDivider()
         Column(Modifier.padding(14.dp)) {
@@ -336,15 +337,35 @@ private fun LanguagePage() {
             Prefs.place.value = it
         }
     }
+    SectionTitle(tr("字形"))
+    Group {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Segmented(listOf(false to tr("正體字"), true to tr("簡體字")), Prefs.simplified.value, {
+                Prefs.simplified.value = it; Store.simplifiedChanged()
+            })
+            Txt(tr("華語和粵語的卡片、詞典和例句用哪一種字寫。台語一直用正體字；手寫練習也是正體字。"), ff(FF.Footnote), T.muted)
+        }
+    }
+    // (each of 華語 and 粵語 has its own spelling; Prefs.zhRom is the one of the language shown)
     SectionTitle(tr("華語"))
     Group {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Txt(tr("拼寫"), ff(FF.Body))
-            Segmented(Lang.romNames.mapIndexed { i, n -> i to tr(n) }, Prefs.zhRom.value, { Prefs.zhRom.value = it })
+            Segmented(listOf(0 to tr("拼音"), 1 to tr("注音")), if (Store.lang == 1) Prefs.zhRom.value else Prefs.mandRom.value,
+                { if (Store.lang == 1) Prefs.zhRom.value = it else Prefs.mandRom.value = it })
             Txt(tr("讀音"), ff(FF.Body))
             Segmented(Lang.placeNames.mapIndexed { i, n -> i to tr(n) }, Prefs.zhPlace.value, { Prefs.zhPlace.value = it })
             Txt(tr("詞表"), ff(FF.Body))
             Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.zhList.value, { Store.setZhList(it) })
+        }
+    }
+    SectionTitle(tr("粵語"))
+    Group {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Txt(tr("拼寫"), ff(FF.Body))
+            Segmented(listOf(0 to tr("粵拼"), 1 to tr("耶魯")), if (Store.lang == 2) Prefs.zhRom.value else Prefs.yueRom.value,
+                { if (Store.lang == 2) Prefs.zhRom.value = it else Prefs.yueRom.value = it })
+            Txt(tr("粵拼（香港語言學學會）或耶魯拼音。詞是照常用的程度分組，每組 500 個。"), ff(FF.Footnote), T.muted)
         }
     }
 }
@@ -360,6 +381,10 @@ private fun AboutPage() {
             Credit(tr("華語詞表"), "HSK 3.0（2021，ivankra/hsk30，MIT）、TOCFL 華語八千詞（2023，ivankra/tocfl）")
             Credit(tr("漢字卡、近義詞、反義詞"), "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄。")
             Credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
+            Credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
+            Credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
+            Credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
+            Credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
             Credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（Copyright 2022-2024 LXGW、2020 The Klee Project Authors）；芫荽：Iansui（Copyright 2025 The Iansui Project Authors）。都是 SIL Open Font License 1.1。")
             Credit(tr("輸入法拆碼"), "Rime 倉頡、五筆（rime-cangjie、rime-wubi）")
             Credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》的拼音系統（經作者同意使用）")

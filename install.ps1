@@ -209,6 +209,9 @@ if ($need) {
         if (-not (Test-Path (Join-Path $Assets $f))) { Fail "詞典資料沒有建好（少了 $f）。" }
     }
 }
+# 粵語 (yue.json: in the project when it's on GitHub, or made on a Mac with build-data.sh yue)
+$yue = Join-Path $Apd "yue.json"
+if ((Test-Path $yue) -and -not (Test-Path (Join-Path $Assets "yue.json"))) { Copy-Item $yue (Join-Path $Assets "yue.json") -Force }
 
 # ---- build ----
 Write-Host "建置 Android 版…（第一次要下載不少東西，可能 5–10 分鐘）"
