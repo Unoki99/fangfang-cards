@@ -22,6 +22,10 @@ object EngineSettings {
     @Volatile var toneMarks = true
     /** 粵語 shown (Store) */
     @Volatile var yue = false
+    /** 客語 shown (Store) */
+    @Volatile var hak = false
+    /** 客語: the accent (0 四縣, 1 海陸, 2 大埔, 3 饒平, 4 詔安, 5 南四縣) */
+    @Volatile var hakAccent = 0
     /** 華語 or 粵語 shown (Store) */
     @Volatile var zhShown = false
     /** 設定 → 字形: 簡體字 */
@@ -49,8 +53,12 @@ object ToneColors {
      *  6 low level teal */
     val yueTones = listOf(1, 2, 3, 4, 5, 6)
     val yueStandard = mapOf(1 to red, 2 to green, 3 to yellow, 4 to blue, 5 to purple, 6 to teal)
-    /** the tones of a set of colours: 0 台語, 1 華語, 2 粵語 */
-    fun tones(set: Int) = when (set) { 2 -> yueTones; 1 -> zhTones; else -> twTones }
+    /** 客語's tone categories (陰平 1, 上聲 2, 去聲 / 陰去 3, 陰入 4, 陽平 5, 陽去 7, 陽入 8), to start with in 台語's
+     *  colours for the same categories */
+    val hakTones = listOf(1, 2, 3, 4, 5, 7, 8)
+    val hakStandard = mapOf(1 to red, 2 to purple, 3 to blue, 4 to orange, 5 to green, 7 to yellow, 8 to pink)
+    /** the tones of a set of colours: 0 台語, 1 華語, 2 粵語, 3 客語 */
+    fun tones(set: Int) = when (set) { 3 -> hakTones; 2 -> yueTones; 1 -> zhTones; else -> twTones }
     /** the balls to pick from: one column per colour, in rainbow order, light at the top and dark at the bottom
      *  (the middle row is the standard colour) */
     val palette: List<Pair<String, List<Int>>> = listOf(
@@ -68,11 +76,12 @@ object ToneColors {
     private val tw = HashMap<Int, Int>()
     private val zh = HashMap<Int, Int>()
     private val yue = HashMap<Int, Int>()
+    private val hak = HashMap<Int, Int>()
     /** changes when a colour is picked (for things that cache coloured text) */
     var version = 0; private set
 
     /** "1:ff6b6b,2:c39bff,…" → the picked colours */
-    fun load(twS: String, zhS: String, yueS: String = "") {
+    fun load(twS: String, zhS: String, yueS: String = "", hakS: String = "") {
         fun read(s: String, into: HashMap<Int, Int>) {
             into.clear()
             for (part in s.split(',')) {
@@ -83,19 +92,20 @@ object ToneColors {
                 into[t] = (0xFF000000.toInt()) or (v.toInt() and 0xFFFFFF)
             }
         }
-        read(twS, tw); read(zhS, zh); read(yueS, yue)
+        read(twS, tw); read(zhS, zh); read(yueS, yue); read(hakS, hak)
         version++
     }
     fun encode(m: Map<Int, Int>): String = m.entries.joinToString(",") { "${it.key}:" + String.format("%06x", it.value and 0xFFFFFF) }
     fun picked(zhSide: Boolean): Map<Int, Int> = HashMap(if (zhSide) zh else tw)
-    fun picked(set: Int): Map<Int, Int> = HashMap(when (set) { 2 -> yue; 1 -> zh; else -> tw })
+    fun picked(set: Int): Map<Int, Int> = HashMap(when (set) { 3 -> hak; 2 -> yue; 1 -> zh; else -> tw })
     /** a short text of all the colours (so the widgets know when they change) */
-    val signature: String get() = encode(tw) + "|" + encode(zh) + "|" + encode(yue)
+    val signature: String get() = encode(tw) + "|" + encode(zh) + "|" + encode(yue) + "|" + encode(hak)
 
     fun twColor(t: Int): Int = tw[t] ?: twStandard[t] ?: light
     fun zhColor(t: Int): Int = zh[t] ?: zhStandard[t] ?: light
     fun yueColor(t: Int): Int = yue[t] ?: yueStandard[t] ?: light
-    fun colorOf(set: Int, t: Int): Int = when (set) { 2 -> yueColor(t); 1 -> zhColor(t); else -> twColor(t) }
+    fun hakColor(t: Int): Int = hak[t] ?: hakStandard[t] ?: light
+    fun colorOf(set: Int, t: Int): Int = when (set) { 3 -> hakColor(t); 2 -> yueColor(t); 1 -> zhColor(t); else -> twColor(t) }
 
     /** the colour of a realized tone (0 = light tone); null = leave the text colour as it is */
     fun color(t: Int, sys: Int): Int? {

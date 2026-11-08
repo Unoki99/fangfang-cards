@@ -1,28 +1,29 @@
 import SwiftUI
 
-// MARK: - 轉換 → 讀音: a word in 台語, 華語 and 粵語 side by side
+// MARK: - 轉換 → 讀音: a word in 台語, 華語, 粵語 and 客語 side by side
 
 /// the 華語 and 粵語 dictionaries for 讀音 (the one in use is the Store's; the other is read while the page is open)
 @MainActor final class ReadingDicts: ObservableObject {
     @Published var zh: ZhDict?
     @Published var yue: ZhDict?
+    @Published var hak: ZhDict?
     @Published var failed: [Int] = []
     private var started = false
 
     func load(_ store: Store) {
-        if let d = store.zh { if d.isYue { yue = d } else { zh = d } }
+        if let d = store.zh { switch d.lang { case 2: yue = d; case 3: hak = d; default: zh = d } }
         guard !started else { return }
         started = true
-        for kind in [1, 2] where (kind == 1 ? zh : yue) == nil {
+        for kind in [1, 2, 3] where [zh, zh, yue, hak][kind] == nil {
             Task.detached(priority: .userInitiated) { [weak self] in
                 let d: ZhDict? = {
-                    guard let url = Bundle.main.url(forResource: kind == 2 ? "yue" : "zh", withExtension: "json"),
+                    guard let url = Bundle.main.url(forResource: ["zh", "zh", "yue", "hak"][kind], withExtension: "json"),
                           let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
                     return try? ZhDict(data: data)
                 }()
                 await MainActor.run {
                     guard let self else { return }
-                    if let d { if kind == 2 { self.yue = d } else { self.zh = d } } else { self.failed.append(kind) }
+                    if let d { switch kind { case 2: self.yue = d; case 3: self.hak = d; default: self.zh = d } } else { self.failed.append(kind) }
                 }
             }
         }
@@ -33,7 +34,7 @@ import SwiftUI
 /// the other spelling (small)
 private struct ReadingRow: Identifiable {
     let id = UUID()
-    let lang: Int            // 0 台語, 1 華語, 2 粵語
+    let lang: Int            // 0 台語, 1 華語, 2 粵語, 3 客語
     let label: String
     let main: AttributedString
     let other: String
@@ -47,6 +48,7 @@ struct ReadingsPane: View {
     @AppStorage("rom") private var rom = 0
     @AppStorage("zhRom") private var zhRom = 0
     @AppStorage(Lang.yueRomKey) private var yueRom = 0
+    @AppStorage(Lang.hakRomKey) private var hakRom = 0
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.versionKey) private var colorVersion = 0
     @AppStorage(Simp.key) private var simplified = false
@@ -75,7 +77,7 @@ struct ReadingsPane: View {
     // MARK: the table
 
     @ViewBuilder private func table(_ q: String) -> some View {
-        let rows = taigiRows(q) + zhRows(q, kind: 1) + zhRows(q, kind: 2)
+        let rows = taigiRows(q) + zhRows(q, kind: 1) + zhRows(q, kind: 2) + hakRows(q)
         let _ = colorVersion
         VStack(spacing: 0) {
             ForEach(rows) { r in
@@ -98,7 +100,8 @@ struct ReadingsPane: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10))
                 .padding(.top, 6)
             }
-            if dicts.zh == nil || dicts.yue == nil || store.dict == nil {
+            if (dicts.zh == nil && !dicts.failed.contains(1)) || (dicts.yue == nil && !dicts.failed.contains(2))
+                || (dicts.hak == nil && !dicts.failed.contains(3)) || store.dict == nil {
                 HStack(spacing: 8) {
                     ProgressView()
                     Text(tr("載入詞典…")).ffFont(.footnote).foregroundStyle(T.muted)
@@ -109,9 +112,38 @@ struct ReadingsPane: View {
     }
 
     private let labelWidth: CGFloat = 112
-    private func fill(_ l: Int) -> Color { [T.own, T.blue, T.olive][l] }
-    private func edge(_ l: Int) -> Color { [T.ownEdge, T.blueEdge, T.oliveEdge][l] }
-    private func ink(_ l: Int) -> Color { [T.purpleInk, T.blueInk, T.oliveInk][l] }
+    private func fill(_ l: Int) -> Color { [T.own, T.blue, T.olive, T.hakFill][l] }
+    private func edge(_ l: Int) -> Color { [T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge][l] }
+    private func ink(_ l: Int) -> Color { [T.purpleInk, T.blueInk, T.oliveInk, T.hakInk][l] }
+
+    // MARK: 客語: each accent (the ones that read it the same together)
+
+    private func hakRows(_ q: String) -> [ReadingRow] {
+        guard let d = dicts.hak else { return [] }
+        let es = (d.byHan[q] ?? []).map { d.entries[$0] }.filter { $0.h == q }
+        var out: [ReadingRow] = []
+        for (n, e) in es.prefix(3).enumerated() {
+            let alt = n > 0 ? "（" + trs("又") + "）" : ""
+            let acc = e.acc ?? [e.tw]
+            // the accents with the same reading (letters and tone category) in one row
+            var groups: [(key: String, syl: [String], names: [String])] = []
+            for (a, syl) in acc.enumerated() {
+                guard let syl else { continue }
+                let key = syl.map { let p = Zhuyin.hakParts($0); return p.letters + String(p.tone) }.joined(separator: " ")
+                let name = trs(a < Lang.hakAccents.count ? Lang.hakAccents[a] : "")
+                if let i = groups.firstIndex(where: { $0.key == key }) { groups[i].names.append(name) }
+                else { groups.append((key, syl, [name])) }
+            }
+            for g in groups {
+                out.append(ReadingRow(lang: 3, label: trs("客") + "・" + g.names.joined(separator: "、") + alt, main: d.reading(g.syl, hakRom),
+                                      other: d.readingPlain(g.syl, 1 - hakRom)))
+            }
+        }
+        if out.isEmpty {
+            out.append(ReadingRow(lang: 3, label: trs("客語"), main: AttributedString("—"), other: "", note: tr("客語詞典沒有這個詞")))
+        }
+        return out
+    }
 
     // MARK: 台語: 通行, then the places that say it another way
 

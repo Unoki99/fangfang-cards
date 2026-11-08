@@ -58,7 +58,8 @@ class Card(
     override fun hashCode() = k.hashCode()
     val isZh: Boolean get() = zs != null
     /** the word's recording (台語), or the device's voice (華語; 粵語 when the word has no recording) */
-    val audio: String? get() = if (isZh) (web ?: "tts:$h") else a?.let { Audio.wordPath(it) }
+    /** (客語: only a recording; no device has a 客語 voice) */
+    val audio: String? get() = if (isZh) (if (Lang.isHakKey(k)) web else (web ?: "tts:$h")) else a?.let { Audio.wordPath(it) }
 
     fun rom(i: Int, place: Int = -1): String {
         val j = i.coerceIn(0, r.size - 1)
@@ -271,7 +272,7 @@ object Audio {
     const val defaultBase = "https://unoki99.github.io/fangfang/"
     fun wordPath(id: Int) = "audio/${id / 1000}/$id(1).mp3"
     fun examplePath(name: String): String {
-        if (name.startsWith("tts:")) return name          // 華語: read by the device
+        if (name.startsWith("tts:") || name.isEmpty()) return name          // 華語: read by the device (客語: nothing)
         val id = name.split("-").firstOrNull()?.toIntOrNull() ?: 0
         return "leku/${id / 1000}/$name.mp3"
     }

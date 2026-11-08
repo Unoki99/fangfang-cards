@@ -59,8 +59,12 @@ enum ToneColors {
     /// purple, 6 low level teal
     static let yueTones = [1, 2, 3, 4, 5, 6]
     static let yueStandard: [Int: UInt32] = [1: 0xff6b6b, 2: 0x6fdc7f, 3: 0xffe066, 4: 0x6eaaff, 5: 0xc39bff, 6: 0x4fd8c4]
-    /// the tones of a set of colours: 0 台語, 1 華語, 2 粵語
-    static func tones(set: Int) -> [Int] { set == 2 ? yueTones : (set == 1 ? zhTones : twTones) }
+    /// 客語's tone categories (陰平 1, 上聲 2, 去聲 / 陰去 3, 陰入 4, 陽平 5, 陽去 7, 陽入 8), to start with in
+    /// 台語's colours for the same categories
+    static let hakTones = [1, 2, 3, 4, 5, 7, 8]
+    static let hakStandard: [Int: UInt32] = [1: 0xff6b6b, 2: 0xc39bff, 3: 0x6eaaff, 4: 0xffa94d, 5: 0x6fdc7f, 7: 0xffe066, 8: 0xff8cc6]
+    /// the tones of a set of colours: 0 台語, 1 華語, 2 粵語, 3 客語
+    static func tones(set: Int) -> [Int] { [twTones, zhTones, yueTones, hakTones][set >= 0 && set <= 3 ? set : 0] }
 
     /// the balls to pick from: one column per colour, in rainbow order, light at the top and dark at the bottom
     /// (the middle row is the standard colour)
@@ -76,11 +80,11 @@ enum ToneColors {
         ("灰", [0xd1d1d6, 0xaeaeb2, 0x8e8e93, 0x636366, 0x48484a]),
     ]
 
-    private static func storeKey(_ set: Int, _ t: Int) -> String { "toneColor." + ["tw.", "zh.", "yue."][set] + String(t) }
+    private static func storeKey(_ set: Int, _ t: Int) -> String { "toneColor." + ["tw.", "zh.", "yue.", "hak."][set >= 0 && set <= 3 ? set : 0] + String(t) }
 
-    /// the colour picked for a tone (as hex); set 0 台語, 1 華語, 2 粵語
+    /// the colour picked for a tone (as hex); set 0 台語, 1 華語, 2 粵語, 3 客語
     static func hex(set: Int, _ t: Int) -> UInt32 {
-        let std = [twStandard, zhStandard, yueStandard][set][t] ?? 0x8e8e93
+        let std = [twStandard, zhStandard, yueStandard, hakStandard][set >= 0 && set <= 3 ? set : 0][t] ?? 0x8e8e93
         guard let v = UserDefaults.standard.object(forKey: storeKey(set, t)) as? Int else { return std }
         return UInt32(truncatingIfNeeded: v)
     }
@@ -102,6 +106,7 @@ enum ToneColors {
     static func twColor(_ t: Int) -> Color? { table(0)[t] }
     static func zhColor(_ t: Int) -> Color? { table(1)[t] }
     static func yueColor(_ t: Int) -> Color? { table(2)[t] }
+    static func hakColor(_ t: Int) -> Color? { table(3)[t] }
 
     /// picks a colour for a tone (nil = back to the standard one); everything is drawn again
     @MainActor static func set(set: Int, _ t: Int, _ v: UInt32?) {
@@ -126,7 +131,7 @@ enum ToneColors {
     static let versionKey = "toneColorVersion"
     /// all the picked colours, for knowing when the widgets' words must be made again
     static var signature: String {
-        (0...2).flatMap { set in tones(set: set).map { String(hex(set: set, $0), radix: 16) } }.joined(separator: ",")
+        (0...3).flatMap { set in tones(set: set).map { String(hex(set: set, $0), radix: 16) } }.joined(separator: ",")
     }
 }
 
@@ -483,7 +488,11 @@ struct ToneDots: View {
                 #endif
                 }
             } else {
-                if store.isYue {
+                if store.isHak {
+                    ForEach(ToneColors.hakTones, id: \.self) { t in
+                        Circle().fill(ToneColors.hakColor(t) ?? T.muted).frame(width: 5, height: 5)
+                    }
+                } else if store.isYue {
                     ForEach([1, 2, 3, 4, 5, 6], id: \.self) { t in
                         Circle().fill(ToneColors.yueColor(t) ?? T.muted).frame(width: 5, height: 5)
                     }

@@ -53,11 +53,12 @@ object Store {
     // MARK: 華語 mode
     /** the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile) */
     var isZh by mutableStateOf(false); private set
-    /** the language shown: 0 台語, 1 華語, 2 粵語 (粵語 uses the 華語 pages, with its own dictionary) */
+    /** the language shown: 0 台語, 1 華語, 2 粵語, 3 客語 (粵語 and 客語 use the 華語 pages, with their own dictionaries) */
     var lang by mutableIntStateOf(0); private set
     val isYue: Boolean get() = lang == 2
-    /** which of 華語 / 粵語 the dictionary in `zh` is (1 or 2) */
-    private val zhKind: Int get() = if (zh?.isYue == true) 2 else 1
+    val isHak: Boolean get() = lang == 3
+    /** which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3) */
+    private val zhKind: Int get() = zh?.lang ?: 1
     /** a hint to show (粵語 without a Cantonese voice on the device) */
     var speechHint by mutableStateOf<String?>(null)
     /** switching language: the other deck is being loaded */
@@ -79,7 +80,11 @@ object Store {
         InputCodes(try { app.assets.open("inputcodes.json").bufferedReader().use { it.readText() } } catch (_: Exception) { null })
     }
 
-    fun init(ctx: Context) { app = ctx.applicationContext }
+    fun init(ctx: Context) {
+        app = ctx.applicationContext
+        // 台語 words' English (Wiktionary), read the first time it's needed
+        TwEnglish.source = { try { app.assets.open("tw_en.json").bufferedReader().use { it.readText() } } catch (_: Exception) { null } }
+    }
 
     private fun changed() {
         recount()
@@ -121,7 +126,7 @@ object Store {
                 makeFreqTopics()
                 // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
                 loadDict()
-                if (Prefs.lang.value in 1..2) setLanguage(Prefs.lang.value) else preloadZh()
+                if (Prefs.lang.value in 1 until Lang.count) setLanguage(Prefs.lang.value) else preloadZh()
                 Backup.syncNow()
                 WidgetBridge.appOpened()
             } catch (e: java.io.FileNotFoundException) {
@@ -200,21 +205,21 @@ object Store {
     /** the spelling shown for 華語 / 粵語 (Prefs.zhRom) is kept apart for each */
     private fun shownRom(l: Int) {
         val was = lang
-        if (was == 1) Prefs.mandRom.value = Prefs.zhRom.value else if (was == 2) Prefs.yueRom.value = Prefs.zhRom.value
-        if (l == 1) Prefs.zhRom.value = Prefs.mandRom.value else if (l == 2) Prefs.zhRom.value = Prefs.yueRom.value
+        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value }
+        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value }
     }
 
     private fun shown(l: Int) {
         shownRom(l)
         lang = l; isZh = l != 0
-        EngineSettings.yue = l == 2; EngineSettings.zhShown = l != 0
+        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.zhShown = l != 0
         undoStack.clear(); canUndo = false
         changed()
     }
 
-    /** 0 台語, 1 華語, 2 粵語 */
+    /** 0 台語, 1 華語, 2 粵語, 3 客語 */
     fun setLanguage(want0: Int) {
-        val want = want0.coerceIn(0, 2)
+        val want = want0.coerceIn(0, Lang.count - 1)
         Prefs.lang.value = want
         if (want == lang || switching) return
         if (want != 0) Prefs.lastZh.value = want
@@ -240,16 +245,17 @@ object Store {
     private var zhJob: kotlinx.coroutines.Deferred<Pair<ZhDict, Deck>>? = null
     private var zhJobKind = 0
 
-    /** kind: 1 華語 (zh.json), 2 粵語 (yue.json) */
-    private fun zhLoad(kind: Int): kotlinx.coroutines.Deferred<Pair<ZhDict, Deck>> {
-        zhJob?.let { if (zhJobKind == kind) return it }
+    /** kind: 1 華語 (zh.json), 2 粵語 (yue.json), 3 客語 (hak.json); fresh: read again (客語: another accent) */
+    private fun zhLoad(kind: Int, fresh: Boolean = false): kotlinx.coroutines.Deferred<Pair<ZhDict, Deck>> {
+        if (!fresh) zhJob?.let { if (zhJobKind == kind) return it }
         val keys = progress.status.keys.filter { Lang.kind(it) == kind } + progress.saved.keys.filter { Lang.kind(it) == kind }
-        val have = zh?.takeIf { it.isYue == (kind == 2) }
+        val have = if (fresh) null else zh?.takeIf { it.lang == kind }
         val list = Prefs.zhList.value
+        val accent = Prefs.hakAccent.value.coerceIn(0, 5)
         val j = scope.async(Dispatchers.Default) {
-            val d = have ?: ZhDict(app.assets.open(if (kind == 2) "yue.json" else "zh.json").bufferedReader().use { it.readText() }).also { d ->
-                // 粵語: the radicals (部首查字) from the 華語 data, when it's there
-                if (d.isYue) try { d.borrowRadicals(app.assets.open("zh.json").bufferedReader().use { it.readText() }) } catch (_: Exception) {}
+            val d = have ?: ZhDict(app.assets.open(listOf("zh.json", "zh.json", "yue.json", "hak.json")[kind]).bufferedReader().use { it.readText() }, accent).also { d ->
+                // 粵語, 客語: the radicals (部首查字) from the 華語 data, when it's there
+                if (d.lang != 1) try { d.borrowRadicals(app.assets.open("zh.json").bufferedReader().use { it.readText() }) } catch (_: Exception) {}
             }
             d to makeZhDeck(d, list, keys).also { it.kind = kind }
         }
@@ -260,7 +266,7 @@ object Store {
     /** reads the 華語 (or 粵語, if that was used last) dictionary in the background (at start-up, in 台語 mode) */
     fun preloadZh() {
         if (zh != null) return
-        val kind = if (Prefs.lastZh.value == 2) 2 else 1
+        val kind = Prefs.lastZh.value.let { if (it in 1 until Lang.count) it else 1 }
         scope.launch {
             try { val (d, deck) = zhLoad(kind).await(); useZh(d, deck) } catch (e: Throwable) { zhJob = null }
         }
@@ -268,7 +274,7 @@ object Store {
 
     /** a 華語 / 粵語 dictionary is read: keep it, and use its deck now (if that language is wanted) or keep it for switching */
     private fun useZh(d: ZhDict, deck: Deck) {
-        val kind = if (d.isYue) 2 else 1
+        val kind = d.lang
         deck.kind = kind
         // (the other one of 華語 / 粵語, read in the background, finishing after this one was chosen: not kept)
         if (lang != 0 && kind != Prefs.lang.value) return
@@ -285,6 +291,22 @@ object Store {
             other = deck
         }
         WidgetBridge.rebuildIfNeeded()
+    }
+
+    /** 客語: another accent was chosen. The dictionary is read again with that accent's readings (the words stay the
+     *  same, so 不熟 / 熟悉 don't change) */
+    fun hakAccentChanged() {
+        EngineSettings.hakAccent = Prefs.hakAccent.value.coerceIn(0, 5)
+        if (lang != 3 || switching) return
+        switching = true
+        scope.launch {
+            try {
+                val (d, deck) = zhLoad(3, fresh = true).await()
+                zhJob = null
+                if (lang == 3) { deck.kind = 3; zh = d; use(deck); undoStack.clear(); canUndo = false; listVersion++; changed() }
+            } catch (e: Throwable) { zhJob = null }
+            switching = false
+        }
     }
 
     private fun use(d: Deck) {
@@ -306,7 +328,7 @@ object Store {
             val l = d.entries[i].level(list)
             if (l > 0) counts[l] = (counts[l] ?: 0) + 1
         }
-        val tops = ArrayList(counts.map { (l, n) -> Topic(l, if (d.isYue) Lang.yueLevelName(l) else Lang.levelName(list, l), n) })
+        val tops = ArrayList(counts.map { (l, n) -> Topic(l, if (d.lang != 1) Lang.yueLevelName(l) else Lang.levelName(list, l), n) })
         // the character cards, after the words: level by level of the word list's character list, the more
         // common first; then the more common characters the list doesn't have
         val corder = d.chars.indices.sortedWith(compareBy({ d.chars[it].level(list).let { l -> if (l == 0) 99 else l } }, { it }))
@@ -317,7 +339,7 @@ object Store {
             c.cats?.firstOrNull()?.let { t -> ccounts[t] = (ccounts[t] ?: 0) + 1 }
         }
         for ((t, n) in ccounts) tops.add(Topic(t, if (t == Lang.moreChars) "漢字・更多常用字"
-            else "漢字・" + (if (d.isYue) Lang.yueCharLevelName(t - Lang.charTopicBase) else Lang.levelName(list, t - Lang.charTopicBase)), n))
+            else "漢字・" + (if (d.lang != 1) Lang.yueCharLevelName(t - Lang.charTopicBase) else Lang.levelName(list, t - Lang.charTopicBase)), n))
         // rarer words you already have in 不熟 / 熟悉 / 收藏
         for (k in keys) if (bk[k] == null) d.index[k]?.let { bk[k] = d.card(it, list) }
         return Deck(cs, bk, rk, pl, tops)
@@ -426,13 +448,13 @@ object Store {
     fun syncCharCards() {
         val d = zh ?: return
         if (d.chars.isEmpty()) return
-        val kind = if (d.isYue) 2 else 1
+        val kind = d.lang
         val want = ArrayList<String>(); val seen = HashSet<String>()
         for ((k, v) in progress.status) {
             if (v != 1 || Lang.charOf(k) != null || Lang.kind(k) != kind) continue
             for (ch in k.substringBefore('\t').cps()) {
                 if (!Zhuyin.isHan(ch.firstCp()) || !seen.add(ch) || d.charIndex[ch] == null) continue
-                val ck = Lang.charKey(ch, d.isYue)
+                val ck = Lang.charKey(ch, d.isYue, d.isHak)
                 when (progress.status[ck]) {
                     1 -> {}
                     // marked 不熟 by hand after the word was learned: left as it is
@@ -459,7 +481,7 @@ object Store {
 
     // MARK: 本週學習 (this week's words)
 
-    private val weekLang: String get() = listOf("tw", "zh", "yue")[lang]
+    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak")[lang.coerceIn(0, 3)]
 
     /** this week's words (in the language shown), in the order they were picked */
     val weekCards: List<Card> get() {
@@ -726,7 +748,7 @@ object Store {
     fun englishMeanings(c: Card): List<String>? {
         if (!Prefs.zhEnglish.value || Lang.kind(c.k) != 1) return null
         val d = zh ?: return null
-        if (d.isYue) return null
+        if (d.lang != 1) return null
         val e = Lang.charOf(c.k)?.let { d.entryForChar(it, "") } ?: d.entry(c.k)
         return e?.enList?.takeIf { it.isNotEmpty() }
     }
@@ -777,12 +799,29 @@ object Store {
         return styled(card.zy(place))
     }
 
+    /** 客語: an example sentence in the dictionary's words (as in 轉換), the card's word kept whole and read as the
+     *  card reads it */
+    private fun examplePieces(d: ZhDict, card: Card, text: String): List<ZhPiece> {
+        val syl = card.zs
+        if (syl == null || card.h.isEmpty() || !text.contains(card.h)) return d.convertPieces(text)
+        val parts = text.split(card.h)
+        val word = card.h.cps()
+        val out = ArrayList<ZhPiece>()
+        for ((i, part) in parts.withIndex()) {
+            out.addAll(d.convertPieces(part))
+            if (i < parts.size - 1) out.add(ZhPiece(word, syl.take(word.size), null))
+        }
+        return out
+    }
+
     private fun dictExample(d: Dict, card: Card, x: Example): List<String>? =
         d.raw.ex[card.k]?.flatten()?.firstOrNull { it.size > 3 && it[0] == x.h && it[3] == x.n }
 
     fun exampleRom(card: Card, x: Example, rom: Int, place: Int): Styled {
         val z = zh
         if (x.w != null && z != null) return z.sentence(ZhDict.pieces(x.h, x.w), Prefs.zhRom.value, Prefs.zhPlace.value)
+        // (客語: the sentences have no reading of their own: the dictionary's words, as in 轉換)
+        if (card.isZh) return if (z != null) z.sentence(examplePieces(z, card, x.h), Prefs.zhRom.value, Prefs.zhPlace.value) else styled("")
         val r = rom.coerceIn(0, 2)
         val d = dict
         if ((place >= 0 || EngineSettings.toneSystem != 0) && d != null) {
@@ -795,6 +834,7 @@ object Store {
     fun exampleHan(card: Card, x: Example, place: Int, base: Int): Styled {
         val z = zh
         if (x.w != null && z != null) return z.sentenceHan(ZhDict.pieces(x.h, x.w), Prefs.zhPlace.value, base)
+        if (card.isZh) return if (z != null) z.sentenceHan(examplePieces(z, card, x.h), Prefs.zhPlace.value, base) else styled(x.h, base)
         val d = dict
         if ((place >= 0 || EngineSettings.toneSystem != 0) && d != null) {
             val e = dictExample(d, card, x)
@@ -806,6 +846,7 @@ object Store {
     fun blankRom(card: Card, x: Example, rom: Int, place: Int): Styled? {
         val z = zh
         if (x.w != null && z != null) return z.sentence(ZhDict.pieces(x.h, x.w), Prefs.zhRom.value, Prefs.zhPlace.value, blank = card.h)
+        if (card.isZh) return z?.sentence(examplePieces(z, card, x.h), Prefs.zhRom.value, Prefs.zhPlace.value, blank = card.h)
         val r = rom.coerceIn(0, 2)
         val d = dict
         if (place >= 0 && d != null) {

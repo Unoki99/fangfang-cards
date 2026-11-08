@@ -8,21 +8,31 @@ import AVFoundation
 // The dictionary's 注音 is kept as it is; 漢語拼音 is spelled from it here, by rule.
 
 enum Lang {
-    /// 0 = 台語, 1 = 華語, 2 = 粵語
+    /// 0 = 台語, 1 = 華語, 2 = 粵語, 3 = 客語
     static let key = "lang"
-    static var current: Int { min(max(UserDefaults.standard.integer(forKey: key), 0), 2) }
-    /// a language with a 華語-style dictionary (華語 or 粵語)
+    static let count = 4
+    static var current: Int { min(max(UserDefaults.standard.integer(forKey: key), 0), count - 1) }
+    /// a language with a 華語-style dictionary (華語, 粵語 or 客語)
     static var isZh: Bool { current != 0 }
     /// 粵語 (Cantonese): the same pages as 華語, its own dictionary (yue.json) and reading (粵拼 / 耶魯)
     static var isYue: Bool { current == 2 }
-    static let names = ["台語", "華語", "粵語"]
-    /// 華語 reading: 0 = 拼音, 1 = 注音 (粵語, its own setting: 0 = 粵拼, 1 = 耶魯)
-    static var romKey: String { isYue ? yueRomKey : "zhRom" }
+    /// 客語 (Taiwanese Hakka): the same pages as 華語, its own dictionary (hak.json, 教育部《臺灣客語辭典》), six accents
+    static var isHak: Bool { current == 3 }
+    /// 粵語 and 客語: no HSK / TOCFL lists (the words come in groups of how common they are)
+    static var ownGroups: Bool { current >= 2 }
+    static let names = ["台語", "華語", "粵語", "客語"]
+    /// 華語 reading: 0 = 拼音, 1 = 注音 (粵語, its own setting: 0 = 粵拼, 1 = 耶魯; 客語: 0 = 拼音, 1 = 注音)
+    static var romKey: String { isYue ? yueRomKey : (isHak ? hakRomKey : "zhRom") }
     static let yueRomKey = "yueRom"
+    static let hakRomKey = "hakRom"
     static var zhRom: Int { UserDefaults.standard.integer(forKey: romKey) }
-    /// 華語 reading of: 0 = 臺灣, 1 = 大陸
-    static let placeKey = "zhPlace"
+    /// 華語 reading of: 0 = 臺灣, 1 = 大陸 (客語: the accent, 0 四縣 … 5 南四縣)
+    static var placeKey: String { isHak ? hakPlaceKey : "zhPlace" }
+    static let hakPlaceKey = "hakPlace"
     static var zhPlace: Int { UserDefaults.standard.integer(forKey: placeKey) }
+    /// 客語: the accent chosen
+    static var hakAccent: Int { min(max(UserDefaults.standard.integer(forKey: hakPlaceKey), 0), hakAccents.count - 1) }
+    static let hakAccents = ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"]
     static var romNames: [String] { isYue ? ["粵拼", "耶魯"] : ["拼音", "注音"] }
     /// HSK 3.0 levels (7 = 7–9)
     static func hskName(_ l: Int) -> String { l >= 7 ? "HSK 7–9" : "HSK \(l)" }
@@ -33,32 +43,38 @@ enum Lang {
     static let tocflNames = ["", "準備一級", "準備二級", "入門級", "基礎級", "進階級", "高階級", "流利級"]
     static func tocflName(_ l: Int) -> String { l > 0 && l < tocflNames.count ? tocflNames[l] : "" }
     static func levelName(_ list: Int, _ l: Int) -> String {
-        if isYue { return "常用詞 \((l - 1) * yueGroup + 1)–\(l * yueGroup)" }
+        if ownGroups { return "常用詞 \((l - 1) * yueGroup + 1)–\(l * yueGroup)" }
         return list == 1 ? "TOCFL " + tocflName(l) : hskName(l)
     }
     /// 粵語: the words and characters come in groups of how common they are (no official lists)
     static let yueGroup = 500
     static func yueCharLevelName(_ l: Int) -> String { "常用字 \((l - 1) * yueGroup + 1)–\(l * yueGroup)" }
-    static let placeNames = ["臺灣", "大陸"]
+    static var placeNames: [String] { isHak ? hakAccents : zhPlaceNames }
+    static let zhPlaceNames = ["臺灣", "大陸"]
 
     /// a 華語 or 粵語 word's key: "漢字\t注音", "漢字\t粵jyut6 ping3" (台語 keys have syllable codes in letters
     /// after the tab)
     static func isZhKey(_ k: String) -> Bool {
         guard let t = k.firstIndex(of: "\t"), let s = k[k.index(after: t)...].unicodeScalars.first else { return false }
-        return (0x3100...0x312F).contains(s.value) || (0x31A0...0x31BF).contains(s.value) || s == "˙" || s == "字" || s == "粵"
+        return (0x3100...0x312F).contains(s.value) || (0x31A0...0x31BF).contains(s.value) || s == "˙" || s == "字" || s == "粵" || s == "客"
     }
     /// a 粵語 word's or character's key ("漢字\t粵…")
     static func isYueKey(_ k: String) -> Bool {
         guard let t = k.firstIndex(of: "\t") else { return false }
         return k[k.index(after: t)...].hasPrefix("粵")
     }
-    /// which language a key is of: 0 台語, 1 華語, 2 粵語
-    static func kind(_ k: String) -> Int { isYueKey(k) ? 2 : (isZhKey(k) ? 1 : 0) }
-    /// a character card's key: "好\t字" (粵語: "好\t粵字")
-    static func charKey(_ ch: String, yue: Bool = isYue) -> String { ch + (yue ? "\t粵字" : "\t字") }
+    /// a 客語 word's or character's key ("漢字\t客…")
+    static func isHakKey(_ k: String) -> Bool {
+        guard let t = k.firstIndex(of: "\t") else { return false }
+        return k[k.index(after: t)...].hasPrefix("客")
+    }
+    /// which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語
+    static func kind(_ k: String) -> Int { isYueKey(k) ? 2 : (isHakKey(k) ? 3 : (isZhKey(k) ? 1 : 0)) }
+    /// a character card's key: "好\t字" (粵語: "好\t粵字", 客語: "好\t客字")
+    static func charKey(_ ch: String, yue: Bool = isYue, hak: Bool = isHak) -> String { ch + (yue ? "\t粵字" : (hak ? "\t客字" : "\t字")) }
     /// the character of a character card's key (nil = a word)
     static func charOf(_ k: String) -> String? {
-        if k.hasSuffix("\t粵字") { return String(k.dropLast(3)) }
+        if k.hasSuffix("\t粵字") || k.hasSuffix("\t客字") { return String(k.dropLast(3)) }
         return k.hasSuffix("\t字") ? String(k.dropLast(2)) : nil
     }
     /// the 新詞 topics of the character cards: 100 + level, 108 = more characters
@@ -100,6 +116,23 @@ enum Zhuyin {
     private static var cache: [String: String] = [:]
     private static let lock = NSLock()
 
+    /// a 客語 syllable: letters, the tone category (a superscript digit) and the accent (a subscript digit): "bau¹₀"
+    static func isHak(_ s: String) -> Bool {
+        guard let l = s.unicodeScalars.last else { return false }
+        return (0x2080...0x2089).contains(l.value)
+    }
+    private static let superDigits: [Unicode.Scalar: Int] = ["⁰": 0, "¹": 1, "²": 2, "³": 3, "⁴": 4, "⁵": 5, "⁶": 6, "⁷": 7, "⁸": 8, "⁹": 9]
+    /// a 客語 syllable's parts: letters, tone category (1 陰平 2 上聲 3 去聲 4 陰入 5 陽平 7 陽去 8 陽入), accent
+    static func hakParts(_ s: String) -> (letters: String, tone: Int, accent: Int) {
+        let u = Array(s.unicodeScalars)
+        guard u.count >= 3, isHak(s) else { return (s, 0, 0) }
+        let acc = Int(u[u.count - 1].value - 0x2080)
+        let t = superDigits[u[u.count - 2]] ?? 0
+        var l = String.UnicodeScalarView(); l.append(contentsOf: u[..<(u.count - 2)])
+        return (String(l), t, acc)
+    }
+    private static let superOf = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"]
+
     /// a 粵語 syllable (Jyutping: letters and a tone number, "goi1")
     static func isJyut(_ s: String) -> Bool {
         guard let f = s.unicodeScalars.first, let l = s.unicodeScalars.last else { return false }
@@ -108,6 +141,7 @@ enum Zhuyin {
 
     /// the tone of a syllable: 1–4, 0 = light tone (˙); 粵語 1–6
     static func tone(_ s: String) -> Int {
+        if isHak(s) { return hakParts(s).tone }
         if isJyut(s), let d = s.last?.wholeNumberValue { return d }
         if s.hasPrefix("˙") || s.hasSuffix("˙") { return 0 }
         switch s.last {
@@ -119,10 +153,14 @@ enum Zhuyin {
     }
 
     /// the letters without the tone mark
-    static func bare(_ s: String) -> String { isJyut(s) ? String(s.dropLast()) : s.filter { !"ˊˇˋ˙".contains($0) } }
+    static func bare(_ s: String) -> String {
+        if isHak(s) { return hakParts(s).letters }
+        return isJyut(s) ? String(s.dropLast()) : s.filter { !"ˊˇˋ˙".contains($0) }
+    }
 
     /// the syllable with another tone
     static func withTone(_ s: String, _ t: Int) -> String {
+        if isHak(s) { let p = hakParts(s); return p.letters + superOf[min(max(t, 0), 9)] + String(UnicodeScalar(0x2080 + UInt32(p.accent))!) }
         if isJyut(s) { return String(s.dropLast()) + String(t) }
         let b = bare(s)
         switch t {
@@ -136,7 +174,7 @@ enum Zhuyin {
 
     /// one 注音 syllable in 拼音 with its tone mark ("" when it can't be spelled); a 粵語 syllable stays as it is
     static func pinyin(_ s: String) -> String {
-        if isJyut(s) { return s }
+        if isJyut(s) || isHak(s) { return s }
         lock.lock(); if let c = cache[s] { lock.unlock(); return c }; lock.unlock()
         let r = spell(s)
         lock.lock(); cache[s] = r; lock.unlock()
@@ -190,6 +228,7 @@ enum Zhuyin {
     private static var plainCache: [String: String] = [:]
     /// one 注音 syllable as 拼音 letters without tone, for searching ("ㄔ" → "chi", "ㄌㄩˋ" → "lv")
     static func plainSyllable(_ s: String) -> String {
+        if isHak(s) { return hakParts(s).letters }
         if isJyut(s) { return String(s.dropLast()) }
         let b = bare(s)
         lock.lock(); if let c = plainCache[b] { lock.unlock(); return c }; lock.unlock()
@@ -205,8 +244,10 @@ enum Zhuyin {
     }
 
     /// the colour of a 華語 tone (the 台語 colours: 1 red, 2 like 台語 5, 3 blue, 4 like 台語 2, light grey)
-    static func color(_ t: Int, _ sys: Int, yue: Bool = Lang.isYue) -> Color? {
+    static func color(_ t: Int, _ sys: Int, yue: Bool = Lang.isYue, hak: Bool = Lang.isHak) -> Color? {
         guard sys != 0 else { return nil }
+        // 客語: its tone categories (陰平 1, 上聲 2, 去聲 3, 陰入 4, 陽平 5, 陽去 7, 陽入 8), in the colours picked for 客語
+        if hak { return ToneColors.hakColor(t) }
         // 粵語: tones 1–6 (in the colours picked for 粵語)
         if yue { return (1...6).contains(t) ? ToneColors.yueColor(t) : nil }
         switch t {
@@ -227,7 +268,7 @@ enum Zhuyin {
 /// character, with the pairs the dictionaries give (後→后, 開→开…).
 enum Simp {
     static let key = "simplified"
-    static var on: Bool { Lang.isZh && UserDefaults.standard.bool(forKey: key) }
+    static var on: Bool { Lang.isZh && !Lang.isHak && UserDefaults.standard.bool(forKey: key) }
     private static let lock = NSLock()
     nonisolated(unsafe) private static var table: [Character: Character] = [:]
 
@@ -322,6 +363,11 @@ struct ZhEntry {
     var eq: [String] = []
     /// 粵語: a recording of the word (Wikimedia Commons), when there is one
     var audio: String? = nil
+    /// 客語: the reading in each accent (0 四縣 … 5 南四縣; nil = that accent doesn't have the word); `tw` is the one
+    /// of the accent chosen
+    var acc: [[String]?]? = nil
+    /// 客語: the accents that say it with another word (accent → word)
+    var otherWords: [Int: String] = [:]
     /// the English meanings, one each (CC-CEDICT separates them with ;)
     var enList: [String] {
         (en ?? "").components(separatedBy: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -363,6 +409,14 @@ final class ZhDict: @unchecked Sendable {
     let entries: [ZhEntry]
     /// the 粵語 dictionary (yue.json, tools/build_cantonese.py), not the 華語 one
     let isYue: Bool
+    /// the 客語 dictionary (hak.json, tools/build_hakka.py)
+    let isHak: Bool
+    /// 1 華語, 2 粵語, 3 客語
+    var lang: Int { isHak ? 3 : (isYue ? 2 : 1) }
+    /// 客語: the accent the readings (`tw`) are of, its tone marks (per accent, per tone) and each syllable's 注音
+    let accent: Int
+    let hakMarks: [[String]]
+    let hakZy: [String: String]
     /// how many of the first entries are study cards (the rest are rare words and references)
     let cardCount: Int
     let index: [String: Int]
@@ -423,9 +477,17 @@ final class ZhDict: @unchecked Sendable {
         radicalSets = radicalInside.mapValues { Set($0) }
     }
 
-    /// one entry of zh.json
-    private static func makeEntry(_ e: [String: Any]) -> ZhEntry? {
-        guard let k = e["k"] as? String, let h = e["h"] as? String, let s = e["s"] as? String else { return nil }
+    /// one entry of zh.json (客語: the readings of this accent, the main one when the accent doesn't have the word)
+    private static func makeEntry(_ e: [String: Any], accent: Int) -> ZhEntry? {
+        guard let k = e["k"] as? String, let h = e["h"] as? String, var s = e["s"] as? String else { return nil }
+        var acc: [[String]?]? = nil
+        if let v = e["v"] as? [Any] {
+            let a = v.map { ($0 as? String)?.components(separatedBy: " ") }
+            acc = a
+            if accent < a.count, let mine = v[accent] as? String { s = mine }
+        }
+        var others: [Int: String] = [:]
+        for (a, w) in e["o"] as? [String: String] ?? [:] { if let i = Int(a) { others[i] = w } }
         var senses: [ZhSense] = []
         for (i, d) in (e["d"] as? [[Any]] ?? []).enumerated() {
             let t = d.first as? String ?? ""
@@ -437,17 +499,17 @@ final class ZhDict: @unchecked Sendable {
                        spec: e["p"] as? Int ?? 0, alt: e["a"] as? String, senses: senses, en: e["n"] as? String,
                        hsk: e["x"] as? Int ?? 0, tocfl: e["y"] as? Int ?? 0, extra: (e["q"] as? Int ?? 0) == 1,
                        pos: e["w"] as? [String] ?? [], syn: e["j"] as? [String] ?? [], ant: e["f"] as? [String] ?? [],
-                       eq: e["m"] as? [String] ?? [], audio: e["u"] as? String)
+                       eq: e["m"] as? [String] ?? [], audio: e["u"] as? String, acc: acc, otherWords: others)
     }
 
     /// reads zh.json: the entries are one per line at the end, so they're read in parts on all the cores at
     /// the same time (much faster than one big read); an older file (all on one line) is read in one go
-    private static func readFile(_ data: Data) throws -> (obj: [String: Any], entries: [ZhEntry]) {
+    private static func readFile(_ data: Data, accent: Int) throws -> (obj: [String: Any], entries: [ZhEntry]) {
         let marker = Data(",\"e\":[\n".utf8)
         guard let r = data.range(of: marker) else {
             guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let es = obj["e"] as? [[String: Any]] else { throw CocoaError(.fileReadCorruptFile) }
-            return (obj, es.compactMap { makeEntry($0) })
+            return (obj, es.compactMap { makeEntry($0, accent: accent) })
         }
         var head = Data(data[data.startIndex..<r.lowerBound])
         head.append(contentsOf: Array("}".utf8))
@@ -485,17 +547,22 @@ final class ZhDict: @unchecked Sendable {
             guard let es = (try? JSONSerialization.jsonObject(with: chunk)) as? [[String: Any]] else {
                 lock.lock(); failed = true; lock.unlock(); return
             }
-            let made = es.compactMap { makeEntry($0) }
+            let made = es.compactMap { makeEntry($0, accent: accent) }
             lock.lock(); results[p] = made; lock.unlock()
         }
         if failed { throw CocoaError(.fileReadCorruptFile) }
         return (obj, results.flatMap { $0 })
     }
 
-    init(data: Data) throws {
-        let (obj, out) = try Self.readFile(data)
+    /// accent: 客語, the accent whose readings are used
+    init(data: Data, accent: Int = Lang.hakAccent) throws {
+        let (obj, out) = try Self.readFile(data, accent: accent)
         cardCount = obj["nc"] as? Int ?? out.count
         isYue = obj["lang"] as? String == "yue"
+        isHak = obj["lang"] as? String == "hak"
+        self.accent = accent
+        hakMarks = obj["ht"] as? [[String]] ?? []
+        hakZy = obj["hz"] as? [String: String] ?? [:]
         var m = 1
         var index: [String: Int] = [:], byHan: [String: [Int]] = [:]
         var byPlain: [String: [Int]] = [:], byToned: [String: [Int]] = [:], byZy: [String: [Int]] = [:], byZyToned: [String: [Int]] = [:]
@@ -507,7 +574,7 @@ final class ZhDict: @unchecked Sendable {
             for syl in [e.tw] + (e.lu.map { [$0] } ?? []) {
                 let ss = syl.filter { $0 != "-" }
                 let py = ss.map { Zhuyin.plainSyllable($0) }
-                let toned = zip(ss, py).map { $1 + ((Zhuyin.isJyut($0) || [1, 2, 3, 4].contains(Zhuyin.tone($0))) ? String(Zhuyin.tone($0)) : "") }
+                let toned = zip(ss, py).map { $1 + ((Zhuyin.isJyut($0) || Zhuyin.isHak($0) || [1, 2, 3, 4].contains(Zhuyin.tone($0))) ? String(Zhuyin.tone($0)) : "") }
                 Self.add(&byPlain, py.joined(), i)
                 Self.add(&byToned, toned.joined(), i)
                 Self.add(&byZy, ss.map { Zhuyin.bare($0) }.joined(), i)
@@ -527,9 +594,11 @@ final class ZhDict: @unchecked Sendable {
             guard let h = c["h"] as? String else { continue }
             var rs: [ZhChar.Reading] = []
             for r in c["m"] as? [[Any]] ?? [] {
-                guard r.count >= 3, var zy = r[0] as? String, let py = r[1] as? String, let ds = r[2] as? [[String]] else { continue }
+                guard r.count >= 3, var zy = r[0] as? String, var py = r[1] as? String, let ds = r[2] as? [[String]] else { continue }
                 // 粵語: [耶魯, 粵拼, …]; the 粵拼 syllable is kept as the one the readings are made from
                 if obj["lang"] as? String == "yue" { zy = py }
+                // 客語: [syllable, syllable, meanings, label, [the syllable in each accent]]: this accent's
+                if r.count > 4, let v = r[4] as? [Any], accent < v.count, let mine = v[accent] as? String { zy = mine; py = mine }
                 rs.append(ZhChar.Reading(zy: zy, py: py, defs: ds.map { (pos: $0.first ?? "", text: $0.count > 1 ? $0[1] : "") },
                                          label: r.count > 3 ? r[3] as? String : nil))
             }
@@ -545,18 +614,34 @@ final class ZhDict: @unchecked Sendable {
         charIndex = ci
     }
 
-    /// a character as a card: its usual reading and that reading's meanings; the other readings as 又
-    func charCard(_ i: Int, list: Int = Lang.zhList) -> Card {
+    /// a character as a card: its usual reading (or reading `r`) and that reading's meanings; the other readings as 又
+    func charCard(_ i: Int, list: Int = Lang.zhList, reading r: Int = 0) -> Card {
         let c = chars[i]
-        let main = c.readings[0]
+        let r = r < c.readings.count ? r : 0
+        let main = c.readings[r]
         let defs = main.defs.map { Def(p: $0.pos, t: $0.text, x: [], sy: nil, an: nil) }
-        let others = c.readings.dropFirst().map { Other(l: $0.label ?? "又", r: [$0.py], z: isYue ? Yale.of($0.zy) : $0.zy) }
+        let others = c.readings.enumerated().filter { $0.offset != r }.map(\.element).map { Other(l: $0.label ?? "又", r: [isHak ? readingPlain([$0.zy], 0) : $0.py], z: isYue ? Yale.of($0.zy) : (isHak ? readingPlain([$0.zy], 1) : $0.zy)) }
         let l = c.level(list)
         let topic = l > 0 ? Lang.charTopicBase + l : Lang.moreChars
         // (粵語: zy is the 粵拼 syllable, z its 耶魯)
-        return Card(k: c.h + (isYue ? "\t粵字" : "\t字"), h: Simp.show(c.h), r: [main.py], z: isYue ? Yale.of(main.zy) : main.zy, a: nil, g: "", d: defs,
+        return Card(k: Lang.charKey(c.h, yue: isYue, hak: isHak), h: Simp.show(c.h), r: [isHak ? readingPlain([main.py], 0) : main.py],
+                    z: isYue ? Yale.of(main.zy) : (isHak ? readingPlain([main.zy], 1) : main.zy), a: nil, g: "", d: defs,
                     c: nil, zo: nil, v: nil, o: others.isEmpty ? nil : Array(others), s: nil, t: "漢字",
                     sy: nil, an: nil, cats: [topic], zs: [main.zy], zl: nil)
+    }
+
+    /// which of a character's readings a syllable is (the one in a word: 中 in 中獎 is ㄓㄨㄥˋ, not ㄓㄨㄥ); the
+    /// syllables are tried in order (臺灣's, then 大陸's), each first as it is, then without the tone
+    func readingIndex(_ i: Int, _ syllables: [String]) -> Int? {
+        let rs = chars[i].readings
+        for s in syllables where s != "-" && s != "_" && !s.isEmpty {
+            if let j = rs.firstIndex(where: { $0.zy == s }) { return j }
+        }
+        for s in syllables where s != "-" && s != "_" && !s.isEmpty {
+            let b = Zhuyin.plainSyllable(s)
+            if let j = rs.firstIndex(where: { Zhuyin.plainSyllable($0.zy) == b }) { return j }
+        }
+        return nil
     }
 
     /// the dictionary entry of a character read a certain way (for 「查詞典」 on a character card)
@@ -582,7 +667,10 @@ final class ZhDict: @unchecked Sendable {
         var first = true
         for s in syl where s != "-" && s != "_" {
             var a: AttributedString
-            if Zhuyin.isJyut(s) {
+            if Zhuyin.isHak(s) {
+                // 客語: 拼音 (0) or 注音 (1), with the accent's tone mark after the syllable
+                a = AttributedString((first ? "" : " ") + hakSyllable(s, mode))
+            } else if Zhuyin.isJyut(s) {
                 // 粵語: 粵拼 (0) or 耶魯 (1), a space between syllables
                 a = AttributedString((first ? "" : " ") + (mode == 1 ? Yale.of(s) : s))
             } else if mode == 1 {
@@ -592,11 +680,18 @@ final class ZhDict: @unchecked Sendable {
                 let apos = !first && (p.first.map { "aāáǎàoōóǒòeēéěèê".contains($0) } ?? false)
                 a = AttributedString((apos ? "'" : "") + p)
             }
-            if let c = Zhuyin.color(Zhuyin.tone(s), colours, yue: isYue) { a.swiftUI.foregroundColor = c }
+            if let c = Zhuyin.color(Zhuyin.tone(s), colours, yue: isYue, hak: isHak) { a.swiftUI.foregroundColor = c }
             out += a
             first = false
         }
         return out
+    }
+
+    /// one 客語 syllable as it's shown: 拼音 (0) or 注音 (1), then its accent's tone mark ("bauˊ", "ㄅㄠˊ")
+    func hakSyllable(_ s: String, _ mode: Int) -> String {
+        let p = Zhuyin.hakParts(s)
+        let mark = p.accent < hakMarks.count && p.tone < hakMarks[p.accent].count ? hakMarks[p.accent][p.tone] : ""
+        return (mode == 1 ? (hakZy[p.letters] ?? p.letters) : p.letters) + mark
     }
 
     func readingPlain(_ syl: [String], _ mode: Int) -> String { String(reading(syl, mode, colours: 0).characters) }
@@ -611,7 +706,7 @@ final class ZhDict: @unchecked Sendable {
                 let s = syl[i]; i += 1
                 let t = s == "-" ? last : Zhuyin.tone(s)
                 last = t
-                if let c = Zhuyin.color(t, colours, yue: isYue) { a.swiftUI.foregroundColor = c } else if let base { a.swiftUI.foregroundColor = base }
+                if let c = Zhuyin.color(t, colours, yue: isYue, hak: isHak) { a.swiftUI.foregroundColor = c } else if let base { a.swiftUI.foregroundColor = base }
             } else if let base { a.swiftUI.foregroundColor = base }
             out += a
         }
@@ -692,7 +787,7 @@ final class ZhDict: @unchecked Sendable {
         while let f = s.characters.first, f == " " { s.characters.removeFirst() }
         while let l = s.characters.last, l == " " { s.characters.removeLast() }
         // a sentence in 拼音 starts with a capital letter
-        if mode == 0, !isYue, let i = s.characters.firstIndex(where: { $0.isLetter }) {
+        if mode == 0, lang == 1, let i = s.characters.firstIndex(where: { $0.isLetter }) {
             let ch = s.characters[i]
             s.characters.replaceSubrange(i...i, with: String(ch).uppercased())
         }
@@ -712,7 +807,7 @@ final class ZhDict: @unchecked Sendable {
                 if let syl = p.syl(place), i < syl.count, syl[i] != "_" {
                     let t = syl[i] == "-" ? last : Zhuyin.tone(syl[i])
                     last = t
-                    a.swiftUI.foregroundColor = Zhuyin.color(t, colours, yue: isYue) ?? base
+                    a.swiftUI.foregroundColor = Zhuyin.color(t, colours, yue: isYue, hak: isHak) ?? base
                 } else {
                     a.swiftUI.foregroundColor = base
                 }
@@ -729,11 +824,13 @@ final class ZhDict: @unchecked Sendable {
         let e = entries[i]
         let defs: [Def] = e.senses.map { s in
             Def(p: "", t: s.text, x: s.ex.map { x in
-                let blankable = x.h != e.h && x.h.contains(e.h) && Self.pieces(x).contains { $0.text.joined() == e.h }
+                // (客語: the sentences aren't split into words; they're written for the word)
+                let blankable = x.h != e.h && x.h.contains(e.h) && (isHak || Self.pieces(x).contains { $0.text.joined() == e.h })
                 // (the reading is worked out when it's shown: Store.exampleRom)
-                return Example(h: Simp.show(x.h), r: [""], z: x.src, n: "tts:" + x.h,
+                // (客語: no voice reads it, and the sentences have no reading word by word)
+                return Example(h: Simp.show(x.h), r: [""], z: x.src, n: isHak ? "" : "tts:" + x.h,
                                bh: blankable ? Simp.show(x.h.replacingOccurrences(of: e.h, with: "＿＿")) : nil,
-                               br: blankable ? [""] : nil, w: x.code)
+                               br: blankable ? [""] : nil, w: x.code.isEmpty ? nil : x.code)
             }, sy: nil, an: nil)
         }
         let variant: [String: Variant]? = e.lu.map { lu in
@@ -773,8 +870,8 @@ final class ZhDict: @unchecked Sendable {
         var f = Found()
         guard !q.isEmpty else { return f }
         // only tone numbers: words with those tones, one per syllable (0 or 5 = light tone): 34、3-4、1 0
-        if q.allSatisfy({ "0123456 -,，、".contains($0) }), q.contains(where: { $0.isNumber }) {
-            let want = isYue ? String(q.filter { $0.isNumber }) : String(q.filter { $0.isNumber }.map { $0 == "5" ? "0" : $0 })
+        if q.allSatisfy({ "012345678 -,，、".contains($0) }), q.contains(where: { $0.isNumber }) {
+            let want = lang != 1 ? String(q.filter { $0.isNumber }) : String(q.filter { $0.isNumber }.map { $0 == "5" ? "0" : $0 })
             f.toneLabel = want.map(String.init).joined(separator: "-")
             for (i, e) in entries.enumerated() where e.senses.contains(where: { !$0.text.hasPrefix("參見") }) {
                 if toneDigits(e, place) == want { f.tones.append(i); if f.tones.count >= 500 { break } }
@@ -839,7 +936,7 @@ final class ZhDict: @unchecked Sendable {
         }
         // 拼音: with or without tone numbers
         // (粵語: 粵拼, its tone numbers 1–6 are all kept)
-        let p = isYue ? Zhuyin.plain(q) : Zhuyin.plain(q).replacingOccurrences(of: "5", with: "").replacingOccurrences(of: "0", with: "")
+        let p = lang != 1 ? Zhuyin.plain(q) : Zhuyin.plain(q).replacingOccurrences(of: "5", with: "").replacingOccurrences(of: "0", with: "")
         let toned = p.contains { $0.isNumber }
         f.words = (toned ? byToned[p] : byPlain[p]) ?? []
         if !toned && f.words.count < 30 {
@@ -928,7 +1025,7 @@ final class ZhDict: @unchecked Sendable {
     func usual(_ han: String) -> Int? {
         guard let is_ = byHan[han]?.filter({ entries[$0].h == han || entries[$0].alt == han }), !is_.isEmpty else { return nil }
         if is_.count == 1 { return is_[0] }
-        if !isYue, let want = Self.aloneReading[han], let i = is_.first(where: { entries[$0].tw.first == want }) { return i }
+        if lang == 1, let want = Self.aloneReading[han], let i = is_.first(where: { entries[$0].tw.first == want }) { return i }
         return is_.max { entries[$0].senses.count < entries[$1].senses.count }
     }
 
@@ -983,7 +1080,7 @@ final class ZhDict: @unchecked Sendable {
                 for ch in chars { ps.append(ZhPiece(text: [ch], tw: nil, lu: nil)) }
             }
         }
-        if isYue { return ps }      // (一 / 不 changing tone is 華語's)
+        if lang != 1 { return ps }      // (一 / 不 changing tone is 華語's)
         let num = Set("〇零一二三四五六七八九十百千萬億兩第".map { String($0) })
         for i in ps.indices where ps[i].text == ["一"] || ps[i].text == ["不"] {
             guard i + 1 < ps.count, let next = ps[i + 1].tw?.first, next != "_" else { continue }

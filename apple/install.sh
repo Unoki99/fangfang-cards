@@ -23,8 +23,8 @@ if [ "$HERE" != "$DEST" ]; then
   mkdir -p "$DEST"
   # keep word data that was already built there
   rsync -a --delete --exclude ".DS_Store" --exclude "xcuserdata" --exclude "project.xcworkspace" \
-        --exclude "FangfangCards/dict.json" --exclude "FangfangCards/cards.json" --exclude "FangfangCards/zh.json" --exclude "FangfangCards/inputcodes.json" --exclude "FangfangCards/yue.json" "$HERE/" "$DEST/"
-  for f in dict.json cards.json zh.json inputcodes.json yue.json; do
+        --exclude "FangfangCards/dict.json" --exclude "FangfangCards/cards.json" --exclude "FangfangCards/zh.json" --exclude "FangfangCards/inputcodes.json" --exclude "FangfangCards/yue.json" --exclude "FangfangCards/hak.json" --exclude "FangfangCards/tw_en.json" "$HERE/" "$DEST/"
+  for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json; do
     [ -f "$HERE/FangfangCards/$f" ] && cp "$HERE/FangfangCards/$f" "$DEST/FangfangCards/$f"
   done
 fi
@@ -49,9 +49,19 @@ fi
 if [ ! -f "$DEST/FangfangCards/zh.json" ]; then
   bash "$DEST/build-data.sh" zh || { echo "✗ 沒辦法建立華語資料。"; exit 1; }
 fi
-# 粵語 data (CC-Canto, CC-CEDICT, Wiktionary…)
+# 粵語 data (CC-Canto, CC-CEDICT, Wiktionary…); made again when it was made by an older version
+Y="$DEST/FangfangCards/yue.json"
+if [ -f "$Y" ] && ! head -c 80 "$Y" | grep -q '"v":2'; then echo "（粵語資料是舊版做的，重新建立）"; rm -f "$Y"; fi
 if [ ! -f "$DEST/FangfangCards/yue.json" ]; then
   bash "$DEST/build-data.sh" yue || echo "（沒辦法建立粵語資料，先跳過：App 裡的粵語會打不開）"
+fi
+# 客語 data (教育部《臺灣客語辭典》)
+if [ ! -f "$DEST/FangfangCards/hak.json" ]; then
+  bash "$DEST/build-data.sh" hak || echo "（沒辦法建立客語資料，先跳過：App 裡的客語會打不開）"
+fi
+# 台語 words' English (Wiktionary)
+if [ ! -f "$DEST/FangfangCards/tw_en.json" ]; then
+  bash "$DEST/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"
 fi
 if [ ! -f "$DEST/FangfangCards/inputcodes.json" ]; then
   bash "$DEST/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"

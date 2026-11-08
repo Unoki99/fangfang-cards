@@ -107,9 +107,22 @@ enum T {
     nonisolated(unsafe) static var zh = false
     /// 粵語 shown (its buttons are yellow)
     nonisolated(unsafe) static var yue = false
-    static var btn: Color { yue ? olive : (zh ? blue : own) }
-    static var btnEdge: Color { yue ? oliveEdge : (zh ? blueEdge : ownEdge) }
-    static var btnInk: Color { yue ? oliveInk : (zh ? blueInk : purpleInk) }
+    /// 客語 shown (its buttons are orange)
+    nonisolated(unsafe) static var hak = false
+    static var btn: Color { hak ? hakFill : (yue ? olive : (zh ? blue : own)) }
+    static var btnEdge: Color { hak ? hakEdge : (yue ? oliveEdge : (zh ? blueEdge : ownEdge)) }
+    static var btnInk: Color { hak ? hakInk : (yue ? oliveInk : (zh ? blueInk : purpleInk)) }
+    /// 客語's orange (the same in every theme)
+    static let hakFill = Color(hex: 0x5c3f1a), hakEdge = Color(hex: 0xd9822b), hakInk = Color(hex: 0xffd29a)
+    /// each language's capsule (the language menu): fill, edge, ink
+    static func langColors(_ l: Int) -> (fill: Color, edge: Color, ink: Color) {
+        switch l {
+        case 3: return (Color(hex: 0x5c3f1a), Color(hex: 0xd9822b), Color(hex: 0xffd29a))
+        case 2: return (Color(hex: 0x5a4a14), Color(hex: 0xc9a227), Color(hex: 0xffe58a))
+        case 1: return (Color(hex: 0x1f3d6b), Color(hex: 0x4f7dff), Color(hex: 0x9ad0ff))
+        default: return (Color(hex: 0x4c3a5b), Color(hex: 0x7b3c9b), T.purpleInk)
+        }
+    }
     static var olive: Color { Color(hex: P.now.olive) }
     static var oliveEdge: Color { Color(hex: P.now.oliveEdge) }
     static var oliveInk: Color { Color(hex: P.now.oliveInk) }
@@ -277,13 +290,19 @@ struct PlaceMenuItems: View {
             Text(tr("台語")).tag(0)
             Text(tr("華語")).tag(1)
             Text(tr("粵語")).tag(2)
+            Text(tr("客語")).tag(3)
         }
         .pickerStyle(.inline)
         if store.isYue {
             EmptyView()       // (粵語: one reading)
+        } else if store.isHak {
+            Picker(tr("客語腔"), selection: $store.hakAccent) {
+                ForEach(0..<Lang.hakAccents.count, id: \.self) { Text(trs(Lang.hakAccents[$0])).tag($0) }
+            }
+            .pickerStyle(.inline)
         } else if store.isZh {
             Picker(tr("華語讀音"), selection: $store.zhPlace) {
-                ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
+                ForEach(0..<Lang.zhPlaceNames.count, id: \.self) { Text(trs(Lang.zhPlaceNames[$0])).tag($0) }
             }
             .pickerStyle(.inline)
         } else {
@@ -332,10 +351,10 @@ struct CompactReadingMenu: View {
                 ToneDots(system: system)
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
             }
-            .foregroundStyle(store.isYue ? Color(hex: 0xffe58a) : store.isZh ? Color(hex: 0x9ad0ff) : T.purpleInk)
+            .foregroundStyle(T.langColors(store.lang).ink)
             .padding(.horizontal, 10).padding(.vertical, 5)
-            .background(Capsule().fill(store.isYue ? Color(hex: 0x5a4a14) : store.isZh ? Color(hex: 0x1f3d6b) : Color(hex: 0x4c3a5b)))
-            .overlay(Capsule().stroke(store.isYue ? Color(hex: 0xc9a227) : store.isZh ? Color(hex: 0x4f7dff) : Color(hex: 0x7b3c9b), lineWidth: 2))
+            .background(Capsule().fill(T.langColors(store.lang).fill))
+            .overlay(Capsule().stroke(T.langColors(store.lang).edge, lineWidth: 2))
             .id(colorVersion)
         }
         .accessibilityLabel(tr("讀音和聲調顏色"))
@@ -366,7 +385,8 @@ struct PlaceMenu: View {
     private var name: String { PlaceMenu.name(store, place) }
     static func name(_ store: Store, _ place: Int) -> String {
         if store.isYue { return "粵語" }
-        if store.isZh { return "華・" + Lang.placeNames[min(max(store.zhPlace, 0), 1)] }
+        if store.isHak { return "客・" + Lang.hakAccents[min(max(store.hakAccent, 0), Lang.hakAccents.count - 1)] }
+        if store.isZh { return "華・" + Lang.zhPlaceNames[min(max(store.zhPlace, 0), 1)] }
         return "台・" + (place >= 0 && place < PLACE_NAMES.count ? String(PLACE_NAMES[place].prefix(2)) : "通行")
     }
 
@@ -376,8 +396,8 @@ struct PlaceMenu: View {
     private var capsule: some View {
         plainText
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(store.isYue ? Color(hex: 0x5a4a14) : store.isZh ? Color(hex: 0x1f3d6b) : Color(hex: 0x4c3a5b)))
-            .overlay(Capsule().stroke(store.isYue ? Color(hex: 0xc9a227) : store.isZh ? Color(hex: 0x4f7dff) : Color(hex: 0x7b3c9b), lineWidth: 2))
+            .background(Capsule().fill(T.langColors(store.lang).fill))
+            .overlay(Capsule().stroke(T.langColors(store.lang).edge, lineWidth: 2))
     }
     private var plainText: some View {
         HStack(spacing: 2) {
@@ -385,7 +405,7 @@ struct PlaceMenu: View {
             Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
         }
         .frame(maxWidth: fill ? .infinity : nil)
-        .foregroundStyle(store.isYue ? Color(hex: 0xffe58a) : store.isZh ? Color(hex: 0x9ad0ff) : T.purpleInk)
+        .foregroundStyle(T.langColors(store.lang).ink)
     }
 }
 

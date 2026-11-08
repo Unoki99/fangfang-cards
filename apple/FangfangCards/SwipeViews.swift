@@ -427,14 +427,14 @@ struct NewDeckView: View {
         .rootPage(tr("新詞")) {
             if !store.topics.isEmpty {
             Menu {
-                if store.isZh && !store.isYue {
+                if store.lang == 1 {
                     Picker(tr("詞表"), selection: $store.zhList) {
                         ForEach(0..<Lang.listNames.count, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                     }
                     .pickerStyle(.inline)
                 }
-                Picker(store.isYue ? trs("常用詞") : (store.isZh ? trs("等級") : trs("主題")), selection: topicBinding) {
-                    Text(store.isZh && !store.isYue ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
+                Picker(store.lang >= 2 ? trs("常用詞") : (store.isZh ? trs("等級") : trs("主題")), selection: topicBinding) {
+                    Text(store.lang == 1 ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
                     ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
                 }
                 // 華語: the character cards, one level at a time
@@ -476,7 +476,7 @@ struct NewDeckView: View {
 
 extension NewDeckView {
     var topicName: String {
-        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.isZh && !store.isYue ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
+        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.lang == 1 ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
     }
 }
 
@@ -536,7 +536,9 @@ struct CharSideCard: View {
 
     private var ch: String { Lang.charOf(card.k) ?? card.h }
     private var english: [String]? {
-        guard card.isZh, zhEnglish, let d = store.zh, let e = ZhCharSheet.entry(d, ch) else { return nil }
+        // (the English of the reading on the card: 中 ㄓㄨㄥˋ "to hit (the mark)", not 中 ㄓㄨㄥ "China")
+        guard card.isZh, zhEnglish, let d = store.zh,
+              let e = card.zs?.first.flatMap({ d.entry(char: ch, zy: $0) }) ?? ZhCharSheet.entry(d, ch) else { return nil }
         return e.enList.isEmpty ? nil : e.enList
     }
 
@@ -720,7 +722,17 @@ extension Store {
             // (from the key: the 正體 characters, also when 簡體 is shown)
             let han = word.k.split(separator: "\t").first.map(String.init) ?? word.h
             let chars = han.unicodeScalars.filter { Zhuyin.isHan($0) }.map(String.init)
-            return chars.count > 1 ? chars.compactMap { card(for: Lang.charKey($0)) } : []
+            guard chars.count > 1 else { return [] }
+            // each character read as in this word (中 in 中獎: ㄓㄨㄥˋ and its meanings, not ㄓㄨㄥ's)
+            let tw = word.zs ?? [], lu = word.zl ?? []
+            return chars.enumerated().compactMap { item -> Card? in
+                let n = item.offset, ch = item.element
+                guard let base = card(for: Lang.charKey(ch)) else { return nil }
+                guard let d = zh, let i = d.charIndex[ch] else { return base }
+                let mine = [n < tw.count ? tw[n] : "", n < lu.count ? lu[n] : ""]
+                guard let r = d.readingIndex(i, mine), r > 0 else { return base }
+                return d.charCard(i, list: zhList, reading: r)
+            }
         }
         let han = Dict.hanOf(word.k).map(String.init)
         let codes = Dict.codesOf(word.k).split(separator: " ").map(String.init)

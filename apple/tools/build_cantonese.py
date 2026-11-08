@@ -45,7 +45,8 @@ def senses(defs):
         if d and d not in out: out.append(d)
     return out
 
-LINE = re.compile(r"^(\S+) (\S+) \[([^\]]*)\](?: \{([^}]*)\})? /(.*)/\s*$")
+# (CC-Canto's lines "adapted from cc-cedict" end with a comment: "/…/ # adapted from cc-cedict")
+LINE = re.compile(r"^(\S+) (\S+) \[([^\]]*)\](?: \{([^}]*)\})? /(.*)/\s*(?:#.*)?$")
 
 # ------------------------------------------------------------------ CC-CEDICT + its Cantonese readings
 reading = {}            # (trad, simp, pinyin) -> jyutping
@@ -165,6 +166,8 @@ VARIETIES = {"Mandarin", "Hokkien", "Teochew", "Wu", "Shanghainese", "Hakka", "M
              "Dungan", "Sichuanese", "Taishanese", "Pinghua", "Classical-Chinese", "Literary-Chinese"}
 LABEL_SKIP = {"Cantonese", "Guangzhou", "Hong-Kong", "Hong Kong", "Macau", "Hong-Kong-Cantonese"} | VARIETIES
 zh_of = collections.defaultdict(collections.Counter)    # Cantonese word -> Mandarin words (dialect tables)
+moved_wk = []           # (字, its first reading, the reading a meaning was moved to, the meanings)
+def is_han(ch): return "㐀" <= ch <= "鿿" or "\U00020000" <= ch <= "\U0003ffff" or "豈" <= ch <= "﫿"
 if KAIKKI:
     for line in open(KAIKKI, encoding="utf-8-sig"):
         try: w = json.loads(line)
@@ -197,10 +200,14 @@ if KAIKKI:
                     if m != c: zh_of[c][m] += n
         # --- the word's own Cantonese reading
         j = None; au = None
+        page_j = set()          # all the page's Cantonese readings (a character often has several: 泊 bok6, paak3)
         for s in w.get("sounds", []):
             t = set(s.get("tags") or [])
             if "Cantonese" in t and "Jyutping" in t and "Guangzhou" in t:
                 if not j and s.get("zh_pron"): j = jp_wikt(s["zh_pron"])
+                for p in (s.get("zh_pron") or "").split(","):
+                    pj = jp_wikt(p)
+                    if pj: page_j.add(pj)
                 if not au and s.get("mp3_url"): au = s["mp3_url"]
         if not j or len(j.split()) != len(h): continue
         senses_out = []
@@ -221,19 +228,58 @@ if KAIKKI:
                     ex.append([text, rom, en])
             labels = sorted(a for a in t - LABEL_SKIP if a[0].islower() and a not in ("form-of", "alt-of"))
             sv = {"g": g, "p": w.get("pos", "")}
+            # a character read another way in this meaning's examples (泊 "to park": 一個位都冇得泊 … paak3): the
+            # meaning is that reading's
+            if len(h) == 1 and len(page_j) > 1:
+                said = collections.Counter()
+                for x in s.get("examples", []):
+                    xt = set(x.get("tags") or [])
+                    if "Jyutping" not in xt or "Simplified-Chinese" in xt: continue
+                    toks = re.findall(r"[a-z]+[1-6]", re.sub(r"(\d)-\d", r"\1", (x.get("roman") or "").translate(SUP).replace("⁻", "-").lower()))
+                    hans = [c for c in x.get("text", "") if is_han(c)]
+                    if len(toks) == len(hans):
+                        for c, r in zip(hans, toks):
+                            if c == h and r in page_j: said[r] += 1
+                if said:
+                    r = said.most_common(1)[0][0]
+                    if r != j: sv["j"] = r
             if labels: sv["l"] = labels
             if ex: sv["x"] = ex; wikt_ex += len(ex)
             senses_out.append(sv)
         if not senses_out: continue
-        e = entries.get((h, j))
-        if e is None:
-            e = entry(h, None, j)
-            if any("Cantonese" in (s.get("tags") or []) for s in w.get("senses", [])): e["yue"] = 1
-        e.setdefault("wk", [])
-        for sv in senses_out:
-            if not any(o["g"] == sv["g"] for o in e["wk"]): e["wk"].append(sv)
-        if au and "au" not in e: e["au"] = au; wikt_au += 1
-        if "wikt" not in e["src"]: e["src"].append("wikt"); wikt += 1
+        for r in [j] + sorted({sv["j"] for sv in senses_out if "j" in sv}):
+            mine = [sv for sv in senses_out if sv.get("j", j) == r]
+            if not mine: continue
+            e = entries.get((h, r))
+            if e is None:
+                e = entry(h, None, r)
+                if any("Cantonese" in (s.get("tags") or []) for s in w.get("senses", [])): e["yue"] = 1
+            e.setdefault("wk", [])
+            for sv in mine:
+                sv.pop("j", None)
+                if not any(o["g"] == sv["g"] for o in e["wk"]): e["wk"].append(sv)
+            if r != j:
+                moved_wk.append((h, j, r, [sv["g"] for sv in mine]))
+            if au and "au" not in e and r == j: e["au"] = au; wikt_au += 1
+            if "wikt" not in e["src"]: e["src"].append("wikt"); wikt += 1
+    # a meaning moved to another reading (泊 "to park" → paak3): CC-CEDICT's / CC-Canto's English for the first
+    # reading loses the lines with the same word ("to park (a vehicle)", "(verb) (of vehicle) 1. Park"), so an English
+    # search finds the character read the right way
+    def core(g):
+        g = re.sub(r"\([^()]*\)", " ", g.lower())
+        g = re.sub(r"^\s*to\s+", "", g.split(";")[0].split(",")[0])
+        return g.strip(" .")
+    for h, j, r, gs in moved_wk:
+        e, o = entries.get((h, j)), entries.get((h, r))
+        if not e or not o: continue
+        cores = {c for c in map(core, gs) if c and len(c.split()) <= 2}
+        if not cores: continue
+        def has(g): return any(re.search(r"\b" + re.escape(c) + r"\b", g.lower()) for c in cores)
+        gone = [g for g in e["en"] if has(g)]
+        if gone and len(gone) < len(e["en"]):
+            e["en"] = [g for g in e["en"] if g not in gone]
+            for g in gone:
+                if g not in o["en"]: o["en"].append(g)
     # the Mandarin words go on the main entry of each Cantonese word
     for (h, j), e in entries.items():
         if h in zh_of: e["zh"] = [m for m, _ in zh_of[h].most_common(3)]; wikt_zh += 1
@@ -256,9 +302,10 @@ chars = collections.OrderedDict()
 for line in open(P("yyzd.txt"), encoding="utf-8"):
     p = line.rstrip("\n").split("\t")
     if len(p) < 3: continue
-    ch, j = p[0], clean_jp(p[2])
-    if not j or len(ch) != 1: continue
-    chars.setdefault(ch, []).append([j, p[4] if len(p) > 4 else "", p[3] if len(p) > 3 else ""])
+    if len(p[0]) != 1: continue
+    # (a meaning read two ways: "bok6/paak3", one line for each)
+    for j in (clean_jp(x) for x in p[2].split("/")):
+        if j: chars.setdefault(p[0], []).append([j, p[4] if len(p) > 4 else "", p[3] if len(p) > 3 else ""])
 # the usual reading first: rime-cantonese's weight (no weight = the usual reading; "5%" = a rarer one), then how
 # often the reading is used in words (weighted by how common the words are)
 use = collections.Counter()
@@ -454,7 +501,9 @@ for n, ch in enumerate(ranked):
         if "n" in z: c["n"] = z["n"]
     app_chars.append(c)
 
-head = {"v": 1, "lang": "yue", "nc": len(cards_order), "c": app_chars}
+# (v 2: a character's meanings under the reading they're said with, 泊 "to park" paak3; the install scripts make
+# an older file again)
+head = {"v": 2, "lang": "yue", "nc": len(cards_order), "c": app_chars}
 if radicals: head["r"] = radicals
 if rx: head["rx"] = rx
 with open(OUT, "w", encoding="utf-8") as f:

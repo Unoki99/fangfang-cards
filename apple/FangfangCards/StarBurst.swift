@@ -28,11 +28,14 @@ final class StarField: ObservableObject {
         }
     }
     @Published var stars: [Star] = []
+    /// where a tap doesn't make any (the squares to write in), in the "stars" coordinates
+    var noBursts: [String: CGRect] = [:]
 
     static let colors: [Color] = [ToneColors.red, ToneColors.purple, ToneColors.blue, ToneColors.orange,
                                   ToneColors.green, ToneColors.teal, ToneColors.yellow, ToneColors.pink]
 
     func burst(at p: CGPoint) {
+        if noBursts.values.contains(where: { $0.contains(p) }) { return }
         let now = Date()
         let n = Int.random(in: 5...8)
         for i in 0..<n {
@@ -167,9 +170,33 @@ extension View {
             // the whole screen catches taps (also the empty parts), not just the buttons and text
             .contentShape(Rectangle())
             .overlay(StarLayer(field: field))
+            .environment(\.starField, field)
             .coordinateSpace(name: "stars")
             .simultaneousGesture(
                 SpatialTapGesture(coordinateSpace: .named("stars")).onEnded { field.burst(at: $0.location) }
             )
     }
+}
+
+private struct StarFieldKey: EnvironmentKey { static let defaultValue: StarField? = nil }
+extension EnvironmentValues {
+    /// the StarField of the practice screen this is in (nil: none)
+    var starField: StarField? {
+        get { self[StarFieldKey.self] }
+        set { self[StarFieldKey.self] = newValue }
+    }
+}
+
+/// no little things from taps here (a square to write in)
+private struct NoStarBursts: ViewModifier {
+    @Environment(\.starField) private var field
+    @State private var key = UUID().uuidString
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("stars")) } action: { field?.noBursts[key] = $0 }
+            .onDisappear { field?.noBursts[key] = nil }
+    }
+}
+extension View {
+    func noStarBursts() -> some View { modifier(NoStarBursts()) }
 }

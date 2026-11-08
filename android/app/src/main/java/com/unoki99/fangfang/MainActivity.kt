@@ -183,22 +183,22 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
                 Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it })
             }
             Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                for (l in 0..2) {
-                    val fill = listOf(T.own, T.blue, T.olive)[l]; val edge = listOf(T.ownEdge, T.blueEdge, T.oliveEdge)[l]
-                    val ink = listOf(T.purpleInk, T.blueInk, T.oliveInk)[l]
+                for (l in 0..3) {
+                    val fill = listOf(T.own, T.blue, T.olive, T.hakFill)[l]; val edge = listOf(T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge)[l]
+                    val ink = listOf(T.purpleInk, T.blueInk, T.oliveInk, T.hakInk)[l]
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(fill).border(2.dp, edge, RoundedCornerShape(22.dp))
                         .clickable { pick(l) }.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                         Box(Modifier.size(70.dp).clip(CircleShape).background(edge.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-                            Txt(listOf("台", "華", "粵")[l], sz(44f, FontWeight.Bold), ink)
+                            Txt(listOf("台", "華", "粵", "客")[l], sz(44f, FontWeight.Bold), ink)
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Txt(listOf("台語", "華語", "粵語")[l], ff(FF.Title2, FontWeight.Bold), ink)
-                                Txt(listOf("Taiwanese", "Mandarin", "Cantonese")[l], ff(FF.Subheadline), ink.copy(alpha = 0.8f))
+                                Txt(listOf("台語", "華語", "粵語", "客語")[l], ff(FF.Title2, FontWeight.Bold), ink)
+                                Txt(listOf("Taiwanese", "Mandarin", "Cantonese", "Hakka")[l], ff(FF.Subheadline), ink.copy(alpha = 0.8f))
                             }
                             Txt(tr(listOf("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音", "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音",
-                                "CC-Canto、CC-CEDICT 和維基詞典的詞，粵拼或耶魯拼音")[l]), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
+                                "CC-Canto、CC-CEDICT 和維基詞典的詞，粵拼或耶魯拼音", "教育部《臺灣客語辭典》的詞，六個腔，拼音或注音")[l]), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
                         }
                         Icon(Icons.Filled.ChevronRight, null, tint = ink.copy(alpha = 0.7f))
                     }

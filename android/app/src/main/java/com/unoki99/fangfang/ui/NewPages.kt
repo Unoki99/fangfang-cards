@@ -533,15 +533,15 @@ fun ToneColorPickerPage(onBack: () -> Unit) {
 /** 設定 → 顏色與外觀 → 選聲調顏色: every tone of 台語, 華語 and 粵語 can have a colour of its own */
 @Composable
 fun ToneColorPickerBody() {
-    /** 0 台語, 1 華語, 2 粵語 */
-    var which by remember { mutableStateOf(Store.lang) }
+    /** 0 台語, 1 華語, 2 粵語, 3 客語 */
+    var which by remember { mutableStateOf(Store.lang.coerceIn(0, 3)) }
     val zh = which == 1
     var tone by remember { mutableStateOf<Int?>(null) }
     // (read so the page redraws when a colour changes)
-    val sig = Prefs.toneColorsTw.value + Prefs.toneColorsZh.value + Prefs.toneColorsYue.value
-    fun reload() = ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value, Prefs.toneColorsYue.value)
+    val sig = Prefs.toneColorsTw.value + Prefs.toneColorsZh.value + Prefs.toneColorsYue.value + Prefs.toneColorsHak.value
+    fun reload() = ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value, Prefs.toneColorsYue.value, Prefs.toneColorsHak.value)
     fun save(m: Map<Int, Int>) {
-        when (which) { 2 -> Prefs.toneColorsYue.value = ToneColors.encode(m); 1 -> Prefs.toneColorsZh.value = ToneColors.encode(m); else -> Prefs.toneColorsTw.value = ToneColors.encode(m) }
+        when (which) { 3 -> Prefs.toneColorsHak.value = ToneColors.encode(m); 2 -> Prefs.toneColorsYue.value = ToneColors.encode(m); 1 -> Prefs.toneColorsZh.value = ToneColors.encode(m); else -> Prefs.toneColorsTw.value = ToneColors.encode(m) }
         reload()
     }
     fun set(t: Int, c: Int?) {
@@ -553,11 +553,20 @@ fun ToneColorPickerBody() {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         run {
             key(sig) {
-                Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語")), which, { which = it; tone = null })
+                Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語"), 3 to tr("客語")), which, { which = it; tone = null })
                 SectionTitle(tr("看起來"))
                 ListCard {
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 6.dp)) {
-                        if (which == 2) {
+                        if (which == 3) {
+                            // 分 粉 糞 忽 焚 份 佛: fun / fud in each tone category (四縣; 陽去 is 海陸's)
+                            val hs = listOf("分", "粉", "糞", "忽", "焚", "份", "佛")
+                            val rs = listOf("funˊ", "funˋ", "fun", "fudˋ", "funˇ", "fun+", "fud")
+                            for ((i, t) in ToneColors.hakTones.withIndex()) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Txt("$t", ff(FF.Caption2, FontWeight.Bold), T.muted)
+                                Txt(hs[i], sz(24f, FontWeight.SemiBold), colorOf(t))
+                                Txt(rs[i], lat(12f), colorOf(t), maxLines = 1)
+                            }
+                        } else if (which == 2) {
                             // 詩 史 試 時 市 事: si1–si6
                             for ((h, t) in listOf("詩" to 1, "史" to 2, "試" to 3, "時" to 4, "市" to 5, "事" to 6)) Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Txt(h, sz(26f, FontWeight.SemiBold), colorOf(t))
@@ -588,7 +597,8 @@ fun ToneColorPickerBody() {
                         Row(Modifier.fillMaxWidth().clickable { tone = if (tone == t) null else t }.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(22.dp).clip(CircleShape).background(colorOf(t)))
-                            Txt(if (t == 0) (if (zh) tr("輕聲") else tr("輕聲（--）")) else tr("第 {0} 聲", t), ff(FF.Body), modifier = Modifier.weight(1f))
+                            Txt(if (which == 3) tr(mapOf(1 to "陰平", 2 to "上聲", 3 to "去聲", 4 to "陰入", 5 to "陽平", 7 to "陽去", 8 to "陽入")[t] ?: "")
+                                else if (t == 0) (if (zh) tr("輕聲") else tr("輕聲（--）")) else tr("第 {0} 聲", t), ff(FF.Body), modifier = Modifier.weight(1f))
                             if (ToneColors.picked(which).containsKey(t)) TextButton(onClick = { set(t, null) }) { Text(tr("原本的"), color = T.muted) }
                         }
                         if (tone == t) {
@@ -611,6 +621,7 @@ fun ToneColorPickerBody() {
                 }) { Text(tr("全部換回原本的顏色"), color = T.rustInk) }
                 Txt(tr("原本的顏色：台語一聲紅、二聲紫、三聲藍、四聲橘、五聲綠、六聲青、七聲黃、八聲粉紅、輕聲灰；華語一聲紅、二聲綠、三聲藍、四聲紫、輕聲灰。"),
                     ff(FF.Footnote), T.muted)
+                if (which == 3) Txt(tr("客語的聲調照類別上色：同一個類別在各腔的調值不一樣，顏色一樣（例如陰平在四縣是 24，在海陸是 53）。"), ff(FF.Footnote), T.muted)
             }
         }
     }

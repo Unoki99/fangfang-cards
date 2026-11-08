@@ -114,7 +114,7 @@ struct RootView: View {
             if store.switching {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text(tr("載入\(trs(Lang.names[Lang.current == 2 ? 2 : 1]))詞典…")).ffFont(.subheadline).foregroundStyle(T.glyph)
+                    Text(tr("載入\(trs(Lang.names[max(Lang.current, 1)]))詞典…")).ffFont(.subheadline).foregroundStyle(T.glyph)
                 }
                 .padding(24)
                 .background(RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.95)))
@@ -124,7 +124,7 @@ struct RootView: View {
         .alert(tr("粵語的語音"), isPresented: Binding(get: { store.speechHint != nil }, set: { if !$0 { store.speechHint = nil } })) {
             Button(tr("好")) { store.speechHint = nil }
         } message: { Text(store.speechHint ?? "") }
-        .alert(tr("\(trs(Lang.names[Lang.current == 2 ? 2 : 1]))詞典"), isPresented: Binding(get: { store.zhError != nil }, set: { if !$0 { store.clearZhError() } })) {
+        .alert(tr("\(trs(Lang.names[max(Lang.current, 1)]))詞典"), isPresented: Binding(get: { store.zhError != nil }, set: { if !$0 { store.clearZhError() } })) {
             Button(tr("好")) { store.clearZhError() }
         } message: { Text(store.zhError ?? "") }
         // a place chosen anywhere: load the dictionary (guessed readings, example sentences)
@@ -290,6 +290,7 @@ struct LanguageWelcome: View {
                 choice(0, title: "台語", sub: "Taiwanese", note: tr("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音"))
                 choice(1, title: "華語", sub: "Mandarin", note: tr("《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音"))
                 choice(2, title: "粵語", sub: "Cantonese", note: tr("CC-Canto、CC-CEDICT 和維基詞典的詞，粵拼或耶魯拼音"))
+                choice(3, title: "客語", sub: "Hakka", note: tr("教育部《臺灣客語辭典》的詞，六個腔，拼音或注音"))
             }
             .id(uiLang)
             .frame(maxWidth: 520)
@@ -305,10 +306,10 @@ struct LanguageWelcome: View {
     }
 
     private func choice(_ l: Int, title: String, sub: String, note: String) -> some View {
-        let fill = [T.own, T.blue, T.olive][l], edge = [T.ownEdge, T.blueEdge, T.oliveEdge][l], ink = [T.purpleInk, T.blueInk, T.oliveInk][l]
+        let fill = [T.own, T.blue, T.olive, T.hakFill][l], edge = [T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge][l], ink = [T.purpleInk, T.blueInk, T.oliveInk, T.hakInk][l]
         return Button { pick(l) } label: {
             HStack(spacing: 18) {
-                Text(["台", "華", "粵"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
+                Text(["台", "華", "粵", "客"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
                     .frame(width: 70, height: 70)
                     .background(Circle().fill(edge.opacity(0.35)))
                 VStack(alignment: .leading, spacing: 4) {

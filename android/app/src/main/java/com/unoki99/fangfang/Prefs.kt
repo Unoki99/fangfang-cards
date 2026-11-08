@@ -158,6 +158,10 @@ object Prefs : KeyValue {
     /** the other spellings kept while one language is shown (zhRom is the one shown: 華語 拼音/注音, 粵語 粵拼/耶魯) */
     val mandRom = Pref("mandRom", 0)
     val yueRom = Pref("yueRom", 0)
+    /** 客語: the spelling (0 拼音, 1 注音) and the accent (0 四縣 … 5 南四縣) */
+    val hakRom = Pref("hakRom", 0)
+    val hakAccent = Pref("hakPlace", 0)
+    val toneColorsHak = Pref("toneColorsHak", "")
     /** the one of 華語 / 粵語 used last (read in the background in 台語 mode) */
     val lastZh = Pref("lastZh", 1)
     /** 轉換: 0 轉換, 1 讀音 */
@@ -171,7 +175,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, practiceWrite, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, mandRom, yueRom, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -182,7 +186,7 @@ object Prefs : KeyValue {
         syncEngine()
         toneSys.onChange = { syncEngine() }
         toneMarks.onChange = { syncEngine() }
-        com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value)
+        com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value, toneColorsHak.value)
         simplified.onChange = { syncEngine() }
     }
 
@@ -190,6 +194,7 @@ object Prefs : KeyValue {
         EngineSettings.toneSystem = toneSys.value
         EngineSettings.toneMarks = toneMarks.value
         EngineSettings.simplified = simplified.value
+        EngineSettings.hakAccent = hakAccent.value.coerceIn(0, 5)
     }
 
     // the engine's own settings (remembered converter picks and the like)

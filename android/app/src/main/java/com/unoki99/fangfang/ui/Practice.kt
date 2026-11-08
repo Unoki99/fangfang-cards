@@ -280,7 +280,7 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
                     Txt(x.bh ?: x.h, ff(FF.Title3), T.blueInk)
                     Store.blankRom(c, x, rom, place)?.let { Txt(it.annotated(), lat(17f), T.greenInk) }
                     Txt(x.z, ff(FF.Subheadline), T.muted)
-                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (x.n.isNotEmpty()) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         PlayButton(Audio.examplePath(x.n), 28.dp); Txt(tr("聽例句（提示）"), ff(FF.Caption), T.muted)
                     }
                 }
@@ -596,9 +596,10 @@ private val punctSet = ",.!?;:\"“”‘’()（），。！？；：、…".to
 private fun makePuzzle(c: Card, x: Example, rom: Int, place: Int, reading: Boolean): Puzzle? {
     // 華語: the sentence's own words (from the dictionary), each a card
     val z = Store.zh
-    if (x.w != null && z != null) {
-        if (x.z.isNotEmpty()) return null        // sentences quoted from old books aren't used
-        val ps = ZhDict.pieces(x.h, x.w)
+    // (客語: the sentence split into the dictionary's words, as in 轉換; its 華語 translation is the hint)
+    if (c.isZh && z != null && (x.w != null || z.isHak)) {
+        if (x.z.isNotEmpty() && !z.isHak) return null        // sentences quoted from old books aren't used
+        val ps = x.w?.let { ZhDict.pieces(x.h, it) } ?: z.convertPieces(x.h)
         val tiles = ArrayList<Tile>(); var n = 0
         for (p in ps) {
             if (p.tw == null) continue

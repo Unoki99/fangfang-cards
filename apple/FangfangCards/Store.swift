@@ -39,13 +39,14 @@ final class Store: ObservableObject {
     // MARK: 華語 mode
     /// the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile)
     @Published private(set) var isZh = false { didSet { T.zh = isZh } }
-    /// the language shown: 0 台語, 1 華語, 2 粵語 (粵語 uses the 華語 pages, with its own dictionary)
-    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2 } }
+    /// the language shown: 0 台語, 1 華語, 2 粵語, 3 客語 (粵語 and 客語 use the 華語 pages, with their own dictionaries)
+    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3 } }
     /// a hint to show (粵語 without a Cantonese voice on the device)
     @Published var speechHint: String?
     var isYue: Bool { lang == 2 }
-    /// which of 華語 / 粵語 the dictionary in `zh` is (1 or 2)
-    private var zhKind: Int { zh?.isYue == true ? 2 : 1 }
+    var isHak: Bool { lang == 3 }
+    /// which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3)
+    private var zhKind: Int { zh?.lang ?? 1 }
     /// switching language: the other deck is being loaded
     @Published private(set) var switching = false
     /// the 華語 dictionary (zh.json), once loaded
@@ -65,7 +66,14 @@ final class Store: ObservableObject {
     /// changes when the deck is made again (pages showing it start over)
     @Published private(set) var listVersion = 0
     /// 華語 reading of: 0 臺灣, 1 大陸
-    @Published var zhPlace = Lang.zhPlace { didSet { UserDefaults.standard.set(zhPlace, forKey: Lang.placeKey) } }
+    @Published var zhPlace = UserDefaults.standard.integer(forKey: "zhPlace") { didSet { UserDefaults.standard.set(zhPlace, forKey: "zhPlace") } }
+    /// 客語: the accent (0 四縣, 1 海陸, 2 大埔, 3 饒平, 4 詔安, 5 南四縣); another one reads the dictionary again
+    @Published var hakAccent = Lang.hakAccent {
+        didSet {
+            UserDefaults.standard.set(hakAccent, forKey: Lang.hakPlaceKey)
+            if hakAccent != oldValue { hakAccentChanged() }
+        }
+    }
     private struct Deck { var cards: [Card] = []; var byKey: [String: Card] = [:]; var rank: [String: Int] = [:]; var pools: [Int: [Card]] = [:]; var topics: [Topic] = []; var kind = 0 }
     /// which language the deck waiting in `other` is (0 台語, 1 華語, 2 粵語)
     private var otherKind: Int { other?.kind ?? -1 }
@@ -156,9 +164,9 @@ final class Store: ObservableObject {
 
     func setLanguage(zh wantZh: Bool) { setLanguage(wantZh ? 1 : 0) }
 
-    /// 0 台語, 1 華語, 2 粵語
+    /// 0 台語, 1 華語, 2 粵語, 3 客語
     func setLanguage(_ want0: Int) {
-        let want = min(max(want0, 0), 2)
+        let want = min(max(want0, 0), Lang.count - 1)
         UserDefaults.standard.set(want, forKey: Lang.key)
         guard want != lang, !switching else { return }
         if want != 0 { UserDefaults.standard.set(want, forKey: Store.lastZhKey) }
@@ -193,21 +201,22 @@ final class Store: ObservableObject {
     private var zhLoad: Task<Result<(ZhDict, Deck), Error>, Never>?
     private var zhLoadKind = 0
 
-    /// kind: 1 華語 (zh.json), 2 粵語 (yue.json)
-    private func zhLoadTask(priority: TaskPriority, kind: Int) -> Task<Result<(ZhDict, Deck), Error>, Never> {
-        if let t = zhLoad, zhLoadKind == kind { return t }
+    /// kind: 1 華語 (zh.json), 2 粵語 (yue.json), 3 客語 (hak.json); fresh: read again (客語: another accent)
+    private func zhLoadTask(priority: TaskPriority, kind: Int, fresh: Bool = false) -> Task<Result<(ZhDict, Deck), Error>, Never> {
+        if !fresh, let t = zhLoad, zhLoadKind == kind { return t }
         let keys = Array(progress.status.keys.filter { Lang.kind($0) == kind }) + Array(progress.saved.keys.filter { Lang.kind($0) == kind })
         let size = Store.zhDeckSize
-        let loadedDict = zh?.isYue == (kind == 2) ? zh : nil
+        let loadedDict = !fresh && zh?.lang == kind ? zh : nil
         let list = zhList
+        let accent = Lang.hakAccent
         let t = Task.detached(priority: priority) { () -> Result<(ZhDict, Deck), Error> in
             do {
                 let d: ZhDict
                 if let have = loadedDict { d = have } else {
-                    guard let url = Bundle.main.url(forResource: kind == 2 ? "yue" : "zh", withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
-                    d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe))
-                    // 粵語: the radicals (部首查字) from the 華語 data, if it's there
-                    if d.isYue, let zu = Bundle.main.url(forResource: "zh", withExtension: "json"),
+                    guard let url = Bundle.main.url(forResource: ["zh", "zh", "yue", "hak"][kind], withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
+                    d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent)
+                    // 粵語, 客語: the radicals (部首查字) from the 華語 data, if it's there
+                    if d.lang != 1, let zu = Bundle.main.url(forResource: "zh", withExtension: "json"),
                        let zd = try? Data(contentsOf: zu, options: .mappedIfSafe) { d.borrowRadicals(from: zd) }
                 }
                 return .success((d, Store.makeZhDeck(d, list: list, keys: keys, size: size)))
@@ -221,7 +230,8 @@ final class Store: ObservableObject {
     /// ready for switching
     func preloadZh() {
         guard zh == nil else { return }
-        let kind = UserDefaults.standard.integer(forKey: Store.lastZhKey) == 2 ? 2 : 1
+        let last = UserDefaults.standard.integer(forKey: Store.lastZhKey)
+        let kind = (1..<Lang.count).contains(last) ? last : 1
         Task {
             if case .success(let (d, deck)) = await zhLoadTask(priority: .utility, kind: kind).value { useZh(d, deck: deck) }
         }
@@ -231,7 +241,7 @@ final class Store: ObservableObject {
     /// for switching
     private func useZh(_ d: ZhDict, deck d0: Deck) {
         var deck = d0
-        let kind = d.isYue ? 2 : 1
+        let kind = d.lang
         deck.kind = kind
         // (the other one of 華語 / 粵語, read in the background, finishing after this one was chosen: not kept)
         if lang != 0, kind != Lang.current { return }
@@ -255,6 +265,27 @@ final class Store: ObservableObject {
 
     func clearZhError() { zhError = nil }
 
+    /// 客語: another accent was chosen. The dictionary is read again with that accent's readings (the words stay
+    /// the same, so 不熟 / 熟悉 don't change)
+    func hakAccentChanged() {
+        guard lang == 3, !switching else { return }
+        switching = true
+        Task {
+            let result = await zhLoadTask(priority: .userInitiated, kind: 3, fresh: true).value
+            zhLoad = nil
+            if case .success(let (d, d0)) = result, lang == 3 {
+                var deck = d0
+                deck.kind = 3
+                zh = d
+                cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
+                undoStack = []; canUndo = false
+                listVersion += 1
+            }
+            switching = false
+            objectWillChange.send()
+        }
+    }
+
     /// the 華語 cards: the words of a word list (HSK 3.0 or TOCFL), level by level, the more common ones first
     /// in each level (an older zh.json without levels: the most common words)
     nonisolated private static func makeZhDeck(_ d: ZhDict, list: Int, keys: [String], size: Int) -> Deck {
@@ -273,7 +304,7 @@ final class Store: ObservableObject {
             let l = d.entries[i].level(list)
             if l > 0 { counts[l, default: 0] += 1 }
         }
-        deck.topics = counts.keys.sorted().map { Topic(id: $0, name: d.isYue ? "常用詞 \(($0 - 1) * Lang.yueGroup + 1)–\($0 * Lang.yueGroup)" : Lang.levelName(list, $0), count: counts[$0]!) }
+        deck.topics = counts.keys.sorted().map { Topic(id: $0, name: d.lang != 1 ? "常用詞 \(($0 - 1) * Lang.yueGroup + 1)–\($0 * Lang.yueGroup)" : Lang.levelName(list, $0), count: counts[$0]!) }
         // the character cards, after the words: level by level of the word list's character list, the more
         // common first; then the more common characters the list doesn't have
         let corder = d.chars.indices.sorted { a, b in
@@ -290,7 +321,7 @@ final class Store: ObservableObject {
         }
         deck.topics += ccounts.keys.sorted().map { t in
             Topic(id: t, name: t == Lang.moreChars ? "漢字・更多常用字"
-                    : "漢字・" + (d.isYue ? Lang.yueCharLevelName(t - Lang.charTopicBase) : Lang.levelName(list, t - Lang.charTopicBase)), count: ccounts[t]!)
+                    : "漢字・" + (d.lang != 1 ? Lang.yueCharLevelName(t - Lang.charTopicBase) : Lang.levelName(list, t - Lang.charTopicBase)), count: ccounts[t]!)
         }
         // rarer words you already have in 不熟 / 熟悉 / 收藏
         for k in keys where deck.byKey[k] == nil {
@@ -353,7 +384,7 @@ final class Store: ObservableObject {
 
     // MARK: 本週學習 (this week's words)
 
-    private var weekLang: String { ["tw", "zh", "yue"][lang] }
+    private var weekLang: String { ["tw", "zh", "yue", "hak"][min(max(lang, 0), 3)] }
 
     /// this week's words (in the language shown), in the order they were picked
     var weekCards: [Card] {
@@ -505,7 +536,7 @@ final class Store: ObservableObject {
     /// to mark it again in the character lists). Done in one go, so the counts are worked out once.
     func syncCharCards() {
         guard let d = zh, !d.chars.isEmpty else { return }
-        let kind = d.isYue ? 2 : 1
+        let kind = d.lang
         var want: [String] = []
         var seen = Set<String>()
         for (k, v) in progress.status where v == 1 && Lang.charOf(k) == nil && Lang.kind(k) == kind {
@@ -513,7 +544,7 @@ final class Store: ObservableObject {
             for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
                 let ch = String(u)
                 guard seen.insert(ch).inserted, d.charIndex[ch] != nil else { continue }
-                let ck = Lang.charKey(ch, yue: d.isYue)
+                let ck = Lang.charKey(ch, yue: d.isYue, hak: d.isHak)
                 switch progress.status[ck] {
                 case 1?: break
                 // marked 不熟 by hand after the word was learned: left as it is
@@ -628,12 +659,12 @@ final class Store: ObservableObject {
 
     /// 華語: a word marked 熟悉 makes its characters' cards 熟悉 too (what syncCharCards does, for one word)
     private func knowChars(of k: String, in p: inout Progress) {
-        guard let d = zh, !d.chars.isEmpty, Lang.charOf(k) == nil, Lang.kind(k) == (d.isYue ? 2 : 1), let t = k.firstIndex(of: "\t") else { return }
+        guard let d = zh, !d.chars.isEmpty, Lang.charOf(k) == nil, Lang.kind(k) == d.lang, let t = k.firstIndex(of: "\t") else { return }
         let now = Date().timeIntervalSince1970
         for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
             let ch = String(u)
             guard d.charIndex[ch] != nil else { continue }
-            let ck = Lang.charKey(ch, yue: d.isYue)
+            let ck = Lang.charKey(ch, yue: d.isYue, hak: d.isHak)
             switch p.status[ck] {
             case 1?: break
             case 2? where (p.added[ck] ?? 0) >= (p.added[k] ?? 0): break
@@ -828,6 +859,8 @@ final class Store: ObservableObject {
     /// (guessed readings are red)
     func exampleRom(_ card: Card, _ x: Example, _ rom: Int, _ place: Int) -> AttributedString {
         if let w = x.w, let d = zh { return d.sentence(ZhDict.pieces(x.h, w), Lang.zhRom, Lang.zhPlace) }
+        // (客語: the sentences have no reading of their own: the dictionary's words, as in 轉換)
+        if card.isZh { return zh.map { $0.sentence(examplePieces($0, card, x.h), Lang.zhRom, Lang.zhPlace) } ?? AttributedString() }
         let r = min(max(rom, 0), 2)
         guard place >= 0 || ToneColors.system != 0, let d = dict, let e = dictExample(d, card, x) else { return AttributedString(x.r[r]) }
         return d.sentenceText(e[1], r, place: place, han: e[0], zh: e.count > 2 ? e[2] : nil)
@@ -836,6 +869,10 @@ final class Store: ObservableObject {
     /// a card's example in 漢字; with a place, the words that place says differently are swapped in (pink)
     func exampleHan(_ card: Card, _ x: Example, _ place: Int) -> AttributedString {
         if let w = x.w, let d = zh { return d.sentenceHan(ZhDict.pieces(x.h, w), Lang.zhPlace, base: T.blueInk) }
+        if card.isZh {
+            if let d = zh { return d.sentenceHan(examplePieces(d, card, x.h), Lang.zhPlace, base: T.blueInk) }
+            var a = AttributedString(x.h); a.swiftUI.foregroundColor = T.blueInk; return a
+        }
         if place >= 0 || ToneColors.system != 0, let d = dict, let e = dictExample(d, card, x) {
             return d.exampleHanText(e[0], e[1], place: place, zh: e.count > 2 ? e[2] : nil, base: T.blueInk)
         }
@@ -846,12 +883,27 @@ final class Store: ObservableObject {
     /// 例句填空: the example with the word blanked out, in the chosen place's readings
     func blankRom(_ card: Card, _ x: Example, _ rom: Int, _ place: Int) -> AttributedString? {
         if let w = x.w, let d = zh { return d.sentence(ZhDict.pieces(x.h, w), Lang.zhRom, Lang.zhPlace, blank: card.h) }
+        if card.isZh { return zh.map { $0.sentence(examplePieces($0, card, x.h), Lang.zhRom, Lang.zhPlace, blank: card.h) } }
         let r = min(max(rom, 0), 2)
         if place >= 0, let d = dict, let e = dictExample(d, card, x),
            let ps = d.blankSentencePieces(e[1], han: e[0], word: Dict.codesOf(card.k).split(separator: " ").map(String.init), r, place: place) {
             return guessColored(ps, guess: T.guessInk)
         }
         return x.br.map { AttributedString($0[r]) }
+    }
+
+    /// 客語: an example sentence in the dictionary's words (as in 轉換), the card's word kept whole and read as the
+    /// card reads it
+    private func examplePieces(_ d: ZhDict, _ card: Card, _ text: String) -> [ZhPiece] {
+        guard let syl = card.zs, !card.h.isEmpty, text.contains(card.h) else { return d.convertPieces(text) }
+        let parts = text.components(separatedBy: card.h)
+        let word = card.h.unicodeScalars.map { String($0) }
+        var ps: [ZhPiece] = []
+        for (i, part) in parts.enumerated() {
+            ps += d.convertPieces(part)
+            if i < parts.count - 1 { ps.append(ZhPiece(text: word, tw: Array(syl.prefix(word.count)), lu: nil)) }
+        }
+        return ps
     }
 
     /// does any example of this card have a guessed reading for the place?

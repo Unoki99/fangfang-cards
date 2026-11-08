@@ -32,7 +32,7 @@ struct ZhGate<Content: View>: View {
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text(tr("載入\(trs(Lang.names[Lang.current == 2 ? 2 : 1]))詞典…")).ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("載入\(trs(Lang.names[max(Lang.current, 1)]))詞典…")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
         }
@@ -74,7 +74,7 @@ struct ZhLookupPane: View {
     var body: some View {
         List {
             Section {
-                TextField(Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
+                TextField(Lang.isHak ? tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") : Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
                     .scaledFont(18)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -105,7 +105,8 @@ struct ZhLookupPane: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
             if query.isEmpty {
-                Text(Lang.isYue ? tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞　*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                Text(Lang.isHak ? tr("可以查漢字、客語拼音（不用打聲調：siid fan）、華語的意思（吃飯）或英文（eat）。\n* 代表一個以上的字，? 代表剛好一個字：\n*仔 → 仔結尾　食* → 食開頭\n打聲調類別的數字找聲調組合：1 陰平、2 上聲、3 去聲、4 陰入、5 陽平、7 陽去、8 陽入，例如 8-3。\n讀音照選的腔顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                     : Lang.isYue ? tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞　*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"))
                     .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
             } else if found.empty {
@@ -135,7 +136,7 @@ struct ZhLookupPane: View {
             Section(title) {
                 ForEach(list.prefix(english ? 250 : 500).filter { $0 < dict.entries.count }, id: \.self) { i in
                     let e = dict.entries[i]
-                    NavigationLink(value: ZhKey(k: e.k)) { ZhWordRow(dict: dict, entry: e, english: english) }
+                    NavigationLink(value: ZhKey(k: e.k)) { ZhWordRow(dict: dict, entry: e, english: english, query: english ? query : nil) }
                         .swipeActions(edge: .leading) {
                             Button { store.toggleUnknown(e.k) } label: { Label(tr("不熟"), systemImage: "star") }.tint(T.rustEdge)
                         }
@@ -171,6 +172,8 @@ struct ZhWordRow: View {
     var english = false
     /// how many meanings to show (more than 1: one a line)
     var meanings = 1
+    /// found by this English word: the meanings with it first, and the 中文 meaning under them
+    var query: String? = nil
     @EnvironmentObject var store: Store
     @AppStorage(ZhMeaning.key) private var mainEnglish = false
     var body: some View {
@@ -196,6 +199,14 @@ struct ZhWordRow: View {
                         if ms.count > 1 { Text("\(i + 1).").ffFont(.caption, .bold).foregroundStyle(T.muted) }
                         Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
                     }
+                }
+            } else if let q = query, english {
+                // found by its English: the English (the meanings with the word first), then the 中文 meaning
+                // (粵語: Wiktionary's meanings are English already)
+                let ens = EnglishMatch.first(dict.isYue ? EnglishMatch.unique(entry.senses.map(\.text) + entry.enList) : entry.enList, q)
+                Text(ens.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.85)).lineLimit(2)
+                if !dict.isYue, !mainEnglish, let s = entry.senses.first {
+                    Text(s.text).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
                 }
             } else if english || mainEnglish, entry.en != nil {
                 Text(entry.enList.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
@@ -297,6 +308,8 @@ struct ZhEntryBody: View {
                 Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                 // the other reading system, small
                 Text(dict.reading(syl, store.zhRom == 0 ? 1 : 0)).ffFont(.subheadline).foregroundStyle(T.purpleInk).textSelection(.enabled)
+                // 客語: how the other accents say it
+                if dict.isHak { HakAccentRows(dict: dict, entry: entry) }
                 // 臺灣 and 大陸 say it differently
                 if let lu = entry.lu {
                     let other = store.zhPlace == 1 ? entry.tw : lu
@@ -332,10 +345,10 @@ struct ZhEntryBody: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    if dict.isYue {
+                    if dict.lang != 1 {
                         if entry.hsk > 0 { Chip(text: UILang.label(Lang.levelName(0, entry.hsk)), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
                     } else if entry.hsk > 0 { Chip(text: Lang.hskName(entry.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
-                    if entry.tocfl > 0 && !dict.isYue { Chip(text: UILang.label(Lang.levelName(1, entry.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
+                    if entry.tocfl > 0 && dict.lang == 1 { Chip(text: UILang.label(Lang.levelName(1, entry.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if entry.spec != 0 { ZhSpecChip(spec: entry.spec) }
                     if let a = entry.alt, a != entry.h {
                         Chip(text: tr("簡"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
@@ -374,7 +387,9 @@ struct ZhEntryBody: View {
                 Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
                     .ffFont(.caption).foregroundStyle(T.muted)
             }
-            Text(dict.isYue
+            Text(dict.isHak
+                 ? tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
+                 : dict.isYue
                  ? tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
                  : tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
@@ -387,7 +402,7 @@ struct ZhEntryBody: View {
 
     /// a single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
     @ViewBuilder private var moeChar: some View {
-        if entry.h.count == 1, let i = dict.charIndex[entry.h],
+        if entry.h.count == 1, !dict.isHak, let i = dict.charIndex[entry.h],
            let r = dict.chars[i].readings.first(where: { $0.zy == entry.tw.first }) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(dict.isYue ? tr("開放粵語字典") : tr("《重編國語辭典修訂本》")).ffFont(.caption, .bold).foregroundStyle(T.muted)
@@ -488,7 +503,8 @@ struct ZhExampleBlock: View {
     /// 設定 → 例句的詞分開一點
     @AppStorage("wordGap") private var gap = true
     var body: some View {
-        let ps = ZhDict.pieces(ex)
+        // (客語: no reading word by word in the sentence: the dictionary's words, as in 轉換)
+        let ps = ex.code.isEmpty ? dict.convertPieces(ex.h) : ZhDict.pieces(ex)
         HStack(alignment: .top, spacing: 10) {
             PlayButton(path: "tts:" + ex.h, size: 28)
             VStack(alignment: .leading, spacing: 3) {
@@ -634,7 +650,7 @@ struct ZhConvertPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 ZStack(alignment: .topLeading) {
                     if text.isEmpty {
-                        Text(Lang.isYue ? tr("輸入或貼上粵語（正體或簡體都可以）…") : tr("輸入或貼上華語（正體或簡體都可以）…")).foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
+                        Text(Lang.isHak ? tr("輸入或貼上客語…") : Lang.isYue ? tr("輸入或貼上粵語（正體或簡體都可以）…") : tr("輸入或貼上華語（正體或簡體都可以）…")).foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
                     }
                     TextEditor(text: $text)
                         .scaledFont(18)
@@ -864,5 +880,51 @@ struct ZhComparePane: View {
             }
             found = out
         }
+    }
+}
+
+/// 客語: the word in each of the six accents (the one chosen marked); an accent that says it with another word
+/// shows that word
+struct HakAccentRows: View {
+    let dict: ZhDict
+    let entry: ZhEntry
+    @EnvironmentObject var store: Store
+    var body: some View {
+        if let acc = entry.acc {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(0..<Lang.hakAccents.count, id: \.self) { a in
+                    let mine = a == dict.accent
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Chip(text: trs(Lang.hakAccents[a]), fill: mine ? T.hakFill : T.fn, edge: mine ? T.hakEdge : T.fnEdge, ink: mine ? T.hakInk : T.muted)
+                        if a < acc.count, let syl = acc[a] {
+                            Text(dict.reading(syl, store.zhRom)).latFont(15).foregroundStyle(T.greenInk)
+                        } else if let w = entry.otherWords[a] {
+                            Text(tr("說「\(w)」")).ffFont(.subheadline).foregroundStyle(T.glyph)
+                        } else {
+                            Text(tr("（沒有收）")).ffFont(.subheadline).foregroundStyle(T.muted)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// English meanings found by a search: the ones with the searched word(s) first ("to park": "to park (a car)" before
+/// "to anchor (a vessel)"); the rest keep their order
+enum EnglishMatch {
+    static func first(_ list: [String], _ q0: String) -> [String] {
+        var q = q0.lowercased().trimmingCharacters(in: .whitespaces)
+        if q.hasPrefix("to ") { q = String(q.dropFirst(3)) }
+        guard !q.isEmpty else { return list }
+        let pat = #"(^|[^a-z])"# + NSRegularExpression.escapedPattern(for: q) + #"($|[^a-z])"#
+        let hit = list.filter { $0.lowercased().range(of: pat, options: .regularExpression) != nil }
+        return hit + list.filter { !hit.contains($0) }
+    }
+
+    static func unique(_ list: [String]) -> [String] {
+        var seen = Set<String>(), out: [String] = []
+        for x in list where !x.isEmpty && seen.insert(x.lowercased()).inserted { out.append(x) }
+        return out
     }
 }

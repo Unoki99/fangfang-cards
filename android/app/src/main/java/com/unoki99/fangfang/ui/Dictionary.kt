@@ -173,6 +173,15 @@ fun DictEntryBody(d: Dict, key: String) {
                 Txt(g.joinToString("、") { it.t }, ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
             }
         }
+        // English from Wiktionary (a file of its own: the dictionary's own meanings below stay as they are)
+        val en = remember(key) { TwEnglish.meanings(key) }
+        if (en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip(tr("英"), T.fn, T.fnEdge, T.muted)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                EnglishList(en, max = 6)
+                Txt(tr("英文解釋：維基詞典（CC BY-SA）"), ff(FF.Caption2), T.muted)
+            }
+        }
         val senses = remember(key) { d.senses(key) }
         for (s in senses) SenseBlock(d, key, s)
         if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()
@@ -471,7 +480,7 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
 
 /** one word in a list: 漢字, readings, a short meaning, and whether it's in 不熟 / 熟悉 / 收藏 */
 @Composable
-fun DictRow(d: Dict, key: String, modifier: Modifier = Modifier) {
+fun DictRow(d: Dict, key: String, modifier: Modifier = Modifier, englishQuery: String? = null) {
     val rom = Prefs.rom.value; val place = Prefs.place.value
     val tk = textKey()
     Store.rev
@@ -489,9 +498,14 @@ fun DictRow(d: Dict, key: String, modifier: Modifier = Modifier) {
                 else -> {}
             }
         }
+        // found by its English (Wiktionary): that English (the meanings with the word first) above the 華語 meaning
+        if (englishQuery != null) {
+            val en = remember(key, englishQuery) { EnglishMatch.first(TwEnglish.meanings(key), englishQuery) }
+            if (en.isNotEmpty()) Txt(en.take(3).joinToString("; "), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f), maxLines = 2)
+        }
         val g = d.gl[key]
         if (!g.isNullOrEmpty()) Txt(g.joinToString("、") { it.t }, ff(FF.Footnote), T.muted, maxLines = 1)
-        else d.defText(key)?.let { Txt(it.replace("\n", " "), ff(FF.Footnote), T.muted, maxLines = 2) }
+        else d.defText(key)?.let { Txt(it.replace("\n", " "), ff(FF.Footnote), T.muted, maxLines = if (englishQuery == null) 2 else 1) }
     }
 }
 
@@ -525,7 +539,7 @@ fun SwipeRow(
 }
 
 /** words in a list (swipe right = 加到不熟, left = 收藏) */
-fun LazyListScope.keyItems(d: Dict, title: String, keys: List<String>) {
+fun LazyListScope.keyItems(d: Dict, title: String, keys: List<String>, englishQuery: String? = null) {
     if (keys.isEmpty()) return
     if (title.isNotEmpty()) item { SectionTitle(title) }
     items(keys, key = { "k|$title|$it" }) { k ->
@@ -537,7 +551,7 @@ fun LazyListScope.keyItems(d: Dict, title: String, keys: List<String>) {
                 end = Pair(if (Store.isSaved(k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                 onStart = { Store.toggleUnknown(k) }, onEnd = { Store.toggleSaved(k) },
                 onClick = { nav.push(Route.Entry(k)) },
-            ) { DictRow(d, k) }
+            ) { DictRow(d, k, englishQuery = englishQuery) }
         }
     }
 }
@@ -781,13 +795,14 @@ private fun LookupPane(d: Dict) {
             keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)
             keyItems(d, tr("華語「{0}」的台語講法", query), r.patternZh)
         } else if (query.isEmpty()) item {
-            Txt(tr("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）或方音。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…"),
+            Txt(tr("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）、方音或英文（eat）。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
         }
         if (r.tones.isNotEmpty()) keyItems(d, tr("聲調「{0}」（{1}）", query.filter { it.isDigit() }.toList().joinToString("-"), if (r.tones.size >= 1000) "1000+" else r.tones.size.toString()), r.tones)
         r.toneNote?.let { item { Txt(it, ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) } }
         keyItems(d, tr("台語「{0}」", query), r.taigi)
         keyItems(d, tr("台語講法"), r.exact)
+        keyItems(d, tr("英文「{0}」（維基詞典）", query), r.english, englishQuery = query)
         // several words searched at once: each word's words, then a capsule for each to see its 更多
         for ((i, w) in r.parts.withIndex()) {
             val pr = r.partResults[i]

@@ -3,6 +3,8 @@ FangfangCards/dict.json
 FangfangCards/cards.json
 FangfangCards/zh.json
 FangfangCards/inputcodes.json
+FangfangCards/hak.json
+FangfangCards/tw_en.json
 tools/*.cin
 *.ods
 # Xcode / macOS

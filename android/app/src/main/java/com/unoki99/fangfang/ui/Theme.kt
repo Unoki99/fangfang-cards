@@ -66,9 +66,11 @@ object T {
     val purpleInk get() = hex(P.now.purpleInk)
     /** buttons (what used to be green): 華語 blue, 台語 purple */
     // 台語 purple, 華語 blue, 粵語 yellow
-    val btn get() = when (com.unoki99.fangfang.Store.lang) { 2 -> olive; 1 -> blue; else -> own }
-    val btnEdge get() = when (com.unoki99.fangfang.Store.lang) { 2 -> oliveEdge; 1 -> blueEdge; else -> ownEdge }
-    val btnInk get() = when (com.unoki99.fangfang.Store.lang) { 2 -> oliveInk; 1 -> blueInk; else -> purpleInk }
+    val btn get() = when (com.unoki99.fangfang.Store.lang) { 3 -> hakFill; 2 -> olive; 1 -> blue; else -> own }
+    val btnEdge get() = when (com.unoki99.fangfang.Store.lang) { 3 -> hakEdge; 2 -> oliveEdge; 1 -> blueEdge; else -> ownEdge }
+    val btnInk get() = when (com.unoki99.fangfang.Store.lang) { 3 -> hakInk; 2 -> oliveInk; 1 -> blueInk; else -> purpleInk }
+    /** 客語's orange (the same in every theme) */
+    val hakFill = Color(0xFF5C3F1A); val hakEdge = Color(0xFFD9822B); val hakInk = Color(0xFFFFD29A)
     val olive get() = hex(P.now.olive)
     val oliveEdge get() = hex(P.now.oliveEdge)
     val oliveInk get() = hex(P.now.oliveInk)

@@ -434,7 +434,7 @@ private fun HandwritingPad(chars: List<String>, idx: Int, setIdx: (Int) -> Unit,
         // the grid to write in (米字格), the faint character to trace, and the writing
         val glyph = T.glyph; val edge = T.fnEdge
         val period = with(androidx.compose.ui.platform.LocalDensity.current) { 420.dp.toPx() }
-        Box(Modifier.size(padSide.dp).clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.75f))
+        Box(Modifier.size(padSide.dp).noStarBursts().clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.75f))
             .border(1.5.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
             Canvas(Modifier.fillMaxSize()
                 .onSizeChanged { side = it.width.toFloat() }
@@ -833,7 +833,7 @@ private fun WordPad(strokes: androidx.compose.runtime.snapshots.SnapshotStateLis
     val penWidth = with(density) { Prefs.handWidth.value.dp.toPx() }
     val period = with(density) { 420.dp.toPx() }
     val edge = T.fnEdge
-    Box(modifier.clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.75f)).border(1.5.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
+    Box(modifier.noStarBursts().clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.75f)).border(1.5.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
         Canvas(Modifier.fillMaxSize()
             .onSizeChanged { onSide(it.width.toFloat()) }
             .pointerInput(strokes, sensitivity, penWidth) {

@@ -96,7 +96,7 @@ private fun ZhLookupPane(z: ZhDict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             val nav = LocalNav.current
-            SearchField(query, { query = it }, if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
+            SearchField(query, { query = it }, if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
             TileGrid(3) { i, m ->
                 when (i) {
@@ -107,6 +107,8 @@ private fun ZhLookupPane(z: ZhDict) {
             }
         }
         if (query.isEmpty()) item {
+            if (z.isHak) Txt(tr("可以查漢字、客語拼音（不用打聲調：siid fan）、華語的意思（吃飯）或英文（eat）。\n* 代表一個以上的字，? 代表剛好一個字：\n*仔 → 仔結尾\u3000食* → 食開頭\n打聲調類別的數字找聲調組合：1 陰平、2 上聲、3 去聲、4 陰入、5 陽平、7 陽去、8 陽入，例如 8-3。\n讀音照選的腔顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isYue) Txt(tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞\u3000*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             Txt(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
@@ -114,11 +116,11 @@ private fun ZhLookupPane(z: ZhDict) {
         } else if (f.empty) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
         zhItems(z, tr("華語「{0}」的粵語講法", query), f.mandarin)
-        if (f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true)
+        if (f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true, query = query)
         zhItems(z, "「$query」", f.words)
         for ((i, w) in f.parts.withIndex()) zhItems(z, "「$w」", f.partWords[i])
         zhItems(z, tr("開頭是「{0}」", query), f.starts)
-        if (!f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true)
+        if (!f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true, query = query)
         zhItems(z, tr("裡面有「{0}」", query), f.contains)
         zhItems(z, tr("解釋裡有「{0}」", query), f.defs)
         item { Spacer(Modifier.height(40.dp)) }
@@ -126,7 +128,7 @@ private fun ZhLookupPane(z: ZhDict) {
 }
 
 /** 華語 words in a list (swipe right = 加到不熟, left = 收藏) */
-private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, english: Boolean = false) {
+private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, english: Boolean = false, query: String? = null) {
     if (list.isEmpty()) return
     item { SectionTitle(title) }
     items(list.take(if (english) 250 else 500).filter { it < z.entries.size }, key = { "z|$title|$it" }) { i ->
@@ -139,14 +141,14 @@ private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, eng
                 end = Pair(if (Store.isSaved(e.k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                 onStart = { Store.toggleUnknown(e.k) }, onEnd = { Store.toggleSaved(e.k) },
                 onClick = { nav.push(Route.ZhEntry(e.k)) },
-            ) { ZhWordRow(z, e, english) }
+            ) { ZhWordRow(z, e, english, query = query) }
         }
     }
 }
 
 /** a word in a list: 漢字, reading, first meaning */
 @Composable
-fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1) {
+fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1, query: String? = null) {
     val zk = zhKey()
     val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value; val list = Prefs.zhList.value
     Store.rev
@@ -170,6 +172,12 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
                 if (ms.size > 1) Txt("${i + 1}.", ff(FF.Caption, FontWeight.Bold), T.muted)
                 Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
             }
+        } else if (english && query != null) {
+            // found by its English: the English (the meanings with the word first), then the 中文 meaning
+            // (粵語: Wiktionary's meanings are English already)
+            val ens = EnglishMatch.first(if (z.isYue) EnglishMatch.unique(e.senses.map { it.text } + e.enList) else e.enList, query)
+            if (ens.isNotEmpty()) Txt(ens.take(3).joinToString("; "), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f), maxLines = 2)
+            if (!z.isYue && !Prefs.zhEnglish.value) e.senses.firstOrNull()?.let { Txt(it.text, ff(FF.Footnote), T.muted, maxLines = 1) }
         } else {
             val m = if ((english || Prefs.zhEnglish.value) && en != null) en else e.senses.firstOrNull()?.text ?: en
             if (m != null) Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
@@ -255,6 +263,8 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             Txt(remember(e.k, zk) { z.reading(syl, rom).annotated() }, lat(22f), T.greenInk)
             // the other reading system, small
             Txt(remember(e.k, zk) { z.reading(syl, if (rom == 0) 1 else 0).annotated() }, ff(FF.Subheadline), T.purpleInk)
+            // 客語: how the other accents say it
+            if (z.isHak) HakAccentRows(z, e, rom)
             // 臺灣 and 大陸 say it differently
             e.lu?.let { lu ->
                 val other = if (place == 1) e.tw else lu
@@ -280,7 +290,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 for (p in e.pos) Box(Modifier.clip(RoundedCornerShape(6.dp)).clickable { nav.push(Route.ZhClass(p)) }) { Chip(p, T.fn, T.fnEdge, T.muted) }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (z.isYue) { if (e.hsk > 0) Chip(UILang.label(Lang.yueLevelName(e.hsk)), T.green, T.greenEdge, T.greenInk) }
+                if (z.lang != 1) { if (e.hsk > 0) Chip(UILang.label(Lang.yueLevelName(e.hsk)), T.green, T.greenEdge, T.greenInk) }
                 else {
                     if (e.hsk > 0) Chip(Lang.hskName(e.hsk), T.green, T.greenEdge, T.greenInk)
                     if (e.tocfl > 0) Chip(UILang.label(Lang.levelName(1, e.tocfl)), T.blue, T.blueEdge, T.blueInk)
@@ -322,10 +332,11 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         }
         if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),
             ff(FF.Caption), T.muted)
-        Txt(if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
+        Txt(if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
+            else if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
             else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
         // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
-        val ci = if (e.h.cpCount == 1) z.charIndex[e.h] else null
+        val ci = if (e.h.cpCount == 1 && !z.isHak) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
         if (reading != null) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.4f)).padding(12.dp),
@@ -348,7 +359,8 @@ fun ZhExampleBlock(z: ZhDict, ex: ZhEx) {
     val zk = zhKey()
     val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value
     val gap = Prefs.wordGap.value
-    val ps = remember(ex) { ZhDict.pieces(ex) }
+    // (客語: no reading word by word in the sentence: the dictionary's words, as in 轉換)
+    val ps = remember(ex, zk) { if (ex.code.isEmpty()) z.convertPieces(ex.h) else ZhDict.pieces(ex) }
     val texts = remember(ex, zk) { ps.map { z.sentenceHan(listOf(it), place, T.blueInk.argbInt()).annotated() } }
     val targets = remember(ex, place) { ps.map { p -> if (p.tw != null) z.entryFor(p)?.k else null } }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -729,6 +741,26 @@ private fun ZhLinks(z: ZhDict, name: String, es: List<ZhEntry>, fill: Color, edg
                 .padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Txt(e.h, ff(FF.Subheadline), T.glyph)
                 Txt(z.readingPlain(e.syl(place), rom), lat(13f), ink)
+            }
+        }
+    }
+}
+
+/** 客語: the word in each of the six accents (the one chosen marked); an accent that says it with another word shows
+ *  that word */
+@Composable
+private fun HakAccentRows(z: ZhDict, e: ZhEntry, rom: Int) {
+    val acc = e.acc ?: return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        for ((a, name) in Lang.hakAccents.withIndex()) {
+            val mine = a == z.accent
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Chip(tr(name), if (mine) T.hakFill else T.fn, if (mine) T.hakEdge else T.fnEdge, if (mine) T.hakInk else T.muted)
+                val syl = acc.getOrNull(a)
+                val other = e.otherWords[a]
+                if (syl != null) Txt(z.reading(syl, rom).annotated(), lat(15f), T.greenInk)
+                else if (other != null) Txt(tr("說「{0}」", other), ff(FF.Subheadline), T.glyph)
+                else Txt(tr("（沒有收）"), ff(FF.Subheadline), T.muted)
             }
         }
     }

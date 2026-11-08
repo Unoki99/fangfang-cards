@@ -20,8 +20,10 @@ class LookupResult {
     /** several words searched at once (陰謀論 → 陰謀, 論; or 陰謀 論): each word and what it finds */
     var parts: List<String> = emptyList()
     var partResults: List<LookupResult> = emptyList()
+    /** words whose English (Wiktionary) has the word: added after the rest, which stay as they are */
+    var english: List<String> = emptyList()
     val empty: Boolean
-        get() = parts.isEmpty() && tones.isEmpty() && taigi.isEmpty() && contains.isEmpty() && pattern.isEmpty() && patternZh.isEmpty() &&
+        get() = english.isEmpty() && parts.isEmpty() && tones.isEmpty() && taigi.isEmpty() && contains.isEmpty() && pattern.isEmpty() && patternZh.isEmpty() &&
             exact.isEmpty() && gloss.isEmpty() && defs.isEmpty() && places.isEmpty()
 }
 
@@ -128,6 +130,11 @@ object Lookup {
         if (q.codePoints().anyMatch { ConvertEngine.isZy(it) || ConvertEngine.isLatinLetter(it) }) {
             r.taigi = taigi(d, q, prefs)
             addSentences(d, r, r.taigi)
+            // (letters: maybe English too; a section of its own, after the 台語 results)
+            if (q.codePoints().noneMatch { ConvertEngine.isZy(it) }) {
+                val seen = r.taigi.toHashSet()
+                r.english = TwEnglish.search(q).filter { it !in seen }
+            }
             return r
         }
         val seen = HashSet<String>()

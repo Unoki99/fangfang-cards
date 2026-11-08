@@ -42,7 +42,8 @@ struct UnknownView: View {
                                  enabled: (pool + due).contains { !$0.blankExamples.isEmpty }) { blanks = true }
                     PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
                     PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
-                    PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: true) { toning = true }
+                    // (客語: no voice to listen to)
+                    PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak) { toning = true }
                     PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
                     PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: true) { writing = true }
                     // what each way of practising does

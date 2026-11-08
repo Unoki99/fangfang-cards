@@ -125,6 +125,8 @@ object Player {
     private val cacheDir: File get() = File(Store.app.cacheDir, "audio").apply { mkdirs() }
 
     fun play(path: String) {
+        // (客語: no voice to read it)
+        if (path.isEmpty() || (com.unoki99.fangfang.engine.Lang.isHak && path.startsWith("tts:"))) return
         stop()
         playing = path; failed = null
         job = scope.launch {

@@ -43,7 +43,7 @@ fun ZhGate(content: @Composable (com.unoki99.fangfang.engine.ZhDict) -> Unit) {
         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = T.greenInk)
             Spacer(Modifier.height(12.dp))
-            Txt(tr("載入{0}詞典…", tr(com.unoki99.fangfang.engine.Lang.names[if (com.unoki99.fangfang.Prefs.lang.value == 2) 2 else 1])), ff(FF.Footnote), T.muted)
+            Txt(tr("載入{0}詞典…", tr(com.unoki99.fangfang.engine.Lang.names[com.unoki99.fangfang.Prefs.lang.value.coerceIn(1, 3)])), ff(FF.Footnote), T.muted)
         }
     }
 }

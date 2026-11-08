@@ -9,6 +9,8 @@
 #   bash build-data.sh ime             (only the input method codes, FangfangCards/inputcodes.json)
 #   bash build-data.sh yue             (only the 粵語 data, FangfangCards/yue.json)
 #   bash build-data.sh yue ~/Downloads/kaikki.org-dictionary-Chinese.jsonl   (with that Wiktionary file)
+#   bash build-data.sh hak             (only the 客語 data, FangfangCards/hak.json)
+#   bash build-data.sh twen            (only the 台語 words' English from Wiktionary, FangfangCards/tw_en.json)
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d)"
@@ -56,8 +58,42 @@ build_yue() {
   fi
   echo "整理粵語資料中…（大概一兩分鐘）"
   /usr/bin/env python3 "$HERE/tools/build_cantonese.py" "$D" "$HERE/FangfangCards/yue.json" "$K"
+  # (the same Wiktionary file: the 台語 words' English too)
+  if [ "$K" != "-" ] && [ -f "$HERE/FangfangCards/dict.json" ]; then
+    echo "整理台語詞的英文解釋（維基詞典）…"
+    /usr/bin/env python3 "$HERE/tools/build_tw_english.py" "$HERE/FangfangCards/dict.json" "$HERE/FangfangCards/tw_en.json" "$K" || true
+  fi
 }
+# 台語: English for the 教育部 dictionary's words, from Wiktionary (a file of its own; dict.json isn't changed)
+build_twen() {
+  [ -f "$HERE/FangfangCards/dict.json" ] || { echo "✗ 先要有台語詞典資料（dict.json）。"; return 1; }
+  K="${1:-}"
+  for c in "$HOME/Downloads/kaikki.org-dictionary-Chinese.jsonl" "$HOME/Desktop/kaikki.org-dictionary-Chinese.jsonl"; do
+    [ -z "$K" ] && [ -f "$c" ] && K="$c"
+  done
+  if [ -z "$K" ]; then echo "從 kaikki.org 讀維基詞典的中文資料（檔案很大，要等一陣子；不會存到電腦裡）…"; K="-"; fi
+  echo "整理台語詞的英文解釋（維基詞典）…"
+  /usr/bin/env python3 "$HERE/tools/build_tw_english.py" "$HERE/FangfangCards/dict.json" "$HERE/FangfangCards/tw_en.json" "$K"
+}
+if [ "$ODS" = "twen" ]; then build_twen "$2"; echo "✓ 完成：FangfangCards/tw_en.json"; exit 0; fi
 if [ "$ODS" = "yue" ]; then build_yue "$2"; echo "✓ 完成：FangfangCards/yue.json"; exit 0; fi
+# 客語: 教育部《臺灣客語辭典》, one file per accent (CC BY-ND 3.0 TW, like the 台語 dictionary: built here, not shared)
+build_hak() {
+  D="$TMP/hak"; mkdir -p "$D"
+  echo "下載教育部《臺灣客語辭典》資料（四縣、海陸、大埔、饒平、詔安、南四縣）…"
+  B="https://hakkadict.moe.edu.tw/static/resource/%E5%AE%A2%E8%AA%9E%E8%B3%87%E6%BA%90%E4%B8%8B%E8%BC%89/%E6%9C%AC%E8%BE%AD%E5%85%B8%E7%9A%84%E6%96%87%E5%AD%97"
+  for a in 四縣 海陸 大埔 饒平 詔安 南四縣; do
+    # (the file name, percent-encoded: …腔詞條詞目文字.ods)
+    U=$(/usr/bin/env python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1] + "腔詞條詞目文字.ods"))' "$a")
+    curl -fsSL -o "$D/${a}腔詞條詞目文字.ods" "$B/$U" || { [ "$a" = "四縣" ] && { echo "✗ 下載不到四縣腔的資料。"; return 1; }; echo "  （下載不到${a}腔，先跳過）"; }
+  done
+  [ -f "$TMP/essay.txt" ] || curl -fsSL -o "$TMP/essay.txt" "https://raw.githubusercontent.com/rime/rime-essay/master/essay.txt" || true
+  [ -f "$TMP/cedict_ts.u8" ] || curl -fsSL -o "$TMP/cedict_ts.u8" "https://raw.githubusercontent.com/cschiller/zhongwen/main/data/cedict_ts.u8" || true
+  echo "整理客語資料中…"
+  /usr/bin/env python3 "$HERE/tools/build_hakka.py" "$D" "$HERE/FangfangCards/hak.json" \
+    "$([ -f "$TMP/essay.txt" ] && echo "$TMP/essay.txt" || echo -)" "$([ -f "$TMP/cedict_ts.u8" ] && echo "$TMP/cedict_ts.u8" || echo -)" > /dev/null
+}
+if [ "$ODS" = "hak" ]; then build_hak; echo "✓ 完成：FangfangCards/hak.json"; exit 0; fi
 if [ -n "$ONLY_ZH" ]; then :; elif [ -z "$ODS" ]; then
   ODS="$TMP/kautian.ods"
   echo "下載教育部《臺灣台語常用詞辭典》資料（kautian.ods）…"

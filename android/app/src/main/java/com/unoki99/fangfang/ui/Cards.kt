@@ -75,11 +75,11 @@ fun NewDeckTab() {
                 TextButton(onClick = { menu = true }) {
                     Icon(Icons.Filled.Layers, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                     Text((Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
-                        ?: (if (zh && !Store.isYue) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
+                        ?: (if (Store.lang == 1) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
                         color = T.btnInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
                 }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
-                    if (zh && !Store.isYue) {
+                    if (Store.lang == 1) {
                         Txt(tr("詞表"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         Lang.listNames.forEachIndexed { i, n ->
                             DropdownMenuItem(text = { Text(n, color = if (Prefs.zhList.value == i) T.greenInk else T.glyph) },
@@ -88,7 +88,7 @@ fun NewDeckTab() {
                         HorizontalDivider(color = T.fnEdge)
                         Txt(tr("等級"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                     }
-                    DropdownMenuItem(text = { Text(if (zh && !Store.isYue) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
+                    DropdownMenuItem(text = { Text(if (Store.lang == 1) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
                     for (t in Store.topics) {
                         if (zh && t.id == Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id) {
                             HorizontalDivider(color = T.fnEdge)
@@ -484,7 +484,7 @@ fun UnknownTab() {
                         PT(tr("例句填空"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
                         PT(tr("排句子"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
                         PT(tr("看字排讀音"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
-                        PT(tr("聲調練習"), Icons.Filled.GraphicEq, true, Practice.TONES),
+                        PT(tr("聲調練習"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),       // (客語: no voice to listen to)
                         PT(tr("翻牌配對"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
                     )
@@ -687,7 +687,7 @@ private fun CharSideCard(card: Card, small: Boolean) {
     val rom = Prefs.rom.value; val place = Prefs.place.value
     val tk = textKey()
     val ch = Lang.charOf(card.k) ?: card.h
-    val en = if (card.isZh && Prefs.zhEnglish.value) Store.zh?.entryForChar(ch, "")?.enList?.takeIf { it.isNotEmpty() } else null
+    val en = if (card.isZh && Prefs.zhEnglish.value) Store.zh?.entryForChar(ch, card.zs?.firstOrNull() ?: "")?.enList?.takeIf { it.isNotEmpty() } else null
     Row(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(T.fn).border(2.dp, T.keyEdge, RoundedCornerShape(24.dp))
         .padding(if (small) 10.dp else 16.dp), horizontalArrangement = Arrangement.spacedBy(if (small) 8.dp else 14.dp)) {
         Column(Modifier.widthIn(min = if (small) 48.dp else 70.dp), horizontalAlignment = Alignment.CenterHorizontally,
@@ -717,7 +717,16 @@ private fun sideCards(word: Card): List<Card> {
     if (word.isZh) {
         // (from the key: the 正體 characters, also when 簡體 is shown)
         val chars = word.k.substringBefore('\t').codePoints().toArray().filter { Zhuyin.isHan(it) }.map { String(Character.toChars(it)) }
-        return if (chars.size > 1) chars.mapNotNull { Store.cardFor(Lang.charKey(it)) } else emptyList()
+        if (chars.size < 2) return emptyList()
+        // each character read as in this word (中 in 中獎: ㄓㄨㄥˋ and its meanings, not ㄓㄨㄥ's)
+        val tw = word.zs ?: emptyList(); val lu = word.zl ?: emptyList()
+        return chars.mapIndexedNotNull { n, ch ->
+            val base = Store.cardFor(Lang.charKey(ch)) ?: return@mapIndexedNotNull null
+            val d = Store.zh ?: return@mapIndexedNotNull base
+            val i = d.charIndex[ch] ?: return@mapIndexedNotNull base
+            val r = d.readingIndex(i, listOf(tw.getOrElse(n) { "" }, lu.getOrElse(n) { "" }))
+            if (r == null || r == 0) base else d.charCard(i, Prefs.zhList.value, r)
+        }
     }
     val tab = word.k.indexOf('\t')
     if (tab < 0) return emptyList()

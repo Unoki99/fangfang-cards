@@ -97,7 +97,11 @@ APD="$HERE/apple/FangfangCards"
 # download of the project, dragged over the old one, doesn't have to make it again
 KEEP="$HOME/FangfangCards/FangfangCards"
 mkdir -p "$KEEP"
-for f in dict.json cards.json zh.json inputcodes.json yue.json; do
+# (粵語 data made by an older version: made again)
+for Y in "$APD/yue.json" "$KEEP/yue.json" "$ASSETS/yue.json"; do
+  if [ -f "$Y" ] && ! head -c 80 "$Y" | grep -q '"v":2'; then rm -f "$Y"; fi
+done
+for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json; do
   if [ ! -f "$APD/$f" ] && [ -f "$KEEP/$f" ]; then cp "$KEEP/$f" "$APD/$f"; fi
 done
 if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASSETS/zh.json" ] || [ ! -f "$ASSETS/yue.json" ]; then
@@ -122,6 +126,23 @@ if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASS
     fi
   done
 fi
+
+# 客語 (教育部《臺灣客語辭典》) and the 台語 words' English (Wiktionary): added to the app when they aren't there yet
+for f in hak.json tw_en.json; do
+  if [ ! -f "$ASSETS/$f" ]; then
+    if [ ! -f "$APD/$f" ]; then
+      if [ "$f" = "hak.json" ]; then
+        bash "$HERE/apple/build-data.sh" hak || echo "（沒辦法建立客語資料，先跳過：App 裡的客語會打不開）"
+      elif [ -f "$APD/dict.json" ]; then
+        bash "$HERE/apple/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"
+      fi
+    fi
+    if [ -f "$APD/$f" ]; then
+      cp "$APD/$f" "$ASSETS/$f"
+      [ -f "$KEEP/$f" ] || cp "$APD/$f" "$KEEP/$f"
+    fi
+  fi
+done
 
 # copies of source files left by putting a new download over the old folder ("Dict 2.kt"): the same code twice
 find "$A/app/src" -type f \( -name "* 2.kt" -o -name "* - Copy.kt" -o -name "* (1).kt" \) -print -delete 2>/dev/null | sed 's/^/（刪掉多出來的複本：/; s/$/）/'

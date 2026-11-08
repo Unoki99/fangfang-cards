@@ -124,7 +124,14 @@ $Apd = Join-Path $Here "apple\FangfangCards"
 # old one, doesn't have to make it again
 $Keep = Join-Path $env:LOCALAPPDATA "FangfangCards\data"
 New-Item -ItemType Directory -Force -Path $Keep | Out-Null
-foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json")) {
+# (粵語 data made by an older version: made again)
+foreach ($y in @((Join-Path $Keep "yue.json"), (Join-Path $Assets "yue.json"), (Join-Path $Apd "yue.json"))) {
+    if (Test-Path $y) {
+        $fs = [IO.File]::OpenRead($y); $buf = New-Object byte[] 80; $n = $fs.Read($buf, 0, 80); $fs.Close()
+        if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":2')) { Remove-Item $y -Force }
+    }
+}
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json")) {
     $k = Join-Path $Keep $f
     if ((Test-Path $k) -and -not (Test-Path (Join-Path $Assets $f))) { Copy-Item $k (Join-Path $Assets $f) -Force }
 }
@@ -137,7 +144,8 @@ foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json")) {
 # (粵語 already in the project, when it's on GitHub)
 $yue = Join-Path $Apd "yue.json"
 if ((Test-Path $yue) -and -not (Test-Path (Join-Path $Assets "yue.json"))) { Copy-Item $yue (Join-Path $Assets "yue.json") -Force }
-$need = @("dict.json", "cards.json", "zh.json", "yue.json") | Where-Object { -not (Test-Path (Join-Path $Assets $_)) }
+# (客語 and the 台語 words' English too: each step below only makes what isn't there)
+$need = @("dict.json", "cards.json", "zh.json", "yue.json", "hak.json", "tw_en.json") | Where-Object { -not (Test-Path (Join-Path $Assets $_)) }
 if ($need) {
     $Tools = Join-Path $Here "apple\tools"
     if (-not (Test-Path $Tools)) { Fail "找不到 apple\tools（建立詞典資料要用）。請用完整的 fangfang-cards-main 資料夾。" }
@@ -258,9 +266,42 @@ if ($need) {
             if ($LASTEXITCODE -ne 0) { Get-Content $PyLog -Tail 8 | Write-Host; Write-Host "（沒辦法建立粵語資料，先跳過）" }
         } else { Write-Host "（下載不到粵語資料，先跳過：App 裡的粵語會打不開）" }
     }
+    # 客語: 教育部《臺灣客語辭典》, one file per accent (CC BY-ND 3.0 TW: made here, not shared)
+    if (-not (Test-Path (Join-Path $Apd "hak.json")) -and -not (Test-Path (Join-Path $Assets "hak.json"))) {
+        Write-Host "下載教育部《臺灣客語辭典》資料（四縣、海陸、大埔、饒平、詔安、南四縣）…"
+        $HakDir = Join-Path $Tmp "hak"
+        New-Item -ItemType Directory -Force -Path $HakDir | Out-Null
+        $hb = "https://hakkadict.moe.edu.tw/static/resource/%E5%AE%A2%E8%AA%9E%E8%B3%87%E6%BA%90%E4%B8%8B%E8%BC%89/%E6%9C%AC%E8%BE%AD%E5%85%B8%E7%9A%84%E6%96%87%E5%AD%97"
+        $hakOk = $true
+        foreach ($acc in @("四縣", "海陸", "大埔", "饒平", "詔安", "南四縣")) {
+            $name = $acc + "腔詞條詞目文字.ods"
+            try { Invoke-WebRequest -Uri ("$hb/" + [uri]::EscapeDataString($name)) -OutFile (Join-Path $HakDir $name) -UseBasicParsing -ErrorAction Stop }
+            catch { if ($acc -eq "四縣") { $hakOk = $false }; Write-Host "  （下載不到$($acc)腔，先跳過）" }
+        }
+        if ($hakOk) {
+            $es = if (Test-Path (Join-Path $Tmp "essay.txt")) { Join-Path $Tmp "essay.txt" } else { Get-File "$raw/rime/rime-essay/master/essay.txt" "essay.txt" -Optional }
+            $ce = if (Test-Path (Join-Path $Tmp "cedict_ts.u8")) { Join-Path $Tmp "cedict_ts.u8" } else { Get-File "$raw/cschiller/zhongwen/main/data/cedict_ts.u8" "cedict_ts.u8" -Optional }
+            Write-Host "整理客語資料中…"
+            & $Py @PyArgs "build_hakka.py" $HakDir (Join-Path $Apd "hak.json") $es $ce *> $PyLog
+            if ($LASTEXITCODE -ne 0) { Get-Content $PyLog -Tail 8 | Write-Host; Write-Host "（沒辦法建立客語資料，先跳過）" }
+        } else { Write-Host "（下載不到客語資料，先跳過：App 裡的客語會打不開）" }
+    }
+    # 台語 words' English: Wiktionary (kaikki.org), the file in Downloads / on the Desktop, or read straight from kaikki.org
+    $dj = Join-Path $Apd "dict.json"
+    if (-not (Test-Path $dj)) { $dj = Join-Path $Assets "dict.json" }
+    if ((Test-Path $dj) -and -not (Test-Path (Join-Path $Apd "tw_en.json")) -and -not (Test-Path (Join-Path $Assets "tw_en.json"))) {
+        $kk = "-"
+        foreach ($c in @((Join-Path $env:USERPROFILE "Downloads\kaikki.org-dictionary-Chinese.jsonl"), (Join-Path $env:USERPROFILE "Desktop\kaikki.org-dictionary-Chinese.jsonl"))) {
+            if ($kk -eq "-" -and (Test-Path $c)) { $kk = $c }
+        }
+        if ($kk -eq "-") { Write-Host "從 kaikki.org 讀維基詞典的中文資料（檔案很大，要等一陣子；不會存到電腦裡）…" }
+        Write-Host "整理台語詞的英文解釋（維基詞典）…"
+        & $Py @PyArgs "build_tw_english.py" $dj (Join-Path $Apd "tw_en.json") $kk *> $PyLog
+        if ($LASTEXITCODE -ne 0) { Get-Content $PyLog -Tail 8 | Write-Host; Write-Host "（沒辦法建立台語詞的英文解釋，先跳過）" }
+    }
     Pop-Location
     Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
-    foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json")) {
+    foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json")) {
         $src = Join-Path $Apd $f
         if (Test-Path $src) { Copy-Item $src (Join-Path $Assets $f) -Force }
     }
@@ -269,7 +310,7 @@ if ($need) {
     }
 }
 # keep what was made (for the next time)
-foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json")) {
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json")) {
     $src = Join-Path $Assets $f
     if ((Test-Path $src) -and -not (Test-Path (Join-Path $Keep $f))) { Copy-Item $src (Join-Path $Keep $f) -Force }
 }

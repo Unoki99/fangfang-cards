@@ -137,10 +137,11 @@ struct ScrambleView: View {
     /// the sentence cut into its words (the romanization's words, joined by "-"), with the matching 漢字
     private func makePuzzle(_ c: Card, _ x: Example) -> Puzzle? {
         // 華語: the sentence's own words (from the dictionary), each a card
-        if let w = x.w, let d = store.zh {
+        // (客語: the sentence split into the dictionary's words, as in 轉換; its 華語 translation is the hint)
+        if c.isZh, let d = store.zh, x.w != nil || d.isHak {
             // sentences quoted from old books aren't used
-            guard x.z.isEmpty else { return nil }
-            let ps = ZhDict.pieces(x.h, w)
+            guard x.z.isEmpty || d.isHak else { return nil }
+            let ps = x.w.map { ZhDict.pieces(x.h, $0) } ?? d.convertPieces(x.h)
             var tiles: [Tile] = [], n = 0
             for p in ps where p.tw != nil {
                 tiles.append(Tile(id: tiles.count, han: d.sentenceHan([p], store.zhPlace, base: T.blueInk),

@@ -286,9 +286,11 @@ struct StudyView: View {
                         Text(x.bh ?? x.h).ffFont(.title3).foregroundStyle(T.blueInk)
                         if let br = store.blankRom(c, x, rom, place) { Text(br).latFont(17).foregroundStyle(T.greenInk) }
                         Text(x.z).ffFont(.subheadline).foregroundStyle(T.muted)
-                        HStack(spacing: 8) {
-                            PlayButton(path: Audio.examplePath(x.n), size: 28)
-                            Text(tr("聽例句（提示）")).ffFont(.caption).foregroundStyle(T.muted)
+                        if !x.n.isEmpty {
+                            HStack(spacing: 8) {
+                                PlayButton(path: Audio.examplePath(x.n), size: 28)
+                                Text(tr("聽例句（提示）")).ffFont(.caption).foregroundStyle(T.muted)
+                            }
                         }
                     }
                 case .romanization:

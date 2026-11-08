@@ -1599,6 +1599,7 @@ struct WordWriteArea: View {
         }
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
         .clipShape(RoundedRectangle(cornerRadius: 18))
+        .noStarBursts()
         .accessibilityLabel(tr("寫字的地方"))
     }
 

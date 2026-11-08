@@ -146,6 +146,8 @@ fun CapsuleButton(text: String, icon: ImageVector?, on: Boolean, fill: Color, ed
 /** Round ▶ in the 方方 style; turns red briefly if the recording can't be found. */
 @Composable
 fun PlayButton(path: String, size: Dp = 34.dp) {
+    // (客語: no device voice reads it; only a word's own recording)
+    if (path.isEmpty() || (com.unoki99.fangfang.engine.Lang.isHak && path.startsWith("tts:"))) return
     val on = Player.playing == path
     val bad = Player.failed == path
     val fill = if (bad) T.rust else if (on) T.btnEdge else T.btn.copy(alpha = 0.6f)
@@ -201,10 +203,13 @@ fun PlaceMenu() {
     val zh = store.isZh
     var open by remember { mutableStateOf(false) }
     val yue = store.isYue
-    val fill = if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.placeFill
-    val edge = if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.placeEdge
-    val ink = if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.purpleInk
-    val name = if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames[zhPlace.coerceIn(0, 1)]
+    val hak = store.isHak
+    var accent by Prefs.hakAccent
+    val fill = if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.placeFill
+    val edge = if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.placeEdge
+    val ink = if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.purpleInk
+    val hakNames = com.unoki99.fangfang.engine.Lang.hakAccents
+    val name = if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames[zhPlace.coerceIn(0, 1)]
         else "台・" + (if (place in PLACE_NAMES.indices) PLACE_NAMES[place].take(2) else "通行")
     Box {
         Row(Modifier.clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { open = true }
@@ -222,8 +227,14 @@ fun PlaceMenu() {
             item(tr("台語"), store.lang == 0) { store.setLanguage(0); open = false }
             item(tr("華語"), store.lang == 1) { store.setLanguage(1); open = false }
             item(tr("粵語"), store.lang == 2) { store.setLanguage(2); open = false }
+            item(tr("客語"), store.lang == 3) { store.setLanguage(3); open = false }
             if (yue) {
                 // (粵語: one reading)
+            } else if (hak) {
+                HorizontalDivider(color = T.fnEdge)
+                Text(tr("客語腔"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                hakNames.forEachIndexed { i, p -> item(tr(p), accent == i) {
+                    if (accent != i) { accent = i; store.hakAccentChanged() }; open = false } }
             } else if (zh) {
                 HorizontalDivider(color = T.fnEdge)
                 Text(tr("華語讀音"), style = ff(FF.Caption, FontWeight.Bold), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
@@ -248,7 +259,9 @@ fun ToneMenu() {
         Row(Modifier.clip(CircleShape).background(T.fn).border(2.dp, T.fnEdge, CircleShape).clickable { open = true }
             .padding(horizontal = 9.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
             if (system == 0) Text(tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
-            else if (com.unoki99.fangfang.Store.isYue) for (t in 1..6) {
+            else if (com.unoki99.fangfang.Store.isHak) for (t in com.unoki99.fangfang.engine.ToneColors.hakTones) {
+                Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.hakColor(t)), CircleShape))
+            } else if (com.unoki99.fangfang.Store.isYue) for (t in 1..6) {
                 Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.yueColor(t)), CircleShape))
             } else if (com.unoki99.fangfang.Store.isZh) for (t in 1..4) {
                 Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.zhColor(t)), CircleShape))

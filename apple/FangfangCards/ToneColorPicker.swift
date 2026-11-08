@@ -6,14 +6,15 @@ struct ToneColorPicker: View {
     @EnvironmentObject var store: Store
     @AppStorage(ToneColors.versionKey) private var version = 0
     @AppStorage(ToneColors.key) private var toneSys = 0
-    /// whose colours: 0 台語, 1 華語, 2 粵語
-    @State private var set = Lang.current
+    /// whose colours: 0 台語, 1 華語, 2 粵語, 3 客語
+    @State private var set = min(max(Lang.current, 0), 3)
     @State private var selected = 1
 
     private var tones: [Int] { ToneColors.tones(set: set) }
 
     private func name(_ t: Int) -> String {
         if set == 1 { return t == 0 ? trs("輕聲") : ["", trs("一聲"), trs("二聲"), trs("三聲"), trs("四聲")][t] }
+        if set == 3 { return trs([1: "陰平", 2: "上聲", 3: "去聲", 4: "陰入", 5: "陽平", 7: "陽去", 8: "陽入"][t] ?? "") }
         return t == 0 ? trs("輕聲") : tr("第 \(t) 聲")
     }
 
@@ -28,6 +29,7 @@ struct ToneColorPicker: View {
                     Text(tr("台語")).tag(0)
                     Text(tr("華語")).tag(1)
                     Text(tr("粵語")).tag(2)
+                    Text(tr("客語")).tag(3)
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: set) { selected = 1 }
@@ -36,7 +38,7 @@ struct ToneColorPicker: View {
 
             Section {
                 // the tones: tap one, then tap a ball below
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: set == 2 ? 6 : 5), spacing: 10) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: set == 2 ? 6 : (set == 3 ? 4 : 5)), spacing: 10) {
                     ForEach(tones, id: \.self) { t in
                         let on = selected == t
                         Button { withAnimation(.snappy) { selected = t } } label: {
@@ -60,6 +62,7 @@ struct ToneColorPicker: View {
                 Text(tr("聲調（點一個，再點下面的顏色）"))
             } footer: {
                 if set == 0 && toneSys == 5 { Text(tr("五聲：第 8 聲用第 1 聲的顏色，第 4 聲用第 3 聲的顏色。")) }
+                if set == 3 { Text(tr("客語的聲調照類別上色：同一個類別在各腔的調值不一樣，顏色一樣（例如陰平在四縣是 24，在海陸是 53）。")) }
             }
             .listRowBackground(T.fn.opacity(0.7))
 
@@ -132,7 +135,23 @@ struct ToneColorPicker: View {
 
     /// every tone in its colour, on a word
     @ViewBuilder private var sample: some View {
-        if set == 2 {
+        if set == 3 {
+            // 分 粉 糞 忽 焚 份 佛: fun / fud in each tone category (四縣; 陽去 is 海陸's)
+            HStack(spacing: 0) {
+                ForEach(Array(zip(["分", "粉", "糞", "忽", "焚", "份", "佛"],
+                                  ["funˊ", "funˋ", "fun", "fudˋ", "funˇ", "fun+", "fud"]).enumerated()), id: \.offset) { i, p in
+                    let t = ToneColors.hakTones[i]
+                    let c = Color(hex: ToneColors.hex(set: 3, t))
+                    VStack(spacing: 2) {
+                        Text("\(t)").ffFont(.caption2, .bold).foregroundStyle(T.muted)
+                        Text(p.0).scaledFont(24, weight: .semibold).foregroundStyle(c)
+                        Text(p.1).latFont(13).foregroundStyle(c).lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .frame(maxWidth: .infinity)
+        } else if set == 2 {
             // 詩 史 試 時 市 事: si1–si6
             HStack(spacing: 14) {
                 ForEach(Array(zip(["詩", "史", "試", "時", "市", "事"], [1, 2, 3, 4, 5, 6])), id: \.0) { h, t in

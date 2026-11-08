@@ -22,16 +22,16 @@ import com.unoki99.fangfang.engine.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// MARK: - 轉換 → 讀音: a word in 台語, 華語 and 粵語 side by side
+// MARK: - 轉換 → 讀音: a word in 台語, 華語, 粵語 and 客語 side by side
 
 /** the 華語 and 粵語 dictionaries for 讀音: the one in use is the Store's; the other is read while the page is open */
 @Composable
 private fun rememberZhDict(kind: Int): ZhDict? {
-    val have = Store.zh?.takeIf { it.isYue == (kind == 2) }
+    val have = Store.zh?.takeIf { it.lang == kind }
     val loaded by produceState<ZhDict?>(have, kind, have) {
         if (value != null) return@produceState
         value = withContext(Dispatchers.Default) {
-            try { ZhDict(Store.app.assets.open(if (kind == 2) "yue.json" else "zh.json").bufferedReader().use { it.readText() }) }
+            try { ZhDict(Store.app.assets.open(listOf("zh.json", "zh.json", "yue.json", "hak.json")[kind]).bufferedReader().use { it.readText() }) }
             catch (_: Exception) { null }
         }
     }
@@ -47,6 +47,8 @@ fun ReadingsPane() {
     var query by Prefs.readingsQuery
     val zh = rememberZhDict(1)
     val yue = rememberZhDict(2)
+    val hak = rememberZhDict(3)
+    val hakRom = if (Store.lang == 3) Prefs.zhRom.value else Prefs.hakRom.value
     val d = Store.dict
     val rom = Prefs.rom.value; val toneSys = Prefs.toneSys.value
     val zhRom = if (Store.lang == 1) Prefs.zhRom.value else Prefs.mandRom.value
@@ -56,12 +58,12 @@ fun ReadingsPane() {
         SearchField(query, { query = it }, tr("漢字（詞或字），例如：學生、食飯、行"))
         val q = query.trim()
         if (q.isNotEmpty()) {
-            val rows = remember(q, d, zh, yue, rom, zhRom, yueRom, toneSys, tk) {
-                taigiRows(d, q, rom, toneSys) + zhRows(zh, q, 1, zhRom) + zhRows(yue, q, 2, yueRom)
+            val rows = remember(q, d, zh, yue, hak, rom, zhRom, yueRom, hakRom, toneSys, tk) {
+                taigiRows(d, q, rom, toneSys) + zhRows(zh, q, 1, zhRom) + zhRows(yue, q, 2, yueRom) + hakRows(hak, q, hakRom)
             }
             for (r in rows) {
-                val fill = listOf(T.own, T.blue, T.olive)[r.lang]; val edge = listOf(T.ownEdge, T.blueEdge, T.oliveEdge)[r.lang]
-                val ink = listOf(T.purpleInk, T.blueInk, T.oliveInk)[r.lang]
+                val fill = listOf(T.own, T.blue, T.olive, T.hakFill)[r.lang]; val edge = listOf(T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge)[r.lang]
+                val ink = listOf(T.purpleInk, T.blueInk, T.oliveInk, T.hakInk)[r.lang]
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(fill.copy(alpha = 0.35f))
                     .border(2.dp, edge, RoundedCornerShape(10.dp)).height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
                     Txt(r.label, ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(LABEL_W).padding(start = 10.dp, top = 10.dp, bottom = 10.dp))
@@ -171,5 +173,30 @@ private fun zhRows(d: ZhDict?, q: String, kind: Int, mode: Int): List<ReadingRow
         out.add(if (syl.isNotEmpty()) ReadingRow(kind, name, d.reading(syl, mode).annotated(), d.readingPlain(syl, 1 - mode), tr("逐字"))
             else ReadingRow(kind, name, AnnotatedString("—"), "", if (kind == 2) tr("粵語詞典沒有這個詞") else tr("華語詞典沒有這個詞")))
     }
+    return out
+}
+
+// MARK: 客語: each accent (the ones that read it the same together)
+
+private fun hakRows(d: ZhDict?, q: String, mode: Int): List<ReadingRow> {
+    if (d == null) return emptyList()
+    val es = (d.byHan[q] ?: emptyList<Int>()).map { d.entries[it] }.filter { it.h == q }
+    val out = ArrayList<ReadingRow>()
+    for ((n, e) in es.take(3).withIndex()) {
+        val alt = if (n > 0) "（" + tr("又") + "）" else ""
+        val acc = e.acc ?: listOf(e.tw)
+        // the accents with the same reading (letters and tone category) in one row
+        class G(val key: String, val syl: List<String>, val names: MutableList<String>)
+        val groups = ArrayList<G>()
+        for ((a, syl) in acc.withIndex()) {
+            if (syl == null) continue
+            val key = syl.joinToString(" ") { val p = Zhuyin.hakParts(it); p.first + p.second }
+            val name = tr(Lang.hakAccents.getOrElse(a) { "" })
+            val g = groups.firstOrNull { it.key == key }
+            if (g != null) g.names.add(name) else groups.add(G(key, syl, mutableListOf(name)))
+        }
+        for (g in groups) out.add(ReadingRow(3, tr("客") + "・" + g.names.joinToString("、") + alt, d.reading(g.syl, mode).annotated(), d.readingPlain(g.syl, 1 - mode)))
+    }
+    if (out.isEmpty()) out.add(ReadingRow(3, tr("客語"), AnnotatedString("—"), "", tr("客語詞典沒有這個詞")))
     return out
 }

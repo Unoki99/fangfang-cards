@@ -20,6 +20,8 @@ final class Player: ObservableObject {
     }
 
     func play(_ path: String) {
+        // (客語: no voice to read it)
+        if path.isEmpty || (Lang.isHak && path.hasPrefix("tts:")) { return }
         player?.stop()
         token += 1
         let my = token
@@ -89,7 +91,14 @@ struct PlayButton: View {
     @ObservedObject private var player = Player.shared
     private let glassOn = false   // the Liquid Glass look was taken out
 
+    /// 客語: no device voice reads it (only the word's own recording, when there is one)
+    private var silent: Bool { path.isEmpty || (Lang.isHak && path.hasPrefix("tts:")) }
+
     var body: some View {
+        if silent { EmptyView() } else { button }
+    }
+
+    @ViewBuilder private var button: some View {
         let on = player.playing == path
         let bad = player.failed == path
         let icon = Image(systemName: "play.fill")

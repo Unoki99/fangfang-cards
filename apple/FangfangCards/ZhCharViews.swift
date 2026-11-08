@@ -100,7 +100,7 @@ struct ZhCharBody: View {
             }
             ForEach(Array(char.readings.enumerated()), id: \.offset) { _, r in reading(r) }
             words
-            Text(dict.isYue ? tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") : tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
+            Text(dict.isHak ? tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）的單字詞條。") : dict.isYue ? tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") : tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)

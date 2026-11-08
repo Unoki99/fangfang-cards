@@ -36,8 +36,10 @@ struct SettingsView: View {
         let tones = toneSys == 7 ? trs("七聲") : (toneSys == 5 ? trs("五聲") : trs("聲調顏色關"))
         let lang: String = store.isYue
             ? trs("粵語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
+            : store.isHak
+            ? trs("客語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.hakAccents[min(max(store.hakAccent, 0), Lang.hakAccents.count - 1)])
             : store.isZh
-            ? trs("華語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.placeNames[min(max(store.zhPlace, 0), 1)]) + "・" + Lang.listNames[min(max(store.zhList, 0), 1)]
+            ? trs("華語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.zhPlaceNames[min(max(store.zhPlace, 0), 1)]) + "・" + Lang.listNames[min(max(store.zhList, 0), 1)]
             : trs("台語") + "・" + trs(ROM_NAMES[min(max(rom, 0), 2)]) + "・" + (place >= 0 && place < PLACE_NAMES.count ? trs(String(PLACE_NAMES[place].prefix(2))) : trs("通行"))
         let _ = copyTpl + copyEx + zhCopyTpl + zhCopyEx + "\(copySep)\(zhCopySep)"   // redraw when a layout changes
         let copyStyle = SenseCopy.styleName(zh: store.isZh)
@@ -224,6 +226,7 @@ private struct LanguageSettings: View {
     // each of 華語 and 粵語 has its own spelling (the one shown now is also store.zhRom, so the pages redraw)
     @AppStorage("zhRom") private var zhRomSaved = 0
     @AppStorage(Lang.yueRomKey) private var yueRomSaved = 0
+    @AppStorage(Lang.hakRomKey) private var hakRomSaved = 0
     @AppStorage(Simp.key) private var simplified = false
 
     var body: some View {
@@ -233,6 +236,7 @@ private struct LanguageSettings: View {
                     Text(tr("台語")).tag(0)
                     Text(tr("華語")).tag(1)
                     Text(tr("粵語")).tag(2)
+                    Text(tr("客語")).tag(3)
                 }
                 .pickerStyle(.segmented)
             } header: {
@@ -281,7 +285,7 @@ private struct LanguageSettings: View {
                 .pickerStyle(.segmented)
                 .onChange(of: zhRomSaved) { if store.lang == 1 { store.zhRom = zhRomSaved } }
                 Picker(tr("讀音"), selection: $store.zhPlace) {
-                    ForEach(0..<Lang.placeNames.count, id: \.self) { Text(trs(Lang.placeNames[$0])).tag($0) }
+                    ForEach(0..<Lang.zhPlaceNames.count, id: \.self) { Text(trs(Lang.zhPlaceNames[$0])).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 Picker(tr("詞表"), selection: $store.zhList) {
@@ -300,6 +304,21 @@ private struct LanguageSettings: View {
                 Text(tr("粵語"))
             } footer: {
                 Text(tr("粵拼（香港語言學學會）或耶魯拼音。詞是照常用的程度分組，每組 500 個。"))
+            }
+            Section {
+                Picker(tr("拼寫"), selection: $hakRomSaved) {
+                    Text(trs("拼音")).tag(0)
+                    Text(trs("注音")).tag(1)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: hakRomSaved) { if store.lang == 3 { store.zhRom = hakRomSaved } }
+                Picker(tr("腔"), selection: $store.hakAccent) {
+                    ForEach(0..<Lang.hakAccents.count, id: \.self) { Text(trs(Lang.hakAccents[$0])).tag($0) }
+                }
+            } header: {
+                Text(tr("客語"))
+            } footer: {
+                Text(tr("臺灣客家語拼音（聲調記號照各腔），或客語注音。換腔的時候詞典會重新讀一次。詞是照在辭典例句裡出現的次數分組，每組 500 個。"))
             }
         }
     }
@@ -571,6 +590,7 @@ private struct AboutSettings: View {
                 credit(tr("皓羅字型"), "DejaVu Sans")
                 credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（LXGW）；芫荽：Iansui（The Iansui Project Authors）。都是 SIL Open Font License 1.1。楷體：Apple 的華文楷體。")
                 credit(tr("詞頻"), "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
+                credit(tr("英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
             }
             Section(tr("華語")) {
                 credit(tr("詞條、注音、釋義、例句"), "中華文化總會《兩岸常用詞典》（CC BY-NC-ND），g0v 萌典整理。拼音依注音轉寫，例句讀音依詞推算。")
@@ -590,6 +610,11 @@ private struct AboutSettings: View {
                 credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
                 credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
                 credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
+            }
+            Section(tr("客語")) {
+                credit(tr("詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
+                credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
+                credit(tr("注音"), "照臺灣客家語拼音方案由拼音轉寫")
             }
             Section(tr("其他")) {
                 credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")

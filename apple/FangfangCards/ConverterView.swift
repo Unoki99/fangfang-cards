@@ -809,6 +809,17 @@ struct DictEntryBody: View {
                     Text(g.map { $0.t }.joined(separator: "、")).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9))
                 }
             }
+            // English from Wiktionary (a file of its own: the dictionary's own meanings below stay as they are)
+            let en = TwEnglish.meanings(key)
+            if !en.isEmpty {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Chip(text: tr("英"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                    VStack(alignment: .leading, spacing: 3) {
+                        ZhEnglishList(items: en, max: 6)
+                        Text(tr("英文解釋：維基詞典（CC BY-SA）")).ffFont(.caption2).foregroundStyle(T.muted)
+                    }
+                }
+            }
             ForEach(dict.senses(key), id: \.n) { s in sense(s) }
             if place >= 0, dict.senses(key).contains(where: { s in s.ex.contains { $0.count > 1 && dict.hasGuess($0[1], han: $0[0], place: place) } }) {
                 GuessNote()
@@ -1190,7 +1201,9 @@ struct LookupResult: Sendable {
     /// several words searched at once (陰謀論 → 陰謀, 論; or 陰謀 論): each word and what it finds
     var parts: [String] = []
     var partResults: [LookupResult] = []
-    var empty: Bool { parts.isEmpty && tones.isEmpty && taigi.isEmpty && contains.isEmpty && pattern.isEmpty && patternZh.isEmpty && exact.isEmpty && gloss.isEmpty && defs.isEmpty && places.isEmpty }
+    /// words whose English (Wiktionary) has the word: added after the rest, which stay as they are
+    var english: [String] = []
+    var empty: Bool { english.isEmpty && parts.isEmpty && tones.isEmpty && taigi.isEmpty && contains.isEmpty && pattern.isEmpty && patternZh.isEmpty && exact.isEmpty && gloss.isEmpty && defs.isEmpty && places.isEmpty }
 }
 
 enum Lookup {
@@ -1305,6 +1318,11 @@ enum Lookup {
         if q.unicodeScalars.contains(where: { ConvertEngine.isZy($0.value) || ConvertEngine.isLatinLetter($0.value) }) {
             r.taigi = taigi(d, q)
             addSentences(d, &r, r.taigi)
+            // (letters: maybe English too; a section of its own, after the 台語 results)
+            if !q.unicodeScalars.contains(where: { ConvertEngine.isZy($0.value) }) {
+                let seen = Set(r.taigi)
+                r.english = TwEnglish.search(q).filter { !seen.contains($0) }
+            }
             return r
         }
         var seen = Set<String>()
@@ -1438,7 +1456,7 @@ struct LookupPane: View {
                 group(tr("台語詞「\(query)」（\(result.pattern.count == 300 ? "300+" : String(result.pattern.count))）"), result.pattern)
                 group(tr("華語「\(query)」的台語講法"), result.patternZh)
             } else if query.isEmpty {
-                Text(tr("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）或方音。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…"))
+                Text(tr("可以查華語、台語漢字、皓羅／台羅／白話字（聲調可以不打，例如 tsiah png）、方音或英文（eat）。\n往右滑一個詞加到「不熟」，往左滑收藏。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*仔 → 仔結尾　*水* → 水在中間　?仔 → 兩個字、仔結尾\n打聲調數字找聲調組合：4-5、2 2、817…"))
                     .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
             if !result.tones.isEmpty {
@@ -1449,6 +1467,7 @@ struct LookupPane: View {
             }
             group(tr("台語「\(query)」"), result.taigi)
             group(trs("台語講法"), result.exact)
+            KeyListSection(dict: dict, title: tr("英文「\(query)」（維基詞典）"), keys: result.english, englishQuery: query)
             if !result.parts.isEmpty {
                 ForEach(Array(result.parts.enumerated()), id: \.offset) { i, w in
                     let pr = result.partResults[i]
@@ -1607,12 +1626,14 @@ struct KeyListSection: View {
     let dict: Dict
     let title: String
     let keys: [String]
+    /// found by their English (Wiktionary): the English shown too
+    var englishQuery: String? = nil
     @EnvironmentObject var store: Store
     var body: some View {
         if !keys.isEmpty {
             Section(title) {
                 ForEach(keys, id: \.self) { k in
-                    NavigationLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) }
+                    NavigationLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k, englishQuery: englishQuery) }
                         .swipeActions(edge: .leading) {
                             if store.cardStatus(k) == 0 {
                                 Button { store.toggleUnknown(k) } label: { Label(tr("加到不熟"), systemImage: "star") }
@@ -2216,6 +2237,8 @@ struct CategoryWordsView: View {
 struct DictRow: View {
     let dict: Dict
     let key: String
+    /// found by its English (Wiktionary): that English (the meanings with the word first) above the 華語 meaning
+    var englishQuery: String? = nil
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @EnvironmentObject var store: Store
@@ -2236,10 +2259,16 @@ struct DictRow: View {
                 default: EmptyView()
                 }
             }
+            if let q = englishQuery {
+                let en = EnglishMatch.first(TwEnglish.meanings(key), q)
+                if !en.isEmpty {
+                    Text(en.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.85)).lineLimit(2)
+                }
+            }
             if let g = dict.gl[key], !g.isEmpty {
                 Text(g.map { $0.t }.joined(separator: "、")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
             } else if let t = dict.defText(key) {
-                Text(t.replacingOccurrences(of: "\n", with: " ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+                Text(t.replacingOccurrences(of: "\n", with: " ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(englishQuery == nil ? 2 : 1)
             }
         }
     }

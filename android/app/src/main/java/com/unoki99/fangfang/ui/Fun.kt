@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.boundsInRoot
 import kotlinx.coroutines.isActive
 import com.unoki99.fangfang.engine.ToneColors
 import kotlin.math.*
@@ -123,6 +126,10 @@ class StarField {
     enum class Kind { STAR, MOON, LEAF, PLANET, MUSHROOM, ACORN }
     class Star(val start: Offset, val vx: Float, val vy: Float, val spin: Float, val size: Float, val color: Color, val born: Long, val kind: Kind)
     val stars = mutableStateListOf<Star>()
+    /** where a tap doesn't make any (the squares to write in), in the window's coordinates */
+    val noBursts = HashMap<String, Rect>()
+    /** where the StarBox is in the window */
+    var origin = Offset.Zero
     private val colors = ToneColors.all.map { Color(it) }
 
     private val kinds: List<Kind>
@@ -153,13 +160,14 @@ class StarField {
 @Composable
 fun StarBox(field: StarField, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     val scale = LocalDensity.current.density
-    Box(modifier.pointerInput(Unit) {
+    Box(modifier.onGloballyPositioned { field.origin = it.positionInRoot() }.pointerInput(Unit) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            field.burst(down.position, scale)
+            val at = down.position + field.origin
+            if (field.noBursts.values.none { it.contains(at) }) field.burst(down.position, scale)
         }
     }) {
-        content()
+        CompositionLocalProvider(LocalStarField provides field) { content() }
         StarLayer(field)
     }
 }
@@ -226,4 +234,16 @@ private fun shape(k: StarField.Kind, r: Float): Path = when (k) {
         addRoundRect(RoundRect(-r * 0.72f, -r * 0.62f, r * 0.72f, -r * 0.17f, CornerRadius(r * 0.2f)))
         addRect(Rect(-r * 0.06f, -r * 0.9f, r * 0.06f, -r * 0.6f))
     }
+}
+
+/** the StarField of the practice screen this is in (null: none) */
+val LocalStarField = staticCompositionLocalOf<StarField?> { null }
+
+/** no little things from taps here (a square to write in) */
+@Composable
+fun Modifier.noStarBursts(): Modifier {
+    val field = LocalStarField.current ?: return this
+    val key = remember { java.util.UUID.randomUUID().toString() }
+    DisposableEffect(key) { onDispose { field.noBursts.remove(key) } }
+    return this.onGloballyPositioned { field.noBursts[key] = it.boundsInRoot() }
 }

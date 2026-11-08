@@ -75,7 +75,8 @@ struct Card: Decodable, Identifiable, Hashable {
     var id: String { k }
     var isZh: Bool { zs != nil }
     /// the word's recording (台語), or the device's voice (華語; 粵語 when the word has no recording)
-    var audio: String? { isZh ? (web ?? "tts:" + h) : a.map { Audio.wordPath($0) } }
+    /// (客語: only a recording; no device has a 客語 voice)
+    var audio: String? { isZh ? (Lang.isHakKey(k) ? web : (web ?? "tts:" + h)) : a.map { Audio.wordPath($0) } }
     static func == (l: Card, r: Card) -> Bool { l.k == r.k }
     func hash(into h: inout Hasher) { h.combine(k) }
 
@@ -156,7 +157,7 @@ enum Audio {
     static let defaultBase = "https://unoki99.github.io/fangfang/"
     static func wordPath(_ id: Int) -> String { "audio/\(id / 1000)/\(id)(1).mp3" }
     static func examplePath(_ name: String) -> String {
-        if name.hasPrefix("tts:") { return name }      // 華語: read by the device
+        if name.hasPrefix("tts:") || name.isEmpty { return name }      // 華語: read by the device (客語: nothing)
         let id = Int(name.split(separator: "-").first ?? "0") ?? 0
         return "leku/\(id / 1000)/\(name).mp3"
     }
