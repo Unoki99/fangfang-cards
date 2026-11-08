@@ -211,7 +211,7 @@ struct MemoryView: View {
                     HStack(spacing: 10) {
                         Text(c.h).scaledFont(18, weight: .semibold).foregroundStyle(T.glyph)
                         Text(store.cardRom(c, rom, place)).latFont(15).foregroundStyle(T.greenInk)
-                        Text(c.d.first?.t ?? "").ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
+                        Text(store.practiceMeaning(c).t).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
                     }
                 }
             }

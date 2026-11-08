@@ -13,6 +13,7 @@ struct SettingsView: View {
     @AppStorage(UILang.key) private var uiLangNow = 0
     @AppStorage("goal") private var goal = 3
     @AppStorage("sessionSize") private var sessionSize = 10
+    @AppStorage(WordWrite.key) private var practiceWrite = true
     @AppStorage("autoPlay") private var autoPlay = false
     @AppStorage("volume") private var volume = 0.8
     @AppStorage(InputCodes.onKey) private var imeOn = false
@@ -331,6 +332,9 @@ private struct PracticeSettings: View {
                 }
                 Stepper(tr("連續答對 \(goal) 次算學會"), value: $goal, in: 1...6)
                 Stepper(tr("每次練習 \(sessionSize) 個詞"), value: $sessionSize, in: 5...40, step: 5)
+                Toggle(tr("寫字題"), isOn: $practiceWrite)
+            } footer: {
+                Text(tr("開始練習和本週學習裡，看意思和讀音把整個詞寫出來，寫完自己對答案。"))
             }
             Section {
                 PenSettings()
@@ -576,6 +580,9 @@ private struct AboutSettings: View {
                 credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
                 credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
                 credit(tr("發音"), "裝置內建的語音")
+            }
+            Section(tr("練習")) {
+                credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
             }
             Section(tr("粵語")) {
                 credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")

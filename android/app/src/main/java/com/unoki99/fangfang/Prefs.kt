@@ -117,6 +117,8 @@ object Prefs : KeyValue {
     val zhEnglish = Pref("zhMainEnglish", false)
     /** the cards don't show the reading until you tap them */
     val hideReading = Pref("hideReading", false)
+    /** 寫字題 in 開始練習 and 本週學習: write the whole word */
+    val practiceWrite = Pref("practiceWrite", true)
     /** the themes' backgrounds and the potions move (off: less power) */
     val themeMotion = Pref("themeMotion", true)
     /** 華語's own copy layout */
@@ -168,7 +170,7 @@ object Prefs : KeyValue {
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
-        copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, themeMotion,
+        copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, practiceWrite, themeMotion,
         zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, mandRom, yueRom, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
 
     fun init(ctx: Context) {

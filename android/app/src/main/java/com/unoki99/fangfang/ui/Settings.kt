@@ -107,7 +107,9 @@ fun SettingsScreen() {
                             MenuRow(tr("手寫：字體"), Kai.names[Kai.style], Kai.names.withIndex().map { it.index to it.value }) { Prefs.handFont.value = it }
                             RowDivider(); StepRow(tr("連續答對 {0} 次算學會", Prefs.goal.value), Prefs.goal, 1, 6, 1)
                             RowDivider(); StepRow(tr("每次練習 {0} 個詞", Prefs.sessionSize.value), Prefs.sessionSize, 5, 40, 5)
+                            RowDivider(); SwitchRow(tr("寫字題"), Prefs.practiceWrite)
                         }
+                        Txt(tr("開始練習和本週學習裡，看意思和讀音把整個詞寫出來，寫完自己對答案。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp, vertical = 4.dp))
                         Spacer(Modifier.height(10.dp))
                         Group { ActionRow(tr("全部重來"), danger = true) { confirmReset = true } }
                         Txt(tr("所有的「熟悉」和「不熟」都清掉，從頭開始。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
@@ -385,6 +387,7 @@ private fun AboutPage() {
             Credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
             Credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
             Credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
+            Credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
             Credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（Copyright 2022-2024 LXGW、2020 The Klee Project Authors）；芫荽：Iansui（Copyright 2025 The Iansui Project Authors）。都是 SIL Open Font License 1.1。")
             Credit(tr("輸入法拆碼"), "Rime 倉頡、五筆（rime-cangjie、rime-wubi）")
             Credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》的拼音系統（經作者同意使用）")

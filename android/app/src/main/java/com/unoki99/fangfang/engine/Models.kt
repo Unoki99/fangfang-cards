@@ -218,12 +218,17 @@ class Progress(
     val week: HashMap<String, Double> = HashMap(),
     /** when this week started, for 台語 ("tw") and 華語 ("zh") (negative = ended) */
     val weekStart: HashMap<String, Double> = HashMap(),
+    /** 複習: key -> [next review time, interval (days), ease, reviews, lapses, last answered] */
+    val srs: HashMap<String, MutableList<Double>> = HashMap(),
+    /** 練習統計: "台語|2026-11-08" -> [right, wrong, learned] */
+    val log: HashMap<String, MutableList<Int>> = HashMap(),
 ) {
     fun copy() = Progress(HashMap(status), HashMap(added), HashMap(streak), HashMap(saved), HashMap(own),
-        HashMap(senses), HashMap(week), HashMap(weekStart))
+        HashMap(senses), HashMap(week), HashMap(weekStart),
+        HashMap(srs.mapValues { it.value.toMutableList() }), HashMap(log.mapValues { it.value.toMutableList() }))
 
     fun toJson(): String = JWriter.any(mapOf("status" to status, "added" to added, "streak" to streak, "saved" to saved, "own" to own,
-        "senses" to senses, "week" to week, "weekStart" to weekStart))
+        "senses" to senses, "week" to week, "weekStart" to weekStart, "srs" to srs, "log" to log))
 
     companion object {
         fun parse(text: String): Progress {
@@ -239,6 +244,8 @@ class Progress(
                     "senses" -> j.obj { w -> p.senses[w] = j.nextDouble() }
                     "week" -> j.obj { w -> p.week[w] = j.nextDouble() }
                     "weekStart" -> j.obj { w -> p.weekStart[w] = j.nextDouble() }
+                    "srs" -> j.obj { w -> val l = ArrayList<Double>(); j.arr { l.add(j.nextDouble()) }; p.srs[w] = l }
+                    "log" -> j.obj { w -> val l = ArrayList<Int>(); j.arr { l.add(j.nextInt()) }; p.log[w] = l }
                     else -> j.skip()
                 }
             }
@@ -310,3 +317,22 @@ fun String.cps(): List<String> {
 val String.cpCount: Int get() = codePointCount(0, length)
 
 fun String.firstCp(): Int = if (isEmpty()) 0 else codePointAt(0)
+
+/** the numbers of spaced review: a word learned in practice comes back after 1 day, then 3, then each time about
+ *  2.5× longer ("ease"; a little less each time it's forgotten, never under 1.3). The way of SM-2:
+ *  Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com */
+object SRS {
+    const val EASE = 2.5
+    const val MIN_EASE = 1.3
+    /** (at most about a year and a half between two reviews) */
+    const val LONGEST = 540.0
+    /** 記熟了: back in 3 weeks or more */
+    const val MATURE_DAYS = 21.0
+    fun days(d: Double) = d * 86_400
+    /** "台語|2026-11-08" (the day where the device is) */
+    fun dayKey(lang: String, date: java.util.Date): String {
+        val c = java.util.Calendar.getInstance().apply { time = date }
+        return String.format(java.util.Locale.US, "%s|%04d-%02d-%02d", lang, c.get(java.util.Calendar.YEAR),
+            c.get(java.util.Calendar.MONTH) + 1, c.get(java.util.Calendar.DAY_OF_MONTH))
+    }
+}

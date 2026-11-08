@@ -119,9 +119,26 @@ Write-Host "（用的 Java：$Java）"
 # (their licences don't allow sharing the made files; the Apple and Android versions use the same files)
 $Assets = Join-Path $A "app\src\main\assets"
 New-Item -ItemType Directory -Force -Path $Assets | Out-Null
-$need = @("dict.json", "cards.json", "zh.json") | Where-Object { -not (Test-Path (Join-Path $Assets $_)) }
+$Apd = Join-Path $Here "apple\FangfangCards"
+# the data made once is kept in %LOCALAPPDATA%\FangfangCards\data, so a new download of the project, put over the
+# old one, doesn't have to make it again
+$Keep = Join-Path $env:LOCALAPPDATA "FangfangCards\data"
+New-Item -ItemType Directory -Force -Path $Keep | Out-Null
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json")) {
+    $k = Join-Path $Keep $f
+    if ((Test-Path $k) -and -not (Test-Path (Join-Path $Assets $f))) { Copy-Item $k (Join-Path $Assets $f) -Force }
+}
+# (what's made already isn't made again: the files in the app's assets count too)
+New-Item -ItemType Directory -Force -Path $Apd | Out-Null
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json")) {
+    $as = Join-Path $Assets $f
+    if ((Test-Path $as) -and -not (Test-Path (Join-Path $Apd $f))) { Copy-Item $as (Join-Path $Apd $f) -Force }
+}
+# (粵語 already in the project, when it's on GitHub)
+$yue = Join-Path $Apd "yue.json"
+if ((Test-Path $yue) -and -not (Test-Path (Join-Path $Assets "yue.json"))) { Copy-Item $yue (Join-Path $Assets "yue.json") -Force }
+$need = @("dict.json", "cards.json", "zh.json", "yue.json") | Where-Object { -not (Test-Path (Join-Path $Assets $_)) }
 if ($need) {
-    $Apd = Join-Path $Here "apple\FangfangCards"
     $Tools = Join-Path $Here "apple\tools"
     if (-not (Test-Path $Tools)) { Fail "找不到 apple\tools（建立詞典資料要用）。請用完整的 fangfang-cards-main 資料夾。" }
 
@@ -199,9 +216,36 @@ if ($need) {
             if ($LASTEXITCODE -ne 0) { Write-Host "（沒辦法建立輸入法拆碼，先跳過）" }
         } else { Write-Host "（沒辦法下載輸入法碼表，先跳過）" }
     }
+    # 粵語: CC-CEDICT + CC-Canto, rime-cantonese, 開放粵語字典, and Wiktionary (kaikki.org) when its file is in
+    # Downloads or on the Desktop
+    if (-not (Test-Path (Join-Path $Apd "yue.json")) -and -not (Test-Path (Join-Path $Assets "yue.json"))) {
+        Write-Host "下載粵語資料（CC-CEDICT、CC-Canto、rime-cantonese、開放粵語字典）…"
+        $ok = $true
+        foreach ($pair in @(
+            @("$raw/cschiller/zhongwen/main/data/cedict_ts.u8", "cedict_ts.u8"),
+            @("$raw/aaronhktan/jyut-dict/main/src/dictionaries/cedict/data/CC-CANTO.txt", "CC-CANTO.txt"),
+            @("$raw/aaronhktan/jyut-dict/main/src/dictionaries/cedict/data/READINGS.txt", "READINGS.txt"),
+            @("$raw/rime/rime-cantonese/main/jyut6ping3.words.dict.yaml", "jyut6ping3.words.dict.yaml"),
+            @("$raw/rime/rime-cantonese/main/jyut6ping3.chars.dict.yaml", "jyut6ping3.chars.dict.yaml"),
+            @("$raw/rime/rime-cantonese/main/essay-cantonese.txt", "essay-cantonese.txt"),
+            @("$raw/kfcd/yyzd/master/dist/tsv/%E7%B9%81%E9%AB%94/%E7%B2%B5%E8%AA%9E%E5%AD%97%E5%85%B8_%28%E7%B2%B5%E6%8B%BC%29.txt", "yyzd.txt"))) {
+            $got = Get-File $pair[0] $pair[1] -Optional
+            if ($got -eq "-") { $ok = $false }
+        }
+        $kk = "-"
+        foreach ($c in @((Join-Path $env:USERPROFILE "Downloads\kaikki.org-dictionary-Chinese.jsonl"), (Join-Path $env:USERPROFILE "Desktop\kaikki.org-dictionary-Chinese.jsonl"))) {
+            if ($kk -eq "-" -and (Test-Path $c)) { $kk = $c }
+        }
+        if ($kk -eq "-") { Write-Host "（找不到維基詞典的檔案 kaikki.org-dictionary-Chinese.jsonl：粵語先不用它，沒有例句和華語對照）" }
+        if ($ok) {
+            Write-Host "整理粵語資料中…（有維基詞典的話要幾分鐘）"
+            & $Py @PyArgs "build_cantonese.py" $Tmp (Join-Path $Apd "yue.json") $kk *> $PyLog
+            if ($LASTEXITCODE -ne 0) { Get-Content $PyLog -Tail 8 | Write-Host; Write-Host "（沒辦法建立粵語資料，先跳過）" }
+        } else { Write-Host "（下載不到粵語資料，先跳過：App 裡的粵語會打不開）" }
+    }
     Pop-Location
     Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
-    foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json")) {
+    foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json")) {
         $src = Join-Path $Apd $f
         if (Test-Path $src) { Copy-Item $src (Join-Path $Assets $f) -Force }
     }
@@ -209,9 +253,16 @@ if ($need) {
         if (-not (Test-Path (Join-Path $Assets $f))) { Fail "詞典資料沒有建好（少了 $f）。" }
     }
 }
-# 粵語 (yue.json: in the project when it's on GitHub, or made on a Mac with build-data.sh yue)
-$yue = Join-Path $Apd "yue.json"
-if ((Test-Path $yue) -and -not (Test-Path (Join-Path $Assets "yue.json"))) { Copy-Item $yue (Join-Path $Assets "yue.json") -Force }
+# keep what was made (for the next time)
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json")) {
+    $src = Join-Path $Assets $f
+    if ((Test-Path $src) -and -not (Test-Path (Join-Path $Keep $f))) { Copy-Item $src (Join-Path $Keep $f) -Force }
+}
+
+# copies of source files left by putting a new download over the old folder ("Dict 2.kt", "Dict - Copy.kt",
+# "Dict (1).kt"): the same code twice, which the build can't tell apart
+Get-ChildItem -Path (Join-Path $A "app\src") -Recurse -File -Include "* 2.kt", "* - Copy.kt", "* (1).kt", "* - Kopia.kt" -ErrorAction SilentlyContinue |
+    ForEach-Object { Write-Host "（刪掉多出來的複本：$($_.Name)）"; Remove-Item $_.FullName -Force }
 
 # ---- build ----
 Write-Host "建置 Android 版…（第一次要下載不少東西，可能 5–10 分鐘）"

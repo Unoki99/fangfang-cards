@@ -148,7 +148,7 @@ fun MemoryScreen(stars: StarField) {
                         for (c in cards) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                             Txt(c.h, sz(18f, FontWeight.SemiBold), T.glyph)
                             Txt(Store.cardRom(c, rom, place).annotated(), lat(15f), T.greenInk)
-                            Txt(c.d.firstOrNull()?.t ?: "", ff(FF.Footnote), T.muted, maxLines = 1)
+                            Txt(Store.practiceMeaning(c).second, ff(FF.Footnote), T.muted, maxLines = 1)
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {

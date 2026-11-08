@@ -130,6 +130,11 @@ struct Progress: Codable {
     var week: [String: Double] = [:]
     /// when this week started, for 台語 ("tw") and 華語 ("zh") (0 = no week going)
     var weekStart: [String: Double] = [:]
+    /// 複習: the words learned in practice, when they come back. key -> [due (time), interval (days), ease,
+    /// times reviewed, times forgotten, last answered (time)]. (Words swiped to 熟悉 have none: they don't come back.)
+    var srs: [String: [Double]] = [:]
+    /// 練習統計: answers per day, "台語|2026-11-08" -> [right, wrong, learned]
+    var log: [String: [Int]] = [:]
 
     init() {}
     init(from decoder: Decoder) throws {
@@ -142,6 +147,8 @@ struct Progress: Codable {
         week = try c.decodeIfPresent([String: Double].self, forKey: .week) ?? [:]
         weekStart = try c.decodeIfPresent([String: Double].self, forKey: .weekStart) ?? [:]
         own = try c.decodeIfPresent([String: Double].self, forKey: .own) ?? [:]
+        srs = try c.decodeIfPresent([String: [Double]].self, forKey: .srs) ?? [:]
+        log = try c.decodeIfPresent([String: [Int]].self, forKey: .log) ?? [:]
     }
 }
 

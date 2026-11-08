@@ -646,25 +646,99 @@ object Store {
         progress.status[c.k] = 0
         progress.added[c.k] = now
         progress.streak.remove(c.k)
+        progress.srs.remove(c.k)
         changed(); save()
     }
 
-    /** study answer; returns true when the word has been learned (moved to 熟悉) */
+    /** study answer; returns true when the word has been learned (moved to 熟悉) or a review was answered right.
+     *  A word learned in practice comes back after 1 day, then 3, then each time about 2.5× longer (SM-2:
+     *  Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com); answered wrong it goes back to 不熟. */
     fun answer(c: Card, correct: Boolean, goal: Int): Boolean {
-        if (progress.status[c.k] != 2) return false
-        if (correct) {
-            val s = (progress.streak[c.k] ?: 0) + 1
-            if (s >= goal) {
-                progress.status[c.k] = 1
-                progress.added[c.k] = now
-                progress.streak.remove(c.k)
-                changed(); save()
-                return true
+        val st = progress.status[c.k]
+        val review = st == 1 && isDue(c.k)
+        if (st != 2 && !review) return false
+        val t = now
+        val s = progress.srs[c.k]?.toMutableList() ?: mutableListOf(0.0, 0.0, SRS.EASE, 0.0, 0.0, 0.0)
+        while (s.size < 6) s.add(0.0)
+        var done = false
+        if (review) {
+            if (correct) {
+                val iv = if (s[1] < 1) 1.0 else if (s[1] < 2) 3.0 else Math.round(s[1] * s[2]).toDouble()
+                s[1] = minOf(iv, SRS.LONGEST); s[3] += 1
+                s[0] = t + SRS.days(s[1])
+                done = true
+            } else {
+                // forgotten: back to 不熟 (learned again from the start)
+                s[2] = maxOf(SRS.MIN_EASE, s[2] - 0.2); s[4] += 1; s[1] = 0.0; s[0] = 0.0
+                progress.status[c.k] = 2; progress.added[c.k] = t; progress.streak[c.k] = 0
             }
-            progress.streak[c.k] = s
+        } else if (correct) {
+            val n = (progress.streak[c.k] ?: 0) + 1
+            if (n >= goal) {
+                // learned: to 熟悉, back for review tomorrow
+                progress.status[c.k] = 1; progress.added[c.k] = t; progress.streak.remove(c.k)
+                s[1] = 1.0; s[3] += 1; s[0] = t + SRS.days(1.0)
+                done = true
+            } else progress.streak[c.k] = n
         } else progress.streak[c.k] = 0
+        s[5] = t
+        progress.srs[c.k] = s
+        // 練習統計
+        val day = SRS.dayKey(Lang.names[lang], java.util.Date())
+        val l = progress.log[day]?.toMutableList() ?: mutableListOf(0, 0, 0)
+        while (l.size < 3) l.add(0)
+        if (correct) l[0] += 1 else l[1] += 1
+        if (done && !review) l[2] += 1
+        progress.log[day] = l
         changed(); save()
-        return false
+        return done
+    }
+
+    /** a word learned in practice whose review time has come */
+    fun isDue(k: String, at: Double = now): Boolean {
+        val s = progress.srs[k] ?: return false
+        return s.size >= 2 && s[1] >= 1 && s[0] <= at
+    }
+    /** the days until a word comes back (null: not scheduled) */
+    fun reviewDays(c: Card): Int? {
+        if (progress.status[c.k] != 1) return null
+        val s = progress.srs[c.k] ?: return null
+        return if (s.size >= 2 && s[1] >= 1) s[1].toInt() else null
+    }
+    /** the words of the shown language that are due for review now (in 練習範圍) */
+    val dueCards: List<Card> get() {
+        rev
+        val t0 = now
+        val t = practiceTopic
+        val scoped = t >= 0 && practiceTopics.any { it.id == t }
+        return progress.srs.mapNotNull { (k, s) ->
+            if (s.size < 2 || s[1] < 1 || s[0] > t0 || progress.status[k] != 1 || Lang.kind(k) != lang) return@mapNotNull null
+            val c = cardFor(k) ?: return@mapNotNull null
+            if (scoped && !inTopic(c, t)) null else c
+        }
+    }
+    /** 開始練習 / 例句填空: the words due for review first, then the 不熟 words */
+    val studyCards: List<Card> get() = dueCards.shuffled() + practiceCards
+
+    // MARK: what practice shows
+
+    /** 華語 with 主要解釋 = 英文 (設定): a card's English meanings (null: the 華語 ones; 粵語's are English already) */
+    fun englishMeanings(c: Card): List<String>? {
+        if (!Prefs.zhEnglish.value || Lang.kind(c.k) != 1) return null
+        val d = zh ?: return null
+        if (d.isYue) return null
+        val e = Lang.charOf(c.k)?.let { d.entryForChar(it, "") } ?: d.entry(c.k)
+        return e?.enList?.takeIf { it.isNotEmpty() }
+    }
+    /** the meaning practice shows for a card: the English (the first two) when that's chosen, or the first meaning */
+    fun practiceMeaning(c: Card): Pair<String, String> {
+        englishMeanings(c)?.let { return "" to it.take(2).joinToString("; ") }
+        return (c.d.firstOrNull()?.p ?: "") to c.firstMeaning
+    }
+    /** 寫字題: a word of 1–4 characters, all of them 漢字 */
+    fun canWrite(h: String): Boolean {
+        val cps = h.codePoints().toArray()
+        return cps.size in 1..4 && cps.all { Character.isIdeographic(it) }
     }
 
     /** the place's other way(s) of saying a card's word: (羅馬字, 方音) */
@@ -978,6 +1052,17 @@ object Store {
             if ((t > 0) != isOwn(k)) { n++; ownChangedInMerge = true }
             progress.own[k] = t
         }
+        // 複習: the one answered last wins; 練習統計: the bigger count of each day (the same answers can be in both)
+        if (from == 0) (obj["srs"] as? Map<String, Any?>)?.forEach { (k, v) ->
+            val l = (v as? List<Any?>)?.mapNotNull { (it as? Number)?.toDouble() } ?: return@forEach
+            val m = progress.srs[k]
+            if (l.size >= 6 && l[5] > (if (m != null && m.size >= 6) m[5] else -1.0)) progress.srs[k] = l.toMutableList()
+        }
+        if (from == 0) (obj["log"] as? Map<String, Any?>)?.forEach { (d, v) ->
+            val l = (v as? List<Any?>)?.mapNotNull { (it as? Number)?.toInt() } ?: return@forEach
+            val m = progress.log[d] ?: emptyList<Int>()
+            progress.log[d] = MutableList(maxOf(l.size, m.size)) { maxOf(l.getOrElse(it) { 0 }, m.getOrElse(it) { 0 }) }
+        }
         for ((k, s) in status) {
             if (!isWord(k)) continue
             val theirs = added[k] ?: 0.0; val mine = progress.added[k] ?: -1.0
@@ -1028,7 +1113,7 @@ object Store {
         return JWriter.any(mapOf("app" to "fangfang-cards", "version" to 1, "exported" to exported,
             "status" to progress.status, "added" to progress.added, "streak" to progress.streak,
             "saved" to progress.saved, "own" to progress.own, "senses" to progress.senses,
-            "week" to progress.week, "weekStart" to progress.weekStart), pretty = true)
+            "week" to progress.week, "weekStart" to progress.weekStart, "srs" to progress.srs, "log" to progress.log), pretty = true)
     }
 
     @Suppress("UNCHECKED_CAST")

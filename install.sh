@@ -123,6 +123,8 @@ if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASS
   done
 fi
 
+# copies of source files left by putting a new download over the old folder ("Dict 2.kt"): the same code twice
+find "$A/app/src" -type f \( -name "* 2.kt" -o -name "* - Copy.kt" -o -name "* (1).kt" \) -print -delete 2>/dev/null | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
 echo "建置 Android 版…（第一次要下載不少東西，可能 5–10 分鐘）"
 (cd "$A" && bash ./gradlew assembleDebug --console=plain) > "$LOG" 2>&1 < /dev/null
 APK="$A/app/build/outputs/apk/debug/app-debug.apk"

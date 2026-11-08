@@ -255,7 +255,7 @@ struct ToneView: View {
                     } else {
                         Text(tr("第 \(t) 聲（\(TONE_NAMES[t] ?? "")）\(hint(t))")).ffFont(.subheadline).foregroundStyle(T.glyph)
                     }
-                    Text(q.card.firstMeaning).ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(store.practiceMeaning(q.card).t).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
             Button {

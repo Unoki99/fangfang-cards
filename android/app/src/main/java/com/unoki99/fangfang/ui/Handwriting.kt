@@ -804,3 +804,136 @@ private fun twCharSets(): Pair<List<String>, List<String>> {
     }
     return unknown.filter { it !in known } to known.filter { it !in unknown }
 }
+
+// MARK: - 寫字題: writing a whole word in practice (開始練習, 本週學習)
+
+/** the writing, drawn into a square of `side` px (the writing was done in a square of `from` px) */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawInk(strokes: List<InkStroke>, from: Float, period: Float, rainbow: Boolean, ink: Color) {
+    if (from <= 0f) return
+    val k = size.width / from
+    var dist = 0f
+    for (s in strokes) {
+        if (s.pts.size == 1) { drawCircle(if (rainbow) HandInk.color(dist, period) else ink, s.ws[0] / 2 * k, s.pts[0] * k); continue }
+        for (i in 1 until s.pts.size) {
+            val a = s.pts[i - 1]; val b = s.pts[i]
+            val len = (b - a).getDistance()
+            drawLine(if (rainbow) HandInk.color(dist + len / 2, period) else ink, a * k, b * k, (s.ws[i - 1] + s.ws[i]) / 2 * k, cap = StrokeCap.Round)
+            dist += len
+        }
+    }
+}
+
+/** a square (米字格) to write in; the writing goes into `strokes` (side: the square's size in px) */
+@Composable
+private fun WordPad(strokes: androidx.compose.runtime.snapshots.SnapshotStateList<InkStroke>, modifier: Modifier, onSide: (Float) -> Unit) {
+    val rainbow = Prefs.handRainbow.value
+    val sensitivity = Prefs.handPressure.value
+    val ink = HandInk.solid
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val penWidth = with(density) { Prefs.handWidth.value.dp.toPx() }
+    val period = with(density) { 420.dp.toPx() }
+    val edge = T.fnEdge
+    Box(modifier.clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.75f)).border(1.5.dp, T.fnEdge, RoundedCornerShape(18.dp))) {
+        Canvas(Modifier.fillMaxSize()
+            .onSizeChanged { onSide(it.width.toFloat()) }
+            .pointerInput(strokes, sensitivity, penWidth) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    val stylus = down.type == PointerType.Stylus
+                    down.consume()
+                    strokes.add(InkStroke(listOf(down.position), listOf(HandInk.width(penWidth, down.pressure, stylus, sensitivity))))
+                    while (true) {
+                        val e = awaitPointerEvent()
+                        val c = e.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!c.pressed) break
+                        c.consume()
+                        if (strokes.isNotEmpty()) strokes[strokes.size - 1] = strokes.last().add(c.position, HandInk.width(penWidth, c.pressure, stylus, sensitivity), c.uptimeMillis)
+                    }
+                }
+            }) {
+            val w = size.width; val h = size.height
+            val dash = PathEffect.dashPathEffect(floatArrayOf(6 * density.density, 6 * density.density))
+            drawLine(edge, Offset(w / 2, 0f), Offset(w / 2, h), density.density, pathEffect = dash)
+            drawLine(edge, Offset(0f, h / 2), Offset(w, h / 2), density.density, pathEffect = dash)
+            drawLine(edge, Offset(0f, 0f), Offset(w, h), density.density, pathEffect = dash)
+            drawLine(edge, Offset(w, 0f), Offset(0f, h), density.density, pathEffect = dash)
+            drawInk(strokes.toList(), w, period, rainbow, ink)
+        }
+    }
+}
+
+/** the word's characters in squares to write in: on a tablet all of them side by side; on a phone one at a time in a
+ *  big square, each written one kept in a small square above (tap one to write it again). 對答案 shows the right
+ *  characters faintly over the writing, and you say whether you got it.
+ *  answered: the question has been graded (only the small squares stay, with the answer in them) */
+@Composable
+fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = Modifier, grade: (Boolean) -> Unit) {
+    val drawings = remember(chars) { chars.map { mutableStateListOf<InkStroke>() } }
+    var cur by remember(chars) { mutableIntStateOf(0) }
+    var checked by remember(chars) { mutableStateOf(false) }
+    var side by remember { mutableFloatStateOf(0f) }
+    val show = checked || answered
+    val rainbow = Prefs.handRainbow.value
+    val ink = HandInk.solid
+    val period = with(androidx.compose.ui.platform.LocalDensity.current) { 420.dp.toPx() }
+    BoxWithConstraints(modifier) {
+    // a tablet: every character gets a big square at once
+    val wide = maxWidth >= 700.dp
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        if (!show && wide) {
+            val n = chars.size; val gap = 16.dp
+            val s = minOf(420.dp, (maxWidth - gap * (n - 1)) / n, maxHeight - 130.dp).coerceAtLeast(120.dp)
+            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                for (i in chars.indices) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    WordPad(drawings[i], Modifier.size(s)) { side = it }
+                    Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Txt(tr("第 {0} 個字", i + 1), ff(FF.Caption), T.muted)
+                        if (drawings[i].isNotEmpty()) Icon(Icons.Filled.Clear, tr("清掉"), tint = T.btnInk,
+                            modifier = Modifier.size(18.dp).clickable { drawings[i].clear() })
+                    }
+                }
+            }
+            Row(Modifier.widthIn(max = 560.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SoftButton(onClick = { drawings.forEach { it.clear() } }, Modifier.weight(1f)) {
+                    IconLabel(Icons.Filled.Clear, if (n > 1) tr("全部清掉") else tr("清掉"), ff(FF.Subheadline))
+                }
+                ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline)) }
+            }
+            return@Column
+        }
+        // the small squares: what's been written of each character (and, after 對答案, the character)
+        val s = if (show) (if (wide) 130.dp else 86.dp) else 58.dp
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            for ((i, ch) in chars.withIndex()) {
+                val on = !show && i == cur
+                Box(Modifier.size(s).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.75f))
+                    .border(if (on) 2.5.dp else 1.dp, if (on) T.btnEdge else T.fnEdge, RoundedCornerShape(12.dp))
+                    .clickable(enabled = !show && i != cur) { cur = i }, contentAlignment = Alignment.Center) {
+                    if (show) Text(ch, style = sz(s.value * 0.62f).copy(fontFamily = Kai.family), color = T.btnInk.copy(alpha = 0.4f))
+                    val list = drawings[i]
+                    if (list.isNotEmpty()) Canvas(Modifier.fillMaxSize()) { drawInk(list.toList(), side, period, rainbow, ink) }
+                }
+            }
+        }
+        if (!show) {
+            // the big square for the character being written
+            val padS = minOf(420.dp, maxWidth, maxHeight - 140.dp).coerceAtLeast(160.dp)
+            key(cur) { WordPad(drawings[cur], Modifier.size(padS)) { side = it } }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SoftButton(onClick = { drawings[cur].clear() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Clear, tr("清掉"), ff(FF.Subheadline)) }
+                if (cur + 1 < chars.size) ProminentButton(onClick = { cur++ }, Modifier.weight(1f)) {
+                    IconLabel(Icons.Filled.ChevronRight, tr("下一個字"), ff(FF.Subheadline))
+                } else ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) {
+                    IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline))
+                }
+            }
+        } else if (!answered) {
+            Txt(tr("淡淡的字是正確的寫法，和你寫的比一比。"), ff(FF.Footnote), T.muted)
+            Row(Modifier.widthIn(max = if (wide) 560.dp else 2000.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SoftButton(onClick = { grade(false) }, Modifier.weight(1f).heightIn(min = 44.dp)) { IconLabel(Icons.Filled.Close, tr("寫錯了"), ff(FF.Subheadline)) }
+                ProminentButton(onClick = { grade(true) }, Modifier.weight(1f).heightIn(min = 44.dp)) { IconLabel(Icons.Filled.Check, tr("寫對了"), ff(FF.Subheadline)) }
+            }
+        }
+    }
+    }
+}

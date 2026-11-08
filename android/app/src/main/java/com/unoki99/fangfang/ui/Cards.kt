@@ -460,6 +460,8 @@ fun UnknownTab() {
     var query by remember { mutableStateOf("") }
     // the words of the 練習範圍 (all of 不熟 when none is chosen)
     val all = Store.practiceCards
+    // the words learned in practice whose review time has come (they're asked first in 開始練習 / 例句填空)
+    val due = Store.dueCards
     val list = all.filter { matches(it, query) }
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("不熟"))
@@ -469,9 +471,10 @@ fun UnknownTab() {
                     WeekPanel()
                     class PT(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val enabled: Boolean, val p: Practice)
                     PracticeScopeMenu()
+                    ReviewBar(due.size) { UI.practice = Practice.STATS }
                     val tiles = listOfNotNull(
-                        PT(tr("開始練習"), Icons.Filled.School, all.isNotEmpty(), Practice.STUDY),
-                        PT(tr("例句填空"), Icons.Filled.Rule, all.any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
+                        PT(tr("開始練習"), Icons.Filled.School, all.isNotEmpty() || due.isNotEmpty(), Practice.STUDY),
+                        PT(tr("例句填空"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
                         PT(tr("排句子"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
                         PT(tr("看字排讀音"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
                         PT(tr("聲調練習"), Icons.Filled.GraphicEq, true, Practice.TONES),
@@ -585,6 +588,7 @@ private fun PracticeHelp(goal: Int, close: () -> Unit) {
         add(tr("本週學習") to tr("從不熟的詞選這個星期要學的（或點詞旁邊的月曆），一週後做期末測驗；答錯的詞可以留到下一週。"))
         add(tr("開始練習") to tr("各種題目混在一起練。連續答對 {0} 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。", goal))
         add(tr("例句填空") to tr("只做例句填空題。"))
+        add(tr("寫字題") to tr("開始練習和本週學習裡也有寫字題：看意思和讀音，一個字一個字把整個詞寫出來，按「對答案」以後自己說寫對了沒有。可以在「設定 → 卡片與練習」關掉。"))
         add(tr("排句子") to tr("例句被打亂了，照華語的意思把詞排回去。"))
         add(tr("看字排讀音") to tr("只看漢字，把讀音照順序排。"))
         add(tr("聲調練習") to tr("聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。"))

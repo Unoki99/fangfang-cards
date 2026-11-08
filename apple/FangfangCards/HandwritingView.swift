@@ -812,6 +812,8 @@ struct PenSettings: View {
 /// the ink is drawn a little later on top of it: first as a line following the pen, then PencilKit's own ink).
 private struct WritingPad: UIViewRepresentable {
     let clearCount: Int
+    /// what's on the pad when it's cleared (寫字題: going back to a character already written)
+    var initial: PKDrawing? = nil
     let changed: (PKDrawing) -> Void
     @AppStorage(HandInk.pressureKey) private var level = 1
     @AppStorage(HandInk.sizeKey) private var size = HandInk.sizeDefault
@@ -834,7 +836,8 @@ private struct WritingPad: UIViewRepresentable {
         c.cleared = clearCount
         c.level = level; c.size = size; c.rainbow = rainbow; c.delay = delay; c.ink = inkColor
         host.later.delay = delay
-        v.tool = c.tool(stroke: 0)
+        if let d = initial, !d.strokes.isEmpty { v.drawing = delay > 0 ? c.hidden(d) : d }
+        v.tool = c.tool(stroke: v.drawing.strokes.count)
         // follows the pen (for 延遲), without getting in PencilKit's way
         let follow = PenFollower(target: nil, action: nil)
         follow.cancelsTouchesInView = false
@@ -854,8 +857,11 @@ private struct WritingPad: UIViewRepresentable {
         let v = host.canvas
         if c.cleared != clearCount {
             c.cleared = clearCount
-            v.drawing = PKDrawing()
+            let d = initial ?? PKDrawing()
+            v.drawing = c.delay > 0 ? c.hidden(d) : d
             host.later.reset()
+            if c.delay > 0 && !d.strokes.isEmpty { host.later.show(c.shown(d), upTo: d.strokes.count) }
+            v.tool = c.tool(stroke: d.strokes.count)
         }
         if c.level != level || c.rainbow != rainbow || c.size != size || c.delay != delay || c.ink != inkColor {
             let delayChanged = (c.delay > 0) != (delay > 0)
@@ -1412,5 +1418,198 @@ extension View {
                 .background(Capsule().fill(.white.opacity(selected ? 0.18 : 0)))
                 .overlay(Capsule().strokeBorder(.white.opacity(selected ? 0.7 : 0.15), lineWidth: selected ? 1.5 : 1))
         }
+    }
+}
+
+// MARK: - 寫字題: writing a whole word in practice (開始練習, 本週學習)
+
+enum WordWrite {
+    /// 設定 → 卡片與練習 → 寫字題
+    static let key = "practiceWrite"
+    static var on: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+}
+
+/// the word's characters in squares to write in: on an iPad all of them side by side; on a phone one at a time in a
+/// big square, each written one kept in a small square above (tap one to write it again). 對答案 shows the right
+/// characters faintly over the writing, and you say whether you got it
+struct WordWriteArea: View {
+    let chars: [String]
+    /// the question has been graded (only the small squares stay, with the answer in them)
+    let answered: Bool
+    let grade: (Bool) -> Void
+    @State private var drawings: [PKDrawing]
+    /// changes when a square is cleared (清掉)
+    @State private var clears: [Int]
+    @State private var cur = 0
+    @State private var checked = false
+    @State private var side: CGFloat = 0
+    @State private var kaiti = Kaiti.ready
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    init(chars: [String], answered: Bool, grade: @escaping (Bool) -> Void) {
+        self.chars = chars; self.answered = answered; self.grade = grade
+        _drawings = State(initialValue: Array(repeating: PKDrawing(), count: chars.count))
+        _clears = State(initialValue: Array(repeating: 0, count: chars.count))
+    }
+
+    private var showAnswer: Bool { checked || answered }
+    /// an iPad (not a narrow split view): every character gets a big square at once
+    private var wide: Bool { hSize == .regular }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            if !showAnswer {
+                if wide {
+                    allPads
+                    HStack(spacing: 12) {
+                        Button { for i in chars.indices { clear(i) } } label: {
+                            Label(chars.count > 1 ? trs("全部清掉") : trs("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
+                        }
+                        .softButton()
+                        checkButton
+                    }
+                    .frame(maxWidth: 560)
+                } else {
+                    slots
+                    pad(cur).id(cur)
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: 420, maxHeight: .infinity)
+                        .frame(maxWidth: .infinity)
+                    HStack(spacing: 12) {
+                        Button { clear(cur) } label: {
+                            Label(tr("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
+                        }
+                        .softButton()
+                        if cur + 1 < chars.count {
+                            Button { cur += 1 } label: {
+                                Label(tr("下一個字"), systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 40)
+                            }
+                            .prominentButton(T.btnEdge)
+                        } else {
+                            checkButton
+                        }
+                    }
+                }
+            } else {
+                slots
+                if !answered {
+                    Text(tr("淡淡的字是正確的寫法，和你寫的比一比。")).ffFont(.footnote).foregroundStyle(T.muted)
+                        .frame(maxWidth: .infinity, alignment: wide ? .center : .leading)
+                    HStack(spacing: 12) {
+                        Button { grade(false) } label: {
+                            Label(tr("寫錯了"), systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .softButton()
+                        Button { grade(true) } label: {
+                            Label(tr("寫對了"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .prominentButton(T.btnEdge)
+                    }
+                    .frame(maxWidth: wide ? 560 : .infinity)
+                }
+            }
+        }
+        .onAppear {
+            if !Kaiti.ready { Kaiti.prepare { ok in kaiti = ok } }
+        }
+    }
+
+    private var checkButton: some View {
+        Button { withAnimation(.snappy) { checked = true } } label: {
+            Label(tr("對答案"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 40)
+        }
+        .prominentButton(T.btnEdge)
+    }
+
+    /// iPad: a big square for each character, side by side (as big as the space lets them be)
+    private var allPads: some View {
+        GeometryReader { g in
+            let n = CGFloat(chars.count), gap: CGFloat = 16
+            let s = max(120, min(420, (g.size.width - gap * (n - 1)) / n, g.size.height - 24))
+            HStack(spacing: gap) {
+                ForEach(chars.indices, id: \.self) { i in
+                    VStack(spacing: 6) {
+                        pad(i).frame(width: s, height: s)
+                        HStack(spacing: 8) {
+                            Text(tr("第 \(i + 1) 個字")).ffFont(.caption).foregroundStyle(T.muted)
+                            if !drawings[i].strokes.isEmpty {
+                                Button { clear(i) } label: { Image(systemName: "eraser").ffFont(.caption) }
+                                    .buttonStyle(.plain).foregroundStyle(T.btnInk)
+                                    .accessibilityLabel(tr("清掉"))
+                            }
+                        }
+                        .frame(height: 18)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    /// the small squares: what's been written of each character (and, after 對答案, the character)
+    private var slots: some View {
+        let s: CGFloat = showAnswer ? (wide ? 130 : 86) : 58
+        return HStack(spacing: 10) {
+            ForEach(chars.indices, id: \.self) { i in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.75))
+                    if showAnswer {
+                        Text(chars[i]).font(Kaiti.swiftUI(s * 0.78)).foregroundStyle(T.btnInk.opacity(0.4))
+                            .id("\(kaiti)\(fontStyle)")
+                    }
+                    if side > 0 && !drawings[i].strokes.isEmpty {
+                        Image(uiImage: picture(drawings[i])).resizable().scaledToFit()
+                    }
+                }
+                .frame(width: s, height: s)
+                .overlay(RoundedRectangle(cornerRadius: 12)
+                    .stroke(!showAnswer && i == cur ? T.btnEdge : T.fnEdge, lineWidth: !showAnswer && i == cur ? 2.5 : 1))
+                .contentShape(RoundedRectangle(cornerRadius: 12))
+                .onTapGesture { if !showAnswer && i != cur { cur = i } }
+                .accessibilityLabel(tr("第 \(i + 1) 個字"))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .animation(.snappy, value: showAnswer)
+    }
+
+    /// a square (米字格) to write character i in
+    private func pad(_ i: Int) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.75))
+            GeometryReader { g in
+                let w = g.size.width, h = g.size.height
+                Path { p in
+                    p.move(to: CGPoint(x: w / 2, y: 0)); p.addLine(to: CGPoint(x: w / 2, y: h))
+                    p.move(to: CGPoint(x: 0, y: h / 2)); p.addLine(to: CGPoint(x: w, y: h / 2))
+                    p.move(to: .zero); p.addLine(to: CGPoint(x: w, y: h))
+                    p.move(to: CGPoint(x: w, y: 0)); p.addLine(to: CGPoint(x: 0, y: h))
+                }
+                .stroke(T.fnEdge, style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
+                .onAppear { side = w }
+                .onChange(of: w) { side = w }
+            }
+            WritingPad(clearCount: clears[i], initial: drawings[i]) { d in
+                if i < drawings.count { drawings[i] = d }
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .accessibilityLabel(tr("寫字的地方"))
+    }
+
+    private func clear(_ i: Int) {
+        drawings[i] = PKDrawing()
+        clears[i] += 1
+    }
+
+    /// the writing as a picture (in the colours as written, like the pad shows them)
+    private func picture(_ d: PKDrawing) -> UIImage {
+        var img = UIImage()
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            img = d.image(from: CGRect(x: 0, y: 0, width: side, height: side), scale: 2)
+        }
+        return img
     }
 }

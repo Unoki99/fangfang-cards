@@ -6,6 +6,7 @@ enum QuizKind: CaseIterable {
     case listen          // 聽發音 → 選詞
     case fillBlank       // 例句填空
     case romanization    // 漢字 → 選讀音
+    case write           // 寫字題: 看意思和讀音 → 把詞寫出來 (自己對答案)
 }
 
 struct Question: Identifiable {
@@ -29,10 +30,16 @@ struct StudyView: View {
     @AppStorage("place") private var place = -1
     @AppStorage("goal") private var goal = 3
     @AppStorage("sessionSize") private var sessionSize = 10
+    @AppStorage(WordWrite.key) private var practiceWrite = true
+    @Environment(\.horizontalSizeClass) private var hSize
+    /// (華語's meanings in English: read so the page follows 設定)
+    @AppStorage(ZhMeaning.key) private var zhEnglish = false
 
     @State private var queue: [Question] = []
     @State private var idx = 0
     @State private var chosen: Card?
+    /// 寫字題: what you said about your writing
+    @State private var wroteRight: Bool?
     @State private var right = 0
     @State private var wrong = 0
     @State private var learned: [Card] = []
@@ -135,7 +142,7 @@ struct StudyView: View {
 
     // MARK: building a session
 
-    private func start() { begin(); saveNow() }
+    private func start() { wroteRight = nil; begin(); saveNow() }
 
     private func begin() {
         if blanksOnly { startBlanks(); return }
@@ -146,10 +153,11 @@ struct StudyView: View {
             idx = 0; chosen = nil; right = 0; wrong = 0; learned = []; retried = []
             return
         }
-        let pool = words ?? store.practiceCards
+        // (the words due for review first, then the 不熟 ones that have been answered right the fewest times)
+        let pool = words ?? store.studyCards
         let picked = pool
             .shuffled()
-            .sorted { store.streak($0) < store.streak($1) }
+            .sorted { order($0) < order($1) }
             .prefix(max(1, words != nil ? pool.count : sessionSize))
         var first: [Question] = [], second: [Question] = []
         for c in picked {
@@ -163,10 +171,10 @@ struct StudyView: View {
 
     /// 例句填空 only: one sentence per word, a second (different) sentence later in the round when there is one
     private func startBlanks() {
-        let words = store.practiceCards
+        let words = store.studyCards
             .filter { !$0.blankExamples.isEmpty }
             .shuffled()
-            .sorted { store.streak($0) < store.streak($1) }
+            .sorted { order($0) < order($1) }
             .prefix(max(1, sessionSize))
         var first: [Question] = [], second: [Question] = []
         for c in words {
@@ -186,6 +194,7 @@ struct StudyView: View {
             switch $0 {
             case .listen: return c.audio != nil
             case .fillBlank: return !c.blankExamples.isEmpty
+            case .write: return practiceWrite && Store.canWrite(c.h)
             default: return !c.d.isEmpty
             }
         }
@@ -201,6 +210,25 @@ struct StudyView: View {
 
     @ViewBuilder
     private func question(_ q: Question) -> some View {
+        if q.kind == .write {
+            // (no scrolling: the finger writes in the square)
+            VStack(alignment: .leading, spacing: 14) {
+                prompt(q)
+                WordWriteArea(chars: q.card.h.map(String.init), answered: chosen != nil) { ok in answer(q, ok: ok) }
+                    .id(q.id)
+                if let c = chosen { feedback(q, picked: c) }
+            }
+            .padding()
+            // (an iPad: room for a square for every character)
+            .frame(maxWidth: hSize == .regular ? 1100 : 640)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            choiceQuestion(q)
+        }
+    }
+
+    @ViewBuilder
+    private func choiceQuestion(_ q: Question) -> some View {
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 18) {
                 prompt(q)
@@ -226,10 +254,7 @@ struct StudyView: View {
                 switch q.kind {
                 case .meaningToWord:
                     label(store.isZh ? trs("這個意思是哪個詞？") : trs("這個意思的台語是？"))
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if let p = c.d.first?.p, !p.isEmpty { Chip(text: p) }
-                        Text(c.firstMeaning).ffFont(.title3).foregroundStyle(T.glyph)
-                    }
+                    meaningLine(c, hide: true)
                 case .wordToMeaning:
                     label(trs("這個詞是什麼意思？"))
                     HStack {
@@ -260,9 +285,33 @@ struct StudyView: View {
                 case .romanization:
                     label(trs("這個詞怎麼唸？"))
                     Text(c.h).scaledFont(60, weight: .medium).foregroundStyle(T.blueInk)
-                    Text(c.firstMeaning).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+                    Text(meaning(c).t).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
+                case .write:
+                    label(trs("寫出這個詞"))
+                    meaningLine(c, hide: true)
+                    HStack(spacing: 12) {
+                        Text(store.cardRom(c, rom, place)).latFont(24).foregroundStyle(T.greenInk)
+                        Spacer()
+                        if let a = c.audio { PlayButton(path: a, size: 40) }
+                    }
                 }
             }
+        }
+    }
+
+    /// the meaning practice shows (英文 when 華語's meanings are chosen to be English)
+    private func meaning(_ c: Card) -> (p: String, t: String) {
+        _ = zhEnglish
+        return store.practiceMeaning(c)
+    }
+
+    /// the meaning as a question: the word itself in it is hidden (～)
+    private func meaningLine(_ c: Card, hide: Bool) -> some View {
+        let m = meaning(c)
+        let t = hide && c.h.count > 1 ? m.t.replacingOccurrences(of: c.h, with: "～") : m.t
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if !m.p.isEmpty { Chip(text: m.p) }
+            Text(t).ffFont(.title3).foregroundStyle(T.glyph)
         }
     }
 
@@ -292,7 +341,7 @@ struct StudyView: View {
         return VStack(spacing: 4) {
             switch q.kind {
             case .wordToMeaning:
-                Text(o.firstMeaning).foregroundStyle(T.glyph).lineLimit(3).multilineTextAlignment(.leading)
+                Text(meaning(o).t).foregroundStyle(T.glyph).lineLimit(3).multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
             case .romanization:
                 Text(store.cardRom(o, rom, place)).latFont(22).foregroundStyle(T.greenInk)
@@ -315,10 +364,26 @@ struct StudyView: View {
         .animation(.smooth(duration: 0.25), value: answered)
     }
 
+    /// due for review: first; then the fewest right answers in a row
+    private func order(_ c: Card) -> Int { store.isDue(c.k) ? -1 : store.streak(c) }
+
     private func pick(_ o: Card, in q: Question) {
         guard chosen == nil else { return }
         chosen = o
-        let ok = o == q.card
+        record(q, ok: o == q.card)
+    }
+
+    /// 寫字題: graded by you
+    private func answer(_ q: Question, ok: Bool) {
+        guard chosen == nil else { return }
+        wroteRight = ok
+        chosen = q.card
+        record(q, ok: ok)
+    }
+
+    private func isRight(_ q: Question) -> Bool { q.kind == .write ? wroteRight == true : chosen == q.card }
+
+    private func record(_ q: Question, ok: Bool) {
         if ok { right += 1 } else { wrong += 1; if test { missed.append(q.card) } }
         if let a = q.card.audio, q.kind != .listen { Player.shared.play(a) }
         if test { _ = store.answer(q.card, correct: ok, goal: goal); saveNow(next: true); return }
@@ -337,12 +402,12 @@ struct StudyView: View {
     }
 
     private func feedback(_ q: Question, picked: Card) -> some View {
-        let ok = picked == q.card
+        let ok = isRight(q)
         let c = q.card
         return VStack(alignment: .leading, spacing: 14) {
             Panel {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(ok ? (learned.contains(c) ? trs("答對了！學會了") : trs("答對了！")) : trs("答錯了"))
+                    Text(ok ? (learned.contains(c) ? (store.reviewDays(c).map { tr("答對了！\($0) 天後再複習") } ?? trs("答對了！學會了")) : trs("答對了！")) : trs("答錯了"))
                         .ffFont(.headline).foregroundStyle(ok ? T.greenInk : T.rustInk)
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(c.h).ffFont(.title, .medium).foregroundStyle(T.blueInk)
@@ -351,11 +416,13 @@ struct StudyView: View {
                         Spacer()
                         if let a = c.audio { PlayButton(path: a, size: 34) }
                     }
-                    // 例句填空: the meaning the sentence is about; otherwise the word's first meaning
-                    let sense = q.kind == .fillBlank ? q.example.flatMap { c.meaning(of: $0) } : nil
+                    // 例句填空: the meaning the sentence is about; otherwise the word's first meaning (英文: the English)
+                    let en = store.englishMeanings(c)
+                    let sense = q.kind == .fillBlank && en == nil ? q.example.flatMap { c.meaning(of: $0) } : nil
+                    let m = meaning(c)
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if let p = sense?.p, !p.isEmpty { Chip(text: p) }
-                        Text(sense?.t ?? c.firstMeaning).foregroundStyle(T.glyph)
+                        if let p = sense?.p ?? (m.p.isEmpty ? nil : m.p), !p.isEmpty { Chip(text: p) }
+                        Text(sense?.t ?? (en.map { $0.prefix(3).joined(separator: "; ") } ?? m.t)).foregroundStyle(T.glyph)
                     }
                     if q.kind == .fillBlank, let x = q.example {
                         Text(store.exampleHan(c, x, place)).padding(.top, 4)
@@ -365,6 +432,7 @@ struct StudyView: View {
             }
             Button {
                 chosen = nil
+                wroteRight = nil
                 idx += 1
             } label: {
                 Text(idx + 1 >= queue.count ? trs("看結果") : trs("下一題")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 44)
@@ -431,7 +499,7 @@ struct StudyView: View {
                 HStack(spacing: 12) {
                     Button { start() } label: { Text(tr("再練一次")).frame(maxWidth: .infinity, minHeight: 40) }
                         .softButton()
-                        .disabled(words == nil ? store.practiceCards.isEmpty : (words ?? []).isEmpty)
+                        .disabled(words == nil ? store.studyCards.isEmpty : (words ?? []).isEmpty)
                     Button { dismiss() } label: { Text(tr("完成")).frame(maxWidth: .infinity, minHeight: 40) }
                         .prominentButton(T.btnEdge)
                 }

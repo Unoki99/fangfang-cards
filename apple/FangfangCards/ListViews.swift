@@ -18,12 +18,14 @@ struct UnknownView: View {
     @State private var memory = false
     @State private var writing = false
     @State private var helping = false
+    @State private var statsOpen = false
     @State private var detail: Card?
     @State private var query = ""
 
     var body: some View {
         // the words of the 練習範圍 (all of 不熟 when none is chosen)
         let list = store.practiceCards.filter { matches($0, query) }
+        let due = store.dueCards
         List {
             Section {
             } header: {
@@ -33,10 +35,11 @@ struct UnknownView: View {
                 VStack(spacing: 12) {
                 WeekPanel()
                 PracticeScopeMenu()
+                ReviewBar(due: due.count) { statsOpen = true }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty) { studying = true }
+                    PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty || !due.isEmpty) { studying = true }
                     PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
-                                 enabled: pool.contains { !$0.blankExamples.isEmpty }) { blanks = true }
+                                 enabled: (pool + due).contains { !$0.blankExamples.isEmpty }) { blanks = true }
                     PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
                     PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
                     PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: true) { toning = true }
@@ -93,6 +96,7 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $memory) { MemoryView().environmentObject(store) }
         .fullScreenCover(isPresented: $writing) { HandwritingView().environmentObject(store) }
         .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
+        .sheet(isPresented: $statsOpen) { NavigationStack { ReviewStatsView() }.environmentObject(store).macTextSize() }
         .fullScreenCover(isPresented: $readingOrder) { ScrambleView(readingMode: true).environmentObject(store) }
     }
 }
@@ -287,6 +291,7 @@ struct PracticeHelp: View {
             ("calendar", trs("本週學習"), trs("從不熟的詞選這個星期要學的（或在列表往右滑 → 本週學習），一週後做期末測驗；答錯的詞可以留到下一週。")),
             ("graduationcap.fill", trs("開始練習"), tr("各種題目混在一起練。連續答對 \(goal) 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。")),
             ("text.badge.checkmark", trs("例句填空"), trs("只做例句填空題。")),
+            ("pencil.line", trs("寫字題"), trs("開始練習和本週學習裡也有寫字題：看意思和讀音，一個字一個字把整個詞寫出來，按「對答案」以後自己說寫對了沒有。可以在「設定 → 卡片與練習」關掉。")),
             ("rectangle.3.group", trs("排句子"), trs("例句被打亂了，照華語的意思把詞排回去。")),
             ("character.book.closed", trs("看字排讀音"), trs("只看漢字，把讀音照順序排。")),
             ("waveform", trs("聲調練習"), trs("聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。")),

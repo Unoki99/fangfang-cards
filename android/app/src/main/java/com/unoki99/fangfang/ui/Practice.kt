@@ -51,6 +51,7 @@ fun PracticeHost(p: Practice) {
                 Practice.SCRAMBLE -> ScrambleScreen(false, stars)
                 Practice.READING -> ScrambleScreen(true, stars)
                 Practice.TONES -> ToneScreen(stars)
+                Practice.STATS -> ReviewStatsScreen { close() }
                 Practice.HANDWRITING -> HandwritingScreen(only = UI.handwritingOnly) { UI.handwritingOnly = null; handwritingGiven = emptyMap(); close() }
             }
         }
@@ -61,7 +62,8 @@ private fun close() { UI.practice = null; Player.stop() }
 
 // MARK: - 練習 (multiple choice)
 
-enum class QuizKind { MEANING_TO_WORD, WORD_TO_MEANING, LISTEN, FILL_BLANK, ROMANIZATION }
+/** WRITE: 寫字題 — the meaning and reading, write the whole word (you say whether you got it) */
+enum class QuizKind { MEANING_TO_WORD, WORD_TO_MEANING, LISTEN, FILL_BLANK, ROMANIZATION, WRITE }
 
 class Question(val card: Card, val kind: QuizKind, val options: List<Card>, val example: Example?) { val id: String = UUID.randomUUID().toString() }
 
@@ -69,6 +71,7 @@ private fun kinds(c: Card): List<QuizKind> = QuizKind.entries.filter {
     when (it) {
         QuizKind.LISTEN -> c.audio != null
         QuizKind.FILL_BLANK -> c.blankExamples.isNotEmpty()
+        QuizKind.WRITE -> Prefs.practiceWrite.value && Store.canWrite(c.h)
         else -> c.d.isNotEmpty()
     }
 }
@@ -84,6 +87,8 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     val queue = remember { mutableStateListOf<Question>() }
     var idx by remember { mutableIntStateOf(0) }
     var chosen by remember { mutableStateOf<Card?>(null) }
+    /** 寫字題: what you said about your writing */
+    var wroteRight by remember { mutableStateOf<Boolean?>(null) }
     var right by remember { mutableIntStateOf(0) }
     var wrong by remember { mutableIntStateOf(0) }
     val learned = remember { mutableStateListOf<Card>() }
@@ -133,7 +138,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     }
 
     fun start() {
-        missed.clear()
+        missed.clear(); wroteRight = null
         if (test) {
             // every word of the week once, in a random way
             queue.clear()
@@ -143,8 +148,10 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
             saveNow()
             return
         }
-        val pool = pool0 ?: Store.practiceCards
-        val words = pool.filter { !blanksOnly || it.blankExamples.isNotEmpty() }.shuffled().sortedBy { Store.streak(it) }
+        val pool = pool0 ?: Store.studyCards
+        // the words due for review first, then the ones answered right the fewest times
+        val words = pool.filter { !blanksOnly || it.blankExamples.isNotEmpty() }.shuffled()
+            .sortedBy { if (Store.isDue(it.k)) -1 else Store.streak(it) }
             .take(maxOf(1, if (pool0 != null) pool.size else size))
         val first = ArrayList<Question>(); val second = ArrayList<Question>()
         for (c in words) {
@@ -166,10 +173,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     LaunchedEffect(Unit) { if (!started && !restore()) start() }
     LaunchedEffect(idx) { if (started) saveNow() }
 
-    fun pick(o: Card, q: Question) {
-        if (chosen != null) return
-        chosen = o
-        val ok = o == q.card
+    fun record(q: Question, ok: Boolean) {
         if (ok) right++ else { wrong++; if (test) missed.add(q.card) }
         if (q.kind != QuizKind.LISTEN) q.card.audio?.let { Player.play(it) }
         if (test) { Store.answer(q.card, ok, goal); saveNow(true); return }
@@ -184,6 +188,17 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
             queue.add(make(q.card, other))
         }
         saveNow(true)
+    }
+    fun pick(o: Card, q: Question) {
+        if (chosen != null) return
+        chosen = o
+        record(q, o == q.card)
+    }
+    /** 寫字題: graded by you */
+    fun wrote(q: Question, ok: Boolean) {
+        if (chosen != null) return
+        wroteRight = ok; chosen = q.card
+        record(q, ok)
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -203,15 +218,20 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
                     ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
                 idx >= queue.size && test -> TestSummary(right, wrong, missed)
                 idx >= queue.size -> Summary(tr("答對 {0} 題，答錯 {1} 題", right, wrong), learned, onAgain = { start() },
-                    againEnabled = if (pool0 == null) Store.practiceCards.isNotEmpty() else pool0.isNotEmpty())
+                    againEnabled = if (pool0 == null) Store.studyCards.isNotEmpty() else pool0.isNotEmpty())
                 else -> {
                     val q = queue[idx]
                     LaunchedEffect(q.id) { if (q.kind == QuizKind.LISTEN) q.card.audio?.let { Player.play(it) } }
-                    Column(Modifier.fillMaxSize().widthIn(max = 640.dp).align(Alignment.TopCenter).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(Modifier.fillMaxSize().widthIn(max = if (q.kind == QuizKind.WRITE) 1100.dp else 640.dp).align(Alignment.TopCenter).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Prompt(q, rom, place)
-                        Options(q, chosen, rom, place) { pick(it, q) }
+                        // (寫字題: no scrolling, the finger writes in the square)
+                        if (q.kind == QuizKind.WRITE) key(q.id) {
+                            WordWriteArea(q.card.h.codePoints().toArray().map { String(Character.toChars(it)) }, chosen != null,
+                                if (chosen == null) Modifier.weight(1f) else Modifier) { ok -> wrote(q, ok) }
+                        } else Options(q, chosen, rom, place) { pick(it, q) }
                         chosen?.let { c ->
-                            Feedback(q, c, learned.contains(q.card), rom, place, last = idx + 1 >= queue.size) { chosen = null; idx++ }
+                            val ok = if (q.kind == QuizKind.WRITE) wroteRight == true else c == q.card
+                            Feedback(q, ok, learned.contains(q.card), rom, place, last = idx + 1 >= queue.size) { chosen = null; wroteRight = null; idx++ }
                         }
                     }
                 }
@@ -230,10 +250,7 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
         when (q.kind) {
             QuizKind.MEANING_TO_WORD -> {
                 QLabel(if (Store.isZh) tr("這個意思是哪個詞？") else tr("這個意思的台語是？")); Spacer(Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    c.d.firstOrNull()?.p?.takeIf { it.isNotEmpty() }?.let { Chip(it) }
-                    Txt(c.firstMeaning, ff(FF.Title3), T.glyph)
-                }
+                MeaningLine(c)
             }
             QuizKind.WORD_TO_MEANING -> {
                 QLabel(tr("這個詞是什麼意思？"))
@@ -261,9 +278,29 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
             QuizKind.ROMANIZATION -> {
                 QLabel(tr("這個詞怎麼唸？"))
                 Txt(c.h, sz(60f, FontWeight.Medium), T.blueInk)
-                Txt(c.firstMeaning, ff(FF.Footnote), T.muted, maxLines = 2)
+                Txt(Store.practiceMeaning(c).second, ff(FF.Footnote), T.muted, maxLines = 2)
+            }
+            QuizKind.WRITE -> {
+                QLabel(tr("寫出這個詞")); Spacer(Modifier.height(10.dp))
+                MeaningLine(c)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Txt(Store.cardRom(c, rom, place).annotated(), lat(24f), T.greenInk, Modifier.weight(1f))
+                    c.audio?.let { PlayButton(it, 40.dp) }
+                }
             }
         }
+    }
+}
+
+/** the meaning as a question (英文 when 華語's meanings are chosen to be English); the word itself in it is hidden (～) */
+@Composable
+private fun MeaningLine(c: Card) {
+    Prefs.zhEnglish.value
+    val (p, t0) = Store.practiceMeaning(c)
+    val t = if (c.h.codePointCount(0, c.h.length) > 1) t0.replace(c.h, "～") else t0
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (p.isNotEmpty()) Chip(p)
+        Txt(t, ff(FF.Title3), T.glyph)
     }
 }
 
@@ -283,7 +320,7 @@ private fun Options(q: Question, chosen: Card?, rom: Int, place: Int, onPick: (C
                     horizontalAlignment = if (q.kind == QuizKind.WORD_TO_MEANING) Alignment.Start else Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center) {
                     when (q.kind) {
-                        QuizKind.WORD_TO_MEANING -> Txt(o.firstMeaning, ff(FF.Body), T.glyph, maxLines = 3)
+                        QuizKind.WORD_TO_MEANING -> Txt(Store.practiceMeaning(o).second, ff(FF.Body), T.glyph, maxLines = 3)
                         QuizKind.ROMANIZATION -> Txt(Store.cardRom(o, rom, place).annotated(), lat(22f), T.greenInk)
                         else -> {
                             Txt(o.h, sz(30f, FontWeight.Medium), T.blueInk, maxLines = 1)
@@ -298,22 +335,24 @@ private fun Options(q: Question, chosen: Card?, rom: Int, place: Int, onPick: (C
 }
 
 @Composable
-private fun Feedback(q: Question, picked: Card, learnedNow: Boolean, rom: Int, place: Int, last: Boolean, onNext: () -> Unit) {
-    val ok = picked == q.card
+private fun Feedback(q: Question, ok: Boolean, learnedNow: Boolean, rom: Int, place: Int, last: Boolean, onNext: () -> Unit) {
     val c = q.card
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Panel {
-            Txt(if (ok) (if (learnedNow) tr("答對了！學會了") else tr("答對了！")) else tr("答錯了"), ff(FF.Headline), if (ok) T.greenInk else T.rustInk)
+            Txt(if (ok) (if (learnedNow) (Store.reviewDays(c)?.let { tr("答對了！{0} 天後再複習", it) } ?: tr("答對了！學會了")) else tr("答對了！")) else tr("答錯了"), ff(FF.Headline), if (ok) T.greenInk else T.rustInk)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Txt(c.h, ff(FF.Title, FontWeight.Medium), T.blueInk)
                 Txt(Store.cardRom(c, rom, place).annotated(), lat(20f), T.greenInk)
                 Txt(Store.cardZy(c, place).annotated(), ff(FF.Body), T.purpleInk, Modifier.weight(1f))
                 c.audio?.let { PlayButton(it, 34.dp) }
             }
-            val sense = if (q.kind == QuizKind.FILL_BLANK) q.example?.let { c.meaning(it) } else null
+            // 例句填空: the meaning the sentence is about; otherwise the word's first meaning (英文: the English)
+            val en = Store.englishMeanings(c)
+            val sense = if (q.kind == QuizKind.FILL_BLANK && en == null) q.example?.let { c.meaning(it) } else null
+            val m = Store.practiceMeaning(c)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                sense?.p?.takeIf { it.isNotEmpty() }?.let { Chip(it) }
-                Txt(sense?.t ?: c.firstMeaning, ff(FF.Body), T.glyph)
+                (sense?.p ?: m.first).takeIf { it.isNotEmpty() }?.let { Chip(it) }
+                Txt(sense?.t ?: en?.take(3)?.joinToString("; ") ?: m.second, ff(FF.Body), T.glyph)
             }
             if (q.kind == QuizKind.FILL_BLANK) q.example?.let { x ->
                 Spacer(Modifier.height(4.dp))
@@ -507,7 +546,7 @@ private fun ToneScreen(stars: StarField) {
                                 Txt(q.card.z, ff(FF.Body), T.purpleInk)
                             }
                             Txt(if (Store.isYue) tr("第 {0} 聲（{1}）", t, YUE_TONE_NAMES[t] ?: "") else if (Store.isZh) (if (t == 0) tr("輕聲") else tr("第 {0} 聲（{1}）", t, ZH_TONE_NAMES[t] ?: "")) else tr("第 {0} 聲（{1}）{2}", t, TONE_NAMES[t] ?: "", hint(t, rom)), ff(FF.Subheadline), T.glyph)
-                            Txt(q.card.firstMeaning, ff(FF.Footnote), T.muted)
+                            Txt(Store.practiceMeaning(q.card).second, ff(FF.Footnote), T.muted)
                         }
                         ProminentButton(onClick = { chosen = null; idx++ }, Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                             Text(if (idx + 1 >= queue.size) tr("看結果") else tr("下一題"), style = ff(FF.Headline))

@@ -14,6 +14,10 @@ DD="$HOME/Library/Developer/fangfangcards-build"
 LOG="$HOME/Library/Logs/fangfangcards-build.log"
 mkdir -p "$HOME/Library/Logs"
 
+# copies of source files left by putting a new download over the old folder ("Store 2.swift"): the same code
+# twice, which the build can't tell apart
+find "$HERE/FangfangCards" "$HERE/FangfangWidget" -type f \( -name "* 2.swift" -o -name "* (1).swift" \) -print -delete 2>/dev/null | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
+
 # 1. keep the project in a fixed place: ~/FangfangCards
 if [ "$HERE" != "$DEST" ]; then
   mkdir -p "$DEST"

@@ -658,28 +658,103 @@ final class Store: ObservableObject {
         progress.status[c.k] = 0
         progress.added[c.k] = Date().timeIntervalSince1970
         progress.streak[c.k] = nil
+        progress.srs[c.k] = nil
         save()
     }
 
-    /// study answer; returns true when the word has been learned (moved to 熟悉)
+    /// study answer; returns true when the word is done for now: learned (moved to 熟悉, back for review in a
+    /// day), or reviewed right (back in a longer while).
+    ///
+    /// 複習 (spaced review, the way SM-2 does it): a word learned in practice comes back after 1 day, then 3, then
+    /// each time about 2.5× longer (the "ease": a little less each time it's forgotten). Answered wrong when it's
+    /// back: it goes to 不熟 again, to be learned again. Words swiped to 熟悉 aren't scheduled.
     @discardableResult
     func answer(_ c: Card, correct: Bool, goal: Int) -> Bool {
-        guard progress.status[c.k] == 2 else { return false }
-        if correct {
-            let s = (progress.streak[c.k] ?? 0) + 1
-            if s >= goal {
-                progress.status[c.k] = 1
-                progress.added[c.k] = Date().timeIntervalSince1970
-                progress.streak[c.k] = nil
-                save()
-                return true
+        let st = progress.status[c.k]
+        let review = st == 1 && isDue(c.k)
+        guard st == 2 || review else { return false }
+        var p = progress
+        let now = Date().timeIntervalSince1970
+        var s = p.srs[c.k] ?? [0, 0, SRS.ease, 0, 0, 0]
+        while s.count < 6 { s.append(0) }
+        var done = false
+        if review {
+            if correct {
+                let iv = s[1] < 1 ? 1 : (s[1] < 2 ? 3 : (s[1] * s[2]).rounded())
+                s[1] = min(iv, SRS.longest); s[3] += 1
+                s[0] = now + SRS.days(s[1])
+                done = true
+            } else {
+                // forgotten: back to 不熟 (learned again from the start)
+                s[2] = max(SRS.minEase, s[2] - 0.2); s[4] += 1; s[1] = 0; s[0] = 0
+                p.status[c.k] = 2; p.added[c.k] = now; p.streak[c.k] = 0
             }
-            progress.streak[c.k] = s
+        } else if correct {
+            let n = (p.streak[c.k] ?? 0) + 1
+            if n >= goal {
+                // learned: to 熟悉, back for review tomorrow
+                p.status[c.k] = 1; p.added[c.k] = now; p.streak[c.k] = nil
+                s[1] = 1; s[3] += 1; s[0] = now + SRS.days(1)
+                knowChars(of: c.k, in: &p)
+                done = true
+            } else { p.streak[c.k] = n }
         } else {
-            progress.streak[c.k] = 0
+            p.streak[c.k] = 0
         }
+        s[5] = now
+        p.srs[c.k] = s
+        // 練習統計
+        let day = SRS.dayKey(Lang.names[lang], Date())
+        var l = p.log[day] ?? [0, 0, 0]
+        while l.count < 3 { l.append(0) }
+        if correct { l[0] += 1 } else { l[1] += 1 }
+        if done && !review { l[2] += 1 }
+        p.log[day] = l
+        progress = p
         save()
-        return false
+        return done
+    }
+
+    /// a word learned in practice whose review time has come
+    func isDue(_ k: String, at t: Double = Date().timeIntervalSince1970) -> Bool {
+        guard let s = progress.srs[k], s.count >= 2, s[1] >= 1 else { return false }
+        return s[0] <= t
+    }
+    /// the days until a word comes back (nil: not scheduled)
+    func reviewDays(_ c: Card) -> Int? {
+        guard progress.status[c.k] == 1, let s = progress.srs[c.k], s.count >= 2, s[1] >= 1 else { return nil }
+        return Int(s[1])
+    }
+    /// the words of the shown language that are due for review now (in 練習範圍)
+    var dueCards: [Card] {
+        let now = Date().timeIntervalSince1970
+        let t = practiceTopic
+        let scoped = t >= 0 && practiceTopics.contains(where: { $0.id == t })
+        return progress.srs.compactMap { k, s -> Card? in
+            guard s.count >= 2, s[1] >= 1, s[0] <= now, progress.status[k] == 1, Lang.kind(k) == lang,
+                  let c = card(for: k) else { return nil }
+            return scoped && !inTopic(c, t) ? nil : c
+        }
+    }
+    /// 開始練習 / 例句填空: the words due for review first, then the 不熟 words
+    var studyCards: [Card] { dueCards.shuffled() + practiceCards }
+
+    // MARK: what practice shows
+
+    /// 華語 with 主要解釋 = 英文 (設定): a card's English meanings (nil: the 華語 ones; 粵語's are English already)
+    func englishMeanings(_ c: Card) -> [String]? {
+        guard ZhMeaning.english, Lang.kind(c.k) == 1, let d = zh, !d.isYue else { return nil }
+        let l = (Lang.charOf(c.k).flatMap { d.entry(char: $0, zy: "") } ?? d.entry(c.k))?.enList ?? []
+        return l.isEmpty ? nil : l
+    }
+    /// the meaning practice shows for a card: the English (the first two) when that's chosen, or the first meaning
+    func practiceMeaning(_ c: Card) -> (p: String, t: String) {
+        if let en = englishMeanings(c) { return ("", en.prefix(2).joined(separator: "; ")) }
+        return (c.d.first?.p ?? "", c.firstMeaning)
+    }
+    /// 寫字題: a word of 1–4 characters, all of them 漢字
+    static func canWrite(_ h: String) -> Bool {
+        (1...4).contains(h.count) && h.unicodeScalars.allSatisfy { $0.properties.isUnifiedIdeograph }
     }
 
     /// words starred (☆) in the 轉換 tab go to 不熟 (unless switched off in 設定)
@@ -1051,6 +1126,14 @@ final class Store: ObservableObject {
                 if (t > 0) != ((p.own[k] ?? -1) > 0) { n += 1; ownChanged = true }
                 p.own[k] = t
             }
+            // 複習: the one answered last wins; 練習統計: the bigger count of each day (the same answers can be in both)
+            for (k, v) in obj["srs"] as? [String: [Double]] ?? [:] where v.count >= 6 && v[5] > ((p.srs[k]?.count ?? 0) >= 6 ? p.srs[k]![5] : -1) {
+                p.srs[k] = v
+            }
+            for (d, v) in obj["log"] as? [String: [Int]] ?? [:] {
+                let m = p.log[d] ?? []
+                p.log[d] = (0..<max(v.count, m.count)).map { max($0 < v.count ? v[$0] : 0, $0 < m.count ? m[$0] : 0) }
+            }
         }
         let keys = status.keys.sorted()
         guard from < keys.count else { return (n, ownChanged) }
@@ -1107,6 +1190,7 @@ final class Store: ObservableObject {
             "status": progress.status, "added": progress.added, "streak": progress.streak,
             "saved": progress.saved, "own": progress.own, "senses": progress.senses,
             "week": progress.week, "weekStart": progress.weekStart,
+            "srs": progress.srs, "log": progress.log,
         ]
         return (try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])) ?? Data()
     }
