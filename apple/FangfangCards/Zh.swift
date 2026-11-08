@@ -437,6 +437,21 @@ final class ZhDict: @unchecked Sendable {
     private(set) var radicalInside: [String: [String]]
     /// a character's number of strokes
     private(set) var strokesOf: [String: Int]
+    /// each entry's English, in small letters (粵語: Wiktionary's meanings too), for the English search: made the
+    /// first time it's needed, not every search (127,000 粵語 words made the search slow)
+    private var englishCache: [String]? = nil
+    private let englishLock = NSLock()
+    private var englishTexts: [String] {
+        englishLock.lock(); defer { englishLock.unlock() }
+        if let c = englishCache { return c }
+        let c = entries.map { e in
+            (isYue ? (e.senses.map { $0.text }.joined(separator: ";") + ";" + (e.en ?? "")) : (e.en ?? "")).lowercased()
+        }
+        englishCache = c
+        return c
+    }
+    /// (made ahead of the first English search, when the dictionary page opens)
+    func warmEnglish() { _ = englishTexts }
 
     /// the same as sets (made the first time they're needed)
     lazy var radicalSets: [String: Set<String>] = radicalInside.mapValues { Set($0) }
@@ -972,11 +987,11 @@ final class ZhDict: @unchecked Sendable {
         let wantVerb = q.hasPrefix("to ")
         let bare = wantVerb ? String(q.dropFirst(3)) : q
         let inWord = #"[^a-z]"# + NSRegularExpression.escapedPattern(for: bare) + #"[^a-z]"#
-        for (i, e) in entries.enumerated() {
+        let texts = englishTexts
+        for i in texts.indices {
             // (粵語: Wiktionary's meanings are the senses, CC-Canto's / CC-CEDICT's the English)
-            let all = isYue ? (e.senses.map { $0.text }.joined(separator: ";") + ";" + (e.en ?? "")) : (e.en ?? "")
-            let en = all.lowercased()
-            guard en.contains(bare) else { continue }
+            let en = texts[i]
+            guard !en.isEmpty, en.contains(bare) else { continue }
             var best = 9, bestPos = 1
             for (pos, g0) in en.components(separatedBy: ";").enumerated() {
                 // without notes in brackets: "(bound form) to walk" → "to walk"

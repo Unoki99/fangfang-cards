@@ -67,8 +67,11 @@ struct ZhDictTabs: View {
 struct ZhLookupPane: View {
     let dict: ZhDict
     @EnvironmentObject var store: Store
-    @AppStorage("zhLookupQuery") private var query = ""
+    // (the same search text as the 台語 dictionary's: a word looked up stays when the language is switched)
+    @AppStorage("lookupQuery") private var query = ""
     @State private var found = ZhDict.Found()
+    /// what `found` was searched for ("找不到" only once the search for what's typed has finished)
+    @State private var searched = ""
     @State private var task: Task<Void, Never>?
 
     var body: some View {
@@ -109,7 +112,7 @@ struct ZhLookupPane: View {
                      : Lang.isYue ? tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞　*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"))
                     .ffFont(.footnote).foregroundStyle(T.muted).listRowBackground(Color.clear)
-            } else if found.empty {
+            } else if found.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
             group(tr("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）"), found.tones)
@@ -126,7 +129,12 @@ struct ZhLookupPane: View {
         }
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
-        .onAppear { search() }
+        .onAppear {
+            search()
+            // make the English search's text ahead of the first English search
+            let d = dict
+            Task.detached(priority: .utility) { d.warmEnglish() }
+        }
         .onChange(of: query) { search() }
         .onChange(of: store.zhPlace) { search() }
     }
@@ -160,6 +168,7 @@ struct ZhLookupPane: View {
             let r = await Task.detached(priority: .userInitiated) { d.search(q, place: pl) }.value
             guard !Task.isCancelled else { return }
             found = r
+            searched = q
         }
     }
 }

@@ -852,6 +852,14 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
      *  one step lower, so 慢 comes before 卡 for "slow". "to park" (a verb) puts "to park" before "park" (a noun). */
     fun english(q0: String): List<Int> = englishHits(q0).first
 
+    /** each entry's English, in small letters (粵語: Wiktionary's meanings too), for the English search: made the
+     *  first time it's needed, not every search (127,000 粵語 words made the search slow) */
+    private val englishTexts: List<String> by lazy {
+        entries.map { e -> (if (isYue) e.senses.joinToString(";") { it.text } + ";" + (e.en ?: "") else (e.en ?: "")).lowercase() }
+    }
+    /** (made ahead of the first English search, when the dictionary page opens) */
+    fun warmEnglish() { englishTexts.size }
+
     /** (and how close the best one is: 0 = a meaning that's exactly the words) */
     fun englishHits(q0: String): Pair<List<Int>, Int> {
         val q = q0.lowercase().trim()
@@ -862,11 +870,11 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
         val paren = Regex("\\([^()]*\\)")
         class Hit(val tier: Int, val later: Int, val i: Int)
         val hits = ArrayList<Hit>()
-        for ((i, e) in entries.withIndex()) {
+        val texts = englishTexts
+        for (i in texts.indices) {
             // (粵語: Wiktionary's meanings are the senses, CC-Canto's / CC-CEDICT's the English)
-            val all = if (isYue) e.senses.joinToString(";") { it.text } + ";" + (e.en ?: "") else (e.en ?: continue)
-            val en = all.lowercase()
-            if (!en.contains(bare)) continue
+            val en = texts[i]
+            if (en.isEmpty() || !en.contains(bare)) continue
             var best = 9; var bestPos = 1
             for ((pos, g0) in en.split(";").withIndex()) {
                 var g = g0

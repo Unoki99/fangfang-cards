@@ -1412,6 +1412,8 @@ struct LookupPane: View {
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
     @State private var result = LookupResult()
+    /// what `result` was searched for ("找不到" only once the search for what's typed has finished)
+    @State private var searched = ""
     @State private var task: Task<Void, Never>?
     /// several words searched: the one whose 更多 is shown (nil = the whole search)
     @State private var picked: Int?
@@ -1449,7 +1451,7 @@ struct LookupPane: View {
                 .textCase(nil)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
-            if !query.isEmpty && result.empty {
+            if !query.isEmpty && result.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
             if result.isPattern {
@@ -1561,6 +1563,7 @@ struct LookupPane: View {
             let r = await Task.detached(priority: .userInitiated) { Lookup.run(d, q, place: pl) }.value
             guard !Task.isCancelled else { return }
             result = r
+            searched = q
         }
     }
 

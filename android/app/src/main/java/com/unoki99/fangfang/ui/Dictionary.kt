@@ -768,6 +768,8 @@ private fun LookupPane(d: Dict) {
     var query by Prefs.lookupQuery
     val place = Prefs.place.value
     var result by remember { mutableStateOf(LookupResult()) }
+    /** what `result` was searched for ("找不到" only once the search for what's typed has finished) */
+    var searched by remember { mutableStateOf<String?>(null) }
     /** several words searched: the one whose 更多 is shown (null = the whole search) */
     var picked by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(query) { picked = null }
@@ -775,6 +777,7 @@ private fun LookupPane(d: Dict) {
         delay(200)
         val q = query
         result = withContext(Dispatchers.Default) { Lookup.run(d, q, place, Prefs) }
+        searched = q
     }
     val r = result
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
@@ -790,7 +793,7 @@ private fun LookupPane(d: Dict) {
                 }
             }
         }
-        if (query.isNotEmpty() && r.empty) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        if (query.isNotEmpty() && r.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         if (r.isPattern) {
             keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)
             keyItems(d, tr("華語「{0}」的台語講法", query), r.patternZh)

@@ -104,7 +104,7 @@ fun RadicalPage(zhSearch: Boolean, onBack: () -> Unit) {
     val d = Store.dict
     fun has(ch: String): Boolean = if (zhSearch) Store.zh?.byHan?.containsKey(ch) == true else d?.hanMap?.containsKey(ch) == true
     fun pick(ch: String) {
-        if (zhSearch) Prefs.zhLookupQuery.value += ch else Prefs.lookupQuery.value += ch
+        Prefs.lookupQuery.value += ch       // (one search text for every language)
         onBack()
     }
     Column(Modifier.fillMaxSize()) {

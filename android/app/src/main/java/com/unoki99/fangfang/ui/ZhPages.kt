@@ -83,14 +83,20 @@ fun ZhDictionaryTab() {
 
 @Composable
 private fun ZhLookupPane(z: ZhDict) {
-    var query by Prefs.zhLookupQuery
+    // (the same search text as the 台語 dictionary's: a word looked up stays when the language is switched)
+    var query by Prefs.lookupQuery
     val place = Prefs.zhPlace.value
     // (a new dictionary (華語 ↔ 粵語): nothing kept from the other one, such as results pointing into it)
     var found by remember(z) { mutableStateOf(ZhDict.Found()) }
+    /** what `found` was searched for ("找不到" only once the search for what's typed has finished) */
+    var searched by remember(z) { mutableStateOf<String?>(null) }
+    // make the English search's text ahead of the first English search
+    LaunchedEffect(z) { withContext(Dispatchers.Default) { z.warmEnglish() } }
     LaunchedEffect(query, place, z) {
         delay(200)
         val q = query
         found = withContext(Dispatchers.Default) { z.search(q, place) }
+        searched = q
     }
     val f = found
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
@@ -113,7 +119,7 @@ private fun ZhLookupPane(z: ZhDict) {
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             Txt(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
-        } else if (f.empty) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        } else if (f.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
         zhItems(z, tr("華語「{0}」的粵語講法", query), f.mandarin)
         if (f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true, query = query)
