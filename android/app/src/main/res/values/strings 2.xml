@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">方方詞卡</string>
+    <string name="widget_name">分類詞卡</string>
+    <string name="widget_description">從你選的分類看詞、意思和例句，可以聽發音、收藏。每個鐘頭換一個詞。</string>
+</resources>

@@ -82,7 +82,11 @@ curl -fsSL -o "$TMP/cedict_ts.u8" "https://raw.githubusercontent.com/cschiller/z
 echo "下載 HSK 3.0 詞表…"
 curl -fsSL -o "$TMP/hsk30.csv" "https://raw.githubusercontent.com/ivankra/hsk30/master/hsk30-expanded.csv" || rm -f "$TMP/hsk30.csv"
 echo "下載 TOCFL 詞表…"
-curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/expanded/tocfl.csv" || rm -f "$TMP/tocfl.csv"
+# (the list has moved before: try each place it has been)
+for u in expanded/tocfl.csv tocfl.csv expanded/tbcl.csv tbcl.csv; do
+  curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$u" && break || rm -f "$TMP/tocfl.csv"
+done
+[ -f "$TMP/tocfl.csv" ] || echo "  ⚠ 下載不到 TOCFL 詞表：華語的 TOCFL 只會有漢字卡，沒有詞的等級。"
 echo "下載《重編國語辭典修訂本》（漢字卡的字義）和漢字表…"
 curl -fL --progress-bar -o "$TMP/dict-revised.json.xz" "https://raw.githubusercontent.com/g0v/moedict-data/master/dict-revised.json.xz" || rm -f "$TMP/dict-revised.json.xz"
 curl -fsSL -o "$TMP/hsk30-chars.csv" "https://raw.githubusercontent.com/ivankra/hsk30/master/hsk30-chars.csv" || rm -f "$TMP/hsk30-chars.csv"

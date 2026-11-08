@@ -502,14 +502,47 @@ if HSK:
     print("hsk words", len(hsk_of), collections.Counter(hsk_of.values()))
 # the TOCFL word list (ivankra/tocfl: expanded/tocfl.csv): 準備一級 … 流利級 = levels 1–7
 TOCFL_LEVELS = {"L0-1": 1, "L0-2": 2, "L1": 3, "L2": 4, "L3": 5, "L4": 6, "L5": 7}
+# (the level written out, in the other ways the list has had it)
+TOCFL_NAMES = [("準備一", 1), ("準備1", 1), ("novice 1", 1), ("novice1", 1), ("準備二", 2), ("準備2", 2), ("novice 2", 2),
+               ("novice2", 2), ("入門", 3), ("基礎", 4), ("進階", 5), ("高階", 6), ("流利", 7)]
+
+def tocfl_level(row):
+    r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+    idv = r.get("id", "")
+    lvl = TOCFL_LEVELS.get(idv[:4]) or TOCFL_LEVELS.get(idv[:2])
+    if lvl: return lvl
+    for key in ("level", "band", "等級", "級別"):
+        v = r.get(key, "")
+        if not v: continue
+        lv = v.lower()
+        for name, n in TOCFL_NAMES:
+            if name in lv: return n
+        lvl = TOCFL_LEVELS.get(v[:4]) or TOCFL_LEVELS.get(v[:2])
+        if lvl: return lvl
+        m = re.search(r"\d+", v)
+        if m and "level" in lv and 1 <= int(m.group()) <= 5: return int(m.group()) + 2     # Level 1–5 → 3–7
+        if m and v.isdigit() and 1 <= int(v) <= 7: return int(v)
+    return None
+
+def first(row, *keys):
+    r = {k.strip().lower(): (v or "").strip() for k, v in row.items() if k}
+    for k in keys:
+        if r.get(k): return r[k]
+    return ""
+
 if TOCFL:
     rows = []
-    for row in csv.DictReader(open(TOCFL, encoding="utf-8")):
-        idv = row["ID"]
-        lvl = TOCFL_LEVELS.get(idv[:4]) or TOCFL_LEVELS.get(idv[:2])
+    for row in csv.DictReader(open(TOCFL, encoding="utf-8-sig")):
+        lvl = tocfl_level(row)
         if not lvl: continue
-        rows.append(([row["Traditional"].strip()], row["Simplified"], row["Pinyin"], lvl, row.get("POS", "")))
+        trad = first(row, "traditional", "word", "詞語", "詞彙", "hanzi")
+        if not trad: continue
+        # (a word can be written several ways: 「/」 or 「|」 between them)
+        ts = [t.strip() for t in re.split(r"[/|／]", trad) if t.strip()]
+        rows.append((ts[:1], first(row, "simplified"), first(row, "pinyin", "拼音"), lvl, first(row, "pos", "詞類")))
     tocfl_of = apply_list(rows)
+    if not tocfl_of:
+        print("⚠ TOCFL 詞表讀不出詞的等級（檔案的格式可能改了）：" + ", ".join(next(csv.reader(open(TOCFL, encoding="utf-8-sig")), [])), file=sys.stderr)
     print("tocfl words", len(tocfl_of), collections.Counter(tocfl_of.values()))
 
 # 近義詞 / 反義詞 from 教育部《重編國語辭典修訂本》 (the 兩岸 dictionary has none): word + reading -> lists

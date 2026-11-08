@@ -86,7 +86,8 @@ struct UnknownView: View {
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .searchable(text: $query, prompt: trs("漢字、羅馬字或意思"))
+        // (under the top bar, not in it: on an iPad it would push the reading and settings buttons out)
+        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: trs("漢字、羅馬字或意思"))
 
         .sheet(item: $detail) { CardSheet(card: $0).environmentObject(store) }
         .fullScreenCover(isPresented: $studying) { StudyView().environmentObject(store) }

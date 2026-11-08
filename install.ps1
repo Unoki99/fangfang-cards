@@ -194,7 +194,13 @@ if ($need) {
         $csld = Get-File "$raw/g0v/moedict-data-csld/master/dict-csld.json" "dict-csld.json"
         $ced = Get-File "$raw/cschiller/zhongwen/main/data/cedict_ts.u8" "cedict_ts.u8" -Optional
         $hsk = Get-File "$raw/ivankra/hsk30/master/hsk30-expanded.csv" "hsk30.csv" -Optional
-        $toc = Get-File "$raw/ivankra/tocfl/master/expanded/tocfl.csv" "tocfl.csv" -Optional
+        # (the TOCFL list has moved before: try each place it has been)
+        $toc = "-"
+        foreach ($u in @("expanded/tocfl.csv", "tocfl.csv", "expanded/tbcl.csv", "tbcl.csv")) {
+            $toc = Get-File "$raw/ivankra/tocfl/master/$u" "tocfl.csv" -Optional
+            if ($toc -ne "-") { break }
+        }
+        if ($toc -eq "-") { Write-Host "  ⚠ 下載不到 TOCFL 詞表：華語的 TOCFL 只會有漢字卡，沒有詞的等級。" }
         $rev = Get-File "$raw/g0v/moedict-data/master/dict-revised.json.xz" "dict-revised.json.xz" -Optional
         $hch = Get-File "$raw/ivankra/hsk30/master/hsk30-chars.csv" "hsk30-chars.csv" -Optional
         $tch = Get-File "$raw/ivankra/tocfl/master/tbcl-chars.csv" "tbcl-chars.csv" -Optional
