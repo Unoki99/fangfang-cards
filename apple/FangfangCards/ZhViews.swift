@@ -424,8 +424,8 @@ struct ZhEntryBody: View {
                 }
                 // a single character: its character card too
                 if entry.h.count == 1 && !dict.isSv { ZhCharCardRow(dict: dict, ch: entry.h) }
-                // the other reading system, small (四川話: the same either way, so not again)
-                if !dict.isSv && !(store.zhPlace == 2 && entry.sc != nil) {
+                // the other reading system, small (四川話 too: 四川話拼音 and 注音)
+                if !dict.isSv {
                     Text(dict.reading(syl, store.zhRom == 0 ? 1 : 0)).ffFont(.subheadline).foregroundStyle(T.purpleInk).textSelection(.enabled)
                 }
                 // 客語: how the other accents say it

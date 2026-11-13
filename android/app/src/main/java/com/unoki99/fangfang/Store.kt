@@ -241,16 +241,21 @@ object Store {
         latestWanted = want
         if (want == lang || switching) return
         if (want != 0) Prefs.lastZh.value = want
-        if (want == 0) { if (otherKind == 0) swapDecks(); shown(0); return }
+        if (want == 0) {
+            if (otherKind == 0) swapDecks()
+            // (an empty deck shown while a dictionary was read: not kept)
+            if (placeholder) { placeholder = false; if (otherKind != 0) other = null }
+            shown(0); return
+        }
         // the deck waiting is the one wanted (台語 → 華語 / 粵語)
         if (lang == 0 && otherKind == want) { swapDecks(); shown(want); return }
-        // from one of the other languages to another: back to 台語 while the new one is read, and the old one's
-        // deck let go (two big dictionaries and their decks at once don't fit in the phone's memory)
+        // from one of the other languages to another: the new language shown at once (its page says it's being
+        // read), and the old one's deck let go meanwhile (two big dictionaries and their decks at once don't fit in
+        // the phone's memory); the 台語 deck waiting stays
         if (lang != 0) {
-            if (otherKind == 0) swapDecks()
-            if (otherKind != 0) other = null
-            shown(0)
-            Prefs.lang.value = want
+            use(Deck(kind = want))
+            placeholder = true
+            shown(want)
         }
         // (a language waiting in the background that isn't the one wanted: let go too)
         if (otherKind > 0 && otherKind != want) other = null
@@ -266,6 +271,8 @@ object Store {
                 if (latestWanted == want) {
                     zhError = if (e is java.io.FileNotFoundException) tr("還沒有{0}詞典：到「設定 → 詞典資料」安裝。", tr(Lang.names[want]))
                         else "${Lang.names[want]}詞典讀取失敗：${e.javaClass.simpleName} ${e.message ?: ""}"
+                    // (shown with an empty deck while it was being read: back to 台語)
+                    if (placeholder) { placeholder = false; if (otherKind == 0) swapDecks(); shown(0) }
                     Prefs.lang.value = lang
                     latestWanted = lang
                 }
@@ -277,6 +284,8 @@ object Store {
         }
     }
     private var latestWanted = 0
+    /** a language shown with an empty deck while its dictionary is read */
+    private var placeholder = false
 
     /** the 華語 / 粵語 dictionary and deck being read (shared: reading it at start-up and switching meanwhile read it once) */
     private var zhJob: kotlinx.coroutines.Deferred<Pair<ZhDict, Deck>>? = null
@@ -323,6 +332,8 @@ object Store {
         zhJob = null
         if (first) { syncCharCards(); save() }
         if (Prefs.lang.value == kind) {
+            // (shown already, with an empty deck while it was being read: its deck now)
+            if (lang == kind && placeholder) { placeholder = false; use(deck); shown(kind); WidgetBridge.rebuildIfNeeded(); return }
             if (lang == kind) return
             if (lang == 0) other = Deck(cards, byKeyMutable, rank, pools, topics, 0)
             use(deck)

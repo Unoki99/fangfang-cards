@@ -195,7 +195,8 @@ enum Zhuyin {
 
     /// a 四川話 syllable as it's shown: a mark on the vowel for how the tone sounds ("ce1" → "cē"):
     /// 1 high level ā, 2 low falling a̱ (a line under it), 3 high falling à, 4 low dipping ǎ, 5 (入聲) like 2
-    static func sichuan(_ s: String) -> String {
+    static func sichuan(_ s0: String) -> String {
+        let s = sichuanV(s0)
         guard let d = s.last?.wholeNumberValue else { return s }
         let letters = Array(String(s.dropLast()))
         let mark: String
@@ -216,6 +217,58 @@ enum Zhuyin {
         guard i < letters.count else { return String(letters) }
         let out = String(letters[...i]) + mark + String(letters[(i + 1)...])
         return out.precomposedStringWithCanonicalMapping
+    }
+
+    /// 四川話: an initial w before u, e or o is v (wu → vu, wo → vo, wei → vei); wa, wai, wan… stay
+    static func sichuanV(_ s: String) -> String {
+        let c = Array(s)
+        guard c.count >= 2, c[0] == "w" || c[0] == "W", "ueo".contains(c[1]) else { return s }
+        return (c[0] == "W" ? "V" : "v") + String(c.dropFirst())
+    }
+
+    /// a 四川話 syllable in 注音 ("ce1" → "ㄘㆤ"): as 國語's, with 台語's and 客語's letters for the sounds 國語
+    /// doesn't have: ng- ㄫ, ni- ㄬ (nia, niao, niu…), v- ㄪ, r- ㆡ; a final e ㆤ (ie ㄧㆤ, ue ㄩㆤ); ou ㄜㄨ (iu: ㄧㄜㄨ).
+    /// The tones: 1 none, 2 ˨˩ (and 5, the 入聲 that 成都 reads like 2), 3 ˋ, 4 ˇ
+    static func sichuanZhuyin(_ s0: String) -> String {
+        let s = sichuanV(s0)
+        guard let d = s.last?.wholeNumberValue else { return s }
+        var x = String(s.dropLast()).lowercased()
+        // (y- and w- spellings: their vowels)
+        if x.hasPrefix("yu") { x = "ü" + x.dropFirst(2) }
+        else if x.hasPrefix("yi") { x = "i" + x.dropFirst(2) }
+        else if x.hasPrefix("y") { x = "i" + x.dropFirst(1) }
+        else if x.hasPrefix("wu") { x = "u" + x.dropFirst(2) }
+        else if x.hasPrefix("w") { x = "u" + x.dropFirst(1) }
+        let inits: [(String, String)] = [("zh", "ㄓ"), ("ch", "ㄔ"), ("sh", "ㄕ"), ("ng", "ㄫ"), ("nh", "ㄬ"), ("ny", "ㄬ"),
+                                         ("b", "ㄅ"), ("p", "ㄆ"), ("m", "ㄇ"), ("f", "ㄈ"), ("v", "ㄪ"), ("d", "ㄉ"), ("t", "ㄊ"),
+                                         ("n", "ㄋ"), ("l", "ㄌ"), ("g", "ㄍ"), ("k", "ㄎ"), ("h", "ㄏ"), ("j", "ㄐ"), ("q", "ㄑ"),
+                                         ("x", "ㄒ"), ("z", "ㄗ"), ("c", "ㄘ"), ("s", "ㄙ"), ("r", "ㆡ")]
+        var ini = "", zi = "", rest = x
+        for (l, z) in inits where x.hasPrefix(l) {
+            // (m, n, ng on their own: the syllable is just that sound)
+            ini = l; zi = z; rest = String(x.dropFirst(l.count)); break
+        }
+        if rest.hasPrefix("v") { rest = "ü" + rest.dropFirst() }
+        // ni-: ㄬ (ȵ)
+        if ini == "n" && (rest.hasPrefix("i") || rest.hasPrefix("ü")) { zi = "ㄬ" }
+        if (ini == "nh" || ini == "ny") && !(rest.hasPrefix("i") || rest.hasPrefix("ü")) { rest = "i" + rest }
+        // ju, qu, xu: ü
+        if ["j", "q", "x"].contains(ini) && rest.hasPrefix("u") { rest = "ü" + rest.dropFirst() }
+        let finals: [String: String] = [
+            "": "", "a": "ㄚ", "o": "ㄛ", "e": "ㆤ", "ê": "ㆤ", "er": "ㄦ", "ai": "ㄞ", "ei": "ㄟ", "ao": "ㄠ", "ou": "ㄜㄨ",
+            "an": "ㄢ", "en": "ㄣ", "ang": "ㄤ", "eng": "ㄥ", "ong": "ㄨㄥ", "ung": "ㄨㄥ",
+            "i": "ㄧ", "ia": "ㄧㄚ", "io": "ㄧㄛ", "ie": "ㄧㆤ", "iai": "ㄧㄞ", "iao": "ㄧㄠ", "iu": "ㄧㄜㄨ", "iou": "ㄧㄜㄨ",
+            "ian": "ㄧㄢ", "in": "ㄧㄣ", "iang": "ㄧㄤ", "ing": "ㄧㄥ", "iong": "ㄩㄥ", "iung": "ㄩㄥ",
+            "u": "ㄨ", "ua": "ㄨㄚ", "uo": "ㄨㄛ", "ue": "ㄨㆤ", "uai": "ㄨㄞ", "ui": "ㄨㄟ", "uei": "ㄨㄟ", "uan": "ㄨㄢ",
+            "un": "ㄨㄣ", "uen": "ㄨㄣ", "uang": "ㄨㄤ",
+            "ü": "ㄩ", "üe": "ㄩㆤ", "üo": "ㄩㄛ", "üan": "ㄩㄢ", "ün": "ㄩㄣ"]
+        var f: String
+        if rest == "i" && ["z", "c", "s", "zh", "ch", "sh", "r"].contains(ini) { f = "" }    // (zi, ci, si: the initial alone)
+        else if let m = finals[rest] { f = m }
+        else { return sichuan(s) }
+        if ini.isEmpty && f.isEmpty { return sichuan(s) }
+        let mark = d == 2 || d == 5 ? "˨˩" : (d == 3 ? "ˋ" : (d == 4 ? "ˇ" : ""))
+        return zi + f + mark
     }
 
     /// one 注音 syllable in 拼音 with its tone mark ("" when it can't be spelled); a 粵語 syllable stays as it is
@@ -923,8 +976,8 @@ final class ZhDict: @unchecked Sendable {
                 // 客語: 拼音 (0) or 注音 (1), with the accent's tone mark after the syllable
                 a = AttributedString((first ? "" : " ") + hakSyllable(s, mode))
             } else if Zhuyin.isJyut(s) && !isYue {
-                // 四川話: 四川話拼音 with the tone as a small number ("ce¹"), also when 注音 is chosen
-                a = AttributedString((first ? "" : " ") + Zhuyin.sichuan(s))
+                // 四川話: 四川話拼音 with the tone on the vowel ("cē"), or 注音 ("ㄘㆤ")
+                a = AttributedString(mode == 1 ? (first ? "" : "\u{2009}") + Zhuyin.sichuanZhuyin(s) : (first ? "" : " ") + Zhuyin.sichuan(s))
             } else if Zhuyin.isJyut(s) {
                 // 粵語: 粵拼 (0) or 耶魯 (1), a space between syllables
                 a = AttributedString((first ? "" : " ") + (mode == 1 ? Yale.of(s) : s))

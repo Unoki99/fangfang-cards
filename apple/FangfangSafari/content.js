@@ -480,7 +480,10 @@
     const digitTone = s => { const d = parseInt(s.slice(-1), 10); return isNaN(d) ? 0 : d; };
 
     // a 四川話 syllable: the tone as a mark on the vowel ("ce1" → "cē"; 2 and 5: a line under it)
-    function sichuan(s) {
+    // (an initial w before u, e or o is v: wu → vu, wo → vo, wei → vei; wa, wai, wan… stay)
+    const scV = s => /^w[ueo]/i.test(s) ? (s[0] === "W" ? "V" : "v") + s.slice(1) : s;
+    function sichuan(s0) {
+        const s = scV(s0);
         const d = digitTone(s);
         const L = [...s.slice(0, -1)];
         const mark = { 1: "̄", 2: "̱", 5: "̱", 3: "̀", 4: "̌" }[d];
@@ -491,6 +494,42 @@
         if (v < 0) { for (let i = L.length - 1; i >= 0; i--) if ("iouüv".includes(L[i])) { v = i; break; } }
         if (v < 0) v = 0;
         return (L.slice(0, v + 1).join("") + mark + L.slice(v + 1).join("")).normalize("NFC");
+    }
+
+    // a 四川話 syllable in 注音 ("ce1" → "ㄘㆤ"; the same as the app's Zhuyin.sichuanZhuyin): ng- ㄫ, ni- ㄬ, v- ㄪ,
+    // r- ㆡ, a final e ㆤ, ou ㄜㄨ (iu ㄧㄜㄨ); tones 1 none, 2 and 5 ˨˩, 3 ˋ, 4 ˇ
+    const SC_INI = [["zh", "ㄓ"], ["ch", "ㄔ"], ["sh", "ㄕ"], ["ng", "ㄫ"], ["nh", "ㄬ"], ["ny", "ㄬ"], ["b", "ㄅ"], ["p", "ㄆ"],
+        ["m", "ㄇ"], ["f", "ㄈ"], ["v", "ㄪ"], ["d", "ㄉ"], ["t", "ㄊ"], ["n", "ㄋ"], ["l", "ㄌ"], ["g", "ㄍ"], ["k", "ㄎ"], ["h", "ㄏ"],
+        ["j", "ㄐ"], ["q", "ㄑ"], ["x", "ㄒ"], ["z", "ㄗ"], ["c", "ㄘ"], ["s", "ㄙ"], ["r", "ㆡ"]];
+    const SC_FIN = { "": "", a: "ㄚ", o: "ㄛ", e: "ㆤ", "ê": "ㆤ", er: "ㄦ", ai: "ㄞ", ei: "ㄟ", ao: "ㄠ", ou: "ㄜㄨ",
+        an: "ㄢ", en: "ㄣ", ang: "ㄤ", eng: "ㄥ", ong: "ㄨㄥ", ung: "ㄨㄥ",
+        i: "ㄧ", ia: "ㄧㄚ", io: "ㄧㄛ", ie: "ㄧㆤ", iai: "ㄧㄞ", iao: "ㄧㄠ", iu: "ㄧㄜㄨ", iou: "ㄧㄜㄨ",
+        ian: "ㄧㄢ", in: "ㄧㄣ", iang: "ㄧㄤ", ing: "ㄧㄥ", iong: "ㄩㄥ", iung: "ㄩㄥ",
+        u: "ㄨ", ua: "ㄨㄚ", uo: "ㄨㄛ", ue: "ㄨㆤ", uai: "ㄨㄞ", ui: "ㄨㄟ", uei: "ㄨㄟ", uan: "ㄨㄢ", un: "ㄨㄣ", uen: "ㄨㄣ", uang: "ㄨㄤ",
+        "ü": "ㄩ", "üe": "ㄩㆤ", "üo": "ㄩㄛ", "üan": "ㄩㄢ", "ün": "ㄩㄣ" };
+    function sichuanZy(s0) {
+        const s = scV(s0);
+        const d = digitTone(s);
+        if (!d) return s;
+        let x = s.slice(0, -1).toLowerCase();
+        if (x.startsWith("yu")) x = "ü" + x.slice(2);
+        else if (x.startsWith("yi")) x = "i" + x.slice(2);
+        else if (x.startsWith("y")) x = "i" + x.slice(1);
+        else if (x.startsWith("wu")) x = "u" + x.slice(2);
+        else if (x.startsWith("w")) x = "u" + x.slice(1);
+        let ini = "", zi = "", rest = x;
+        for (const [l, z] of SC_INI) if (x.startsWith(l)) { ini = l; zi = z; rest = x.slice(l.length); break; }
+        if (rest.startsWith("v")) rest = "ü" + rest.slice(1);
+        const iu = rest.startsWith("i") || rest.startsWith("ü");
+        if (ini === "n" && iu) zi = "ㄬ";
+        if ((ini === "nh" || ini === "ny") && !iu) rest = "i" + rest;
+        if (["j", "q", "x"].includes(ini) && rest.startsWith("u")) rest = "ü" + rest.slice(1);
+        let f;
+        if (rest === "i" && ["z", "c", "s", "zh", "ch", "sh", "r"].includes(ini)) f = "";
+        else if (rest in SC_FIN) f = SC_FIN[rest];
+        else return sichuan(s);
+        if (!ini && !f) return sichuan(s);
+        return zi + f + ({ 2: "˨˩", 5: "˨˩", 3: "ˋ", 4: "ˇ" }[d] || "");
     }
 
     // [{t, c}] for a word's 漢字, one colour per syllable
@@ -516,7 +555,12 @@
         let r, r2 = null;
         const zy = () => shown.map((s, i) => ({ t: (i ? " " : "") + s, c: col(s, tShown[i]) }));
         const py = () => shown.map((s, i) => ({ t: tab.py[s] || s, c: col(s, tShown[i]) }));
-        if (isSc) r = shown.map((s, i) => ({ t: (i ? " " : "") + sichuan(s), c: col(s, tShown[i]) }));
+        if (isSc) {
+            // (四川話: 四川話拼音, or 注音 when 注音 is chosen; the other one small under it)
+            const scPy = () => shown.map((s, i) => ({ t: (i ? " " : "") + sichuan(s), c: col(s, tShown[i]) }));
+            const scZy = () => shown.map((s, i) => ({ t: (i ? " " : "") + sichuanZy(s), c: col(s, tShown[i]) }));
+            if (prefs.zhRom === 1) { r = scZy(); r2 = scPy(); } else { r = scPy(); r2 = scZy(); }
+        }
         else if (prefs.zhRom === 1) { r = zy(); r2 = py(); }
         else { r = py(); r2 = zy(); }
         const pal = isSc ? SC : ZH;
