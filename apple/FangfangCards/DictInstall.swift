@@ -301,9 +301,14 @@ final class DictInstaller: ObservableObject {
                 var have: [String: String] = [:]
                 for (i, s) in p.sources.enumerated() {
                     if let u = s.unless, have[u] != nil { continue }
+                    let dest = work.appendingPathComponent(s.file)
+                    // (an app built with the original files inside it: no download)
+                    if let inApp = Self.inApp(s.file), (try? FileManager.default.copyItem(at: inApp, to: dest)) != nil {
+                        have[s.file] = dest.path
+                        continue
+                    }
                     states[p.id] = .working(0.3 * Double(i) / Double(max(p.sources.count, 1)), tr("下載 \(s.file)…"))
                     do {
-                        let dest = work.appendingPathComponent(s.file)
                         try await Self.download(s.url, to: dest)
                         have[s.file] = dest.path
                     } catch {
@@ -348,6 +353,19 @@ final class DictInstaller: ObservableObject {
                 states[p.id] = .failed((error as? InstallError)?.text ?? error.localizedDescription)
             }
         }
+    }
+
+    /// a dictionary's original file inside the app (OfflineSources.bundle, put in by a build made for a device
+    /// that can't download them); nil: downloaded as usual
+    nonisolated static func inApp(_ file: String) -> URL? {
+        guard let b = Bundle.main.url(forResource: "OfflineSources", withExtension: "bundle") else { return nil }
+        let u = b.appendingPathComponent(file)
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
+
+    /// all of the dictionary's files are inside the app (nothing to download)
+    nonisolated static func allInApp(_ p: DictPack) -> Bool {
+        p.sources.allSatisfy { s in s.optional || inApp(s.file) != nil || (s.unless.map { inApp($0) != nil } ?? false) }
     }
 
     /// "cedict_ts.u8" → "cedict", "essay.txt" → "essay" (a converter's argument); an accent's file keeps its name
@@ -553,7 +571,7 @@ struct DictDataSettings: View {
 
     @ViewBuilder private func buttons(_ p: DictPack, installed: Bool) -> some View {
         HStack(spacing: 10) {
-            Button(installed ? trs("重新安裝") : tr("安裝（下載\(p.download)）")) { installer.install(p) }
+            Button(installed ? trs("重新安裝") : (DictInstaller.allInApp(p) ? trs("安裝") : tr("安裝（下載\(p.download)）"))) { installer.install(p) }
                 .buttonStyle(.bordered)
                 .disabled(installer.busy)
             if installed {

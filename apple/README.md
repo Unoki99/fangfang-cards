@@ -100,6 +100,8 @@ bash build-data.sh yue                   # 粵語（含維基詞典）
 - 詞素是照規則推算的（前綴、後綴表，和 Folkets lexikon 標的複合詞界線），可能有錯。
 - **Safari 查詞**也查瑞典語：用 Pencil 停在一個瑞典文的詞上（或選取它），卡片顯示上色的詞素、每個部分的意思，和中文、英文解釋。
 
+**電台**（iPhone／iPad）：上方 ⚙︎ 旁邊的收音機按鈕，一邊練習一邊聽台語、華語、粵語、客語、日語、瑞典語的廣播。每個語言先有幾個常聽的電台；「找電台」可以照語言或名字找更多，也可以貼上串流網址自己加。電台換網址的時候 App 會自己找回來：先用 Radio Browser 的電台 ID 問新的網址，找不到再用名字搜尋，最後才用上次能播的網址。App 在背景、鎖定畫面也繼續播（鎖定畫面可以停止、播放），念詞的發音時電台會自動變小聲。電台有送歌名的話，App 會自己找那首歌的歌詞，顯示在「轉換」的「歌詞」（整頁；電台裡的「歌詞」也會直接打開它）：漢字（開了聲調顏色就上色）和選的拼寫，iPad 和 Mac 上左右並排，iPhone 上拼寫在漢字下面；兩邊的詞都可以按住滑過去放大，點一下就從下面跳出詞典的解釋，可以收藏、加到「不熟」。歌詞不能編輯，也不會改到「轉換」裡的文字。找不到的時候可以自己打歌名。簡體的歌詞會轉成繁體（可以切換）。聽到喜歡的歌，按書籤就把歌名和歌手存到「我的歌」（在電台裡），以後可以再看歌詞，或在 Apple Music、YouTube 找。
+
 **捷徑（Shortcuts）**：捷徑 App 裡有兩個方方詞卡的動作。
 - **在方方詞卡查詞**：輸入一個詞（華語、台語漢字、羅馬字或方音），打開 App 的「詞典」查這個詞。在那裡可以聽發音、收藏（收藏可以匯出 CSV）、加到「不熟」。
 - **方方查詞（小視窗）**（iOS／iPadOS／macOS 26）：在目前的畫面上跳出一張小卡片，顯示最多 4 個結果（漢字、讀音、意思）。卡片上可以 ▶ 聽發音、收藏、加到「不熟」，或按 ↗ 在 App 裡打開，都不用離開你正在用的 App。
@@ -245,5 +247,8 @@ bash build-data.sh yue                   # 粵語（含維基詞典）
 - **瑞典語詞典**：Folkets lexikon — KTH（Viggo Kann、Joachim Hollman），授權：[創用CC 姓名標示-相同方式分享 2.5](https://creativecommons.org/licenses/by-sa/2.5/)，[folkets-lexikon.csc.kth.se](http://folkets-lexikon.csc.kth.se/folkets/)。中文解釋：維基詞典（中文版，經 [kaikki.org](https://kaikki.org/) 整理），授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。常用詞：FrequencyWords（Hermit Dave，OpenSubtitles），授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。
   - 本儲存庫**不包含**詞典的內容：在 App 的「設定 → 詞典資料 → 瑞典語」安裝時，手機下載這三個檔案，用 `FangfangCards/Install/swedish.js` 在手機上整理（Mac 上 `tools/build_swedish.py` 做出一樣的資料給 Safari 查詞）。說明見 [`licenses/sv-data.txt`](licenses/sv-data.txt)。
   - 詞素的切分、前綴和後綴的說明是本專案自己寫的。
+
+- **歌詞**：LRCLIB — [lrclib.net](https://lrclib.net/)。App 只在聽歌時向它查詢並顯示歌詞，不收錄也不散布歌詞；歌詞的著作權屬於原作者。
+- **電台目錄**：Radio Browser — [www.radio-browser.info](https://www.radio-browser.info/)，目錄資料以公眾領域（Public Domain）提供。App 只在播放、搜尋時向它查詢電台的網址；廣播內容屬於各電台。
 
 **程式碼**（Swift、Python、shell）：MIT 授權，見 [`LICENSE`](LICENSE)。上面列的資料、音檔、字型不在 MIT 授權範圍內，各自依照原本的授權。

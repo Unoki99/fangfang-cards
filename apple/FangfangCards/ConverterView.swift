@@ -91,19 +91,22 @@ struct DictGate<Content: View>: View {
 /// 轉換: 漢字 ⇄ 皓羅 ⇄ 方音, all native and offline (only audio uses the network).
 struct ConverterView: View {
     @EnvironmentObject var store: Store
-    /// 0 轉換, 1 讀音 (a word in 台語, 華語 and 粵語 side by side)
+    /// 0 轉換, 1 讀音 (a word in 台語, 華語 and 粵語 side by side), 2 歌詞 (the radio's song)
     @AppStorage("convertTab") private var tab = 0
     var body: some View {
         VStack(spacing: 0) {
             Picker("", selection: $tab) {
                 Text(tr("轉換")).tag(0)
                 Text(tr("讀音")).tag(1)
+                Text(tr("歌詞")).tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
             Group {
                 if tab == 1 {
                     ReadingsPane()
+                } else if tab == 2 {
+                    LyricsWindow(inConvert: true)
                 } else if store.isSv {
                     ZhGate { z in SvConvertPane(dict: z) }
                 } else if store.isZh {
@@ -185,9 +188,12 @@ final class ConvModel: ObservableObject {
     }
     private(set) var engine: ConvertEngine?
     private var task: Task<Void, Never>?
+    /// where the text is kept (轉換's own, or the 歌詞 window's)
+    let key: String
 
-    init() {
-        text = UserDefaults.standard.string(forKey: "ff-text") ?? ""
+    init(key: String = "ff-text") {
+        self.key = key
+        text = UserDefaults.standard.string(forKey: key) ?? ""
         latinMode = LatinMode(rawValue: UserDefaults.standard.string(forKey: "ff-latin") ?? "") ?? .auto
     }
 
@@ -211,7 +217,7 @@ final class ConvModel: ObservableObject {
     func run() {
         guard let engine else { return }
         result = engine.convert(text)
-        UserDefaults.standard.set(text, forKey: "ff-text")
+        UserDefaults.standard.set(text, forKey: key)
     }
 
     func choose(_ item: Int, _ opt: Int) {
@@ -224,10 +230,18 @@ final class ConvModel: ObservableObject {
 
 struct ConvertPane: View {
     let dict: Dict
+    /// the 歌詞 window: no typing, only the 漢字 (left) and the chosen spelling (right)
+    let lyrics: Bool
     @EnvironmentObject var store: Store
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
-    @StateObject private var model = ConvModel()
+    @StateObject private var model: ConvModel
+
+    init(dict: Dict, textKey: String = "ff-text", lyrics: Bool = false) {
+        self.dict = dict
+        self.lyrics = lyrics
+        _model = StateObject(wrappedValue: ConvModel(key: textKey))
+    }
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
     @FocusState private var focused: Bool
@@ -239,7 +253,19 @@ struct ConvertPane: View {
 
     var body: some View {
         GeometryReader { geo in
-            if geo.size.width >= 820 {
+            if lyrics {
+                ScrollView {
+                    if hasOutput {
+                        LyricsColumns {
+                            panel(0, trs("漢字"))
+                            panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)]))
+                        }
+                        .padding()
+                        .frame(maxWidth: 1100)
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            } else if geo.size.width >= 820 {
                 // wide (iPad landscape, Mac): text on the left, the three scripts on the right
                 HStack(alignment: .top, spacing: 16) {
                     ScrollView {
@@ -275,6 +301,11 @@ struct ConvertPane: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .onAppear { model.attach(dict) }
+        // (the 歌詞 window: a new song's lyrics)
+        .onReceive(NotificationCenter.default.publisher(for: LyricsBridge.changed)) { _ in
+            let t = UserDefaults.standard.string(forKey: model.key) ?? ""
+            if t != model.text { model.text = t }
+        }
         #if targetEnvironment(macCatalyst)
         .navigationDestination(item: $openItem) { sel in
             WordSheet(dict: dict, model: model, index: sel.index, inSheet: false)

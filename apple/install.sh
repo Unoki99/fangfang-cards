@@ -131,6 +131,16 @@ for f in zh_sc tw_en; do
   fi
 done
 
+# (FANGFANG_OFFLINE_SOURCES=a folder: the dictionaries' original files go inside the app, for a device that can't
+# download them; the app then makes each dictionary from them. Taken out again when this script ends.)
+OFF="$DEST/FangfangCards/OfflineSources.bundle"
+rm -rf "$OFF"
+if [ -n "$FANGFANG_OFFLINE_SOURCES" ] && [ -d "$FANGFANG_OFFLINE_SOURCES" ]; then
+  mkdir -p "$OFF" && cp "$FANGFANG_OFFLINE_SOURCES"/* "$OFF"/
+  trap 'rm -rf "$OFF"' EXIT
+  echo "（詞典的原始檔案放進 App：$(du -sh "$OFF" | cut -f1)）"
+fi
+
 # Xcode's iOS part (a separate download in new Xcode versions): say how to get it if it's missing
 ensure_ios_platform() {
   if ! xcodebuild -showdestinations -project "$DEST/FangfangCards.xcodeproj" -scheme FangfangCards 2>&1 < /dev/null | grep -q "is not installed"; then return 0; fi

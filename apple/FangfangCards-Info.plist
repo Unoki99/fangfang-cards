@@ -5,6 +5,8 @@
 	<!-- lets the Shortcuts card (方方查詞（小視窗）) play recordings while another app is on screen -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<key>NSAllowsArbitraryLoadsForMedia</key>
+		<true/>
 		<key>NSExceptionDomains</key>
 		<dict>
 			<key>edrdg.org</key>

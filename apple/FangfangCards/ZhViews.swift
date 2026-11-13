@@ -798,8 +798,10 @@ struct ZhSavedPane: View {
 /// 華語 text → 拼音 / 注音, in tone colours; the readings are the dictionary's (most common reading of each word)
 struct ZhConvertPane: View {
     let dict: ZhDict
+    /// the 歌詞 window: no typing, only the 漢字 (left) and the chosen reading (right)
+    let lyrics: Bool
     @EnvironmentObject var store: Store
-    @AppStorage("zhConvText") private var text = ""
+    @AppStorage private var text: String
     @State private var pieces: [ZhPiece] = []
     @State private var copied: Int?
     @State private var copySheet = false
@@ -807,9 +809,26 @@ struct ZhConvertPane: View {
     @State private var tapped: ZhKey?
     @FocusState private var focused: Bool
 
+    init(dict: ZhDict, textKey: String = "zhConvText", lyrics: Bool = false) {
+        self.dict = dict
+        self.lyrics = lyrics
+        _text = AppStorage(wrappedValue: "", textKey)
+    }
+
+    /// the reading chosen (拼音 / 注音, 粵拼 / 耶魯, rōmaji / かな…)
+    private var romIndex: Int { min(max(store.zhRom, 0), 1) }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                if lyrics {
+                    if !pieces.isEmpty {
+                        LyricsColumns {
+                            panel(0, trs("漢字"), dict.sentenceHan(pieces, store.zhPlace, base: T.glyph))
+                            panel(romIndex + 1, trs(Lang.romNames[romIndex]), dict.sentence(pieces, romIndex, store.zhPlace))
+                        }
+                    }
+                } else {
                 ZStack(alignment: .topLeading) {
                     if text.isEmpty {
                         Text(Lang.isHak ? tr("輸入或貼上客語…") : Lang.isYue ? tr("輸入或貼上粵語（正體或簡體都可以）…") : tr("輸入或貼上華語（正體或簡體都可以）…")).foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
@@ -854,9 +873,10 @@ struct ZhConvertPane: View {
                     Text(tr("讀音照詞典裡最常見的唸法，一字多音的地方可能會錯。上面可以切換國語／普通話／四川話的讀音。"))
                         .ffFont(.caption).foregroundStyle(T.muted)
                 }
+                }
             }
             .padding()
-            .frame(maxWidth: 760)
+            .frame(maxWidth: lyrics ? 1100 : 760)
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -895,6 +915,14 @@ struct ZhConvertPane: View {
                     if let k = w[j].key { focused = false; tapped = ZhKey(k: k) }
                 }
                 .ffFont(.title3)
+            } else if lyrics {
+                // (the 歌詞 window: the reading's words swell and open too, like the 漢字)
+                let w = words
+                SwellWords(pieces: romPieces(w, i - 1), vPad: 3) { j in
+                    if let k = w[j].key { tapped = ZhKey(k: k) }
+                }
+                .ffFont(.body)
+                .foregroundStyle(i == 1 ? T.greenInk : T.purpleInk)
             } else {
                 Text(a).ffFont(.body).toneGlow().textSelection(.enabled)
                     .foregroundStyle(i == 1 ? T.greenInk : T.purpleInk)
@@ -903,6 +931,28 @@ struct ZhConvertPane: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.55)))
+    }
+
+    /// the reading word by word (a space before each word that follows another; only a line's first word with a
+    /// capital letter in 拼音)
+    private func romPieces(_ w: [(piece: ZhPiece, key: String?, newLine: Bool)], _ mode: Int)
+        -> [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)] {
+        var out: [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)] = []
+        var prevWord = false
+        for (j, x) in w.enumerated() {
+            let lineStart = j == 0 || x.newLine
+            if lineStart { prevWord = false }
+            var a = dict.sentence([x.piece], mode, store.zhPlace)
+            let isWord = dict.pieceSyl(x.piece, store.zhPlace) != nil
+            if isWord, mode == 0, dict.lang == 1, !lineStart, let f = a.characters.firstIndex(where: { $0.isLetter }) {
+                let ch = a.characters[f]
+                a.characters.replaceSubrange(f...f, with: String(ch).lowercased())
+            }
+            if isWord && prevWord { a = AttributedString(" ") + a }
+            prevWord = isWord
+            out.append((a, x.key != nil, x.newLine, 0))
+        }
+        return out
     }
 
     /// the converted text's words (line breaks start a new line), with the entry each one opens

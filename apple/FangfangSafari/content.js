@@ -35,7 +35,7 @@
         }).catch(() => {});
         // (changed in the extension's own window, from its button in Safari's toolbar, or on another page)
         if (browser.storage.onChanged) browser.storage.onChanged.addListener((ch, area) => {
-            if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (card && card.style.display !== "none" && last && !card.querySelector(".set")) redraw(); }
+            if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (isOpen() && last && !card.querySelector(".set")) redraw(); }
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
             if (ch.ffSaved) saved = ch.ffSaved.newValue || [];
             if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on) hide(); pageMarks(); }
@@ -1017,6 +1017,11 @@
             background: rgba(30, 31, 35, 0.97); color: #f2f2f2; border: 1.5px solid #4b4b4e;
             border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,.45);
             font: 15px/1.35 -apple-system, "PingFang TC", "Heiti TC", sans-serif; -webkit-text-size-adjust: none; }
+        /* opening and closing: grows out of the word and fades in; shrinks back and fades out */
+        .card { transition: opacity .2s ease-out, transform .26s cubic-bezier(.2, .9, .3, 1.15); will-change: opacity, transform; }
+        .card.off { opacity: 0; transform: scale(.92) translateY(var(--ff-dy, -6px));
+            transition: opacity .16s ease-in, transform .18s ease-in; }
+        @media (prefers-reduced-motion: reduce) { .card, .card.off { transition: opacity .12s linear; transform: none; } }
         .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 8px 12px 14px; }
         .grip { position: absolute; width: 22px; height: 22px; touch-action: none; cursor: nwse-resize; }
         .grip::after { content: ""; position: absolute; width: 10px; height: 10px; border: 0 solid #8e8e93; }
@@ -1318,14 +1323,26 @@
     function redraw() { if (last) show(last.rect, last.spot, render(last.res)); }
 
     let shownRect = null;
+    // the card is closing (its animation running): the time it's put away
+    let closeTimer = 0, closing = false;
+    /// the card is on the screen (and not on its way out)
+    function isOpen() { return !!card && card.style.display !== "none" && !closing; }
     function show(rect, spot, content) {
         ensureHost();
         clearTimeout(hideTimer);
+        // (already showing: only its words change, no animation)
+        const opening = !isOpen();
+        clearTimeout(closeTimer); closing = false;
         body.replaceChildren(content);
+        if (opening) card.classList.add("off");
         card.style.display = "flex";
         shownRect = rect;
         place();
         shownSpot = spot;
+        if (opening) {
+            void card.offsetWidth;              // (the hidden state is drawn first, so the change animates)
+            requestAnimationFrame(() => { if (!closing) card.classList.remove("off"); });
+        }
     }
 
     // the card's size (as resized, or by its words) and place (next to the word, or a corner of the screen)
@@ -1360,6 +1377,12 @@
             }
         }
         card.style.left = Math.max(8, left) + "px"; card.style.top = Math.max(8, top) + "px";
+        // (the animation grows out of the word: from the card's edge next to it)
+        const cl = Math.max(8, left), ct = Math.max(8, top);
+        const above = shownRect && ct + h <= shownRect.top + 2;
+        const wx = shownRect ? Math.min(Math.max((shownRect.left + shownRect.right) / 2 - cl, 12), w - 12) : w / 2;
+        card.style.transformOrigin = (pos === "word" ? wx + "px " : (pos[1] === "l" ? "0 " : "100% ")) + (above || (pos !== "word" && pos[0] === "b") ? "100%" : "0");
+        card.style.setProperty("--ff-dy", (above || (pos !== "word" && pos[0] === "b")) ? "6px" : "-6px");
         // the corner to drag: the one away from the screen's corner the card is in (next to a word: bottom right)
         grip.className = "grip " + { word: "br", tl: "br", tr: "bl", bl: "tr", br: "tl" }[pos];
         card.style.visibility = "visible";
@@ -1400,13 +1423,18 @@
     }
     function hide() {
         clearTimeout(hideTimer);
-        if (card) card.style.display = "none";
         unmark();
         shownSpot = "";
+        if (!isOpen()) return;
+        // fades and shrinks away, then is put away
+        closing = true;
+        card.classList.add("off");
+        clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => { if (closing) { card.style.display = "none"; closing = false; } }, 200);
     }
     function hideSoon() {
         clearTimeout(hideTimer);
-        if (card && card.style.display !== "none" && !card.querySelector(".set")) hideTimer = setTimeout(hide, HIDE);
+        if (isOpen() && !card.querySelector(".set")) hideTimer = setTimeout(hide, HIDE);
     }
     const inCard = e => host && e.composedPath && e.composedPath().includes(host);
 
@@ -1450,7 +1478,7 @@
             if (text) lookup(text, hit.rect, spot, { node: hit.node, off: hit.off });
         };
         // (moving along a line with the card showing: the next word at once)
-        if (card && card.style.display !== "none") go(); else dwellTimer = setTimeout(go, DWELL);
+        if (isOpen()) go(); else dwellTimer = setTimeout(go, DWELL);
     }
 
     document.addEventListener("pointerleave", e => { if (e.pointerType === "pen") { clearTimeout(dwellTimer); lastSpot = ""; } }, true);

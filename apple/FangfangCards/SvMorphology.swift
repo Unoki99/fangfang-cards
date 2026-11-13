@@ -771,8 +771,10 @@ struct SvExampleBody: View {
 /// into morphemes (sam-tyck-lig-a), and the words in it with their meanings
 struct SvConvertPane: View {
     let dict: ZhDict
+    /// the 歌詞 window: no typing, only the coloured words (left) and the words split into morphemes (right)
+    let lyrics: Bool
     @EnvironmentObject var store: Store
-    @AppStorage("svConvText") private var text = ""
+    @AppStorage private var text: String
     @AppStorage(ToneColors.key) private var toneSys = 0
     @State private var words: [Tok] = []
     @State private var copied: Int?
@@ -791,9 +793,20 @@ struct SvConvertPane: View {
         var parts: [String] = []
     }
 
+    init(dict: ZhDict, textKey: String = "svConvText", lyrics: Bool = false) {
+        self.dict = dict
+        self.lyrics = lyrics
+        _text = AppStorage(wrappedValue: "", textKey)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                if lyrics {
+                    if !words.isEmpty {
+                        LyricsColumns { coloured; split }
+                    }
+                } else {
                 ZStack(alignment: .topLeading) {
                     if text.isEmpty {
                         Text(tr("輸入或貼上瑞典文…")).foregroundStyle(T.muted).padding(.horizontal, 5).padding(.vertical, 8)
@@ -829,9 +842,10 @@ struct SvConvertPane: View {
                     Text(tr("詞素是照詞典的詞推算的：變化過的詞，多出來的部分當作詞尾。詞典裡沒有的詞不上色。"))
                         .ffFont(.caption).foregroundStyle(T.muted)
                 }
+                }
             }
             .padding()
-            .frame(maxWidth: 760)
+            .frame(maxWidth: lyrics ? 1100 : 760)
             .frame(maxWidth: .infinity)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -902,11 +916,21 @@ struct SvConvertPane: View {
     /// the text with its words split into morphemes
     private var split: some View {
         box(trs("詞素"), copy: 1) {
+            if lyrics {
+                // (the 歌詞 window: these words swell and open too)
+                SwellWords(pieces: words.map { (ink($0, hyphens: true) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3) { j in
+                    if let k = words[j].key { tapped = ZhKey(k: k) }
+                    else if !words[j].parts.isEmpty { compound = SvWordRef(id: words[j].core) }
+                }
+                .latFont(17)
+                .toneGlow()
+            } else {
             Text(words.enumerated().reduce(into: AttributedString()) { out, p in
                 if p.offset > 0 { out += AttributedString(p.element.newLine ? "\n" : " ") }
                 out += ink(p.element, hyphens: true)
             })
             .latFont(17).toneGlow().textSelection(.enabled)
+            }
         }
     }
 

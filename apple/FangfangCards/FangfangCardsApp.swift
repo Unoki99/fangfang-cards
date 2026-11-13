@@ -28,6 +28,7 @@ struct FangfangCardsApp: App {
                 .id(theme)
                 // (above the .id: 設定 stays open when the theme, the language or 介面語言 changes)
                 .modifier(SettingsSheet())
+                .modifier(RadioSheetModifier())
                 .fontDesign((AppTheme(rawValue: theme) ?? .night).fontDesign)
                 .onAppear { MacWindow.setUp() }
                 .environmentObject(store)
@@ -175,8 +176,12 @@ struct RootView: View {
 /// ⚙︎ in the top bar of every tab opens 設定 (the tab bar has room for five tabs)
 struct SettingsButton: View {
     var body: some View {
-        Button { Router.shared.settingsOpen = true } label: { Image(systemName: "gearshape").foregroundStyle(T.glyph) }
-            .accessibilityLabel(tr("設定"))
+        HStack(spacing: 10) {
+            // 電台: listen while practising
+            RadioButton()
+            Button { Router.shared.settingsOpen = true } label: { Image(systemName: "gearshape").foregroundStyle(T.glyph) }
+                .accessibilityLabel(tr("設定"))
+        }
     }
 }
 
