@@ -47,5 +47,5 @@ iPhone／iPad／Mac 版只能在 Mac 上建置。在 Windows 上可以做 Androi
 
 ---
 
-Taiwanese and Mandarin word cards, dictionary and practice. `apple/` is the iPhone / iPad / Mac version,
+Taiwanese, Mandarin, Cantonese, Hakka, Japanese and Swedish word cards, dictionary and practice. `apple/` is the iPhone / iPad / Mac version,
 `android/` the Android version. Run `bash install.sh` and pick one.
