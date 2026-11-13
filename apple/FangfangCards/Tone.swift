@@ -605,12 +605,22 @@ extension ToneColors {
     #endif
 }
 
+/// (a place where the glow is left out: the 歌詞 page's rōmaji, which would get slow with it)
+private struct NoToneGlowKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    var noToneGlow: Bool {
+        get { self[NoToneGlowKey.self] }
+        set { self[NoToneGlowKey.self] = newValue }
+    }
+}
+
 /// 聲調顏色 on: the coloured letters glow a little in their own colour
 struct ToneGlow: ViewModifier {
     @AppStorage(ToneColors.key) private var system = 0
     @AppStorage(ToneColors.glowKey) private var glow = ToneColors.glowStandard
+    @Environment(\.noToneGlow) private var off
     @ViewBuilder func body(content: Content) -> some View {
-        if system != 0 && glow {
+        if system != 0 && glow && !off {
             #if targetEnvironment(macCatalyst)
             // Mac: no blur (the Mac works every blur out again whenever anything on the page moves). A soft
             // halo instead: faint copies of the letters, a little to each side, in a ring of 8 and a wider

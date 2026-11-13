@@ -921,6 +921,7 @@ struct ZhConvertPane: View {
                 SwellWords(pieces: romPieces(w, i - 1), vPad: 3) { j in
                     if let k = w[j].key { tapped = ZhKey(k: k) }
                 }
+                .environment(\.noToneGlow, true)      // (letters: no glow here, it got slow)
                 .ffFont(.body)
                 .foregroundStyle(i == 1 ? T.greenInk : T.purpleInk)
             } else {

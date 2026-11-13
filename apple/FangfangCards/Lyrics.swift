@@ -200,14 +200,20 @@ struct LyricsWindow: View {
     @ObservedObject private var radio = RadioPlayer.shared
     @EnvironmentObject var store: Store
     @State private var picking = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
             if let h = lyrics.song {
                 VStack(spacing: 0) {
                     header(h)
-                    words.id("\(lyrics.version)-\(store.lang)")
-                        .frame(maxHeight: .infinity)
+                    // a new song: the old words burst into sparkles of their colours, the new ones fade in
+                    ZStack {
+                        words.id("\(lyrics.version)-\(store.lang)")
+                            .transition(LyricsDissolve.transition(reduceMotion))
+                    }
+                    .frame(maxHeight: .infinity)
+                    .animation(.easeOut(duration: 0.9), value: lyrics.version)
                 }
             } else if lyrics.looking {
                 VStack(spacing: 12) {
@@ -554,5 +560,88 @@ struct LyricsColumns<Content: View>: View {
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 10))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
         layout { content }
+    }
+}
+
+// MARK: - the old lyrics turning into sparkles
+
+/// a song's words leaving: they fade and blur away while sparkles in their colours rise out of them
+struct LyricsDissolve: ViewModifier, Animatable {
+    /// 0: the words as they are … 1: gone
+    var p: Double
+    var animatableData: Double {
+        get { p }
+        set { p = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(max(0, 1 - p * 1.7))
+            .blur(radius: p * 9)
+            .scaleEffect(1 + p * 0.03)
+            .overlay {
+                if p > 0.001 && p < 0.999 { SparkleDust(p: p).allowsHitTesting(false) }
+            }
+    }
+
+    /// leaving: sparkles; coming: fading in once the sparkles are mostly gone (Reduce Motion: only a fade)
+    static func transition(_ reduce: Bool) -> AnyTransition {
+        if reduce { return .opacity.animation(.easeInOut(duration: 0.35)) }
+        return .asymmetric(
+            insertion: .opacity.animation(.easeIn(duration: 0.55).delay(0.45)),
+            removal: .modifier(active: LyricsDissolve(p: 1), identity: LyricsDissolve(p: 0)).animation(.easeOut(duration: 0.9)))
+    }
+}
+
+/// the sparkles: scattered over the words, drifting up, twinkling, then gone
+private struct SparkleDust: View {
+    let p: Double
+    @AppStorage(ToneColors.key) private var system = 0
+
+    private struct Grain { let x, y, dx, dy, size, phase: Double; let color: Int; let star: Bool }
+    /// (the same scattering every time: made once)
+    private static let grains: [Grain] = {
+        var g = SystemRandomNumberGenerator()
+        return (0..<170).map { _ in
+            Grain(x: Double.random(in: 0...1, using: &g), y: Double.random(in: 0...1, using: &g),
+                  dx: Double.random(in: -0.06...0.06, using: &g), dy: Double.random(in: -0.22 ... -0.04, using: &g),
+                  size: Double.random(in: 1.5...4.2, using: &g), phase: Double.random(in: 0...(2 * .pi), using: &g),
+                  color: Int.random(in: 0..<64, using: &g), star: Double.random(in: 0...1, using: &g) < 0.3)
+        }
+    }()
+
+    /// the words' colours: the tone colours when they're on, the text's own colours when not
+    private var colors: [Color] { system != 0 ? StarField.colors : [T.glyph, T.btnInk, T.greenInk] }
+
+    var body: some View {
+        let cs = colors
+        Canvas { ctx, size in
+            // (in quickly, then fading as they rise)
+            let alphaAll = min(1, p / 0.12) * (1 - p)
+            guard alphaAll > 0.01 else { return }
+            for g in Self.grains {
+                let x = (g.x + g.dx * p) * size.width
+                let y = (g.y + g.dy * p) * size.height
+                let tw = 0.55 + 0.45 * sin(g.phase + p * 14)
+                let a = alphaAll * tw
+                let c = cs[g.color % cs.count]
+                let r = g.size * (1 - 0.4 * p)
+                // a soft halo, then the grain itself
+                ctx.fill(Path(ellipseIn: CGRect(x: x - r * 2.2, y: y - r * 2.2, width: r * 4.4, height: r * 4.4)),
+                         with: .color(c.opacity(a * 0.22)))
+                if g.star {
+                    var s = Path()
+                    let l = r * 2.4, w = r * 0.5
+                    s.move(to: CGPoint(x: x, y: y - l))
+                    s.addQuadCurve(to: CGPoint(x: x + l, y: y), control: CGPoint(x: x + w, y: y - w))
+                    s.addQuadCurve(to: CGPoint(x: x, y: y + l), control: CGPoint(x: x + w, y: y + w))
+                    s.addQuadCurve(to: CGPoint(x: x - l, y: y), control: CGPoint(x: x - w, y: y + w))
+                    s.addQuadCurve(to: CGPoint(x: x, y: y - l), control: CGPoint(x: x - w, y: y - w))
+                    ctx.fill(s, with: .color(c.opacity(a)))
+                } else {
+                    ctx.fill(Path(ellipseIn: CGRect(x: x - r / 2, y: y - r / 2, width: r, height: r)), with: .color(c.opacity(a)))
+                }
+            }
+        }
     }
 }

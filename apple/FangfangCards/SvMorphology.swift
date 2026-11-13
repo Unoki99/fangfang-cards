@@ -804,7 +804,8 @@ struct SvConvertPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 if lyrics {
                     if !words.isEmpty {
-                        LyricsColumns { coloured; split }
+                        // (letters only: no glow here, it got slow)
+                        LyricsColumns { coloured; split }.environment(\.noToneGlow, true)
                     }
                 } else {
                 ZStack(alignment: .topLeading) {

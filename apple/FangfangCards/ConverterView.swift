@@ -258,7 +258,8 @@ struct ConvertPane: View {
                     if hasOutput {
                         LyricsColumns {
                             panel(0, trs("漢字"))
-                            panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)]))
+                            // (letters: no glow here, it got slow)
+                            panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)])).environment(\.noToneGlow, true)
                         }
                         .padding()
                         .frame(maxWidth: 1100)
