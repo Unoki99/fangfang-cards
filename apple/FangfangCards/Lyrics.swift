@@ -213,7 +213,7 @@ struct LyricsWindow: View {
                             .transition(LyricsDissolve.transition(reduceMotion))
                     }
                     .frame(maxHeight: .infinity)
-                    .animation(.easeOut(duration: 0.9), value: lyrics.version)
+                    .animation(.linear(duration: LyricsDissolve.length), value: lyrics.version)
                 }
             } else if lyrics.looking {
                 VStack(spacing: 12) {
@@ -576,20 +576,24 @@ struct LyricsDissolve: ViewModifier, Animatable {
 
     func body(content: Content) -> some View {
         content
-            .opacity(max(0, 1 - p * 1.7))
-            .blur(radius: p * 9)
-            .scaleEffect(1 + p * 0.03)
+            // (the words are gone in the first third; the sparkles stay on after them)
+            .opacity(max(0, 1 - p * 3))
+            .blur(radius: min(1, p * 3) * 9)
+            .scaleEffect(1 + min(1, p * 3) * 0.03)
             .overlay {
                 if p > 0.001 && p < 0.999 { SparkleDust(p: p).allowsHitTesting(false) }
             }
     }
 
+    /// how long the sparkles last (seconds)
+    static let length = 2.6
+
     /// leaving: sparkles; coming: fading in once the sparkles are mostly gone (Reduce Motion: only a fade)
     static func transition(_ reduce: Bool) -> AnyTransition {
         if reduce { return .opacity.animation(.easeInOut(duration: 0.35)) }
         return .asymmetric(
-            insertion: .opacity.animation(.easeIn(duration: 0.55).delay(0.45)),
-            removal: .modifier(active: LyricsDissolve(p: 1), identity: LyricsDissolve(p: 0)).animation(.easeOut(duration: 0.9)))
+            insertion: .opacity.animation(.easeIn(duration: 0.9).delay(length * 0.55)),
+            removal: .modifier(active: LyricsDissolve(p: 1), identity: LyricsDissolve(p: 0)).animation(.linear(duration: length)))
     }
 }
 
@@ -616,16 +620,16 @@ private struct SparkleDust: View {
     var body: some View {
         let cs = colors
         Canvas { ctx, size in
-            // (in quickly, then fading as they rise)
-            let alphaAll = min(1, p / 0.12) * (1 - p)
+            // (in quickly while the words fade, bright for a while, then fading out as they rise)
+            let alphaAll = min(1, p / 0.15) * min(1, (1 - p) / 0.45)
             guard alphaAll > 0.01 else { return }
             for g in Self.grains {
                 let x = (g.x + g.dx * p) * size.width
                 let y = (g.y + g.dy * p) * size.height
-                let tw = 0.55 + 0.45 * sin(g.phase + p * 14)
+                let tw = 0.55 + 0.45 * sin(g.phase + p * 26)
                 let a = alphaAll * tw
                 let c = cs[g.color % cs.count]
-                let r = g.size * (1 - 0.4 * p)
+                let r = g.size * (1.15 - 0.45 * p)
                 // a soft halo, then the grain itself
                 ctx.fill(Path(ellipseIn: CGRect(x: x - r * 2.2, y: y - r * 2.2, width: r * 4.4, height: r * 4.4)),
                          with: .color(c.opacity(a * 0.22)))
