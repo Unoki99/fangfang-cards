@@ -15,7 +15,7 @@ final class StarField: ObservableObject {
         let born: Date
         var kind: Kind = .star
     }
-    enum Kind { case star, moon, leaf, planet, mushroom, acorn, snowflake }
+    enum Kind { case star, moon, leaf, planet, mushroom, acorn, snowflake, petal, maple }
 
     /// what flies in this theme (stars more often than the rest)
     private static var kinds: [Kind] {
@@ -25,6 +25,8 @@ final class StarField: ObservableObject {
         case .space: return [.star, .star, .planet]
         case .goblin: return [.mushroom, .leaf, .acorn, .star]
         case .winter: return [.snowflake, .snowflake, .star]
+        case .sakura: return [.petal, .petal, .star]
+        case .momiji: return [.maple, .maple, .leaf, .star]
         }
     }
     @Published var stars: [Star] = []
@@ -104,6 +106,8 @@ struct StarLayer: View {
     static func shape(_ k: StarField.Kind, _ r: CGFloat) -> Path {
         switch k {
         case .star: return star(r)
+        case .petal: return petal(r)
+        case .maple: return maple(r)
         case .moon:
             // a crescent: a circle with another circle cut out of its side
             return Path(ellipseIn: CGRect(x: -r, y: -r, width: 2 * r, height: 2 * r))
@@ -147,6 +151,37 @@ struct StarLayer: View {
             }
             return p
         }
+    }
+
+    /// a cherry petal: round, with a little notch at its tip
+    static func petal(_ r: CGFloat) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 0, y: r))
+        p.addQuadCurve(to: CGPoint(x: -r * 0.12, y: -r * 0.85), control: CGPoint(x: -r * 1.05, y: -r * 0.1))
+        p.addLine(to: CGPoint(x: 0, y: -r * 0.6))
+        p.addLine(to: CGPoint(x: r * 0.12, y: -r * 0.85))
+        p.addQuadCurve(to: CGPoint(x: 0, y: r), control: CGPoint(x: r * 1.05, y: -r * 0.1))
+        p.closeSubpath()
+        return p
+    }
+
+    /// a maple leaf: five pointed lobes and a stem
+    static func maple(_ r: CGFloat) -> Path {
+        var p = Path()
+        let lobes: [(a: CGFloat, len: CGFloat)] = [(-90, 1.0), (-35, 0.85), (15, 0.6), (165, 0.6), (215, 0.85)]
+        for (i, l) in lobes.enumerated() {
+            let a = l.a * .pi / 180
+            let tip = CGPoint(x: cos(a) * r * l.len, y: sin(a) * r * l.len)
+            let a0 = a - 0.38, a1 = a + 0.38
+            let side0 = CGPoint(x: cos(a0) * r * 0.42, y: sin(a0) * r * 0.42)
+            let side1 = CGPoint(x: cos(a1) * r * 0.42, y: sin(a1) * r * 0.42)
+            if i == 0 { p.move(to: side0) } else { p.addLine(to: side0) }
+            p.addLine(to: tip)
+            p.addLine(to: side1)
+        }
+        p.closeSubpath()
+        p.addRect(CGRect(x: -r * 0.05, y: r * 0.2, width: r * 0.1, height: r * 0.6))
+        return p
     }
 
     /// a five-pointed star with rounded-looking points

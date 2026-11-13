@@ -99,15 +99,17 @@ INITIALS = ["zh", "ch", "sh", "rh", "ng", "bb", "b", "p", "m", "f", "v", "d", "t
 ZY_INI = {"b": "ㄅ", "p": "ㄆ", "m": "ㄇ", "f": "ㄈ", "v": "ㄪ", "d": "ㄉ", "t": "ㄊ", "n": "ㄋ", "l": "ㄌ", "g": "ㄍ",
           "k": "ㄎ", "ng": "ㄫ", "h": "ㄏ", "j": "ㄐ", "q": "ㄑ", "x": "ㄒ", "z": "ㄗ", "c": "ㄘ", "s": "ㄙ",
           "zh": "ㄓ", "ch": "ㄔ", "sh": "ㄕ", "rh": "ㄖ", "bb": "ㆠ"}
-ZY_FIN = [("ang", "ㄤ"), ("ai", "ㄞ"), ("au", "ㄠ"), ("an", "ㄢ"), ("ii", "ㆨ"), ("ee", "ㆤ"), ("oo", "ㆦ"), ("er", "ㄜ"),
-          ("nn", "ⁿ"), ("ng", "ㄫ"), ("a", "ㄚ"), ("e", "ㄝ"), ("i", "ㄧ"), ("o", "ㄛ"), ("u", "ㄨ"), ("m", "ㄇ"), ("n", "ㄣ"),
-          ("b", "ㆴ"), ("d", "ㆵ"), ("g", "ㆶ")]
+# (教育部「客語拼音方案」: ien = ㄧㄢ, the endings ng / b / d / g = ㄥ ㄅ ㄉ ㄍ: ong ㄛㄥ, ab ㄚㄅ, id ㄧㄉ)
+ZY_FIN = [("ang", "ㄤ"), ("ai", "ㄞ"), ("au", "ㄠ"), ("an", "ㄢ"), ("ien", "ㄧㄢ"), ("ii", "ㆨ"), ("ee", "ㆤ"), ("oo", "ㆦ"),
+          ("er", "ㄜ"), ("nn", "ⁿ"), ("ng", "ㄥ"), ("a", "ㄚ"), ("e", "ㄝ"), ("i", "ㄧ"), ("o", "ㄛ"), ("u", "ㄨ"), ("m", "ㄇ"),
+          ("n", "ㄣ"), ("b", "ㄅ"), ("d", "ㄉ"), ("g", "ㄍ")]
 
 
 def zhuyin(letters):
     """客語拼音 letters (no tone) → 客語注音, by the rules of 臺灣客家語拼音方案"""
     ini = next((i for i in INITIALS if letters.startswith(i) and len(letters) > len(i)), "")
-    if letters in ("m", "n", "ng"): ini = ""
+    if letters == "ng": return "ㄫ"                      # (the syllable ng on its own: 五 ng)
+    if letters in ("m", "n"): ini = ""
     rest = letters[len(ini):]
     out = ZY_INI.get(ini, "")
     while rest:

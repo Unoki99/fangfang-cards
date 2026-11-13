@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
         super.onPause()
         Store.saveNow()
         Backup.syncNow()
+        WidgetBridge.flush()
     }
 }
 
@@ -100,7 +101,11 @@ private fun Root() {
                     Txt(tr("{0}%　第一次打開比較久，在模擬器上可能要一分鐘。", Math.round(Store.loadProgress * 100)), ff(FF.Footnote), T.muted)
                 }
             }
-        } else Tabs()
+        } else {
+            Tabs()
+            // no 台語 data yet: install it here
+            TaigiMissingOverlay()
+        }
     }
     Store.zhError?.let { e ->
         AlertDialog(onDismissRequest = { Store.zhError = null }, containerColor = T.fn,
@@ -168,43 +173,100 @@ private fun Tabs() {
     }
 }
 
-/** the very first time the app opens: 台語, 華語 or 粵語 (can be changed any time in 設定 → 語言), and the app's language */
+/** the very first time the app opens: the app's language and each language's spelling, then which language to learn
+ *  first; its dictionary is downloaded and made then (the app has none built in). Changed later in 設定. */
 @Composable
 private fun LanguageWelcome(pick: (Int) -> Unit) {
     BackHandler { }
+    var step by remember { mutableStateOf(0) }
+    var installing by remember { mutableStateOf<Int?>(null) }
+    // made: into the app, in that language
+    val v = DictInstaller.version
+    LaunchedEffect(v, installing) {
+        val l = installing ?: return@LaunchedEffect
+        val p = DictPack.of(l) ?: return@LaunchedEffect
+        if (DataFiles.has(p.outputs.first())) pick(l)
+    }
+    fun choose(l: Int) {
+        val p = DictPack.of(l)
+        if (p == null || DataFiles.has(p.outputs.first())) { pick(l); return }
+        installing = l
+        if (DictInstaller.state(p) !is InstallState.Working) DictInstaller.install(p)
+    }
     AppBackground {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val l = installing
+        if (l != null) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                InstallPanel(l, onSkip = { pick(l) }, onBack = { installing = null })
+            }
+        } else if (step == 0) {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
-                Txt(tr("你想先學哪一種？"), ff(FF.Title3), T.muted)
+                Box(Modifier.widthIn(max = 320.dp)) {
+                    Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it })
+                }
+                Column(Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(22.dp)).background(T.fn.copy(alpha = 0.8f))
+                    .border(1.5.dp, T.fnEdge, RoundedCornerShape(22.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Txt(tr("每個語言用哪一種拼寫？"), ff(FF.Headline), T.glyph)
+                    Spelling(0, Prefs.rom, listOf("皓羅", "台羅", "白話字"))
+                    Spelling(1, Prefs.mandRom, listOf("拼音", "注音"))
+                    Spelling(2, Prefs.yueRom, listOf("粵拼", "耶魯"))
+                    Spelling(3, Prefs.hakRom, listOf("拼音", "注音"))
+                    Spelling(4, Prefs.jaRom, listOf("羅馬字", "假名"))
+                    Txt(tr("台語的拼寫下面會再加一行方音。"), ff(FF.Caption), T.muted)
+                }
+                ProminentButton(onClick = { step = 1 }, modifier = Modifier.widthIn(min = 240.dp)) { Text(tr("下一步")) }
             }
-            Box(Modifier.widthIn(max = 320.dp)) {
-                Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it })
-            }
-            Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                for (l in 0..3) {
-                    val fill = listOf(T.own, T.blue, T.olive, T.hakFill)[l]; val edge = listOf(T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge)[l]
-                    val ink = listOf(T.purpleInk, T.blueInk, T.oliveInk, T.hakInk)[l]
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(fill).border(2.dp, edge, RoundedCornerShape(22.dp))
-                        .clickable { pick(l) }.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                        Box(Modifier.size(70.dp).clip(CircleShape).background(edge.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-                            Txt(listOf("台", "華", "粵", "客")[l], sz(44f, FontWeight.Bold), ink)
-                        }
-                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Txt(listOf("台語", "華語", "粵語", "客語")[l], ff(FF.Title2, FontWeight.Bold), ink)
-                                Txt(listOf("Taiwanese", "Mandarin", "Cantonese", "Hakka")[l], ff(FF.Subheadline), ink.copy(alpha = 0.8f))
+        } else {
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
+                Row(Modifier.widthIn(max = 520.dp).fillMaxWidth()) {
+                    TextButton(onClick = { step = 0 }) { Text(tr("上一步"), color = T.muted) }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
+                    Txt(tr("你想先學哪一種？"), ff(FF.Title3), T.muted)
+                }
+                Column(Modifier.widthIn(max = 520.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    for (n in 0..4) {
+                        val (fill, edge, ink) = langColors(n)
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(fill).border(2.dp, edge, RoundedCornerShape(22.dp))
+                            .clickable { choose(n) }.padding(18.dp), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                            Box(Modifier.size(70.dp).clip(CircleShape).background(edge.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
+                                Txt(listOf("台", "華", "粵", "客", "日")[n], sz(44f, FontWeight.Bold), ink)
                             }
-                            Txt(tr(listOf("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音", "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音",
-                                "CC-Canto、CC-CEDICT 和維基詞典的詞，粵拼或耶魯拼音", "教育部《臺灣客語辭典》的詞，六個腔，拼音或注音")[l]), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Txt(listOf("台語", "華語", "粵語", "客語", "日語")[n], ff(FF.Title2, FontWeight.Bold), ink)
+                                    Txt(listOf("Taiwanese", "Mandarin", "Cantonese", "Hakka", "Japanese")[n], ff(FF.Subheadline), ink.copy(alpha = 0.8f))
+                                }
+                                Txt(tr(listOf("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音", "《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音",
+                                    "CC-Canto、CC-CEDICT 和 rime-cantonese 的詞，粵拼或耶魯拼音", "教育部《臺灣客語辭典》的詞，六個腔，拼音或注音",
+                                    "JMdict 和 KANJIDIC2 的詞和漢字，假名或羅馬字")[n]), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f))
+                            }
+                            Icon(Icons.Filled.ChevronRight, null, tint = ink.copy(alpha = 0.7f))
                         }
-                        Icon(Icons.Filled.ChevronRight, null, tint = ink.copy(alpha = 0.7f))
                     }
                 }
+                Txt(tr("選了以後會下載那個語言的詞典，在這台裝置上整理好（App 裡面沒有內建詞典）。之後可以在「設定 → 語言與讀音」換，其他語言的詞典在「設定 → 詞典資料」安裝。"),
+                    ff(FF.Footnote), T.muted, Modifier.widthIn(max = 520.dp))
             }
-            Txt(tr("之後可以在「設定 → 語言與讀音」換。"), ff(FF.Footnote), T.muted)
         }
     }
 }
+
+/** one language's spelling, on the first screen */
+@Composable
+private fun Spelling(l: Int, pref: Pref<Int>, names: List<String>) {
+    val (_, _, ink) = langColors(l)
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
+        Box(Modifier.weight(1f)) {
+            Segmented(names.indices.map { it to tr(names[it]) }, pref.value.coerceIn(0, names.size - 1), { pref.value = it })
+        }
+    }
+}
+

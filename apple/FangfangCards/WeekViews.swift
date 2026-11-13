@@ -62,15 +62,29 @@ struct WeekPicker: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
+    /// the level / group to pick from (-1 = all of 不熟), so the week can follow the levels in order
+    @AppStorage("weekPickTopic") private var topic = -1
 
     var body: some View {
-        let unknown = store.unknownCards
+        let topics = store.practiceTopics.filter { t in store.unknownCards.contains { store.inTopic($0, t.id) } }
+        let unknown = topic < 0 || !topics.contains(where: { $0.id == topic }) ? store.unknownCards : store.unknownCards.filter { store.inTopic($0, topic) }
         // words already in the week that aren't in 不熟 any more (learned) are shown too
         let extra = store.weekCards.filter { store.status($0) != 2 }
         let list = (extra + unknown).filter { query.isEmpty || $0.h.contains(query) || $0.firstMeaning.contains(query) }
         let n = store.weekCards.count
         NavigationStack {
             List {
+                if !topics.isEmpty {
+                    Section {
+                        Picker(tr("從哪裡選"), selection: $topic) {
+                            Text(tr("全部不熟的詞")).tag(-1)
+                            ForEach(topics) { t in Text(UILang.label(t.name)).tag(t.id) }
+                        }
+                    } footer: {
+                        Text(tr("選一個等級或一組詞，照順序一級一級學。"))
+                    }
+                    .listRowBackground(T.fn.opacity(0.7))
+                }
                 Section {
                     HStack(spacing: 10) {
                         ForEach([10, 20], id: \.self) { k in

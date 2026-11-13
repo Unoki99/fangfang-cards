@@ -147,6 +147,8 @@ struct AppBackground: View {
         case .space: SpaceBackground()
         case .goblin: GoblinBackground()
         case .winter: WinterBackground()
+        case .sakura: FallingThingsBackground(sakura: true)
+        case .momiji: FallingThingsBackground(sakura: false)
         case .night: nightBody
         }
     }

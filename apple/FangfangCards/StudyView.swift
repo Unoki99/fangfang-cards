@@ -26,6 +26,8 @@ struct StudyView: View {
     var test = false
     /// only 寫字題 (本週學習 → 寫字)
     var writeOnly = false
+    /// the name a round left half way is kept under (要複習's own rounds: not mixed up with 本週學習's)
+    var saveAs: String? = nil
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @AppStorage("rom") private var rom = 0
@@ -46,6 +48,11 @@ struct StudyView: View {
     @State private var wrong = 0
     @State private var learned: [Card] = []
     @State private var retried: Set<String> = []
+    /// 寫字題: how many times a word not written right has been asked again
+    @State private var writeTries: [String: Int] = [:]
+    /// the test: questions asked again to practise (not counted)
+    @State private var practiceAgain: Set<UUID> = []
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
     /// the test: words answered wrong
     @State private var missed: [Card] = []
     @StateObject private var stars = StarField()
@@ -58,7 +65,7 @@ struct StudyView: View {
         let qs: [SavedQ]; let idx: Int; let right: Int; let wrong: Int
         let learned: [String]; let retried: [String]; let missed: [String]
     }
-    private var saveName: String { test ? "test" : (blanksOnly ? "blanks" : (writeOnly ? "write" : (words != nil ? "week" : "study"))) }
+    private var saveName: String { saveAs ?? (test ? "test" : (blanksOnly ? "blanks" : (writeOnly ? "write" : (words != nil ? "week" : "study")))) }
     private var saveScope: Int { words != nil ? -1 : store.practiceTopic }
 
     /// next: the question on show has been answered (it isn't asked again when the round is picked up)
@@ -132,6 +139,8 @@ struct StudyView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HStack {
+                        // 寫字題: the pen, its colour and the 字體 can be changed here too
+                        if idx < queue.count && queue[idx].kind == .write { PenTools() }
                         if idx > 0 && idx < queue.count { RestartPracticeButton { start() } }
                         RomButton()
                     }
@@ -223,7 +232,7 @@ struct StudyView: View {
             // (no scrolling: the finger writes in the square)
             VStack(alignment: .leading, spacing: 14) {
                 prompt(q)
-                WordWriteArea(chars: q.card.h.map(String.init), answered: chosen != nil) { ok in answer(q, ok: ok) }
+                WordWriteArea(chars: q.card.h.map(String.init), answered: chosen != nil, dontKnow: { answer(q, ok: false, again: true) }) { ok in answer(q, ok: ok) }
                     .id(q.id)
                 if let c = chosen { feedback(q, picked: c) }
             }
@@ -385,25 +394,42 @@ struct StudyView: View {
     }
 
     /// 寫字題: graded by you
-    private func answer(_ q: Question, ok: Bool) {
+    /// again: 不會寫 (the word is written again a little later; a wrong one written isn't asked again)
+    private func answer(_ q: Question, ok: Bool, again: Bool = false) {
         guard chosen == nil else { return }
         wroteRight = ok
         chosen = q.card
-        record(q, ok: ok)
+        record(q, ok: ok, again: again)
     }
 
     private func isRight(_ q: Question) -> Bool { q.kind == .write ? wroteRight == true : chosen == q.card }
 
-    private func record(_ q: Question, ok: Bool) {
+    private func record(_ q: Question, ok: Bool, again: Bool = false) {
+        // (the test: a word written again after a wrong answer is only practice, it isn't counted)
+        if test && practiceAgain.contains(q.id) { saveNow(next: true); return }
         if ok { right += 1 } else { wrong += 1; if test { missed.append(q.card) } }
         if let a = q.card.audio, q.kind != .listen { Player.shared.play(a) }
-        if test { _ = store.answer(q.card, correct: ok, goal: goal); saveNow(next: true); return }
+        if test {
+            _ = store.answer(q.card, correct: ok, goal: goal)
+            if !ok && q.kind == .write && again {
+                // 不會寫: written once more right after the next word, to practise it
+                let again = make(q.card, .write)
+                practiceAgain.insert(again.id)
+                queue.insert(again, at: min(idx + 2, queue.count))
+            }
+            saveNow(next: true); return
+        }
         if store.answer(q.card, correct: ok, goal: goal) {
             learned.append(q.card)
             // learned: drop its remaining questions
             let rest = queue[(idx + 1)...].filter { $0.card != q.card }
             queue = Array(queue[...idx]) + rest
-        } else if !ok && !retried.contains(q.card.k) {
+        } else if !ok && q.kind == .write && again && writeTries[q.card.k, default: 0] < 3 {
+            // 不會寫: asked again right after the next word (at most three more times)
+            writeTries[q.card.k, default: 0] += 1
+            retried.insert(q.card.k)
+            queue.insert(make(q.card, .write), at: min(idx + 2, queue.count))
+        } else if !ok && q.kind != .write && !retried.contains(q.card.k) {
             // ask once more later, in another way
             retried.insert(q.card.k)
             let other = writeOnly ? .write : (kinds(for: q.card).filter { $0 != q.kind }.randomElement() ?? q.kind)
@@ -421,9 +447,14 @@ struct StudyView: View {
                     Text(ok ? (learned.contains(c) ? (store.reviewDays(c).map { tr("答對了！\($0) 天後再複習") } ?? trs("答對了！學會了")) : trs("答對了！")) : trs("答錯了"))
                         .ffFont(.headline).foregroundStyle(ok ? T.greenInk : T.rustInk)
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(c.h).ffFont(.title, .medium).foregroundStyle(T.blueInk)
+                        // (寫字題: the word in the 楷體 chosen for writing)
+                        if q.kind == .write {
+                            KaitiText(text: c.h, size: 34, color: T.blueInk).id(fontStyle)
+                        } else {
+                            Text(c.h).ffFont(.title, .medium).foregroundStyle(T.blueInk)
+                        }
                         Text(store.cardRom(c, rom, place)).latFont(20).foregroundStyle(T.greenInk)
-                        Text(store.cardZy(c, place)).foregroundStyle(T.purpleInk)
+                        Text(store.cardZy(c, place)).foregroundStyle(T.purpleInk).hongimLine()
                         Spacer()
                         if let a = c.audio { PlayButton(path: a, size: 34) }
                     }
@@ -438,6 +469,12 @@ struct StudyView: View {
                     if q.kind == .fillBlank, let x = q.example {
                         Text(store.exampleHan(c, x, place)).padding(.top, 4)
                         Text(store.exampleRom(c, x, rom, place)).latFont(15).foregroundStyle(T.greenInk)
+                    }
+                    // 寫字題: an example sentence with the word
+                    if q.kind == .write, let x = c.d.lazy.flatMap({ $0.x }).first {
+                        Text(store.exampleHan(c, x, place)).padding(.top, 4)
+                        Text(store.exampleRom(c, x, rom, place)).latFont(15).foregroundStyle(T.greenInk)
+                        if !x.z.isEmpty { Text(x.z).ffFont(.footnote).foregroundStyle(T.muted) }
                     }
                 }
             }

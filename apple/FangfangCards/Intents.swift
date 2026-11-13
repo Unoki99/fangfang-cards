@@ -56,7 +56,7 @@ struct QuickLookUpIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let q = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = Bundle.main.url(forResource: "dict", withExtension: "json") else {
+        guard let url = DataFiles.url("dict") else {
             return .result(value: "", dialog: "找不到詞典資料。")
         }
         let data = try Data(contentsOf: url)
@@ -68,7 +68,7 @@ struct QuickLookUpIntent: AppIntent {
         for k in r.taigi + r.exact + r.pattern + r.contains + r.patternZh + r.gloss + r.defs where !keys.contains(k) { keys.append(k) }
         if keys.isEmpty { return .result(value: "", dialog: IntentDialog(stringLiteral: "找不到「\(q)」。")) }
         let lines = keys.prefix(8).map { k -> String in
-            var line = Dict.hanOf(k) + "　" + d.word(k, rom, place) + "　" + d.word(k, 3, place)
+            var line = Dict.hanOf(k) + "　" + d.word(k, rom, place) + (rom == 3 ? "" : "　" + d.word(k, 3, place))
             if let g = d.gl[k], !g.isEmpty { line += "\n　" + g.prefix(5).map { $0.t }.joined(separator: "、") }
             else if let t = d.defText(k) { line += "\n　" + t.replacingOccurrences(of: "\n", with: " ") }
             return line

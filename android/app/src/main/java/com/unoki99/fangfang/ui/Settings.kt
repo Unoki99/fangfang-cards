@@ -72,30 +72,32 @@ fun SettingsScreen() {
         if (uri != null) message = Backup.setFolder(uri)
     }
 
-    val titles = listOf("顏色與外觀", "語言與讀音", "卡片與練習", "詞典", "聲音", "備份與同步", "匯出與匯入", "關於與資料來源").map { tr(it) }
+    val titles = listOf("顏色與外觀", "語言與讀音", "卡片與練習", "詞典", "聲音", "備份與同步", "匯出與匯入", "關於與資料來源", "詞典資料").map { tr(it) }
+    // (pages under a page: 9 複製意思的格式, 10 選聲調顏色, 11 日語的顏色)
     AppBackground(Modifier.background(T.bg)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
             Row(Modifier.fillMaxWidth().statusBarsPadding().height(52.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 val p = page
-                if (p != null) IconButton(onClick = { page = if (p == 9) 3 else if (p == 10) 0 else null }) {
+                if (p != null) IconButton(onClick = { page = if (p == 9) 3 else if (p == 10 || p == 11) 0 else null }) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("返回"), tint = T.glyph)
                 } else Spacer(Modifier.width(12.dp))
-                Txt(if (p == null) tr("設定") else if (p == 9) tr(if (copyZh) "複製意思的格式（華語）" else "複製意思的格式（台語）") else if (p == 10) tr("選聲調顏色") else titles[p], ff(FF.Headline), T.glyph, Modifier.weight(1f))
+                Txt(if (p == null) tr("設定") else if (p == 9) tr(if (copyZh) "複製意思的格式（華語）" else "複製意思的格式（台語）") else if (p == 10) tr("選聲調顏色") else if (p == 11) tr("日語的顏色") else titles[p], ff(FF.Headline), T.glyph, Modifier.weight(1f))
                 TextButton(onClick = { UI.settingsOpen = false }) { Text(tr("完成"), color = T.btnInk) }
             }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 when (page) {
                     null -> SettingsGrid(titles) { page = it }
-                    0 -> LookPage { page = 10 }
+                    0 -> LookPage({ page = 11 }) { page = 10 }
                     10 -> ToneColorPickerBody()
+                    11 -> JaColorSettingsBody()
                     1 -> LanguagePage()
                     2 -> {
                         Group {
                             SwitchRow(tr("卡片先隱藏意思（點一下才顯示）"), Prefs.hideMeaning)
                             RowDivider(); SwitchRow(tr("卡片先隱藏讀音（點一下才顯示）"), Prefs.hideReading)
                             RowDivider()
-                            MenuRow(tr("華語卡片的解釋"), if (Prefs.zhEnglish.value) "英文" else "華語", listOf(false to "華語", true to "英文")) { Prefs.zhEnglish.value = it }
+                            MenuRow(tr("華語卡片的解釋"), if (Prefs.zhEnglish.value) tr("英文") else tr("華語"), listOf(false to tr("華語"), true to tr("英文"))) { Prefs.zhEnglish.value = it }
                             RowDivider()
                             Column(Modifier.padding(14.dp)) {
                                 Txt(tr("手寫：筆"), ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(bottom = 6.dp))
@@ -131,10 +133,16 @@ fun SettingsScreen() {
                             }
                         }
                         Txt(tr("台語和華語各有自己的複製格式。華語可以加英文解釋：{英文} 或 {英文列表}。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
-                        SectionTitle(tr("華語詞典：卡片和列表上的解釋"))
+                        SectionTitle(tr("主要解釋：卡片和列表上的解釋"))
                         Group {
-                            Column(Modifier.padding(14.dp)) {
-                                Segmented(listOf(false to tr("華語"), true to tr("英文")), Prefs.zhEnglish.value, { Prefs.zhEnglish.value = it })
+                            // (粵語's and 日語's meanings are English already)
+                            for ((i, row) in listOf(Triple(tr("台語"), Prefs.twEnglish, tr("華語")), Triple(tr("華語"), Prefs.zhEnglish, tr("華語")),
+                                Triple(tr("客語"), Prefs.hakEnglish, tr("華語"))).withIndex()) {
+                                if (i > 0) RowDivider()
+                                Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Txt(row.first, ff(FF.Body), modifier = Modifier.width(64.dp))
+                                    Segmented(listOf(false to row.third, true to tr("英文")), row.second.value, { row.second.value = it }, Modifier.weight(1f))
+                                }
                             }
                         }
                         Txt(tr("卡片和查詞列表上先顯示哪一種解釋。點進一個詞以後兩種都看得到。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
@@ -197,6 +205,7 @@ fun SettingsScreen() {
                             ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
                     }
                     7 -> AboutPage()
+                    8 -> DictDataPage()
                     9 -> SenseCopyEditor(copyZh)
                 }
                 Spacer(Modifier.height(60.dp))
@@ -234,9 +243,10 @@ private fun copyStyleName(zh: Boolean = Store.isZh): String =
 private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
     val ts = Prefs.toneSys.value
     val tones = when (ts) { 7 -> tr("七聲"); 5 -> tr("五聲"); else -> tr("聲調顏色關") }
-    val lang = if (Store.isHak) tr("客語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.hakAccents[Prefs.hakAccent.value.coerceIn(0, 5)])
+    val lang = if (Store.isJa) tr("日語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
+        else if (Store.isHak) tr("客語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.hakAccents[Prefs.hakAccent.value.coerceIn(0, 5)])
         else if (Store.isYue) tr("粵語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
-        else if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames[Prefs.zhPlace.value.coerceIn(0, 1)]) +
+        else if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames.getOrElse(Prefs.zhPlace.value) { Lang.placeNames[0] }) +
         "・" + Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)]
         else tr("台語") + "・" + tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]) + "・" + (if (Prefs.place.value in PLACE_NAMES.indices) tr(PLACE_NAMES[Prefs.place.value].take(2)) else tr("通行"))
     val summaries = listOf(
@@ -248,11 +258,19 @@ private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
         Backup.folderName ?: tr("還沒設定"),
         tr("CSV・備份檔"),
         tr("資料、授權"),
+        tr("安裝、移除詞典"),
     )
     val icons = listOf(Icons.Filled.Palette, Icons.Filled.Translate, Icons.Filled.Layers, Icons.Filled.MenuBook,
-        Icons.Filled.VolumeUp, Icons.Filled.Sync, Icons.Filled.IosShare, Icons.Filled.Info)
-    TileGrid(titles.size, spacing = 12.dp) { i, m ->
-        val c = if (ts != 0) ToneColors.color(listOf(1, 2, 3, 4, 5, 6, 7, 8)[i % 8], 7)?.let { Color(it) } else null
+        Icons.Filled.VolumeUp, Icons.Filled.Sync, Icons.Filled.IosShare, Icons.Filled.Info, Icons.Filled.Download)
+    // (詞典資料 comes before 匯出與匯入, as on the iPhone)
+    val order = listOf(0, 1, 2, 3, 4, 5, 8, 6, 7)
+    TileGrid(order.size, spacing = 12.dp) { n, m ->
+        val i = order[n]
+        // colours on: 詞典資料 yellow, 匯出與匯入 pink, 關於與資料來源 grey, the others the tone colours in turn
+        val c = if (ts == 0) null else when (i) {
+            8 -> Color(0xFFFFE066); 6 -> Color(0xFFFF8CC6); 7 -> Color(0xFFA3A3A8)
+            else -> ToneColors.color(listOf(1, 2, 3, 4, 5, 6, 7, 8)[i % 8], 7)?.let { Color(it) }
+        }
         Column(m.heightIn(min = 104.dp).clip(RoundedCornerShape(18.dp)).background(c?.copy(alpha = 0.16f) ?: T.fn.copy(alpha = 0.7f))
             .border(1.5.dp, c?.copy(alpha = 0.7f) ?: T.fnEdge, RoundedCornerShape(18.dp)).clickable { open(i) }.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -264,7 +282,16 @@ private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
 }
 
 @Composable
-private fun LookPage(openColors: () -> Unit) {
+private fun LookPage(openJa: () -> Unit, openColors: () -> Unit) {
+    // 字體: the app's 漢字 and kana in the system font or a handwriting font
+    SectionTitle(tr("字體"))
+    Group {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Segmented(listOf(0 to tr("系統字體")) + Kai.names.mapIndexed { i, n -> i + 1 to n }, Prefs.dictFont.value, { Prefs.dictFont.value = it })
+            Txt(tr("方方詞卡・漢字 かな Abc"), sz(22f))
+        }
+    }
+    Txt(tr("整個 App 的漢字和假名用系統字體或手寫練習的字體；英文和拼音不變。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
     Txt(tr("主題動畫關掉的話，背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
     Group {
         var theme by Prefs.theme
@@ -282,6 +309,16 @@ private fun LookPage(openColors: () -> Unit) {
             Txt(tr("選聲調顏色"), ff(FF.Body), modifier = Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                 for (t in ToneColors.twTones) Box(Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(ToneColors.twColor(t))))
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted)
+        }
+        RowDivider()
+        // 日語: kanji, hiragana, katakana, particles and suffixes each in a colour
+        Row(Modifier.fillMaxWidth().clickable { openJa() }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Txt(tr("日語的顏色"), ff(FF.Body), modifier = Modifier.weight(1f))
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                Prefs.jaColors.forEach { it.value }
+                for (i in 0 until 5) Box(Modifier.size(7.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(com.unoki99.fangfang.engine.JaColors.color(i))))
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted)
         }
@@ -316,7 +353,7 @@ private fun LanguagePage() {
         Column(Modifier.padding(14.dp)) {
             Txt(tr("要學的語言"), ff(FF.Body))
             Spacer(Modifier.height(6.dp))
-            Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語"), 3 to tr("客語")), Store.lang, { Store.setLanguage(it) })
+            Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語"), 3 to tr("客語"), 4 to tr("日語")), Store.lang, { Store.setLanguage(it) })
         }
         RowDivider()
         Column(Modifier.padding(14.dp)) {
@@ -357,7 +394,7 @@ private fun LanguagePage() {
             Segmented(listOf(0 to tr("拼音"), 1 to tr("注音")), if (Store.lang == 1) Prefs.zhRom.value else Prefs.mandRom.value,
                 { if (Store.lang == 1) Prefs.zhRom.value = it else Prefs.mandRom.value = it })
             Txt(tr("讀音"), ff(FF.Body))
-            Segmented(Lang.placeNames.mapIndexed { i, n -> i to tr(n) }, Prefs.zhPlace.value, { Prefs.zhPlace.value = it })
+            Segmented(listOf(0 to tr("臺灣"), 1 to tr("大陸")), Prefs.zhPlace.value.coerceIn(0, 1), { Prefs.zhPlace.value = it })
             Txt(tr("詞表"), ff(FF.Body))
             Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.zhList.value, { Store.setZhList(it) })
         }
@@ -386,6 +423,15 @@ private fun LanguagePage() {
         Txt(tr("臺灣客家語拼音（聲調記號照各腔），或客語注音。換腔的時候詞典會重新讀一次。詞是照在辭典例句裡出現的次數分組，每組 500 個。"),
             ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
     }
+    SectionTitle(tr("日語"))
+    Group {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Txt(tr("拼寫"), ff(FF.Body))
+            Segmented(listOf(0 to tr("羅馬字"), 1 to tr("假名")), if (Store.lang == 4) Prefs.zhRom.value else Prefs.jaRom.value,
+                { if (Store.lang == 4) Prefs.zhRom.value = it else Prefs.jaRom.value = it })
+            Txt(tr("讀音用羅馬字（平文式）或假名寫。詞是照常用的程度分組，每組 500 個。"), ff(FF.Footnote), T.muted)
+        }
+    }
 }
 
 @Composable
@@ -407,6 +453,9 @@ private fun AboutPage() {
             Credit(tr("客語：詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
             Credit(tr("客語：英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
             Credit(tr("客語：注音"), "照臺灣客家語拼音方案由拼音轉寫")
+            Credit(tr("日語：詞條、讀音、英文解釋"), "JMdict（EDRDG，創用CC 姓名標示-相同方式分享 4.0）。在這台裝置上從 EDRDG 下載、整理。活用表、實驗室和英文大意依規則產生。")
+            Credit(tr("日語：漢字卡"), "KANJIDIC2（EDRDG，創用CC 姓名標示-相同方式分享 4.0）")
+            Credit(tr("日語：助詞的說明和例句"), "方方詞卡自己寫的")
             Credit(tr("台語：英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
             Credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（Copyright 2022-2024 LXGW、2020 The Klee Project Authors）；芫荽：Iansui（Copyright 2025 The Iansui Project Authors）。都是 SIL Open Font License 1.1。")
             Credit(tr("輸入法拆碼"), "Rime 倉頡、五筆（rime-cangjie、rime-wubi）")
@@ -511,7 +560,7 @@ private fun SwitchRow(title: String, pref: Pref<Boolean>) {
 }
 
 @Composable
-private fun <V> MenuRow(title: String, current: String, options: List<Pair<V, String>>, onPick: (V) -> Unit) {
+fun <V> MenuRow(title: String, current: String, options: List<Pair<V, String>>, onPick: (V) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         Row(Modifier.fillMaxWidth().clickable { open = true }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -429,3 +429,84 @@ private struct PineShape: Shape {
         return p
     }
 }
+
+
+/// 夜櫻 (cherry petals drifting down past a blossoming branch) and 紅葉狩 (maple leaves falling over autumn hills)
+struct FallingThingsBackground: View {
+    let sakura: Bool
+    private static let things: [(x: CGFloat, r: CGFloat, speed: Double, phase: Double, sway: CGFloat, spin: Double)] = {
+        var out: [(x: CGFloat, r: CGFloat, speed: Double, phase: Double, sway: CGFloat, spin: Double)] = []
+        var x: UInt64 = 0xC2B2AE3D27D4EB4F
+        func next() -> CGFloat { x ^= x << 13; x ^= x >> 7; x ^= x << 17; return CGFloat(x % 10_000) / 10_000 }
+        for _ in 0..<34 {
+            out.append((x: next(), r: 3 + next() * 5, speed: 0.018 + Double(next()) * 0.03, phase: Double(next()),
+                        sway: 10 + next() * 24, spin: Double(next()) * 2 - 1))
+        }
+        return out
+    }()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion0
+    @AppStorage(ThemeMotion.key) private var motion = true
+    private var reduceMotion: Bool { reduceMotion0 || !motion }
+
+    var body: some View {
+        GeometryReader { g in
+            let w = g.size.width, h = g.size.height
+            ZStack {
+                LinearGradient(colors: sakura ? [Color(hex: 0x261a22), Color(hex: 0x1d1418), Color(hex: 0x150f12)]
+                                              : [Color(hex: 0x2a1a12), Color(hex: 0x1c130f), Color(hex: 0x120c09)],
+                               startPoint: .top, endPoint: .bottom)
+                RadialGradient(colors: [(sakura ? Color(hex: 0xff9ec4) : Color(hex: 0xff7a3a)).opacity(0.12), .clear],
+                               center: UnitPoint(x: 0.82, y: 0.1), startRadius: 0, endRadius: max(w, 300) * 0.6)
+                // a lantern-like moon
+                Circle()
+                    .fill(RadialGradient(colors: sakura ? [Color(hex: 0xfff4f8), Color(hex: 0xf3c9da)] : [Color(hex: 0xfff0d8), Color(hex: 0xf2b77a)],
+                                         center: UnitPoint(x: 0.4, y: 0.35), startRadius: 0, endRadius: 24))
+                    .frame(width: 34, height: 34)
+                    .opacity(0.35)
+                    .position(x: w * 0.84, y: 104)
+                // hills (紅葉狩) or a branch (夜櫻)
+                if sakura {
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: 70))
+                        p.addQuadCurve(to: CGPoint(x: w * 0.55, y: 150), control: CGPoint(x: w * 0.3, y: 80))
+                        p.move(to: CGPoint(x: w * 0.3, y: 102))
+                        p.addQuadCurve(to: CGPoint(x: w * 0.42, y: 60), control: CGPoint(x: w * 0.4, y: 90))
+                    }
+                    .stroke(Color(hex: 0x6b4553).opacity(0.35), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    ForEach(0..<9, id: \.self) { i in
+                        Circle().fill(Color(hex: 0xffb7d0).opacity(0.18))
+                            .frame(width: 18, height: 18)
+                            .position(x: w * (0.05 + CGFloat(i) * 0.055), y: 72 + CGFloat((i * 37) % 60))
+                    }
+                } else {
+                    Path { p in
+                        p.move(to: CGPoint(x: 0, y: h - 110))
+                        p.addQuadCurve(to: CGPoint(x: w * 0.6, y: h - 90), control: CGPoint(x: w * 0.3, y: h - 190))
+                        p.addQuadCurve(to: CGPoint(x: w, y: h - 120), control: CGPoint(x: w * 0.85, y: h - 170))
+                        p.addLine(to: CGPoint(x: w, y: h)); p.addLine(to: CGPoint(x: 0, y: h)); p.closeSubpath()
+                    }
+                    .fill(LinearGradient(colors: [Color(hex: 0xc0502a).opacity(0.18), Color(hex: 0x7a2e18).opacity(0.10)],
+                                         startPoint: .top, endPoint: .bottom))
+                }
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+                    let time = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
+                    Canvas { ctx, size in
+                        for (i, f) in Self.things.enumerated() {
+                            let p = (f.phase + time * f.speed).truncatingRemainder(dividingBy: 1)
+                            let y = CGFloat(p) * (size.height + 30) - 15
+                            let x = f.x * size.width + sin(time * 0.5 + f.phase * 6.28) * f.sway
+                            var g = ctx
+                            g.translateBy(x: x, y: y)
+                            g.rotate(by: .radians(time * f.spin + f.phase * 6.28))
+                            let colors: [UInt32] = sakura ? [0xffc4d8, 0xffd9e6, 0xf7a8c4] : [0xe4572e, 0xf08a24, 0xc0392b, 0xf2b134]
+                            let c = Color(hex: colors[i % colors.count]).opacity(sakura ? 0.32 : 0.30)
+                            g.fill(sakura ? StarLayer.petal(f.r) : StarLayer.maple(f.r * 1.3), with: .color(c))
+                        }
+                    }
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+}

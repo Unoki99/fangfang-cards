@@ -102,9 +102,17 @@ private fun ZhLookupPane(z: ZhDict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             val nav = LocalNav.current
-            SearchField(query, { query = it }, if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
+            SearchField(query, { query = it }, if (z.isJa) tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") else if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
-            TileGrid(3) { i, m ->
+            // 日語: 助詞 and 實驗室 (no 部首查字: the radicals are the 華語 data's)
+            if (z.isJa) TileGrid(4) { i, m ->
+                when (i) {
+                    0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) }
+                    1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) }
+                    2 -> TileButton(Icons.Filled.Hub, tr("助詞"), m) { nav.push(Route.JaParticles) }
+                    else -> TileButton(Icons.Filled.Tune, tr("實驗室"), m) { nav.push(Route.JaLab(null)) }
+                }
+            } else TileGrid(3) { i, m ->
                 when (i) {
                     0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) }
                     1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) }
@@ -113,6 +121,8 @@ private fun ZhLookupPane(z: ZhDict) {
             }
         }
         if (query.isEmpty()) item {
+            if (z.isJa) Txt(tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isHak) Txt(tr("可以查漢字、客語拼音（不用打聲調：siid fan）、華語的意思（吃飯）或英文（eat）。\n* 代表一個以上的字，? 代表剛好一個字：\n*仔 → 仔結尾\u3000食* → 食開頭\n打聲調類別的數字找聲調組合：1 陰平、2 上聲、3 去聲、4 陰入、5 陽平、7 陽去、8 陽入，例如 8-3。\n讀音照選的腔顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isYue) Txt(tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞\u3000*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
@@ -280,15 +290,15 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                     Txt(z.reading(other, if (rom == 0) 1 else 0).annotated(), ff(FF.Footnote), T.purpleInk)
                 }
             }
-            InputCodesRow(e.h)
-            // the English meanings, one per line
-            if (e.enList.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (!z.isJa) InputCodesRow(e.h)
+            // the English meanings, one per line (日語: the meanings are English already)
+            if (e.enList.isNotEmpty() && !z.isJa) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Chip(tr("英"), T.fn, T.fnEdge, T.muted)
                 EnglishList(e.enList)
             }
             // 粵語: the 華語 word(s) with the same meaning
             if (e.eq.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip(tr("華"), T.blue, T.blueEdge, T.blueInk)
+                Chip(if (z.isJa) tr("也寫") else tr("華"), T.blue, T.blueEdge, T.blueInk)
                 Txt(e.eq.joinToString("、"), ff(FF.Body), T.glyph)
             }
             // 詞類: tap one for the words of that class
@@ -336,13 +346,17 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             ZhLinks(z, tr("近"), syn, T.blue, T.blueEdge, T.blueInk)
             ZhLinks(z, tr("反"), ant, T.rust, T.rustEdge, T.rustInk)
         }
+        // 日語: the kanji of the word, and its 活用
+        if (z.isJa) JaWordExtras(z, e)
+        // a single character: 說文解字 (when installed)
+        if (e.h.cpCount == 1 && !z.isJa) ShuowenBlock(e.h)
         if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),
             ff(FF.Caption), T.muted)
-        Txt(if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
+        Txt(if (z.isJa) tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。") else if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
             else if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
             else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
         // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
-        val ci = if (e.h.cpCount == 1 && !z.isHak) z.charIndex[e.h] else null
+        val ci = if (e.h.cpCount == 1 && !z.isHak && !z.isJa) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
         if (reading != null) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.4f)).padding(12.dp),
@@ -362,6 +376,17 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
 /** an example sentence: 漢字 (tap a word to see it in the dictionary; the whole word is the button), reading, where it's from; ▶ reads it aloud */
 @Composable
 fun ZhExampleBlock(z: ZhDict, ex: ZhEx) {
+    // 日語: the sentence in its script colours and its English (Tatoeba's, through JMdict)
+    if (z.isJa) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            PlayButton("tts:" + ex.h, 28.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Txt(JaInk.word(ex.h).annotated(), ff(FF.Body))
+                if (ex.src.isNotEmpty()) Txt(ex.src, ff(FF.Subheadline), T.muted)
+            }
+        }
+        return
+    }
     val zk = zhKey()
     val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value
     val gap = Prefs.wordGap.value

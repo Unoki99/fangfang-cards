@@ -11,13 +11,13 @@ import SwiftUI
     private var started = false
 
     func load(_ store: Store) {
-        if let d = store.zh { switch d.lang { case 2: yue = d; case 3: hak = d; default: zh = d } }
+        if let d = store.zh { switch d.lang { case 2: yue = d; case 3: hak = d; case 4: break; default: zh = d } }
         guard !started else { return }
         started = true
         for kind in [1, 2, 3] where [zh, zh, yue, hak][kind] == nil {
             Task.detached(priority: .userInitiated) { [weak self] in
                 let d: ZhDict? = {
-                    guard let url = Bundle.main.url(forResource: ["zh", "zh", "yue", "hak"][kind], withExtension: "json"),
+                    guard let url = DataFiles.url(["zh", "zh", "yue", "hak"][kind]),
                           let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return nil }
                     return try? ZhDict(data: data)
                 }()
@@ -112,9 +112,9 @@ struct ReadingsPane: View {
     }
 
     private let labelWidth: CGFloat = 112
-    private func fill(_ l: Int) -> Color { [T.own, T.blue, T.olive, T.hakFill][l] }
-    private func edge(_ l: Int) -> Color { [T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge][l] }
-    private func ink(_ l: Int) -> Color { [T.purpleInk, T.blueInk, T.oliveInk, T.hakInk][l] }
+    private func fill(_ l: Int) -> Color { [T.twFill, T.blue, T.olive, T.hakFill, T.jaFill][min(l, 4)] }
+    private func edge(_ l: Int) -> Color { [T.twEdge, T.blueEdge, T.oliveEdge, T.hakEdge, T.jaEdge][min(l, 4)] }
+    private func ink(_ l: Int) -> Color { [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk][min(l, 4)] }
 
     // MARK: 客語: each accent (the ones that read it the same together)
 
@@ -195,7 +195,6 @@ struct ReadingsPane: View {
 
     private func zhRows(_ q: String, kind: Int) -> [ReadingRow] {
         let lang = kind
-        let name = kind == 2 ? trs("粵") : trs("華")
         guard let d = kind == 2 ? dicts.yue : dicts.zh else { return [] }
         let mode = kind == 2 ? yueRom : zhRom
         let es = (d.byHan[q] ?? []).map { d.entries[$0] }.filter { $0.h == q || $0.alt == q }
@@ -206,11 +205,14 @@ struct ReadingsPane: View {
             let n = out.count
             let alt = n > 0 ? "（" + trs("又") + "）" : ""
             if kind == 1 {
-                out.append(ReadingRow(lang: lang, label: name + "・" + trs("臺灣") + alt, main: d.reading(e.tw, mode),
+                out.append(ReadingRow(lang: lang, label: trs("國語") + alt, main: d.reading(e.tw, mode),
                                       other: d.readingPlain(e.tw, 1 - mode)))
                 if let lu = e.lu, lu != e.tw {
-                    out.append(ReadingRow(lang: lang, label: name + "・" + trs("大陸") + alt, main: d.reading(lu, mode),
+                    out.append(ReadingRow(lang: lang, label: trs("普通話") + alt, main: d.reading(lu, mode),
                                           other: d.readingPlain(lu, 1 - mode)))
+                }
+                if let sc = e.sc {
+                    out.append(ReadingRow(lang: lang, label: trs("四川話") + (e.scKind == 1 ? "（" + trs("推算") + "）" : (e.scKind == 2 ? "（" + trs("預測") + "）" : "")) + alt, main: d.reading(sc, mode), other: ""))
                 }
             } else {
                 out.append(ReadingRow(lang: lang, label: trs("粵語") + alt, main: d.reading(e.tw, mode),

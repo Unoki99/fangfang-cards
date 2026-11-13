@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		F0F0000000000000000000D0 /* FangfangWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F0F0000000000000000000D1 /* FangfangWidgetExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F0F0000000000000000000E0 /* FangfangSafari.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F0F0000000000000000000E1 /* FangfangSafari.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -17,6 +18,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = F0F0000000000000000000D7;
 			remoteInfo = FangfangWidgetExtension;
+		};
+		F0F0000000000000000000EA /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F0F0000000000000000000A9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F0F0000000000000000000E6;
+			remoteInfo = FangfangSafari;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -28,6 +36,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				F0F0000000000000000000D0 /* FangfangWidgetExtension.appex in Embed Foundation Extensions */,
+				F0F0000000000000000000E0 /* FangfangSafari.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -37,6 +46,7 @@
 /* Begin PBXFileReference section */
 		F0F0000000000000000000A1 /* FangfangCards.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FangfangCards.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0F0000000000000000000D1 /* FangfangWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FangfangWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F0F0000000000000000000E1 /* FangfangSafari.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FangfangSafari.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -53,6 +63,11 @@
 		F0F0000000000000000000D3 /* WidgetShared */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = WidgetShared;
+			sourceTree = "<group>";
+		};
+		F0F0000000000000000000E2 /* FangfangSafari */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FangfangSafari;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -72,6 +87,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F0F0000000000000000000E4 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -81,6 +103,7 @@
 				F0F0000000000000000000A2 /* FangfangCards */,
 				F0F0000000000000000000D2 /* FangfangWidget */,
 				F0F0000000000000000000D3 /* WidgetShared */,
+				F0F0000000000000000000E2 /* FangfangSafari */,
 				F0F0000000000000000000A5 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -90,6 +113,7 @@
 			children = (
 				F0F0000000000000000000A1 /* FangfangCards.app */,
 				F0F0000000000000000000D1 /* FangfangWidgetExtension.appex */,
+				F0F0000000000000000000E1 /* FangfangSafari.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -110,6 +134,7 @@
 			);
 			dependencies = (
 				F0F0000000000000000000DE /* PBXTargetDependency */,
+				F0F0000000000000000000EB /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				F0F0000000000000000000A2 /* FangfangCards */,
@@ -145,6 +170,28 @@
 			productReference = F0F0000000000000000000D1 /* FangfangWidgetExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		F0F0000000000000000000E6 /* FangfangSafari */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F0F0000000000000000000E7 /* Build configuration list for PBXNativeTarget "FangfangSafari" */;
+			buildPhases = (
+				F0F0000000000000000000E3 /* Sources */,
+				F0F0000000000000000000E4 /* Frameworks */,
+				F0F0000000000000000000E5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				F0F0000000000000000000E2 /* FangfangSafari */,
+			);
+			name = FangfangSafari;
+			packageProductDependencies = (
+			);
+			productName = FangfangSafari;
+			productReference = F0F0000000000000000000E1 /* FangfangSafari.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -159,6 +206,9 @@
 						CreatedOnToolsVersion = 16.0;
 					};
 					F0F0000000000000000000D7 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					F0F0000000000000000000E6 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -180,6 +230,7 @@
 			targets = (
 				F0F0000000000000000000A6 /* FangfangCards */,
 				F0F0000000000000000000D7 /* FangfangWidgetExtension */,
+				F0F0000000000000000000E6 /* FangfangSafari */,
 			);
 		};
 /* End PBXProject section */
@@ -193,6 +244,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		F0F0000000000000000000D6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F0F0000000000000000000E5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -216,6 +274,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F0F0000000000000000000E3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -224,6 +289,12 @@
 			platformFilter = ios;
 			target = F0F0000000000000000000D7 /* FangfangWidgetExtension */;
 			targetProxy = F0F0000000000000000000DD /* PBXContainerItemProxy */;
+		};
+		F0F0000000000000000000EB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = F0F0000000000000000000E6 /* FangfangSafari */;
+			targetProxy = F0F0000000000000000000EA /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -404,6 +475,64 @@
 			};
 			name = Release;
 		};
+		F0F0000000000000000000E8 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APP_GROUP = "group.$(FF_ID)";
+				FF_ID = com.unoki99.fangfangcards;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "FangfangSafari-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "方方詞卡 查詞";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(FF_ID).safari";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SAFARI_EXT DEBUG $(inherited)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F0F0000000000000000000E9 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APP_GROUP = "group.$(FF_ID)";
+				FF_ID = com.unoki99.fangfangcards;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "FangfangSafari-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "方方詞卡 查詞";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(FF_ID).safari";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "SAFARI_EXT $(inherited)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -430,6 +559,15 @@
 			buildConfigurations = (
 				F0F0000000000000000000D9 /* Debug */,
 				F0F0000000000000000000DA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F0F0000000000000000000E7 /* Build configuration list for PBXNativeTarget "FangfangSafari" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F0F0000000000000000000E8 /* Debug */,
+				F0F0000000000000000000E9 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

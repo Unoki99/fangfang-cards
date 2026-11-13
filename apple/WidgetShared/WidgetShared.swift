@@ -68,6 +68,8 @@ struct WidgetInboxOp: Codable {
     let t: Double
     /// true = "I know this word" (✓ on the widget): the app moves it to 熟悉
     var known: Bool? = nil
+    /// true = 加到不熟 (from Safari 查詞), false = taken back out to 新詞
+    var unknown: Bool? = nil
 }
 
 enum WidgetShared {
@@ -121,14 +123,17 @@ enum WidgetShared {
     /// saved words as the widget should show them: the app's list plus changes made on the widget
     static func savedNow() -> Set<String> {
         var s = Set(state().saved)
-        for op in inbox() where op.known == nil { if op.save { s.insert(op.k) } else { s.remove(op.k) } }
+        for op in inbox() where op.known == nil && op.unknown == nil { if op.save { s.insert(op.k) } else { s.remove(op.k) } }
         return s
     }
 
     /// 不熟 words as the widget should see them (✓ on the widget takes a word out)
     static func unknownNow() -> Set<String> {
         var s = Set(state().unknown ?? [])
-        for op in inbox() where op.known == true { s.remove(op.k) }
+        for op in inbox() {
+            if op.known == true { s.remove(op.k) }
+            if let u = op.unknown { if u { s.insert(op.k) } else { s.remove(op.k) } }     // (from Safari 查詞)
+        }
         return s
     }
 

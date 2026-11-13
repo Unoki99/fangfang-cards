@@ -5,12 +5,24 @@ import SwiftUI
 final class Store: ObservableObject {
     /// one store for the app and for Shortcuts actions that run while the app isn't open
     static let shared = Store()
-    @Published private(set) var cards: [Card] = []
+    @Published private(set) var cards: [Card] = [] { didSet { listsChanged() } }
     @Published private(set) var loaded = false
     @Published private(set) var loadError: String?
     @Published private(set) var progress = Progress() {
-        didSet { recount() }
+        didSet {
+            recount()
+            // (the 不熟 / 熟悉 lists only change when a word's status or date does, not with every save of practice
+            // results; comparing is quick when nothing changed: it's the same storage then)
+            if progress.status != oldValue.status || progress.added != oldValue.added || progress.srs != oldValue.srs {
+                listsChanged()
+            }
+        }
     }
+    /// the 不熟 / 熟悉 / review lists, made once and kept until a word changes (a swipe used to sort every list
+    /// again on each page that shows one, also on tabs not in view)
+    private var listCache: [String: [Card]] = [:]
+    private var dueMadeAt = 0.0
+    private func listsChanged() { listCache.removeAll(keepingCapacity: true) }
     // counted once per change instead of on every screen redraw
     private(set) var seenCount = 0
     private(set) var unknownCount = 0
@@ -40,17 +52,18 @@ final class Store: ObservableObject {
     /// the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile)
     @Published private(set) var isZh = false { didSet { T.zh = isZh } }
     /// the language shown: 0 台語, 1 華語, 2 粵語, 3 客語 (粵語 and 客語 use the 華語 pages, with their own dictionaries)
-    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3 } }
+    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3; T.ja = lang == 4; listsChanged() } }
     /// a hint to show (粵語 without a Cantonese voice on the device)
     @Published var speechHint: String?
     var isYue: Bool { lang == 2 }
     var isHak: Bool { lang == 3 }
+    var isJa: Bool { lang == 4 }
     /// which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3)
     private var zhKind: Int { zh?.lang ?? 1 }
     /// switching language: the other deck is being loaded
     @Published private(set) var switching = false
     /// the 華語 dictionary (zh.json), once loaded
-    @Published private(set) var zh: ZhDict?
+    @Published private(set) var zh: ZhDict? { didSet { listsChanged() } }
     @Published private(set) var zhError: String?
     /// 華語 reading shown: 0 拼音, 1 注音 (published, so every page redraws when it changes)
     @Published var zhRom = Lang.zhRom { didSet { UserDefaults.standard.set(zhRom, forKey: Lang.romKey) } }
@@ -92,18 +105,19 @@ final class Store: ObservableObject {
 
     func load() {
         guard !loaded else { return }
-        guard let url = Bundle.main.url(forResource: "cards", withExtension: "json"),
-              let data = try? Data(contentsOf: url) else {
-            loadError = "找不到 cards.json"; return
-        }
-        do {
-            let deck = try JSONDecoder().decode(DeckFile.self, from: data)
-            cards = deck.cards
-            syl = deck.syl ?? [:]
-            places = deck.places ?? []
-            topics = deck.topics ?? []
-        } catch {
-            loadError = "字典讀取失敗：\(error.localizedDescription)"; return
+        // (no 台語 data yet: the app still opens, and offers to install it — 設定 → 詞典資料)
+        if let url = DataFiles.url("cards"), let data = try? Data(contentsOf: url) {
+            do {
+                let deck = try JSONDecoder().decode(DeckFile.self, from: data)
+                cards = deck.cards
+                syl = deck.syl ?? [:]
+                places = deck.places ?? []
+                topics = deck.topics ?? []
+            } catch {
+                loadError = "字典讀取失敗：\(error.localizedDescription)"; return
+            }
+        } else {
+            taigiMissing = true
         }
         for (i, c) in cards.enumerated() {
             byKey[c.k] = c
@@ -188,7 +202,9 @@ final class Store: ObservableObject {
             case .success(let (d, deck)):
                 useZh(d, deck: deck)
             case .failure(let e):
-                zhError = "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
+                zhError = DataFiles.has(["zh", "zh", "yue", "hak", "ja"][want])
+                    ? "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
+                    : tr("還沒有\(trs(Lang.names[want]))詞典：到「設定 → 詞典資料」安裝。")
                 UserDefaults.standard.set(lang, forKey: Lang.key)
                 zhLoad = nil
             }
@@ -213,10 +229,10 @@ final class Store: ObservableObject {
             do {
                 let d: ZhDict
                 if let have = loadedDict { d = have } else {
-                    guard let url = Bundle.main.url(forResource: ["zh", "zh", "yue", "hak"][kind], withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
-                    d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent)
+                    guard let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja"][kind]) else { throw CocoaError(.fileNoSuchFile) }
+                    d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent, from: url)
                     // 粵語, 客語: the radicals (部首查字) from the 華語 data, if it's there
-                    if d.lang != 1, let zu = Bundle.main.url(forResource: "zh", withExtension: "json"),
+                    if d.lang != 1, d.lang != 4, let zu = DataFiles.url("zh"),
                        let zd = try? Data(contentsOf: zu, options: .mappedIfSafe) { d.borrowRadicals(from: zd) }
                 }
                 return .success((d, Store.makeZhDeck(d, list: list, keys: keys, size: size)))
@@ -264,6 +280,72 @@ final class Store: ObservableObject {
     }
 
     func clearZhError() { zhError = nil }
+
+    /// no 台語 data (cards.json): it can be installed in 設定 → 詞典資料
+    @Published private(set) var taigiMissing = false
+
+    /// 台語's words (cards.json) and dictionary, read again after installing them
+    func reloadTaigi() {
+        guard let url = DataFiles.url("cards"), let data = try? Data(contentsOf: url),
+              let file = try? JSONDecoder().decode(DeckFile.self, from: data) else { return }
+        var d = Deck(cards: file.cards, kind: 0)
+        for (i, c) in file.cards.enumerated() { d.byKey[c.k] = c; d.rank[c.k] = i }
+        for c in file.cards.prefix(4000) { d.pools[c.syllables, default: []].append(c) }
+        d.topics = file.topics ?? []
+        syl = file.syl ?? [:]
+        places = file.places ?? []
+        taigiMissing = false
+        if lang == 0 {
+            cards = d.cards; byKey = d.byKey; rank = d.rank; pools = d.pools; topics = d.topics
+            makeFreqTopics()
+            recount()
+            listVersion += 1
+        } else {
+            other = d
+            makeFreqTopics(d.cards)
+        }
+        dict = nil
+        dictLoading = false
+        loadDict()
+        objectWillChange.send()
+    }
+
+    /// Safari 查詞: a sentence a word was saved from (kept with the word, at most 5)
+    func addFoundSentence(_ key: String, _ sentence: String) {
+        let s = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return }
+        var list = progress.found[key] ?? []
+        list.removeAll { $0 == s }
+        list.append(s)
+        progress.found[key] = Array(list.suffix(5))
+    }
+    func foundSentences(_ key: String) -> [String] { progress.found[key] ?? [] }
+
+    /// a dictionary was installed or removed (設定 → 詞典資料): read again if it's the one in use
+    func dictionaryChanged(_ kind: Int) {
+        if kind == 0 { if DataFiles.has("cards") { reloadTaigi() }; return }
+        if zh?.lang == kind && lang != kind { zh = nil }
+        if lang == kind {
+            if kind == 3 { hakAccentChanged() }
+            else if !switching {
+                switching = true
+                Task {
+                    let result = await zhLoadTask(priority: .userInitiated, kind: kind, fresh: true).value
+                    zhLoad = nil
+                    if case .success(let (d, d0)) = result, lang == kind {
+                        var deck = d0
+                        deck.kind = kind
+                        zh = d
+                        cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
+                        undoStack = []; canUndo = false
+                        listVersion += 1
+                    }
+                    switching = false
+                    objectWillChange.send()
+                }
+            }
+        }
+    }
 
     /// 客語: another accent was chosen. The dictionary is read again with that accent's readings (the words stay
     /// the same, so 不熟 / 熟悉 don't change)
@@ -384,7 +466,7 @@ final class Store: ObservableObject {
 
     // MARK: 本週學習 (this week's words)
 
-    private var weekLang: String { ["tw", "zh", "yue", "hak"][min(max(lang, 0), 3)] }
+    private var weekLang: String { ["tw", "zh", "yue", "hak", "ja"][min(max(lang, 0), 4)] }
 
     /// this week's words (in the language shown), in the order they were picked
     var weekCards: [Card] {
@@ -440,10 +522,10 @@ final class Store: ObservableObject {
     func levelCards(_ level: Int) -> [Card] { cards.filter { inTopic($0, level) } }
 
     /// 台語 常用詞 / 常用字 groups: the cards are the most common first, so every 500 words (or characters) a group
-    private func makeFreqTopics() {
+    private func makeFreqTopics(_ list: [Card]? = nil) {
         var nw = 0, nc = 0
         var counts: [Int: Int] = [:]
-        for c in cards {
+        for c in list ?? cards {
             let t: Int
             if c.h.count == 1 { t = Lang.freqCharBase + nc / Lang.freqSize; nc += 1 }
             else { t = Lang.freqWordBase + nw / Lang.freqSize; nw += 1 }
@@ -544,7 +626,7 @@ final class Store: ObservableObject {
             for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
                 let ch = String(u)
                 guard seen.insert(ch).inserted, d.charIndex[ch] != nil else { continue }
-                let ck = Lang.charKey(ch, yue: d.isYue, hak: d.isHak)
+                let ck = Lang.charKey(ch, yue: d.isYue, hak: d.isHak, ja: d.isJa)
                 switch progress.status[ck] {
                 case 1?: break
                 // marked 不熟 by hand after the word was learned: left as it is
@@ -607,8 +689,15 @@ final class Store: ObservableObject {
 
     /// newest first
     private func list(_ s: Int) -> [Card] {
-        progress.status.compactMap { $0.value == s && isShownLanguage($0.key) ? card(for: $0.key) : nil }
-            .sorted { (progress.added[$0.k] ?? 0) > (progress.added[$1.k] ?? 0) }
+        let key = "s\(s)"
+        if let c = listCache[key] { return c }
+        let added = progress.added
+        let out = progress.status.compactMap { $0.value == s && isShownLanguage($0.key) ? card(for: $0.key) : nil }
+            .map { ($0, added[$0.k] ?? 0) }
+            .sorted { $0.1 > $1.1 }
+            .map { $0.0 }
+        listCache[key] = out
+        return out
     }
     var unknownCards: [Card] { list(2) }
 
@@ -631,7 +720,11 @@ final class Store: ObservableObject {
         let u = unknownCards
         let t = practiceTopic
         guard t >= 0, practiceTopics.contains(where: { $0.id == t }) else { return u }
-        return u.filter { inTopic($0, t) }
+        let key = "p\(t)"
+        if let c = listCache[key] { return c }
+        let out = u.filter { inTopic($0, t) }
+        listCache[key] = out
+        return out
     }
     var practiceName: String {
         practiceTopics.first(where: { $0.id == practiceTopic })?.name ?? trs("全部不熟的詞")
@@ -664,7 +757,7 @@ final class Store: ObservableObject {
         for u in k[..<t].unicodeScalars where Zhuyin.isHan(u) {
             let ch = String(u)
             guard d.charIndex[ch] != nil else { continue }
-            let ck = Lang.charKey(ch, yue: d.isYue, hak: d.isHak)
+            let ck = Lang.charKey(ch, yue: d.isYue, hak: d.isHak, ja: d.isJa)
             switch p.status[ck] {
             case 1?: break
             case 2? where (p.added[ck] ?? 0) >= (p.added[k] ?? 0): break
@@ -757,15 +850,25 @@ final class Store: ObservableObject {
         return Int(s[1])
     }
     /// the words of the shown language that are due for review now (in 練習範圍)
-    var dueCards: [Card] {
+    var dueCards: [Card] { due(scoped: true) }
+    /// all the words of the shown language that are due now (練習統計's 要複習, whatever 練習範圍 is chosen)
+    var allDueCards: [Card] { due(scoped: false) }
+    private func due(scoped wantScope: Bool) -> [Card] {
         let now = Date().timeIntervalSince1970
-        let t = practiceTopic
+        let t = wantScope ? practiceTopic : -1
+        // (kept for a minute: words come due by the hour or day, not by the second)
+        let key = "d\(wantScope ? t : -99)"
+        if now - dueMadeAt > 60 { for k in Array(listCache.keys) where k.hasPrefix("d") { listCache[k] = nil } }
+        if let c = listCache[key] { return c }
         let scoped = t >= 0 && practiceTopics.contains(where: { $0.id == t })
-        return progress.srs.compactMap { k, s -> Card? in
+        let out = progress.srs.compactMap { k, s -> Card? in
             guard s.count >= 2, s[1] >= 1, s[0] <= now, progress.status[k] == 1, Lang.kind(k) == lang,
                   let c = card(for: k) else { return nil }
             return scoped && !inTopic(c, t) ? nil : c
         }
+        listCache[key] = out
+        dueMadeAt = now
+        return out
     }
     /// 開始練習 / 例句填空: the words due for review first, then the 不熟 words
     var studyCards: [Card] { dueCards.shuffled() + practiceCards }
@@ -774,7 +877,14 @@ final class Store: ObservableObject {
 
     /// 華語 with 主要解釋 = 英文 (設定): a card's English meanings (nil: the 華語 ones; 粵語's are English already)
     func englishMeanings(_ c: Card) -> [String]? {
-        guard ZhMeaning.english, Lang.kind(c.k) == 1, let d = zh, !d.isYue else { return nil }
+        let kind = Lang.kind(c.k)
+        if kind == 0 {
+            // 台語: Wiktionary's English (設定 → 主要解釋 → 台語)
+            guard ZhMeaning.english(0) else { return nil }
+            let l = TwEnglish.meanings(c.k)
+            return l.isEmpty ? nil : l
+        }
+        guard kind == 1 || kind == 3, ZhMeaning.english(kind), let d = zh, !d.isYue, d.lang == kind else { return nil }
         let l = (Lang.charOf(c.k).flatMap { d.entry(char: $0, zy: "") } ?? d.entry(c.k))?.enList ?? []
         return l.isEmpty ? nil : l
     }
@@ -811,7 +921,7 @@ final class Store: ObservableObject {
         Task {
             let result: Result<Dict, Error> = await Task.detached(priority: .userInitiated) { () -> Result<Dict, Error> in
                 do {
-                    guard let url = Bundle.main.url(forResource: "dict", withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
+                    guard let url = DataFiles.url("dict") else { throw CocoaError(.fileNoSuchFile) }
                     let data = try Data(contentsOf: url)
                     return .success(Dict(try JSONDecoder().decode(DictRaw.self, from: data)))
                 } catch { return .failure(error) }
@@ -829,13 +939,26 @@ final class Store: ObservableObject {
     /// the place's other way(s) of saying a card's word: (羅馬字, 方音)
     func alsoSaid(_ card: Card, _ rom: Int, _ place: Int) -> [(rom: String, zy: String)] {
         guard !card.isZh, place >= 0, let d = dict else { return [] }
-        let r = min(max(rom, 0), 2)
+        let r = TwRom.lat(rom)
         return d.alsoSaid(card.k, place).map { (d.codes($0, r, place), d.codes($0, 3, place)) }
+    }
+
+    /// 華語: the readings of the other 讀音 (國語 / 普通話 / 四川話) that aren't the one shown, where they differ
+    func zhOtherReadings(_ card: Card) -> [(label: String, syl: [String])] {
+        guard let tw = card.zs else { return [] }
+        let p = Lang.zhPlace
+        let shown = card.zhSyl(p) ?? tw
+        var out: [(label: String, syl: [String])] = []
+        for (i, s) in [tw, card.zl ?? tw, card.zc].enumerated() where i != p {
+            guard let s, s != shown, !out.contains(where: { $0.syl == s }) else { continue }
+            out.append((trs(Lang.zhPlaceNames[i]), s))
+        }
+        return out
     }
 
     /// a card's 漢字: in tone colours when 聲調顏色 is on
     func cardHan(_ card: Card, _ place: Int, base: Color) -> AttributedString {
-        if let s = card.zs, let d = zh { return d.hanText(card.h, Lang.zhPlace == 1 ? (card.zl ?? s) : s, base: base) }
+        if let s = card.zhSyl(Lang.zhPlace), let d = zh { return d.hanText(card.h, s, base: base) }
         if ToneColors.system != 0, let d = dict { return d.hanText(card.k, place, base: base) }
         var a = AttributedString(card.h); a.swiftUI.foregroundColor = base
         return a
@@ -843,14 +966,15 @@ final class Store: ObservableObject {
 
     /// a card's reading, with syllables guessed for the place in red
     func cardRom(_ card: Card, _ rom: Int, _ place: Int) -> AttributedString {
-        if let s = card.zs, let d = zh { return d.reading(Lang.zhPlace == 1 ? (card.zl ?? s) : s, Lang.zhRom) }
-        let r = min(max(rom, 0), 2)
+        if let s = card.zhSyl(Lang.zhPlace), let d = zh { return d.reading(s, Lang.zhRom) }
+        let r = TwRom.lat(rom)
+        if r == 3 { if let d = dict { return d.wordText(card.k, 3, place) }; return AttributedString(card.zy(place)) }   // 只用方音
         if ToneColors.system != 0, let d = dict { return d.wordText(card.k, r, place) }      // 聲調顏色
         if place >= 0, let d = dict, !d.guessedSyllables(card.k, place).isEmpty { return d.wordText(card.k, r, place) }
         return AttributedString(card.rom(r, place))
     }
     func cardZy(_ card: Card, _ place: Int) -> AttributedString {
-        if card.isZh { return AttributedString() }      // 華語: one reading line (拼音 or 注音)
+        if card.isZh || TwRom.hongimOnly { return AttributedString() }      // 華語: one reading line (拼音 or 注音); 只用方音: it's the main line
         if place >= 0 || ToneColors.system != 0, let d = dict { return d.wordText(card.k, 3, place) }
         return AttributedString(card.zy(place))
     }
@@ -861,8 +985,8 @@ final class Store: ObservableObject {
         if let w = x.w, let d = zh { return d.sentence(ZhDict.pieces(x.h, w), Lang.zhRom, Lang.zhPlace) }
         // (客語: the sentences have no reading of their own: the dictionary's words, as in 轉換)
         if card.isZh { return zh.map { $0.sentence(examplePieces($0, card, x.h), Lang.zhRom, Lang.zhPlace) } ?? AttributedString() }
-        let r = min(max(rom, 0), 2)
-        guard place >= 0 || ToneColors.system != 0, let d = dict, let e = dictExample(d, card, x) else { return AttributedString(x.r[r]) }
+        let r = TwRom.lat(rom)
+        guard place >= 0 || ToneColors.system != 0 || r == 3, let d = dict, let e = dictExample(d, card, x) else { return AttributedString(x.r[min(r, 2)]) }
         return d.sentenceText(e[1], r, place: place, han: e[0], zh: e.count > 2 ? e[2] : nil)
     }
 
@@ -884,12 +1008,12 @@ final class Store: ObservableObject {
     func blankRom(_ card: Card, _ x: Example, _ rom: Int, _ place: Int) -> AttributedString? {
         if let w = x.w, let d = zh { return d.sentence(ZhDict.pieces(x.h, w), Lang.zhRom, Lang.zhPlace, blank: card.h) }
         if card.isZh { return zh.map { $0.sentence(examplePieces($0, card, x.h), Lang.zhRom, Lang.zhPlace, blank: card.h) } }
-        let r = min(max(rom, 0), 2)
-        if place >= 0, let d = dict, let e = dictExample(d, card, x),
+        let r = TwRom.lat(rom)
+        if place >= 0 || r == 3, let d = dict, let e = dictExample(d, card, x),
            let ps = d.blankSentencePieces(e[1], han: e[0], word: Dict.codesOf(card.k).split(separator: " ").map(String.init), r, place: place) {
             return guessColored(ps, guess: T.guessInk)
         }
-        return x.br.map { AttributedString($0[r]) }
+        return x.br.map { AttributedString($0[min(r, 2)]) }
     }
 
     /// 客語: an example sentence in the dictionary's words (as in 轉換), the card's word kept whole and read as the

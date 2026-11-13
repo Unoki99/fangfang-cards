@@ -23,30 +23,51 @@ enum SRS {
 
 /// 不熟: how many words are due for review, and the button to the statistics
 struct ReviewBar: View {
+    /// the words due now (the same count as 練習統計's 要複習)
     let due: Int
     let stats: () -> Void
+    /// 要複習 tapped: practise the words due (false: 一般練習, true: 手寫練習)
+    var practise: (Bool) -> Void = { _ in }
     var body: some View {
-        Button(action: stats) {
-            HStack(spacing: 10) {
-                Image(systemName: "clock.arrow.circlepath").foregroundStyle(T.btnInk)
-                if due > 0 {
-                    Text(tr("要複習的詞")).foregroundStyle(T.glyph)
-                    Text("\(due)").ffFont(.subheadline, .bold, mono: true).foregroundStyle(T.btnInk)
-                } else {
-                    Text(tr("現在沒有要複習的詞")).foregroundStyle(T.muted)
+        HStack(spacing: 10) {
+            if due > 0 {
+                // 要複習: straight into practising them
+                Menu {
+                    Button { practise(false) } label: { Label(tr("一般練習"), systemImage: "graduationcap") }
+                    Button { practise(true) } label: { Label(tr("手寫練習"), systemImage: "pencil.and.scribble") }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(T.btnInk)
+                        Text(tr("要複習")).foregroundStyle(T.glyph)
+                        Text("\(due)").ffFont(.subheadline, .bold, mono: true).foregroundStyle(T.btnInk)
+                        Image(systemName: "play.fill").font(.caption2).foregroundStyle(T.btnInk)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(Capsule().fill(T.btn))
+                    .overlay(Capsule().stroke(T.btnEdge, lineWidth: 1.5))
+                    .contentShape(Capsule())
                 }
-                Spacer(minLength: 4)
-                Image(systemName: "chart.bar.xaxis").foregroundStyle(T.btnInk)
-                Text(tr("統計")).foregroundStyle(T.glyph)
+                .accessibilityLabel(tr("練習要複習的詞"))
+            } else {
+                Image(systemName: "clock.arrow.circlepath").foregroundStyle(T.btnInk)
+                Text(tr("現在沒有要複習的詞")).foregroundStyle(T.muted)
             }
-            .ffFont(.subheadline)
-            .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.7)))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: 12))
+            Spacer(minLength: 4)
+            Button(action: stats) {
+                HStack(spacing: 8) {
+                    Image(systemName: "chart.bar.xaxis").foregroundStyle(T.btnInk)
+                    Text(tr("統計")).foregroundStyle(T.glyph)
+                }
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .ffFont(.subheadline)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.7)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
     }
 }
 

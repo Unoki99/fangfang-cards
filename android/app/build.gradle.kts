@@ -31,7 +31,7 @@ android {
     buildFeatures { compose = true }
     androidResources {
         // the dictionary files are read whole: stored as they are, they open faster
-        noCompress += listOf("json")
+        noCompress += listOf("json", "js")
     }
 }
 
@@ -50,4 +50,6 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // (.xz: 華語's 《重編國語辭典修訂本》 comes packed that way, for installing it in the app)
+    implementation("org.tukaani:xz:1.10")
 }

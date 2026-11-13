@@ -29,6 +29,10 @@ sealed class Route {
     data class ZhClass(val cls: String) : Route()
     object ZhChars : Route()
     object ToneColorPicker : Route()
+    /** 日語 */
+    object JaParticles : Route()
+    data class JaLab(val key: String?) : Route()
+    object JaColors : Route()
 }
 
 class NavStack {
@@ -50,7 +54,7 @@ sealed class Sheet {
     data class CharWords(val ch: String) : Sheet()
 }
 
-enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE }
+enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE, JA_PARTICLES, FALLING }
 
 /** the app's screens that open over everything */
 object UI {

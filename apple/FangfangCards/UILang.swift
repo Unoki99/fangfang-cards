@@ -57,6 +57,9 @@ struct TR: ExpressibleByStringInterpolation {
 /// the app's text in the language chosen (設定 → 介面語言)
 func tr(_ t: TR) -> String { t.text }
 
+/// 收藏 on a button, before the word is saved: "Save" in English (the tab 收藏 is "Saved")
+func trSaveVerb() -> String { UILang.english ? "Save" : "收藏" }
+
 /// a piece of the app's text that isn't written out where it's shown (a title passed along, a name from a list)
 func trs(_ s: String) -> String { UILang.english ? (UILang.english(for: s) ?? s) : s }
 

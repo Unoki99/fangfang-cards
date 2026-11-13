@@ -6,19 +6,37 @@ import AVFoundation
 // of whatever app you're in (iOS / iPadOS / macOS 26). The card has buttons to play the recording,
 // save to 收藏, add to 不熟, or open the entry in the app.
 
-/// the dictionary, loaded once per launch for Shortcuts actions
+/// the dictionaries, loaded once per launch for Shortcuts actions
 @MainActor
 final class IntentDict {
     static let shared = IntentDict()
     private var dict: Dict?
+    private var zh: [Int: ZhDict] = [:]
     func get() throws -> Dict {
         if let d = dict { return d }
         if let d = Store.shared.dict { dict = d; return d }
-        guard let url = Bundle.main.url(forResource: "dict", withExtension: "json") else { throw CocoaError(.fileNoSuchFile) }
+        guard let url = DataFiles.url("dict") else { throw CocoaError(.fileNoSuchFile) }
         let d = Dict(try JSONDecoder().decode(DictRaw.self, from: Data(contentsOf: url)))
         dict = d
         return d
     }
+    /// 華語 (1), 粵語 (2) or 客語 (3)
+    func zhDict(_ kind: Int) throws -> ZhDict {
+        if let d = zh[kind] { return d }
+        if let d = Store.shared.zh, d.lang == kind { zh[kind] = d; return d }
+        guard (1...4).contains(kind), let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja"][kind]) else { throw CocoaError(.fileNoSuchFile) }
+        let accent = min(max(UserDefaults.standard.integer(forKey: Lang.hakPlaceKey), 0), Lang.hakAccents.count - 1)
+        let d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent, from: url)
+        zh[kind] = d
+        return d
+    }
+}
+
+/// the language the small window looks the word up in (chosen on the window; -1 = not chosen yet)
+enum SnippetLanguage {
+    static let key = "snippetLanguage"
+    static var current: Int { UserDefaults.standard.object(forKey: key) as? Int ?? -1 }
+    static func set(_ l: Int) { UserDefaults.standard.set(l, forKey: key) }
 }
 
 /// one entry on the card
@@ -37,7 +55,7 @@ struct SnippetRow: Identifiable {
 @available(iOS 26.0, *)
 struct PopupLookUpIntent: AppIntent {
     static let title: LocalizedStringResource = "方方查詞（小視窗）"
-    static let description = IntentDescription("在畫面上用小視窗顯示這個詞的辭典結果（華語、台語漢字、羅馬字或方音都可以）。可以聽發音、收藏、加到「不熟」，不用打開 App。")
+    static let description = IntentDescription("在畫面上用小視窗查這個詞：先選語言（台語、華語、粵語、客語），漢字、讀音或英文都可以查。可以聽發音、收藏、加到「不熟」，不用打開 App。")
 
     @Parameter(title: "詞")
     var word: String
@@ -47,7 +65,23 @@ struct PopupLookUpIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ShowsSnippetIntent {
-        .result(snippetIntent: LookUpSnippetIntent(word: word.trimmingCharacters(in: .whitespacesAndNewlines)))
+        // (a new word: the language is chosen again on the window)
+        SnippetLanguage.set(-1)
+        return .result(snippetIntent: LookUpSnippetIntent(word: word.trimmingCharacters(in: .whitespacesAndNewlines)))
+    }
+}
+
+/// the window's language buttons: picks the language and the window looks the word up in it
+@available(iOS 26.0, *)
+struct ChooseSnippetLanguageIntent: AppIntent {
+    static let title: LocalizedStringResource = "選語言"
+    static let isDiscoverable = false
+    @Parameter var language: Int
+    init() {}
+    init(language: Int) { self.language = language }
+    func perform() async throws -> some IntentResult {
+        SnippetLanguage.set(language)
+        return .result()
     }
 }
 
@@ -64,93 +98,153 @@ struct LookUpSnippetIntent: SnippetIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ShowsSnippetView {
-        let d = try IntentDict.shared.get()
+        let lang = SnippetLanguage.current
+        guard (0..<Lang.names.count).contains(lang) else {
+            return .result(view: LookUpSnippetView(word: word, lang: -1, rows: [], more: false))
+        }
         let store = Store.shared
         store.load()
-        let rom = UserDefaults.standard.object(forKey: "rom") as? Int ?? 0
-        let place = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
-        let r = Lookup.run(d, word)
-        var keys: [String] = []
-        for k in r.taigi + r.exact + r.pattern + r.contains + r.patternZh + r.gloss + r.defs where !keys.contains(k) { keys.append(k) }
-        let rows = keys.prefix(4).map { k -> SnippetRow in
-            var gloss = ""
-            if let g = d.gl[k], !g.isEmpty { gloss = g.prefix(5).map { $0.t }.joined(separator: "、") }
-            else if let t = d.defText(k) {
-                gloss = t.replacingOccurrences(of: #"\d+\.\s*"#, with: "", options: .regularExpression)
-                    .replacingOccurrences(of: "\n", with: "／")
+        let rows: [SnippetRow]
+        var total = 0
+        if lang == 0 {
+            let d = try IntentDict.shared.get()
+            let rom = UserDefaults.standard.object(forKey: "rom") as? Int ?? 0
+            let place = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
+            let r = Lookup.run(d, word)
+            var keys: [String] = []
+            for k in r.taigi + r.exact + r.pattern + r.contains + r.patternZh + r.gloss + r.defs where !keys.contains(k) { keys.append(k) }
+            // (English: Wiktionary's meanings)
+            for k in TwEnglish.search(word, limit: 10) where !keys.contains(k) { keys.append(k) }
+            total = keys.count
+            rows = keys.prefix(4).map { k -> SnippetRow in
+                var gloss = ""
+                if ZhMeaning.english(0), case let en = TwEnglish.meanings(k), !en.isEmpty { gloss = en.prefix(3).joined(separator: "; ") }
+                else if let g = d.gl[k], !g.isEmpty { gloss = g.prefix(5).map { $0.t }.joined(separator: "、") }
+                else if let t = d.defText(k) {
+                    gloss = t.replacingOccurrences(of: #"\d+\.\s*"#, with: "", options: .regularExpression)
+                        .replacingOccurrences(of: "\n", with: "／")
+                }
+                return SnippetRow(key: k, han: Dict.hanOf(k), rom: d.wordText(k, TwRom.lat(rom), place),
+                                  zy: rom == 3 ? AttributedString() : d.wordText(k, 3, place), gloss: gloss,
+                                  audio: d.raw.au[k].map { Audio.wordPath($0) },
+                                  saved: store.isSaved(k), status: store.cardStatus(k))
             }
-            return SnippetRow(key: k, han: Dict.hanOf(k), rom: d.wordText(k, min(max(rom, 0), 2), place),
-                              zy: d.wordText(k, 3, place), gloss: gloss,
-                              audio: d.raw.au[k].map { Audio.wordPath($0) },
-                              saved: store.isSaved(k), status: store.cardStatus(k))
+        } else {
+            let d = try IntentDict.shared.zhDict(lang)
+            let romKey = lang == 2 ? Lang.yueRomKey : (lang == 3 ? Lang.hakRomKey : "zhRom")
+            let rom = UserDefaults.standard.integer(forKey: romKey)
+            let place = lang == 1 ? UserDefaults.standard.integer(forKey: "zhPlace") : 0
+            let f = d.search(word, place: place)
+            var idx: [Int] = []
+            for i in f.mandarin + f.words + f.english + f.starts + f.parts.indices.flatMap({ f.partWords[$0] }) + f.contains + f.defs where !idx.contains(i) { idx.append(i) }
+            total = idx.count
+            rows = idx.prefix(4).map { i -> SnippetRow in
+                let e = d.entries[i]
+                let syl = e.syl(place)
+                let gloss = (ZhMeaning.english(lang) || e.senses.isEmpty) && e.en != nil
+                    ? e.enList.prefix(3).joined(separator: "; ") : (e.senses.first?.text ?? "")
+                return SnippetRow(key: e.k, han: e.h, rom: d.reading(syl, rom),
+                                  zy: lang == 1 ? d.reading(syl, rom == 0 ? 1 : 0) : AttributedString(), gloss: gloss,
+                                  audio: lang == 1 ? "tts:" + e.h : e.audio,
+                                  saved: store.isSaved(e.k), status: store.cardStatus(e.k))
+            }
         }
-        return .result(view: LookUpSnippetView(word: word, rows: Array(rows), more: keys.count > rows.count))
+        return .result(view: LookUpSnippetView(word: word, lang: lang, rows: rows, more: total > rows.count))
     }
 }
 
 @available(iOS 26.0, *)
 struct LookUpSnippetView: View {
     let word: String
+    /// -1: choosing the language
+    let lang: Int
     let rows: [SnippetRow]
     let more: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if rows.isEmpty {
-                Text(tr("找不到「\(word)」。")).foregroundStyle(.secondary)
-            }
-            ForEach(rows) { row in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .center, spacing: 8) {
-                        Text(row.han).ffFont(.title3, .semibold)
-                        Text(row.rom).latFont(16).foregroundStyle(.green)
-                            .pill(.green)
-                        Text(row.zy).ffFont(.footnote).foregroundStyle(.purple)
-                            .pill(.purple)
-                        Spacer(minLength: 0)
-                    }
-                    if !row.gloss.isEmpty {
-                        Text(row.gloss).ffFont(.footnote).foregroundStyle(.secondary).lineLimit(2)
-                    }
-                    buttons(row)
+            languageButtons
+            if lang >= 0 {
+                if rows.isEmpty {
+                    Text(tr("找不到「\(word)」。")).foregroundStyle(T.muted)
                 }
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 14).fill(Color.gray.opacity(0.10)))
-                .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.gray.opacity(0.45), lineWidth: 1.5))
-            }
-            if more {
-                Button(intent: OpenLookUpIntent(word: word)) {
-                    Label(tr("在 App 裡看全部"), systemImage: "arrow.up.forward.app")
+                ForEach(rows) { row in
+                    let c = T.langColors(lang)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .center, spacing: 8) {
+                            Text(row.han).ffFont(.title3, .semibold).foregroundStyle(T.glyph)
+                            Text(row.rom).latFont(16).foregroundStyle(T.greenInk)
+                                .pill(T.greenInk)
+                            if !row.zy.characters.isEmpty {
+                                Text(row.zy).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                                    .pill(T.purpleInk)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        if !row.gloss.isEmpty {
+                            Text(row.gloss).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.8)).lineLimit(2)
+                        }
+                        buttons(row)
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(T.fn))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(c.edge, lineWidth: 1.5))
                 }
-                .buttonStyle(.bordered)
+                if more {
+                    Button(intent: OpenLookUpIntent(word: word)) {
+                        Label(tr("在 App 裡看全部"), systemImage: "arrow.up.forward.app")
+                    }
+                    .buttonStyle(.bordered).tint(T.btnInk)
+                }
             }
         }
         .padding()
+        .background(T.bg)
+    }
+
+    /// the four languages, each in its colour (the one chosen filled in)
+    private var languageButtons: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if lang < 0 { Text(tr("用哪一種語言查「\(word)」？")).ffFont(.subheadline).foregroundStyle(T.glyph) }
+            HStack(spacing: 6) {
+                ForEach(0..<Lang.names.count, id: \.self) { l in
+                    let c = T.langColors(l)
+                    Button(intent: ChooseSnippetLanguageIntent(language: l)) {
+                        Text(trs(Lang.names[l])).ffFont(.subheadline, .semibold)
+                            .foregroundStyle(c.ink)
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .background(RoundedRectangle(cornerRadius: 10).fill(l == lang || lang < 0 ? c.fill : c.fill.opacity(0.35)))
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(c.edge, lineWidth: l == lang ? 2.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     @ViewBuilder private func buttons(_ row: SnippetRow) -> some View {
         HStack(spacing: 8) {
             if let a = row.audio {
                 Button(intent: PlayRecordingIntent(path: a)) { Image(systemName: "play.fill") }
-                    .buttonStyle(.bordered).tint(.green)
+                    .buttonStyle(.bordered).tint(T.greenInk)
             }
             Button(intent: ToggleSavedIntent(key: row.key)) {
-                Label(row.saved ? trs("已收藏") : trs("收藏"), systemImage: row.saved ? "bookmark.fill" : "bookmark")
+                Label(row.saved ? trs("已收藏") : trSaveVerb(), systemImage: row.saved ? "bookmark.fill" : "bookmark")
             }
-            .buttonStyle(.bordered).tint(.yellow)
+            .buttonStyle(.bordered).tint(T.oliveInk)
             if let st = row.status {
                 if st == 1 {
-                    Text(tr("熟悉")).ffFont(.caption).foregroundStyle(.green)
+                    Text(tr("熟悉")).ffFont(.caption).foregroundStyle(T.greenInk)
                 } else {
                     Button(intent: ToggleUnknownIntent(key: row.key)) {
                         Label(st == 2 ? trs("在不熟") : trs("加到不熟"), systemImage: st == 2 ? "star.fill" : "star")
                     }
-                    .buttonStyle(.bordered).tint(.orange)
+                    .buttonStyle(.bordered).tint(T.rustInk)
                 }
             }
             Spacer(minLength: 0)
             Button(intent: OpenLookUpIntent(word: row.han)) { Image(systemName: "arrow.up.forward.app") }
-                .buttonStyle(.bordered)
+                .buttonStyle(.bordered).tint(T.btnInk)
         }
         .ffFont(.caption)
         .labelStyle(.titleAndIcon)

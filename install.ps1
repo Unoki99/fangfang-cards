@@ -315,6 +315,13 @@ foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.j
     if ((Test-Path $src) -and -not (Test-Path (Join-Path $Keep $f))) { Copy-Item $src (Join-Path $Keep $f) -Force }
 }
 
+# The dictionaries aren't in the app: it downloads and makes each language's dictionary itself (設定 → 詞典資料).
+# The one file put in is Wiktionary's English for the 台語 words (tw_en.json), which 台語's English search uses and
+# the phone can't make (it would need Wiktionary's whole 2.5 GB file). What was made above stays in $Keep.
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "ja.json", "shuowen.json", "zh_sc.json")) {
+    Remove-Item (Join-Path $Assets $f) -Force -ErrorAction SilentlyContinue
+}
+
 # copies of source files left by putting a new download over the old folder ("Dict 2.kt", "Dict - Copy.kt",
 # "Dict (1).kt"): the same code twice, which the build can't tell apart
 Get-ChildItem -Path (Join-Path $A "app\src") -Recurse -File -Include "* 2.kt", "* - Copy.kt", "* (1).kt", "* - Kopia.kt" -ErrorAction SilentlyContinue |

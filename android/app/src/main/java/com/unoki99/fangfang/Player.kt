@@ -91,6 +91,12 @@ object ZhSpeech {
                 Store.speechHint = com.unoki99.fangfang.tr("這支手機還沒有粵語的語音。到「設定 → 系統 → 語言 → 文字轉語音輸出」，在語音引擎的設定裡安裝「粵語（香港）」的語音，再回來就可以聽了。")
                 return true
             }
+        } else if (com.unoki99.fangfang.engine.Lang.isJa) {
+            // 日語: a Japanese voice
+            if (t.setLanguage(Locale.JAPAN) in bad) {
+                Store.speechHint = com.unoki99.fangfang.tr("這支手機還沒有日語的語音。到「設定 → 系統 → 語言 → 文字轉語音輸出」，在語音引擎的設定裡安裝「日語」的語音，再回來就可以聽了。")
+                return true
+            }
         } else {
         val loc = if (Prefs.zhPlace.value == 1) Locale.CHINA else Locale.TAIWAN
         val ok = t.setLanguage(loc)

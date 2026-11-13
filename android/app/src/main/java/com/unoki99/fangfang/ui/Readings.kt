@@ -31,7 +31,7 @@ private fun rememberZhDict(kind: Int): ZhDict? {
     val loaded by produceState<ZhDict?>(have, kind, have) {
         if (value != null) return@produceState
         value = withContext(Dispatchers.Default) {
-            try { ZhDict(Store.app.assets.open(listOf("zh.json", "zh.json", "yue.json", "hak.json")[kind]).bufferedReader().use { it.readText() }) }
+            try { com.unoki99.fangfang.DataFiles.readText(listOf("zh", "zh", "yue", "hak", "ja")[kind.coerceIn(0, 4)])?.let { ZhDict(it) } }
             catch (_: Exception) { null }
         }
     }

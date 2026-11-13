@@ -123,7 +123,7 @@ fun PotionBar(value: Double, height: Dp = 30.dp, showMarks: Boolean = true, labe
 // MARK: stars that burst from your finger
 
 class StarField {
-    enum class Kind { STAR, MOON, LEAF, PLANET, MUSHROOM, ACORN }
+    enum class Kind { STAR, MOON, LEAF, PLANET, MUSHROOM, ACORN, PETAL, MAPLE }
     class Star(val start: Offset, val vx: Float, val vy: Float, val spin: Float, val size: Float, val color: Color, val born: Long, val kind: Kind)
     val stars = mutableStateListOf<Star>()
     /** where a tap doesn't make any (the squares to write in), in the window's coordinates */
@@ -139,6 +139,8 @@ class StarField {
             AppTheme.SPACE -> listOf(Kind.STAR, Kind.STAR, Kind.PLANET)
             AppTheme.GOBLIN -> listOf(Kind.MUSHROOM, Kind.LEAF, Kind.ACORN, Kind.STAR)
             AppTheme.WINTER -> listOf(Kind.STAR, Kind.MOON)
+            AppTheme.SAKURA -> listOf(Kind.PETAL, Kind.PETAL, Kind.STAR)
+            AppTheme.MOMIJI -> listOf(Kind.MAPLE, Kind.MAPLE, Kind.LEAF, Kind.STAR)
         }
 
     fun burst(p: Offset, scale: Float) {
@@ -206,7 +208,33 @@ private fun StarLayer(field: StarField) {
     }
 }
 
+/** a cherry petal (a notch at the top) */
+fun petalPath(r: Float): Path = Path().apply {
+    moveTo(0f, r)
+    quadraticTo(-r * 1.05f, -r * 0.1f, -r * 0.12f, -r * 0.85f)
+    lineTo(0f, -r * 0.6f); lineTo(r * 0.12f, -r * 0.85f)
+    quadraticTo(r * 1.05f, -r * 0.1f, 0f, r)
+    close()
+}
+
+/** a maple leaf: five pointed lobes and a stem */
+fun maplePath(r: Float): Path = Path().apply {
+    val lobes = listOf(-90f to 1f, -35f to 0.85f, 15f to 0.6f, 165f to 0.6f, 215f to 0.85f)
+    for ((i, l) in lobes.withIndex()) {
+        val a = l.first * PI.toFloat() / 180f
+        val s0 = Offset(cos(a - 0.38f) * r * 0.42f, sin(a - 0.38f) * r * 0.42f)
+        val s1 = Offset(cos(a + 0.38f) * r * 0.42f, sin(a + 0.38f) * r * 0.42f)
+        if (i == 0) moveTo(s0.x, s0.y) else lineTo(s0.x, s0.y)
+        lineTo(cos(a) * r * l.second, sin(a) * r * l.second)
+        lineTo(s1.x, s1.y)
+    }
+    close()
+    addRect(Rect(-r * 0.05f, r * 0.2f, r * 0.05f, r * 0.8f))
+}
+
 private fun shape(k: StarField.Kind, r: Float): Path = when (k) {
+    StarField.Kind.PETAL -> petalPath(r)
+    StarField.Kind.MAPLE -> maplePath(r * 1.2f)
     StarField.Kind.STAR -> Path().apply {
         for (i in 0 until 10) {
             val a = -PI / 2 + i * PI / 5

@@ -111,7 +111,7 @@ struct MemoryView: View {
         var picked: [Card] = []
         var hans = Set<String>(), roms = Set<String>()
         for c in store.practiceCards.shuffled() {
-            let r = c.rom(min(max(rom, 0), 2), place)
+            let r = rom == 3 ? c.zy(place) : c.rom(min(max(rom, 0), 2), place)
             if hans.contains(c.h) || roms.contains(r) { continue }
             hans.insert(c.h); roms.insert(r)
             picked.append(c)

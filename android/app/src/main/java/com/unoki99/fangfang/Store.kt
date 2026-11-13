@@ -57,6 +57,7 @@ object Store {
     var lang by mutableIntStateOf(0); private set
     val isYue: Boolean get() = lang == 2
     val isHak: Boolean get() = lang == 3
+    val isJa: Boolean get() = lang == 4
     /** which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3) */
     private val zhKind: Int get() = zh?.lang ?: 1
     /** a hint to show (粵語 without a Cantonese voice on the device) */
@@ -75,21 +76,34 @@ object Store {
     private var other: Deck? = null
     const val zhDeckSize = 20000
 
-    /** 倉頡 / 五筆 / 無蝦米 (read the first time they're shown) */
-    val inputCodes: InputCodes by lazy {
-        InputCodes(try { app.assets.open("inputcodes.json").bufferedReader().use { it.readText() } } catch (_: Exception) { null })
-    }
+    /** 倉頡 / 五筆 / 無蝦米 (read the first time they're shown; again after 華語 is installed) */
+    private var inputCodesMade: InputCodes? = null
+    val inputCodes: InputCodes get() = inputCodesMade ?: InputCodes(DataFiles.readText("inputcodes")).also { inputCodesMade = it }
+
+    /** no 台語 data yet: the app still opens, and offers to install it (設定 → 詞典資料) */
+    var taigiMissing by mutableStateOf(false); private set
 
     fun init(ctx: Context) {
         app = ctx.applicationContext
         // 台語 words' English (Wiktionary), read the first time it's needed
-        TwEnglish.source = { try { app.assets.open("tw_en.json").bufferedReader().use { it.readText() } } catch (_: Exception) { null } }
+        TwEnglish.source = { DataFiles.readText("tw_en") }
     }
 
     private fun changed() {
         recount()
+        // (the 不熟 / 熟悉 / review lists only change when a word's status, date or review does)
+        val sig = progress.status.hashCode() * 31L * 31L + progress.added.hashCode() * 31L + progress.srs.hashCode()
+        if (sig != listSig) { listSig = sig; listCache.clear() }
         revState.intValue++
     }
+
+    /** the 不熟 / 熟悉 / review lists, made once and kept until a word changes (each page showing one used to sort
+     *  every list again on every redraw) */
+    private val listCache = HashMap<String, List<Card>>()
+    private var listSig = 0L
+    private var dueMadeAt = 0.0
+    /** (and a list of another language or deck isn't this one's) */
+    private fun listKey(k: String) = "$k|$lang|${System.identityHashCode(cards)}|${System.identityHashCode(zh)}"
 
     // MARK: loading
 
@@ -99,10 +113,11 @@ object Store {
             try {
                 val t0 = System.currentTimeMillis()
                 loadStep = "讀取詞卡檔案…"
-                val text = withContext(Dispatchers.IO) { app.assets.open("cards.json").bufferedReader().use { it.readText() } }
-                android.util.Log.i("Fangfang", "cards.json read in ${System.currentTimeMillis() - t0} ms")
+                val text = withContext(Dispatchers.IO) { DataFiles.readText("cards") }
+                // (no 台語 data yet: the app still opens; 設定 → 詞典資料, or the first language chosen, installs it)
+                taigiMissing = text == null
                 loadStep = "整理詞卡…"
-                val deck = withContext(Dispatchers.Default) {
+                val deck = if (text == null) DeckFile.parse("{\"cards\":[]}") { } else withContext(Dispatchers.Default) {
                     DeckFile.parse(text) { p -> launch(Dispatchers.Main) { loadProgress = p } }
                 }
                 loadProgress = 1f
@@ -144,7 +159,7 @@ object Store {
         scope.launch {
             try {
                 val d = withContext(Dispatchers.Default) {
-                    val text = app.assets.open("dict.json").bufferedReader().use { it.readText() }
+                    val text = DataFiles.readText("dict") ?: throw java.io.FileNotFoundException("dict.json")
                     Dict(DictRaw.parse(text), Prefs)
                 }
                 d.setUserWords(ownKeys.toSet())
@@ -205,14 +220,14 @@ object Store {
     /** the spelling shown for 華語 / 粵語 (Prefs.zhRom) is kept apart for each */
     private fun shownRom(l: Int) {
         val was = lang
-        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value }
-        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value }
+        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value; 4 -> Prefs.jaRom.value = Prefs.zhRom.value }
+        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value; 4 -> Prefs.zhRom.value = Prefs.jaRom.value }
     }
 
     private fun shown(l: Int) {
         shownRom(l)
         lang = l; isZh = l != 0
-        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.zhShown = l != 0
+        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.ja = l == 4; EngineSettings.zhShown = l != 0
         undoStack.clear(); canUndo = false
         changed()
     }
@@ -233,7 +248,8 @@ object Store {
                 useZh(d, deck)
             } catch (e: Throwable) {
                 android.util.Log.e("Fangfang", "zh failed", e)
-                zhError = "${Lang.names[want]}詞典讀取失敗：${e.javaClass.simpleName} ${e.message ?: ""}"
+                zhError = if (e is java.io.FileNotFoundException) tr("還沒有{0}詞典：到「設定 → 詞典資料」安裝。", tr(Lang.names[want]))
+                    else "${Lang.names[want]}詞典讀取失敗：${e.javaClass.simpleName} ${e.message ?: ""}"
                 Prefs.lang.value = lang
                 zhJob = null
             }
@@ -253,9 +269,10 @@ object Store {
         val list = Prefs.zhList.value
         val accent = Prefs.hakAccent.value.coerceIn(0, 5)
         val j = scope.async(Dispatchers.Default) {
-            val d = have ?: ZhDict(app.assets.open(listOf("zh.json", "zh.json", "yue.json", "hak.json")[kind]).bufferedReader().use { it.readText() }, accent).also { d ->
+            val name = listOf("zh", "zh", "yue", "hak", "ja")[kind.coerceIn(0, 4)]
+            val d = have ?: ZhDict(DataFiles.readText(name) ?: throw java.io.FileNotFoundException("$name.json"), accent).also { d ->
                 // 粵語, 客語: the radicals (部首查字) from the 華語 data, when it's there
-                if (d.lang != 1) try { d.borrowRadicals(app.assets.open("zh.json").bufferedReader().use { it.readText() }) } catch (_: Exception) {}
+                if (d.lang != 1 && d.lang != 4) DataFiles.readText("zh")?.let { z -> try { d.borrowRadicals(z) } catch (_: Exception) {} }
             }
             d to makeZhDeck(d, list, keys).also { it.kind = kind }
         }
@@ -306,6 +323,43 @@ object Store {
                 if (lang == 3) { deck.kind = 3; zh = d; use(deck); undoStack.clear(); canUndo = false; listVersion++; changed() }
             } catch (e: Throwable) { zhJob = null }
             switching = false
+        }
+    }
+
+    /** a dictionary was installed or removed (設定 → 詞典資料): read again if it's the one in use */
+    fun dictionaryChanged(kind: Int) {
+        if (kind == 1) inputCodesMade = null
+        if (kind == 0) { if (DataFiles.has("cards")) reloadTaigi(); return }
+        if (kind < 0) return
+        if (zh?.lang == kind && lang != kind) zh = null
+        if (lang == kind && !switching) {
+            switching = true
+            scope.launch {
+                try {
+                    val (d, deck) = zhLoad(kind, fresh = true).await()
+                    zhJob = null
+                    if (lang == kind) { deck.kind = kind; zh = d; use(deck); undoStack.clear(); canUndo = false; listVersion++; changed() }
+                } catch (e: Throwable) { zhJob = null }
+                switching = false
+            }
+        }
+    }
+
+    /** 台語's words (cards.json) and dictionary, read again after installing them */
+    fun reloadTaigi() {
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { DataFiles.readText("cards") } ?: return@launch
+            val deck = withContext(Dispatchers.Default) { DeckFile.parse(text) { } }
+            val bk = HashMap<String, Card>(); val rk = HashMap<String, Int>()
+            for ((i, c) in deck.cards.withIndex()) { bk[c.k] = c; rk[c.k] = i }
+            val pl = HashMap<Int, MutableList<Card>>()
+            for (c in deck.cards.take(4000)) pl.getOrPut(c.syllables) { ArrayList() }.add(c)
+            syl = deck.syl; places = deck.places
+            taigiMissing = false
+            val d = Deck(deck.cards, bk, rk, pl, deck.topics, 0)
+            if (lang == 0) { use(d); makeFreqTopics(); listVersion++; changed() } else other = d
+            dict = null; dictLoading = false
+            loadDict()
         }
     }
 
@@ -454,7 +508,7 @@ object Store {
             if (v != 1 || Lang.charOf(k) != null || Lang.kind(k) != kind) continue
             for (ch in k.substringBefore('\t').cps()) {
                 if (!Zhuyin.isHan(ch.firstCp()) || !seen.add(ch) || d.charIndex[ch] == null) continue
-                val ck = Lang.charKey(ch, d.isYue, d.isHak)
+                val ck = Lang.charKey(ch, d.isYue, d.isHak, d.isJa)
                 when (progress.status[ck]) {
                     1 -> {}
                     // marked 不熟 by hand after the word was learned: left as it is
@@ -481,7 +535,7 @@ object Store {
 
     // MARK: 本週學習 (this week's words)
 
-    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak")[lang.coerceIn(0, 3)]
+    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak", "ja")[lang.coerceIn(0, 4)]
 
     /** this week's words (in the language shown), in the order they were picked */
     val weekCards: List<Card> get() {
@@ -576,7 +630,11 @@ object Store {
         val u = unknownCards
         val t = practiceTopic
         if (t < 0 || practiceTopics.none { it.id == t }) return u
-        return u.filter { inTopic(it, t) }
+        val key = listKey("p$t")
+        listCache[key]?.let { return it }
+        val out = u.filter { inTopic(it, t) }
+        listCache[key] = out
+        return out
     }
     val practiceName: String get() = practiceTopics.firstOrNull { it.id == practiceTopic }?.name ?: tr("全部不熟的詞")
 
@@ -635,8 +693,13 @@ object Store {
 
     private fun list(s: Int): List<Card> {
         rev
-        return progress.status.mapNotNull { (k, v) -> if (v == s && isShownLanguage(k)) cardFor(k) else null }
-            .sortedByDescending { progress.added[it.k] ?: 0.0 }
+        val key = listKey("s$s")
+        listCache[key]?.let { return it }
+        val added = progress.added
+        val out = progress.status.mapNotNull { (k, v) -> if (v == s && isShownLanguage(k)) cardFor(k) else null }
+            .sortedByDescending { added[it.k] ?: 0.0 }
+        listCache[key] = out
+        return out
     }
     val unknownCards: List<Card> get() = list(2)
     val knownCards: List<Card> get() = list(1)
@@ -732,23 +795,37 @@ object Store {
         rev
         val t0 = now
         val t = practiceTopic
+        // (kept for a minute: words come due by the hour or day, not by the second)
+        if (t0 - dueMadeAt > 60) listCache.keys.removeAll { it.startsWith("d") }
+        val key = listKey("d$t")
+        listCache[key]?.let { return it }
         val scoped = t >= 0 && practiceTopics.any { it.id == t }
-        return progress.srs.mapNotNull { (k, s) ->
+        val out = progress.srs.mapNotNull { (k, s) ->
             if (s.size < 2 || s[1] < 1 || s[0] > t0 || progress.status[k] != 1 || Lang.kind(k) != lang) return@mapNotNull null
             val c = cardFor(k) ?: return@mapNotNull null
             if (scoped && !inTopic(c, t)) null else c
         }
+        listCache[key] = out
+        dueMadeAt = t0
+        return out
     }
     /** 開始練習 / 例句填空: the words due for review first, then the 不熟 words */
     val studyCards: List<Card> get() = dueCards.shuffled() + practiceCards
 
     // MARK: what practice shows
 
-    /** 華語 with 主要解釋 = 英文 (設定): a card's English meanings (null: the 華語 ones; 粵語's are English already) */
+    /** 主要解釋 = 英文 (設定, each of 台語, 華語, 客語): a card's English meanings (null: the dictionary's own;
+     *  粵語's and 日語's are English already). 台語's are Wiktionary's (tw_en.json). */
     fun englishMeanings(c: Card): List<String>? {
-        if (!Prefs.zhEnglish.value || Lang.kind(c.k) != 1) return null
+        val kind = Lang.kind(c.k)
+        if (kind == 0) {
+            if (!Prefs.twEnglish.value) return null
+            return TwEnglish.meanings(c.k).takeIf { it.isNotEmpty() }
+        }
+        val on = when (kind) { 1 -> Prefs.zhEnglish.value; 3 -> Prefs.hakEnglish.value; else -> false }
+        if (!on) return null
         val d = zh ?: return null
-        if (d.lang != 1) return null
+        if (d.lang != kind) return null
         val e = Lang.charOf(c.k)?.let { d.entryForChar(it, "") } ?: d.entry(c.k)
         return e?.enList?.takeIf { it.isNotEmpty() }
     }

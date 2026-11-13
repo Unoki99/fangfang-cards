@@ -115,7 +115,9 @@ object Kai {
         faces[s] = f
         return f
     }
-    val family: FontFamily get() = families.getOrPut(style) { FontFamily(Font(files[style])) }
+    val family: FontFamily get() = familyOf(style)
+    /** the font i of `names` (詞典的字體 uses them too) */
+    fun familyOf(i: Int): FontFamily { val s = i.coerceIn(0, files.size - 1); return families.getOrPut(s) { FontFamily(Font(files[s])) } }
 
     /** where the character goes in a square of this side (centred on its own shape) */
     fun place(ch: String, side: Float, paint: Paint): Pair<Float, Float> {
@@ -862,32 +864,88 @@ private fun WordPad(strokes: androidx.compose.runtime.snapshots.SnapshotStateLis
     }
 }
 
+/** the character, faint, in a square (the same font and place as 手寫練習's: drawn with the font chosen) */
+@Composable
+fun KaiGhost(ch: String, alpha: Float, modifier: Modifier = Modifier.fillMaxSize()) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val color = T.btnInk.copy(alpha = alpha).argbInt()
+    Canvas(modifier) {
+        val side = minOf(size.width, size.height)
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Kai.typeface(ctx); this.color = color }
+        val (x, y) = Kai.place(ch, side, p)
+        drawContext.canvas.nativeCanvas.drawText(ch, x + (size.width - side) / 2, y + (size.height - side) / 2, p)
+    }
+}
+
 /** the word's characters in squares to write in: on a tablet all of them side by side; on a phone one at a time in a
- *  big square, each written one kept in a small square above (tap one to write it again). 對答案 shows the right
- *  characters faintly over the writing, and you say whether you got it.
+ *  big square, each written one kept in a small square above (tap one to write it again). The squares stay the size
+ *  chosen with the slider (smaller only when they don't fit). 對答案 shows the right characters faintly over the
+ *  writing, and you say whether you got it; 不會寫 shows them too, and the word comes back to be written again.
  *  answered: the question has been graded (only the small squares stay, with the answer in them) */
 @Composable
-fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = Modifier, practiceOnly: Boolean = false, grade: (Boolean) -> Unit) {
+fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = Modifier, practiceOnly: Boolean = false,
+                  dontKnow: (() -> Unit)? = null, grade: (Boolean) -> Unit) {
     val drawings = remember(chars) { chars.map { mutableStateListOf<InkStroke>() } }
     var cur by remember(chars) { mutableIntStateOf(0) }
     var checked by remember(chars) { mutableStateOf(false) }
     var side by remember { mutableFloatStateOf(0f) }
+    var fixed by Prefs.handTestPad
     val show = checked || answered
     val rainbow = Prefs.handRainbow.value
     val ink = HandInk.solid
     val period = with(androidx.compose.ui.platform.LocalDensity.current) { 420.dp.toPx() }
+    @Composable fun sizeSlider() = Row(Modifier.widthIn(max = 420.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(Icons.Filled.ZoomOut, null, tint = T.muted, modifier = Modifier.size(18.dp))
+        Slider(fixed, { fixed = it }, Modifier.weight(1f), valueRange = 140f..640f,
+            colors = SliderDefaults.colors(thumbColor = T.btnEdge, activeTrackColor = T.btnEdge))
+        Icon(Icons.Filled.ZoomIn, null, tint = T.muted, modifier = Modifier.size(18.dp))
+    }
+    @Composable fun RowScope.dontKnowButton(action: () -> Unit) = SoftButton(onClick = { checked = true; action() }, Modifier.weight(1f)) {
+        IconLabel(Icons.Filled.QuestionMark, tr("不會寫"), ff(FF.Subheadline))
+    }
+    @Composable fun pad(i: Int, s: androidx.compose.ui.unit.Dp) = Box(Modifier.size(s)) {
+        WordPad(drawings[i], Modifier.fillMaxSize()) { side = it }
+        // after 對答案: the character, faint, to write over
+        if (show) KaiGhost(chars[i], 0.22f)
+    }
     BoxWithConstraints(modifier) {
     // (taken out here: the Column below can't reach the box's size)
     val boxW = maxWidth; val boxH = maxHeight
     // a tablet: every character gets a big square at once
     val wide = boxW >= 700.dp
+    /** a square's side: the size chosen, smaller only when n of them don't fit */
+    fun sideFor(n: Int): androidx.compose.ui.unit.Dp {
+        val want = fixed.coerceIn(140f, 640f).dp
+        val gap = 16.dp
+        val fitW = (boxW - gap * (maxOf(n, 1) - 1)) / maxOf(n, 1)
+        val fitH = if (boxH == androidx.compose.ui.unit.Dp.Infinity) want else boxH - 200.dp
+        return minOf(want, fitW, fitH).coerceAtLeast(110.dp)
+    }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        if (!show && wide) {
-            val n = chars.size; val gap = 16.dp
-            val s = minOf(420.dp, (boxW - gap * (n - 1)) / n, boxH - 130.dp).coerceAtLeast(120.dp)
-            Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+        // the small squares: what's been written of each character (and, after 對答案, the character)
+        @Composable fun slots() {
+            val s = if (show) (if (wide) 130.dp else 86.dp) else 58.dp
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                for (i in chars.indices) {
+                    val on = !show && i == cur
+                    Box(Modifier.size(s).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.75f))
+                        .border(if (on) 2.5.dp else 1.dp, if (on) T.btnEdge else T.fnEdge, RoundedCornerShape(12.dp))
+                        .clickable(enabled = i != cur && !answered) { cur = i }, contentAlignment = Alignment.Center) {
+                        if (show) KaiGhost(chars[i], 0.4f)
+                        val list = drawings[i]
+                        if (list.isNotEmpty()) Canvas(Modifier.fillMaxSize()) { drawInk(list.toList(), side, period, rainbow, ink) }
+                    }
+                }
+            }
+        }
+        // (on a tablet the big squares show the answer already, except once graded: then only the small ones stay)
+        if (show && (!wide || answered)) slots()
+        if (answered) return@Column
+        if (wide) {
+            val n = chars.size; val s = sideFor(n)
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 for (i in chars.indices) Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    WordPad(drawings[i], Modifier.size(s)) { side = it }
+                    pad(i, s)
                     Row(Modifier.height(22.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Txt(tr("第 {0} 個字", i + 1), ff(FF.Caption), T.muted)
                         if (drawings[i].isNotEmpty()) Icon(Icons.Filled.Clear, tr("清掉"), tint = T.btnInk,
@@ -895,42 +953,34 @@ fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = M
                     }
                 }
             }
+            sizeSlider()
             Row(Modifier.widthIn(max = 560.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SoftButton(onClick = { drawings.forEach { it.clear() } }, Modifier.weight(1f)) {
                     IconLabel(Icons.Filled.Clear, if (n > 1) tr("全部清掉") else tr("清掉"), ff(FF.Subheadline))
                 }
-                ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline)) }
+                if (!show && dontKnow != null) dontKnowButton(dontKnow)
+                if (!show) ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline)) }
             }
-            return@Column
-        }
-        // the small squares: what's been written of each character (and, after 對答案, the character)
-        val s = if (show) (if (wide) 130.dp else 86.dp) else 58.dp
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            for ((i, ch) in chars.withIndex()) {
-                val on = !show && i == cur
-                Box(Modifier.size(s).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.75f))
-                    .border(if (on) 2.5.dp else 1.dp, if (on) T.btnEdge else T.fnEdge, RoundedCornerShape(12.dp))
-                    .clickable(enabled = !show && i != cur) { cur = i }, contentAlignment = Alignment.Center) {
-                    if (show) Text(ch, style = sz(s.value * 0.62f).copy(fontFamily = Kai.family), color = T.btnInk.copy(alpha = 0.4f))
-                    val list = drawings[i]
-                    if (list.isNotEmpty()) Canvas(Modifier.fillMaxSize()) { drawInk(list.toList(), side, period, rainbow, ink) }
-                }
-            }
-        }
-        if (!show) {
+        } else {
+            if (!show) slots()
             // the big square for the character being written
-            val padS = minOf(420.dp, boxW, boxH - 140.dp).coerceAtLeast(160.dp)
-            key(cur) { WordPad(drawings[cur], Modifier.size(padS)) { side = it } }
+            key(cur) { pad(cur, sideFor(1)) }
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SoftButton(onClick = { drawings[cur].clear() }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Clear, tr("清掉"), ff(FF.Subheadline)) }
+                if (!show && cur + 1 >= chars.size && dontKnow != null) dontKnowButton(dontKnow)
                 if (cur + 1 < chars.size) ProminentButton(onClick = { cur++ }, Modifier.weight(1f)) {
                     IconLabel(Icons.Filled.ChevronRight, tr("下一個字"), ff(FF.Subheadline))
-                } else ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) {
+                } else if (!show) ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) {
                     IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline))
+                } else if (chars.size > 1) SoftButton(onClick = { cur = 0 }, Modifier.weight(1f)) {
+                    IconLabel(Icons.Filled.Undo, tr("第一個字"), ff(FF.Subheadline))
                 }
             }
-        } else if (!answered) {
-            Txt(tr("淡淡的字是正確的寫法，和你寫的比一比。"), ff(FF.Footnote), T.muted)
+            sizeSlider()
+        }
+        if (show) {
+            // (the squares stay: write the character a few more times, over the faint one, before going on)
+            Txt(tr("淡淡的字是正確的寫法，和你寫的比一比；也可以在格子裡照著多寫幾次。"), ff(FF.Footnote), T.muted)
             Row(Modifier.widthIn(max = if (wide) 560.dp else 2000.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 SoftButton(onClick = { grade(false) }, Modifier.weight(1f).heightIn(min = 44.dp)) {
                     if (practiceOnly) IconLabel(Icons.Filled.Refresh, tr("再寫一次"), ff(FF.Subheadline)) else IconLabel(Icons.Filled.Close, tr("寫錯了"), ff(FF.Subheadline))

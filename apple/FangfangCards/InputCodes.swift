@@ -23,7 +23,7 @@ final class InputCodes: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard !loaded else { return }
         loaded = true
-        guard let url = Bundle.main.url(forResource: "inputcodes", withExtension: "json"),
+        guard let url = DataFiles.url("inputcodes"),
               let data = try? Data(contentsOf: url),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: [String: String]] else { return }
         tables = [obj["c"] ?? [:], obj["w"] ?? [:], obj["l"] ?? [:]]

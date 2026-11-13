@@ -24,6 +24,8 @@ object EngineSettings {
     @Volatile var yue = false
     /** 客語 shown (Store) */
     @Volatile var hak = false
+    /** 日語 shown (Store) */
+    @Volatile var ja = false
     /** 客語: the accent (0 四縣, 1 海陸, 2 大埔, 3 饒平, 4 詔安, 5 南四縣) */
     @Volatile var hakAccent = 0
     /** 華語 or 粵語 shown (Store) */
@@ -104,7 +106,33 @@ object ToneColors {
     fun twColor(t: Int): Int = tw[t] ?: twStandard[t] ?: light
     fun zhColor(t: Int): Int = zh[t] ?: zhStandard[t] ?: light
     fun yueColor(t: Int): Int = yue[t] ?: yueStandard[t] ?: light
-    fun hakColor(t: Int): Int = hak[t] ?: hakStandard[t] ?: light
+    /** 客語: by how the tone sounds in the accent chosen (the same pitch, the same colour in every accent) */
+    fun hakColor(t: Int): Int = hakAccentColor(EngineSettings.hakAccent, t, EngineSettings.toneSystem != 5) ?: hak[t] ?: hakStandard[t] ?: light
+
+    /** 客語: each accent's tones by how they sound (調值, 教育部《臺灣客語辭典》's 聲調符號表): accent → category → pitch */
+    val hakPitch: List<Map<Int, String>> = listOf(
+        mapOf(1 to "24", 5 to "11", 2 to "31", 3 to "55", 4 to "2", 8 to "5"),                 // 四縣
+        mapOf(1 to "53", 5 to "55", 2 to "24", 3 to "11", 7 to "33", 4 to "5", 8 to "2"),      // 海陸
+        mapOf(1 to "35", 5 to "113", 2 to "31", 3 to "53", 4 to "21", 8 to "54"),              // 大埔
+        mapOf(1 to "11", 5 to "55", 2 to "53", 7 to "24", 4 to "2", 8 to "5"),                 // 饒平
+        mapOf(1 to "11", 2 to "31", 4 to "24", 5 to "53", 7 to "55", 8 to "43"),               // 詔安
+        mapOf(1 to "24", 5 to "11", 2 to "31", 3 to "55", 4 to "2", 8 to "5"),                 // 南四縣
+    )
+    /** a 客語 tone's colour in an accent: 24/35 green, 11/113 blue, 31 teal, 55 red, 53 purple, 33 yellow. 入聲 (4, 8):
+     *  in 七聲 their own colours (low orange, high pink), in 五聲 the colour of the long tone they sound like */
+    fun hakAccentColor(accent: Int, cat: Int, seven: Boolean): Int? {
+        val p = hakPitch.getOrNull(accent)?.get(cat) ?: return null
+        return hakPitchColor(p, cat == 4 || cat == 8, seven)
+    }
+    /** the colour of a pitch (short: an 入聲 syllable, ending in b, d, g) */
+    fun hakPitchColor(p: String, short: Boolean, seven: Boolean): Int? {
+        if (short) {
+            val low = p in listOf("2", "21", "24", "3")
+            if (seven) return if (low) orange else pink
+            return when (p) { "2", "21" -> blue; "24" -> green; "3" -> yellow; "43" -> purple; else -> red }
+        }
+        return when (p) { "24", "35" -> green; "11", "113" -> blue; "31" -> teal; "55" -> red; "53" -> purple; "33" -> yellow; else -> null }
+    }
     fun colorOf(set: Int, t: Int): Int = when (set) { 3 -> hakColor(t); 2 -> yueColor(t); 1 -> zhColor(t); else -> twColor(t) }
 
     /** the colour of a realized tone (0 = light tone); null = leave the text colour as it is */
@@ -472,4 +500,51 @@ fun Dict.hanText(key: String, place: Int, base: Int): Styled {
     val ts = EngineSettings.toneSystem
     if (ts != 0) return wordHanToneText(key, place, ts, base)
     return styled(Dict.hanOf(key), base)
+}
+
+
+/** the pitches a 客語 word's syllables are said in: every syllable but the last one changes as its accent's rules say
+ *  (only the one before changes, never the one after):
+ *    四縣、南四縣  陰平 24 before 陰平, 去聲, 陽入 → 11
+ *    海陸        上聲 24 → 33; 陰入 5 → 2
+ *    大埔        陽平 113 before 陽平 → 33; 去聲 53 before 上聲, 去聲, 陰入, 陽入 → 55
+ *    饒平        上聲 53 before 陰平, 上聲 → 33, else → 11; 陰入 2 → 5; 陽平 55 before 陰平, 上聲, 陰入 → 53, else → 33;
+ *               陽去 24 → 33
+ *    詔安        上聲 31 before 上聲 → 55, else → 11; 陰入 24 → 5 (no b/d/g at the end: 55); 陽平 53 → 33;
+ *               陽去 55 → 33; 陽入 43 → 3 */
+object HakSandhi {
+    /** for each syllable (category, ends in b/d/g): its pitch, and whether it's still short */
+    fun pitches(syl: List<Pair<Int, Boolean>>, accent: Int): List<Pair<String, Boolean>?> {
+        val table = ToneColors.hakPitch.getOrNull(accent) ?: return syl.map { null }
+        return syl.mapIndexed { i, (cat, stop) ->
+            val own = table[cat] ?: return@mapIndexed null
+            val short = cat == 4 || cat == 8
+            if (i + 1 >= syl.size) return@mapIndexed own to short
+            val next = syl[i + 1].first
+            when (accent) {
+                0, 5 -> if (cat == 1 && next in listOf(1, 3, 8)) return@mapIndexed "11" to false
+                1 -> {
+                    if (cat == 2) return@mapIndexed "33" to false
+                    if (cat == 4) return@mapIndexed "2" to true
+                }
+                2 -> {
+                    if (cat == 5 && next == 5) return@mapIndexed "33" to false
+                    if (cat == 3 && next in listOf(2, 3, 4, 8)) return@mapIndexed "55" to false
+                }
+                3 -> {
+                    if (cat == 2) return@mapIndexed (if (next in listOf(1, 2)) "33" else "11") to false
+                    if (cat == 4) return@mapIndexed "5" to true
+                    if (cat == 5) return@mapIndexed (if (next in listOf(1, 2, 4)) "53" else "33") to false
+                    if (cat == 7) return@mapIndexed "33" to false
+                }
+                4 -> {
+                    if (cat == 2) return@mapIndexed (if (next == 2) "55" else "11") to false
+                    if (cat == 4) return@mapIndexed (if (stop) "5" to true else "55" to false)
+                    if (cat == 5 || cat == 7) return@mapIndexed "33" to false
+                    if (cat == 8) return@mapIndexed "3" to true
+                }
+            }
+            own to short
+        }
+    }
 }

@@ -20,6 +20,7 @@ enum MoreRoute: Hashable {
     case compare
     case classes
     case japanese
+    case placeWords(Int)
 }
 struct PlaceRow: Hashable { let han: String; let codes: String; let places: [Int] }
 struct PlaceGroup: Hashable { let zh: String; let rows: [PlaceRow] }
@@ -150,7 +151,15 @@ struct DictTabs: View {
                 case 2: SavedPane(dict: dict)
                 case 3: PronunciationPane(dict: dict)
                 case 4: OwnPane(dict: dict)
-                default: LookupPane(dict: dict)
+                default:
+                    // (iPad, Mac: the results on the left, the word on the right)
+                    EntrySplit {
+                        LookupPane(dict: dict)
+                    } detail: { p in
+                        if let k = p.base as? DictKey {
+                            ScrollView { DictEntryBody(dict: dict, key: k.k).dictFontArea().padding().frame(maxWidth: 760).frame(maxWidth: .infinity) }
+                        }
+                    }
                 }
             }
             .id(tab)
@@ -397,7 +406,7 @@ struct ConvertPane: View {
     // MARK: output
 
     private func panel(_ mode: Int, _ title: String) -> some View {
-        let pieces = model.engine?.pieces(model.result.items, mode: mode, rom: rom, place: place) ?? []
+        let pieces = model.engine?.pieces(model.result.items, mode: mode, rom: min(max(rom, 0), 2), place: place) ?? []
         let ink = [T.glyph, T.greenInk, T.purpleInk][mode]
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -491,7 +500,7 @@ struct ConvertPane: View {
                         var colored = false
                         if it.unsure { colored = true }                     // shaky guess: the whole word orange
                         else if mode != 0, let e = model.engine {
-                            let ps = e.wordPieces(it.current, mode: mode, rom: rom, place: place)
+                            let ps = e.wordPieces(it.current, mode: mode, rom: min(max(rom, 0), 2), place: place)
                             if ps.contains(where: { $0.guessed }) { a = guessColored(ps, ink: ink); colored = true }
                         }
                         // your own word (自訂): purple
@@ -584,7 +593,7 @@ struct ConvertPane: View {
     }
 
     private func plain(_ mode: Int) -> String {
-        (model.engine?.pieces(model.result.items, mode: mode, rom: rom, place: place) ?? []).map { $0.text }.joined()
+        (model.engine?.pieces(model.result.items, mode: mode, rom: min(max(rom, 0), 2), place: place) ?? []).map { $0.text }.joined()
     }
 
     private func copy(_ mode: Int) {
@@ -644,10 +653,10 @@ struct WordSheet: View {
                         VStack(alignment: .leading, spacing: 14) {
                             if it.opts.count > 1 { options(it) }
                             if let k = dict.keyOf(it.current), dict.baseKeys.contains(k) || dict.raw.defs.m[k] != nil {
-                                DictEntryBody(dict: dict, key: k)
+                                DictEntryBody(dict: dict, key: k).dictFontArea()
                             } else {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text(model.engine?.wordText(it.current, mode: 0, rom: rom, place: place) ?? "")
+                                    Text(model.engine?.wordText(it.current, mode: 0, rom: min(max(rom, 0), 2), place: place) ?? "")
                                         .scaledFont(30, weight: .semibold)
                                     if it.current.codes != nil {
                                         Text(optText(it.current, 1))
@@ -698,7 +707,7 @@ struct WordSheet: View {
     }
 
     private func optText(_ o: Opt, _ mode: Int) -> AttributedString {
-        guessColored(model.engine?.wordPieces(o, mode: mode, rom: rom, place: place) ?? [])
+        guessColored(model.engine?.wordPieces(o, mode: mode, rom: min(max(rom, 0), 2), place: place) ?? [])
     }
 
     /// a short meaning for a reading choice: its 華語 words, or the start of its definition
@@ -766,7 +775,7 @@ struct DictEntryView: View {
     let dict: Dict
     let key: String
     var body: some View {
-        ScrollView { DictEntryBody(dict: dict, key: key).padding().frame(maxWidth: 760).frame(maxWidth: .infinity) }
+        ScrollView { DictEntryBody(dict: dict, key: key).dictFontArea().padding().frame(maxWidth: 760).frame(maxWidth: .infinity) }
             .appBackground()
             .navigationTitle(Dict.hanOf(key))
             .navigationBarTitleDisplayMode(.inline)
@@ -801,7 +810,6 @@ struct DictEntryBody: View {
             }
             namesRow
             variantsRow
-            categoriesRow
             otherWordsRow
             if let g = dict.gl[key], !g.isEmpty {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -821,6 +829,9 @@ struct DictEntryBody: View {
                 }
             }
             ForEach(dict.senses(key), id: \.n) { s in sense(s) }
+            FoundSentences(key: key)
+            // a single character: 說文解字 (when installed)
+            if han.count == 1 { ShuowenBlock(ch: han) }
             if place >= 0, dict.senses(key).contains(where: { s in s.ex.contains { $0.count > 1 && dict.hasGuess($0[1], han: $0[0], place: place) } }) {
                 GuessNote()
             }
@@ -848,6 +859,8 @@ struct DictEntryBody: View {
                 TappableHeadword(text: dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph),
                                  targets: charKeys) { tapped = DictKey(k: $0) }
                     .toneGlow()
+                // the reading of the 腔口 chosen, in the spelling chosen, right next to the word
+                Text(dict.wordText(key, rom, place)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                 if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
                 Spacer()
             }
@@ -855,23 +868,40 @@ struct DictEntryBody: View {
                 saveButton
                 star
             }
-            Text(dict.wordText(key, rom, place)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
-            Text(dict.wordText(key, 3, place)).toneGlow().scaledFont(19).foregroundStyle(T.purpleInk).textSelection(.enabled)
+            Text(dict.wordText(key, 3, place)).toneGlow().scaledFont(19).foregroundStyle(T.purpleInk).textSelection(.enabled).hongimLine()
+            // every 腔口's reading, the one chosen in colour (guessed ones marked 推測)
+            TwPlaceRows(dict: dict, key: key)
             InputCodesRow(han: han)
-            HStack(spacing: 4) {
+            // the boxes, always in the same order of colours: green (白／文／俗, where it's said), yellow (詞類),
+            // pink (分類: tap for its words), grey (the rest)
+            FlowLayout(spacing: 6) {
                 if let r = dict.raw.reg[key] { RegChip(reg: r) }
+                ForEach(wordClasses, id: \.self) { p in InfoChip.yellow(p) }
+                if han.count == 1, let l = Shuowen.liushu(han) { InfoChip.yellow(tr("六書：") + l) }
+                ForEach(categories, id: \.self) { i in
+                    NavigationLink(value: CatRef(i: i)) { InfoChip.pink(tr("分類：") + (dict.raw.cats?[i] ?? "")) }
+                        .buttonStyle(.plain)
+                }
                 if dict.subst.contains(key) { Chip(text: tr("替"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
                 if let t = dict.raw.typ[key], t > 0, let types = dict.raw.types, t < types.count, t != 1 {
-                    Chip(text: types[t], fill: T.fn, edge: T.fnEdge, ink: T.muted)
+                    InfoChip.grey(types[t])
                 }
-                if dict.own.contains(key) { Chip(text: tr("方方補"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+                if dict.own.contains(key) { InfoChip.grey(tr("方方補")) }
                 if dict.isUser(key) { OwnChip() }
-                if place >= 0, dict.differsFromCommon(key, place), place < dict.raw.places.count {
-                    Chip(text: dict.raw.places[place], fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
-                    if !dict.isStated(key, place) { Chip(text: tr("推測"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
-                }
             }
         }
+    }
+
+    /// the word's 詞類 (each once, in the order of its meanings)
+    private var wordClasses: [String] {
+        var out: [String] = []
+        for s in dict.senses(key) where !s.pos.isEmpty && !out.contains(s.pos) { out.append(s.pos) }
+        return out
+    }
+    /// its 分類 (topics)
+    private var categories: [Int] {
+        let n = dict.raw.cats?.count ?? 0
+        return (dict.raw.cat?[key] ?? []).filter { $0 < n }
     }
 
     /// for each character of the headword: the single-character entry read the way this word reads it
@@ -893,7 +923,7 @@ struct DictEntryBody: View {
     private var saveButton: some View {
         let on = store.isSaved(key)
         return Button { withAnimation(.snappy) { store.toggleSaved(key) } } label: {
-            Label(on ? trs("已收藏") : trs("收藏"), systemImage: on ? "bookmark.fill" : "bookmark")
+            Label(on ? trs("已收藏") : trSaveVerb(), systemImage: on ? "bookmark.fill" : "bookmark")
                 .ffFont(.subheadline, .semibold)
                 .foregroundStyle(on ? T.oliveInk : T.glyph)
                 .padding(.horizontal, 12).padding(.vertical, 6)
@@ -948,7 +978,7 @@ struct DictEntryBody: View {
             }()
             if !words.isEmpty, place < dict.raw.places.count {
                 HStack(alignment: .top, spacing: 6) {
-                    Chip(text: String(dict.raw.places[place].prefix(2)) + "也講", fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                    Chip(text: String(dict.raw.places[place].prefix(2)) + "也講", fill: T.twFill, edge: T.twEdge, ink: T.twInk)
                     FlowLayout(spacing: 6) {
                         ForEach(Array(words.enumerated()), id: \.offset) { _, w in
                             let k = dict.keyOf(Opt(han: w.han, codes: w.codes.split(separator: " ").map(String.init)))
@@ -958,7 +988,7 @@ struct DictEntryBody: View {
                             }
                             .ffFont(.subheadline)
                             .padding(.horizontal, 8).padding(.vertical, 3)
-                            .background(Capsule().fill(Color(hex: 0x4c3a5b).opacity(0.6)))
+                            .background(Capsule().fill(T.twFill.opacity(0.6)))
                             if let k, dict.raw.defs.m[k] != nil {
                                 NavigationLink(value: DictKey(k: k)) { label }.buttonStyle(.plain)
                             } else {
@@ -1040,7 +1070,7 @@ struct DictEntryBody: View {
                     // yellow like 又: another reading, for this meaning
                     Chip(text: ps.map { $0 < dict.raw.places.count ? String(dict.raw.places[$0].prefix(2)) : "" }.joined(separator: "、"))
                     Text(dict.codes(codes, rom, ps.first ?? -1)).latFont(15).foregroundStyle(T.greenInk)
-                    Text(dict.codes(codes, 3, ps.first ?? -1)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                    Text(dict.codes(codes, 3, ps.first ?? -1)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                     Text(tr("這個意思")).ffFont(.caption2).foregroundStyle(T.muted)
                 }
                 .padding(.leading, 18)
@@ -1446,6 +1476,17 @@ struct LookupPane: View {
                         NavigationLink(value: MoreRoute.japanese) { TileLabel(icon: "globe.asia.australia", title: trs("日語借詞")) }
                             .buttonStyle(.plain)
                     }
+                    // with a 腔口 chosen: the words that place uses and (almost) no other does (鹿港偏好用詞)
+                    if place >= 0, place < dict.raw.places.count {
+                        HStack(spacing: 10) {
+                            NavigationLink(value: MoreRoute.placeWords(place)) {
+                                TileLabel(icon: "mappin.and.ellipse", title: PlaceWordsPage.title(dict, place),
+                                          count: PlaceWordsPage.words(dict, place).count, cap: 1_000_000)
+                            }
+                                .buttonStyle(.plain)
+                            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
+                        }
+                    }
                 }
                 .padding(.vertical, 4)
                 .textCase(nil)
@@ -1576,7 +1617,7 @@ struct LookupPane: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Dict.hanOf(k)).scaledFont(20, weight: .semibold).foregroundStyle(T.glyph)
                 Text(dict.wordText(k, rom, place)).latFont(16).foregroundStyle(T.greenInk)
-                Text(dict.wordText(k, 3, place)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                Text(dict.wordText(k, 3, place)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                 if let r = dict.raw.reg[k] { RegChip(reg: r) }
             }
             if let g = dict.gl[k], !g.isEmpty {
@@ -1611,6 +1652,8 @@ struct MorePage: View {
             WordClassListPage(dict: dict)
         case .japanese:
             JapaneseWordsPage(dict: dict)
+        case .placeWords(let p):
+            PlaceWordsPage(dict: dict, place: p)
         case .places(let groups):
             List {
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, g in PlacesBlockView(dict: dict, e: g) }
@@ -1636,7 +1679,7 @@ struct KeyListSection: View {
         if !keys.isEmpty {
             Section(title) {
                 ForEach(keys, id: \.self) { k in
-                    NavigationLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k, englishQuery: englishQuery) }
+                    EntryLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k, englishQuery: englishQuery) }
                         .swipeActions(edge: .leading) {
                             if store.cardStatus(k) == 0 {
                                 Button { store.toggleUnknown(k) } label: { Label(tr("加到不熟"), systemImage: "star") }
@@ -1645,7 +1688,7 @@ struct KeyListSection: View {
                         }
                         .swipeActions(edge: .trailing) {
                             Button { store.toggleSaved(k) } label: {
-                                Label(store.isSaved(k) ? trs("取消收藏") : trs("收藏"), systemImage: "bookmark")
+                                Label(store.isSaved(k) ? trs("取消收藏") : trSaveVerb(), systemImage: "bookmark")
                             }
                             .tint(T.oliveEdge)
                         }
@@ -1674,7 +1717,7 @@ struct PlacesBlockView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(row.han).scaledFont(18, weight: .semibold).foregroundStyle(T.glyph)
                         Text(dict.codes(row.codes, rom, -1)).latFont(15).foregroundStyle(T.greenInk)
-                        Text(dict.codes(row.codes, 3, row.places.first ?? -1)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                        Text(dict.codes(row.codes, 3, row.places.first ?? -1)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                     }
                     Text(row.places.compactMap { $0 < dict.raw.places.count ? dict.raw.places[$0] : nil }.joined(separator: "、"))
                         .ffFont(.caption).foregroundStyle(row.places.contains(place) ? T.oliveInk : T.muted)
@@ -2080,7 +2123,7 @@ struct SavedPane: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Dict.hanOf(k)).scaledFont(20, weight: .semibold).foregroundStyle(T.glyph)
                 Text(dict.wordText(k, rom, place)).latFont(16).foregroundStyle(T.greenInk)
-                Text(dict.wordText(k, 3, place)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                Text(dict.wordText(k, 3, place)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                 Spacer(minLength: 0)
                 if store.cardStatus(k) == 2 { Image(systemName: "star.fill").ffFont(.caption).foregroundStyle(T.rustInk) }
             }
@@ -2124,7 +2167,7 @@ struct SavedPane: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Dict.hanOf(s.key)).scaledFont(20, weight: .semibold).foregroundStyle(T.glyph)
                 Text(dict.wordText(s.key, rom, place)).latFont(16).foregroundStyle(T.greenInk)
-                Text(dict.wordText(s.key, 3, place)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                Text(dict.wordText(s.key, 3, place)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                 Spacer(minLength: 0)
                 Image(systemName: "bookmark.fill").ffFont(.caption).foregroundStyle(T.blueInk)
             }
@@ -2220,7 +2263,7 @@ struct CategoryWordsView: View {
                         }
                         .swipeActions(edge: .trailing) {
                             Button { store.toggleSaved(k) } label: {
-                                Label(store.isSaved(k) ? trs("取消收藏") : trs("收藏"), systemImage: "bookmark")
+                                Label(store.isSaved(k) ? trs("取消收藏") : trSaveVerb(), systemImage: "bookmark")
                             }
                             .tint(T.oliveEdge)
                         }
@@ -2242,6 +2285,7 @@ struct DictRow: View {
     let key: String
     /// found by its English (Wiktionary): that English (the meanings with the word first) above the 華語 meaning
     var englishQuery: String? = nil
+    @AppStorage(ZhMeaning.twKey) private var twEnglish = false
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @EnvironmentObject var store: Store
@@ -2252,7 +2296,7 @@ struct DictRow: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph)).scaledFont(20, weight: .semibold).toneGlow()
                 Text(dict.wordText(key, rom, place)).toneGlow().latFont(16).foregroundStyle(T.greenInk)
-                Text(dict.wordText(key, 3, place)).toneGlow().ffFont(.footnote).foregroundStyle(T.purpleInk)
+                Text(dict.wordText(key, 3, place)).toneGlow().ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                 Spacer(minLength: 0)
                 if dict.isUser(key) { OwnChip() }
                 if store.isSaved(key) { Image(systemName: "bookmark.fill").ffFont(.caption).foregroundStyle(T.oliveInk) }
@@ -2267,8 +2311,13 @@ struct DictRow: View {
                 if !en.isEmpty {
                     Text(en.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.85)).lineLimit(2)
                 }
+            } else if twEnglish, case let en = TwEnglish.meanings(key), !en.isEmpty {
+                // 設定 → 主要解釋 → 台語: 英文
+                Text(en.prefix(3).joined(separator: "; ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
             }
-            if let g = dict.gl[key], !g.isEmpty {
+            if twEnglish && englishQuery == nil && !TwEnglish.meanings(key).isEmpty {
+                EmptyView()
+            } else if let g = dict.gl[key], !g.isEmpty {
                 Text(g.map { $0.t }.joined(separator: "、")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
             } else if let t = dict.defText(key) {
                 Text(t.replacingOccurrences(of: "\n", with: " ")).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(englishQuery == nil ? 2 : 1)
@@ -2399,16 +2448,16 @@ struct PlacesTable: View {
                             // (spelled the 通行 way, but with the tones as these places change them)
                             let shownIn = g.codes == main ? -1 : g.places[0]
                             Text(dict.wordText(key, rom, shownIn, tonesIn: g.places[0])).latFont(17).foregroundStyle(T.greenInk)
-                            Text(dict.wordText(key, 3, shownIn, tonesIn: g.places[0])).ffFont(.subheadline).foregroundStyle(T.purpleInk)
+                            Text(dict.wordText(key, 3, shownIn, tonesIn: g.places[0])).ffFont(.subheadline).foregroundStyle(T.purpleInk).hongimLine()
                             if g.guessed { Chip(text: tr("推測"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
                         }
                         // the place also says it another way
                         let also = Array(Set(g.places.flatMap { dict.alsoSaid(key, $0) })).sorted()
                         ForEach(also, id: \.self) { x in
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Chip(text: tr("也講"), fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                                Chip(text: tr("也講"), fill: T.twFill, edge: T.twEdge, ink: T.twInk)
                                 Text(dict.codes(x, rom, g.places[0])).latFont(15).foregroundStyle(T.greenInk)
-                                Text(dict.codes(x, 3, g.places[0])).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                                Text(dict.codes(x, 3, g.places[0])).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                                 let who = g.places.filter { dict.alsoSaid(key, $0).contains(x) }
                                 if who.count < g.places.count {
                                     Text(who.map { String(dict.raw.places[$0].prefix(2)) }.joined(separator: "、"))
@@ -2420,7 +2469,7 @@ struct PlacesTable: View {
                     .padding(10)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.55)))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(g.places.contains(place) ? Color(hex: 0x7b3c9b) : .clear, lineWidth: 1.5))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(g.places.contains(place) ? T.twEdge : .clear, lineWidth: 1.5))
                 }
                 Text(colours ? trs("推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。")
                              : trs("紅色／推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。")).ffFont(.caption2).foregroundStyle(T.muted)
@@ -2461,8 +2510,8 @@ struct PronunciationPane: View {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text(Dict.hanOf(k)).scaledFont(24, weight: .semibold).foregroundStyle(T.glyph)
                                 Text(tr("通行")).ffFont(.caption).foregroundStyle(T.muted)
-                                Text(dict.word(k, min(max(rom, 0), 2), -1)).latFont(16).foregroundStyle(T.greenInk)
-                                Text(dict.word(k, 3, -1)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                                Text(dict.word(k, TwRom.lat(rom), -1)).latFont(16).foregroundStyle(T.greenInk)
+                                Text(dict.word(k, 3, -1)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                                 Spacer(minLength: 0)
                                 Image(systemName: "chevron.right").ffFont(.caption).foregroundStyle(T.muted)
                             }
@@ -2778,7 +2827,7 @@ struct ComparePane: View {
                 }
                 .scrollContentBackground(.hidden)
             } else if !key.isEmpty, dict.raw.defs.m[key] != nil || dict.baseKeys.contains(key) || dict.isUser(key) {
-                ScrollView { DictEntryBody(dict: dict, key: key).padding(.horizontal).padding(.bottom) }
+                ScrollView { DictEntryBody(dict: dict, key: key).dictFontArea().padding(.horizontal).padding(.bottom) }
             } else {
                 Text(tr("查一個詞，選它。")).foregroundStyle(T.muted).frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -3016,5 +3065,182 @@ struct CopyOptionsSheet: View {
             Text(names[i])
         }
         .listRowBackground(T.fn.opacity(0.7))
+    }
+}
+
+/// 鹿港偏好用詞 …: from 詞彙比較 (各地講法), the words recorded for this place and for no more than one other of the
+/// 10 places; the ones only this place has first
+struct PlaceWordsPage: View {
+    let dict: Dict
+    let place: Int
+    @AppStorage("rom") private var rom = 0
+    // (shown again when 聲調顏色 changes)
+    @AppStorage(ToneColors.key) private var toneSys = 0
+    @AppStorage(ToneColors.marksKey) private var toneMarks = false
+    @EnvironmentObject var store: Store
+    @State private var query = ""
+
+    struct Word: Hashable {
+        let han: String
+        let codes: String
+        let zh: [String]           // the meanings (華語) it's listed for
+        let others: [Int]          // the other place that uses it (empty: only this one)
+        let usual: [String]        // the word(s) most places use for the same meaning instead (醫院 → 病院)
+    }
+
+    /// "鹿港偏好用詞" (the place's name without its 偏泉腔 / 混合腔)
+    static func title(_ dict: Dict, _ place: Int) -> String {
+        let n = place < dict.raw.places.count ? dict.raw.places[place] : ""
+        return trs(String(n.prefix(2))) + tr("偏好用詞")
+    }
+
+    private static var cache: [Int: [Word]] = [:]
+    static func words(_ dict: Dict, _ place: Int) -> [Word] {
+        if let c = cache[place] { return c }
+        // where each word is used, for any meaning (a word that's everywhere for another meaning isn't this place's)
+        var placesOf: [String: Set<Int>] = [:]
+        for e in dict.raw.cmp { for r in e.rows { placesOf[r.han, default: []].insert(r.place) } }
+        var byWord: [String: (codes: String, zh: [String], usual: [String])] = [:]
+        var order: [String] = []
+        for e in dict.raw.cmp {
+            // the words most places use for this meaning (the most places; at least 3)
+            var count: [String: Set<Int>] = [:]
+            for r in e.rows { count[r.han, default: []].insert(r.place) }
+            for r in e.rows where r.place == place {
+                guard let ps = placesOf[r.han], ps.count <= 2 else { continue }
+                if byWord[r.han] == nil { byWord[r.han] = (r.codes, [], []); order.append(r.han) }
+                if !byWord[r.han]!.zh.contains(e.zh) { byWord[r.han]!.zh.append(e.zh) }
+                let others = count.filter { $0.key != r.han && $0.value.count >= 3 }
+                if let most = others.values.map(\.count).max() {
+                    for (h, _) in others.filter({ $0.value.count == most }).sorted(by: { $0.key < $1.key })
+                    where !byWord[r.han]!.usual.contains(h) { byWord[r.han]!.usual.append(h) }
+                }
+            }
+        }
+        let out = order.compactMap { h -> Word? in
+            guard let w = byWord[h] else { return nil }
+            return Word(han: h, codes: w.codes, zh: w.zh, others: (placesOf[h] ?? []).subtracting([place]).sorted(), usual: w.usual)
+        }
+        // only here first, then here and one other place; each in the order of 詞彙比較
+        let sorted = out.filter { $0.others.isEmpty } + out.filter { !$0.others.isEmpty }
+        cache[place] = sorted
+        return sorted
+    }
+
+    var body: some View {
+        let all = Self.words(dict, place)
+        // (the usual word finds the place's: 病院 → 金門 醫院)
+        let list = query.isEmpty ? all : all.filter { w in
+            w.han.contains(query) || w.zh.contains { $0.contains(query) } || w.usual.contains { $0.contains(query) }
+        }
+        let only = list.filter { $0.others.isEmpty }, shared = list.filter { !$0.others.isEmpty }
+        let name = trs(String((place < dict.raw.places.count ? dict.raw.places[place] : "").prefix(2)))
+        List {
+            Section {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(T.muted)
+                    TextField(tr("台語漢字（這裡的或一般的講法）或華語"), text: $query)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .clearButton($query)
+                }
+                Text(tr("教育部辭典的「詞彙比較」（各地講法）裡，只記在這個地方，或這裡和另外一個地方的詞。只比較這 10 個地方，而且只有調查過的意思。"))
+                    .ffFont(.footnote).foregroundStyle(T.muted)
+            }
+            .listRowBackground(T.fn.opacity(0.7))
+            if !only.isEmpty {
+                Section(tr("只有\(name)（\(only.count)）")) { ForEach(only, id: \.self) { row($0) } }
+                    .listRowBackground(T.fn.opacity(0.7))
+            }
+            if !shared.isEmpty {
+                Section(tr("\(name)和另外一個地方（\(shared.count)）")) { ForEach(shared, id: \.self) { row($0) } }
+                    .listRowBackground(T.fn.opacity(0.7))
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .appBackground()
+        .navigationTitle(Self.title(dict, place))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
+    }
+
+    @ViewBuilder private func row(_ w: Word) -> some View {
+        let key = dict.keyOf(Opt(han: w.han, codes: w.codes.split(separator: " ").map(String.init)))
+        // in tone colours, as the place says it (the reading 詞彙比較 gives for this place, its tone changes)
+        let own = w.han + "\t" + w.codes
+        let colours = toneSys != 0 && !w.codes.isEmpty
+        let content = VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if colours {
+                    Text(dict.hanText(own, place, base: T.glyph)).scaledFont(18, weight: .semibold).toneGlow()
+                    Text(dict.wordText(own, rom, place)).toneGlow().latFont(15).foregroundStyle(T.greenInk)
+                } else {
+                    Text(w.han).scaledFont(18, weight: .semibold).foregroundStyle(T.glyph)
+                    if !w.codes.isEmpty {
+                        Text(dict.codes(w.codes, rom, place)).latFont(15).foregroundStyle(T.greenInk)
+                    }
+                }
+            }
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Chip(text: tr("華"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
+                Text(w.zh.joined(separator: "、")).ffFont(.footnote).foregroundStyle(T.glyph).lineLimit(2)
+            }
+            // what most places say instead, each in a box
+            if !w.usual.isEmpty {
+                HStack(alignment: .center, spacing: 6) {
+                    Text(tr("一般講：")).ffFont(.caption).foregroundStyle(T.muted)
+                    ForEach(w.usual.prefix(4), id: \.self) { h in
+                        Text(h).ffFont(.subheadline).foregroundStyle(T.oliveInk)
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(RoundedRectangle(cornerRadius: 7).fill(T.olive))
+                            .overlay(RoundedRectangle(cornerRadius: 7).stroke(T.oliveEdge, lineWidth: 1.2))
+                    }
+                }
+            }
+            if !w.others.isEmpty {
+                Text(tr("也在：") + w.others.compactMap { $0 < dict.raw.places.count ? trs(String(dict.raw.places[$0].prefix(2))) : nil }.joined(separator: "、"))
+                    .ffFont(.caption).foregroundStyle(T.muted)
+            }
+        }
+        if let key, dict.raw.defs.m[key] != nil {
+            NavigationLink(value: DictKey(k: key)) { content }
+        } else {
+            content
+        }
+    }
+}
+
+
+/// 台語: 通行 and every 腔口 with its reading; the one chosen in green, the others grey (the way 客語's accents are
+/// shown); a reading the dictionary doesn't give (worked out by rule) is marked 推測
+struct TwPlaceRows: View {
+    let dict: Dict
+    let key: String
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    var body: some View {
+        if !dict.raw.places.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                row(-1)
+                ForEach(dict.raw.places.indices, id: \.self) { p in row(p) }
+            }
+        }
+    }
+    private func row(_ p: Int) -> some View {
+        let mine = p == place
+        let guessed = p >= 0 && !dict.guessedSyllables(key, p).isEmpty
+        let name = p < 0 ? trs("通行") : String(dict.raw.places[p].prefix(2))
+        return HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Chip(text: name, fill: mine ? T.twFill : T.fn, edge: mine ? T.twEdge : T.fnEdge, ink: mine ? T.twInk : T.muted)
+            Text(dict.wordText(key, rom, p)).latFont(15).foregroundStyle(T.greenInk)
+            if rom != 3 { Text(dict.wordText(key, 3, p)).ffFont(.footnote).foregroundStyle(T.purpleInk) }
+            if guessed { InfoChip.grey(tr("推測")) }
+            if p >= 0 {
+                ForEach(dict.alsoSaid(key, p), id: \.self) { x in
+                    Text(tr("也講") + " " + dict.codes(x, rom, p)).ffFont(.caption).foregroundStyle(T.muted)
+                }
+            }
+        }
     }
 }

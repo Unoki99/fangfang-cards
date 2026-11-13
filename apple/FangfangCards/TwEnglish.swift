@@ -17,7 +17,7 @@ enum TwEnglish {
         lock.lock(); defer { lock.unlock() }
         if let t = table { return t }
         var t: [String: String] = [:], h = Set<String>()
-        if let url = Bundle.main.url(forResource: "tw_en", withExtension: "json"),
+        if let url = DataFiles.url("tw_en"),
            let data = try? Data(contentsOf: url, options: .mappedIfSafe),
            let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
            let e = obj["e"] as? [String: String] {

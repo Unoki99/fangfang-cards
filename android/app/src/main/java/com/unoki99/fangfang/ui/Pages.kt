@@ -43,7 +43,7 @@ fun ZhGate(content: @Composable (com.unoki99.fangfang.engine.ZhDict) -> Unit) {
         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = T.greenInk)
             Spacer(Modifier.height(12.dp))
-            Txt(tr("載入{0}詞典…", tr(com.unoki99.fangfang.engine.Lang.names[com.unoki99.fangfang.Prefs.lang.value.coerceIn(1, 3)])), ff(FF.Footnote), T.muted)
+            Txt(tr("載入{0}詞典…", tr(com.unoki99.fangfang.engine.Lang.names[com.unoki99.fangfang.Prefs.lang.value.coerceIn(1, 4)])), ff(FF.Footnote), T.muted)
         }
     }
 }
@@ -70,7 +70,7 @@ fun StackHost(nav: NavStack, root: @Composable () -> Unit) {
 @Composable
 fun RoutePage(r: Route, onBack: () -> Unit) {
     when (r) {
-        is Route.ZhEntry -> { ZhGate { z -> ZhEntryPage(z, r.key, onBack) }; return }
+        is Route.ZhEntry -> { ZhGate { z -> EntryFont { ZhEntryPage(z, r.key, onBack) } }; return }
         is Route.ZhLevel -> { LevelWordsPage(r.level, onBack); return }
         is Route.ZhProgress -> { ZhProgressPage(onBack); return }
         is Route.SenseCopySettings -> { SenseCopySettingsPage(onBack); return }
@@ -80,11 +80,14 @@ fun RoutePage(r: Route, onBack: () -> Unit) {
         is Route.ZhClass -> { ZhGate { z -> ZhWordClassPage(z, r.cls, onBack) }; return }
         is Route.ZhChars -> { ZhCharListPage(onBack); return }
         is Route.ToneColorPicker -> { ToneColorPickerPage(onBack); return }
+        is Route.JaParticles -> { JaParticlesPage(onBack); return }
+        is Route.JaLab -> { ZhGate { z -> JaLabPage(z, r.key, onBack) }; return }
+        is Route.JaColors -> { JaColorSettingsPage(onBack); return }
         else -> {}
     }
     DictGate { d ->
         when (r) {
-            is Route.Entry -> EntryPage(d, r.key, onBack)
+            is Route.Entry -> EntryFont { EntryPage(d, r.key, onBack) }
             is Route.Keys -> KeysPage(d, r.title, r.keys, onBack)
             is Route.Sentences -> SentencesPage(d, r.title, r.hits, onBack)
             is Route.Places -> PlacesPage(d, r.groups, onBack)

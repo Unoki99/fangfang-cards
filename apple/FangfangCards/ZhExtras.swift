@@ -4,8 +4,21 @@ import SwiftUI
 
 /// 設定 → 華語 → 主要解釋: the 華語 meaning (from 《兩岸常用詞典》) or the English one (CC-CEDICT), on the cards and in lists
 enum ZhMeaning {
+    /// 華語's
     static let key = "zhMainEnglish"
+    /// 台語's (English from Wiktionary) and 客語's
+    static let twKey = "twMainEnglish"
+    static let hakKey = "hakMainEnglish"
     static var english: Bool { UserDefaults.standard.bool(forKey: key) }
+    /// a language's main meaning is the English one (粵語's meanings are English already)
+    static func english(_ lang: Int) -> Bool {
+        switch lang {
+        case 0: return UserDefaults.standard.bool(forKey: twKey)
+        case 2: return true
+        case 3: return UserDefaults.standard.bool(forKey: hakKey)
+        default: return english
+        }
+    }
 }
 
 /// a blue square with a number, the shape of the 詞類 chips (the English meanings)
@@ -102,7 +115,7 @@ struct ZhWordClassPage: View {
                             }
                             .swipeActions(edge: .trailing) {
                                 Button { store.toggleSaved(e.k) } label: {
-                                    Label(store.isSaved(e.k) ? trs("取消收藏") : trs("收藏"), systemImage: "bookmark")
+                                    Label(store.isSaved(e.k) ? trs("取消收藏") : trSaveVerb(), systemImage: "bookmark")
                                 }.tint(T.oliveEdge)
                             }
                     }

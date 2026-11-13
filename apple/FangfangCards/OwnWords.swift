@@ -49,8 +49,8 @@ struct OwnPane: View {
     private func row(_ k: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(Dict.hanOf(k)).scaledFont(20, weight: .semibold).foregroundStyle(T.ownInk)
-            Text(dict.codes(Dict.codesOf(k), min(max(rom, 0), 2), -1)).latFont(16).foregroundStyle(T.greenInk)
-            Text(dict.codes(Dict.codesOf(k), 3, -1)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+            Text(dict.codes(Dict.codesOf(k), TwRom.lat(rom), -1)).latFont(16).foregroundStyle(T.greenInk)
+            Text(dict.codes(Dict.codesOf(k), 3, -1)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
             Spacer(minLength: 0)
             OwnChip()
         }

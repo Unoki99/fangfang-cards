@@ -1,0 +1,29 @@
+{
+    "manifest_version": 3,
+    "name": "方方詞卡 查詞",
+    "description": "Hover over a word with the Apple Pencil (or a trackpad) to see it in the 華語 and 台語 dictionaries of 方方詞卡, and send it to the app.",
+    "version": "1.1",
+    "icons": {
+        "48": "icon-48.png",
+        "64": "icon-64.png",
+        "96": "icon-96.png",
+        "128": "icon-128.png",
+        "256": "icon-256.png",
+        "512": "icon-512.png"
+    },
+    "action": {
+        "default_title": "方方詞卡 查詞",
+        "default_popup": "popup.html",
+        "default_icon": { "48": "icon-48.png", "64": "icon-64.png", "96": "icon-96.png", "128": "icon-128.png" }
+    },
+    "background": {
+        "scripts": [ "background.js" ],
+        "type": "module"
+    },
+    "content_scripts": [ {
+        "js": [ "content.js" ],
+        "matches": [ "<all_urls>" ],
+        "run_at": "document_idle"
+    } ],
+    "permissions": [ "storage" ]
+}

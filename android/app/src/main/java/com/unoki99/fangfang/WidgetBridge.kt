@@ -40,13 +40,25 @@ object WidgetBridge {
         Store.saveNow()
     }
 
+    /** progress changed (a swipe…): written when the app goes to the background, or after half a minute without
+     *  changes. Every swipe used to write all your words out and update the widgets a second later */
     fun progressChanged() {
+        dirty = true
         stateJob?.cancel()
-        stateJob = scope.launch { delay(1000); writeState() }
+        stateJob = scope.launch { delay(30_000); writeState() }
     }
+
+    /** the app goes to the background: what changed, written now */
+    fun flush() {
+        if (!dirty) return
+        stateJob?.cancel()
+        writeState()
+    }
+    private var dirty = false
 
     fun writeState() {
         if (!Store.loaded) return
+        dirty = false
         if (WidgetFiles.inbox(Store.app).isNotEmpty()) mergeInbox()
         val st = WidgetFiles.State(
             rom = Prefs.rom.value.coerceIn(0, 2),

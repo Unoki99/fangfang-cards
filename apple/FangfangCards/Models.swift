@@ -71,6 +71,17 @@ struct Card: Decodable, Identifiable, Hashable {
     var zl: [String]? = nil
     /// 粵語: a recording of the word (a web address, Wikimedia Commons)
     var web: String? = nil
+    /// 華語: the 四川話 syllables (from Wiktionary), when there are
+    var zc: [String]? = nil
+    /// where the 四川話 syllables are from: 0 Wiktionary, 1 guessed from the characters, 2 predicted from the sound
+    /// changes. Optional: cards.json doesn't have it, and a Decodable property that isn't optional has to be in the
+    /// file (or the whole file can't be read)
+    var zcKind: Int? = nil
+    /// the syllables shown for 國語 (0), 普通話 (1) or 四川話 (2: 普通話's when there's no 四川話 reading)
+    func zhSyl(_ place: Int) -> [String]? {
+        guard let s = zs else { return nil }
+        return place == 2 ? (zc ?? zl ?? s) : (place == 1 ? (zl ?? s) : s)
+    }
 
     var id: String { k }
     var isZh: Bool { zs != nil }
@@ -136,6 +147,8 @@ struct Progress: Codable {
     var srs: [String: [Double]] = [:]
     /// 練習統計: answers per day, "台語|2026-11-08" -> [right, wrong, learned]
     var log: [String: [Int]] = [:]
+    /// Safari 查詞: the sentences a word was saved from (key → sentences, the newest last)
+    var found: [String: [String]] = [:]
 
     init() {}
     init(from decoder: Decoder) throws {
@@ -150,6 +163,7 @@ struct Progress: Codable {
         own = try c.decodeIfPresent([String: Double].self, forKey: .own) ?? [:]
         srs = try c.decodeIfPresent([String: [Double]].self, forKey: .srs) ?? [:]
         log = try c.decodeIfPresent([String: [Int]].self, forKey: .log) ?? [:]
+        found = try c.decodeIfPresent([String: [String]].self, forKey: .found) ?? [:]
     }
 }
 

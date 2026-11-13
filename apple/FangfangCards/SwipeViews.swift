@@ -433,19 +433,7 @@ struct NewDeckView: View {
                     }
                     .pickerStyle(.inline)
                 }
-                Picker(store.lang >= 2 ? trs("常用詞") : (store.isZh ? trs("等級") : trs("主題")), selection: topicBinding) {
-                    Text(store.lang == 1 ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
-                    ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
-                }
-                // 華語: the character cards, one level at a time
-                let charTopics = store.isZh ? store.topics.filter { $0.id > Lang.charTopicBase } : []
-                if !charTopics.isEmpty {
-                    Picker(tr("漢字"), selection: topicBinding) {
-                        ForEach(charTopics) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
-                    }
-                    .pickerStyle(.inline)
-                }
-                // 台語: the most common words / characters, 500 at a time
+                // 台語: the most common words / characters, 500 at a time (at the top)
                 if !store.isZh && !store.freqTopics.isEmpty {
                     Menu(tr("常用詞（每組 \(Lang.freqSize) 個）")) {
                         Picker(tr("常用詞"), selection: topicBinding) {
@@ -459,6 +447,18 @@ struct NewDeckView: View {
                         }
                         .pickerStyle(.inline)
                     }
+                }
+                Picker(store.lang >= 2 ? trs("常用詞") : (store.isZh ? trs("等級") : trs("主題")), selection: topicBinding) {
+                    Text(store.lang == 1 ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
+                    ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
+                }
+                // 華語: the character cards, one level at a time
+                let charTopics = store.isZh ? store.topics.filter { $0.id > Lang.charTopicBase } : []
+                if !charTopics.isEmpty {
+                    Picker(tr("漢字"), selection: topicBinding) {
+                        ForEach(charTopics) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
+                    }
+                    .pickerStyle(.inline)
                 }
             } label: {
                 Label(topicName, systemImage: "square.stack.3d.up").labelStyle(.titleAndIcon)

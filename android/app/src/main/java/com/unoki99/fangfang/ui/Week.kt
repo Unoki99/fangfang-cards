@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.unoki99.fangfang.Store
+import com.unoki99.fangfang.Prefs
 
 // MARK: - 本週學習: pick words from 不熟 for the week, practise them, and take a test at the end
 
@@ -70,7 +71,10 @@ fun WeekPanel() {
 fun WeekPicker(onDone: () -> Unit) {
     Store.rev
     var query by remember { mutableStateOf("") }
-    val unknown = Store.unknownCards
+    /** the level / group to pick from (-1 = all of 不熟), so the week can follow the levels in order */
+    var topic by Prefs.weekPickTopic
+    val topics = Store.practiceTopics.filter { t -> Store.unknownCards.any { Store.inTopic(it, t.id) } }
+    val unknown = if (topic < 0 || topics.none { it.id == topic }) Store.unknownCards else Store.unknownCards.filter { Store.inTopic(it, topic) }
     // words already in the week that aren't in 不熟 any more (learned) are shown too
     val extra = Store.weekCards.filter { Store.status(it) != 2 }
     val list = (extra + unknown).filter { query.isEmpty() || it.h.contains(query) || it.firstMeaning.contains(query) }
@@ -83,6 +87,13 @@ fun WeekPicker(onDone: () -> Unit) {
             }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
                 item {
+                    if (topics.isNotEmpty()) {
+                        ListCard {
+                            MenuRow(tr("從哪裡選"), if (topics.any { it.id == topic }) topics.first { it.id == topic }.name else tr("全部不熟的詞"),
+                                listOf(-1 to tr("全部不熟的詞")) + topics.map { it.id to it.name }) { topic = it }
+                        }
+                        Txt(tr("選一個等級或一組詞，照順序一級一級學。"), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
+                    }
                     SearchField(query, { query = it }, tr("漢字或意思"))
                     Spacer(Modifier.height(8.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {

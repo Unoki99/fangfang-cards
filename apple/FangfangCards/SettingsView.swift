@@ -33,14 +33,16 @@ struct SettingsView: View {
 
     private var topics: [Topic] {
         let themeName = (AppTheme(rawValue: theme) ?? .night).name
-        let tones = toneSys == 7 ? trs("七聲") : (toneSys == 5 ? trs("五聲") : trs("聲調顏色關"))
-        let lang: String = store.isYue
+        let tones = toneSys == 0 ? trs("聲調顏色關") : (store.lang != 0 && store.lang != 3 ? trs("聲調顏色開") : (toneSys == 7 ? trs("七聲") : trs("五聲")))
+        let lang: String = store.isJa
+            ? trs("日語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
+            : store.isYue
             ? trs("粵語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
             : store.isHak
             ? trs("客語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.hakAccents[min(max(store.hakAccent, 0), Lang.hakAccents.count - 1)])
             : store.isZh
-            ? trs("華語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.zhPlaceNames[min(max(store.zhPlace, 0), 1)]) + "・" + Lang.listNames[min(max(store.zhList, 0), 1)]
-            : trs("台語") + "・" + trs(ROM_NAMES[min(max(rom, 0), 2)]) + "・" + (place >= 0 && place < PLACE_NAMES.count ? trs(String(PLACE_NAMES[place].prefix(2))) : trs("通行"))
+            ? trs("華語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)]) + "・" + trs(Lang.zhPlaceNames[min(max(store.zhPlace, 0), Lang.zhPlaceNames.count - 1)]) + "・" + Lang.listNames[min(max(store.zhList, 0), 1)]
+            : trs("台語") + "・" + trs(ROM_NAMES[TwRom.lat(rom)]) + "・" + (place >= 0 && place < PLACE_NAMES.count ? trs(String(PLACE_NAMES[place].prefix(2))) : trs("通行"))
         let _ = copyTpl + copyEx + zhCopyTpl + zhCopyEx + "\(copySep)\(zhCopySep)"   // redraw when a layout changes
         let copyStyle = SenseCopy.styleName(zh: store.isZh)
         return [
@@ -50,6 +52,7 @@ struct SettingsView: View {
             Topic(id: 3, title: tr("詞典"), icon: "character.book.closed", summary: tr("複製：\(copyStyle)・拆碼\(imeOn ? trs("開") : trs("關"))")),
             Topic(id: 4, title: tr("聲音"), icon: "speaker.wave.2", summary: tr("自動播放\(autoPlay ? trs("開") : trs("關"))・音量 \(Int((volume * 100).rounded()))%")),
             Topic(id: 5, title: tr("備份與同步"), icon: "arrow.triangle.2.circlepath", summary: store.backupFolderName ?? trs("還沒設定")),
+            Topic(id: 8, title: tr("詞典資料"), icon: "arrow.down.circle", summary: tr("安裝、移除詞典")),
             Topic(id: 6, title: tr("匯出與匯入"), icon: "square.and.arrow.up", summary: tr("CSV・備份檔")),
             Topic(id: 7, title: tr("關於與資料來源"), icon: "info.circle", summary: tr("資料、授權")),
         ]
@@ -81,6 +84,7 @@ struct SettingsView: View {
         case 4: SoundSettings()
         case 5: BackupSettings()
         case 6: ExportSettings()
+        case 8: DictDataSettings()
         default: AboutSettings()
         }
     }
@@ -88,6 +92,13 @@ struct SettingsView: View {
     /// with tone colours on, each topic is one of the tone colours (a little surprise)
     private func tint(_ id: Int) -> Color? {
         guard toneSys != 0 else { return nil }
+        // (詞典資料 yellow, 匯出與匯入 pink, 關於與資料來源 grey; the others the tone colours in turn)
+        switch id {
+        case 8: return Color(hex: 0xffe066)
+        case 6: return Color(hex: 0xff8cc6)
+        case 7: return Color(hex: 0xa3a3a8)
+        default: break
+        }
         return ToneColors.color([1, 2, 3, 4, 5, 6, 7, 8][id % 8], 7)
     }
 
@@ -111,7 +122,7 @@ struct SettingsView: View {
 }
 
 /// every topic page looks the same: a Form on the app's background
-private struct SettingsPage<Content: View>: View {
+struct SettingsPage<Content: View>: View {
     let title: String
     @ViewBuilder let content: () -> Content
     var body: some View {
@@ -137,9 +148,29 @@ private struct LookSettings: View {
     @AppStorage(TextSize.key) private var textSize = TextSize.standard
     @AppStorage("widgetBG") private var widgetBG = 0.45
     @AppStorage(ThemeMotion.key) private var themeMotion = true
+    @AppStorage(DictFont.key) private var dictFont = 0
+    @State private var fontReady = true
 
     var body: some View {
         SettingsPage(title: tr("顏色與外觀")) {
+            // 字體: the app's 漢字 and kana in the system font or a handwriting font
+            Section {
+                Picker(tr("字體"), selection: $dictFont) {
+                    ForEach(Array(DictFont.names.enumerated()), id: \.offset) { i, n in Text(trs(n)).tag(i) }
+                }
+                // a preview in the font chosen
+                Text(tr("方方詞卡・漢字 かな Abc"))
+                    .font(DictFont.font(22) ?? .system(size: 22))
+                    .id("\(dictFont)\(fontReady)")
+            } header: {
+                Text(tr("字體"))
+            } footer: {
+                Text(tr("整個 App 的漢字和假名用系統字體或手寫練習的字體；英文和拼音不變。楷體第一次要從 Apple 下載（要網路）。"))
+            }
+            .onChange(of: dictFont) {
+                // (Apple's 楷體 is downloaded the first time; the others are in the app)
+                if dictFont == 1 { fontReady = false; Kaiti.prepare { _ in fontReady = true } }
+            }
             Section {
                 Picker(tr("主題"), selection: $theme) {
                     ForEach(AppTheme.allCases, id: \.self) { Text($0.name).tag($0.rawValue) }
@@ -149,16 +180,41 @@ private struct LookSettings: View {
             } footer: {
                 Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。"))
             }
-            Section {
-                Picker(tr("聲調顏色"), selection: $toneSys) {
-                    Text(tr("關")).tag(0)
-                    Text(tr("七聲")).tag(7)
-                    Text(tr("五聲")).tag(5)
+            // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour
+            if store.isJa {
+                Section {
+                    Toggle(tr("文字顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? (toneSys == 0 ? 7 : toneSys) : 0 }))
+                    if toneSys != 0 { Toggle(tr("顏色光暈"), isOn: $toneGlow) }
+                    NavigationLink { ToneColorPicker(set: 4).environmentObject(store) } label: {
+                        HStack {
+                            Text(tr("選日語的顏色"))
+                            Spacer()
+                            HStack(spacing: 3) {
+                                ForEach(0..<JaColors.keys.count, id: \.self) { i in Circle().fill(JaColors.color(i)).frame(width: 7, height: 7) }
+                            }
+                        }
+                    }
+                } header: {
+                    Text(tr("文字顏色"))
+                } footer: {
+                    Text(tr("日語：漢字黃、平假名綠、片假名藍、助詞紅、語尾（助動詞）紫。"))
                 }
-                .pickerStyle(.segmented)
+            } else {
+            Section {
+                if store.lang == 0 || store.lang == 3 {
+                    Picker(tr("聲調顏色"), selection: $toneSys) {
+                        Text(tr("關")).tag(0)
+                        Text(tr("七聲")).tag(7)
+                        Text(tr("五聲")).tag(5)
+                    }
+                    .pickerStyle(.segmented)
+                } else {
+                    // (七聲 / 五聲 are 台語's: the other languages only turn the colours on and off)
+                    Toggle(tr("聲調顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? (toneSys == 0 ? 7 : toneSys) : 0 }))
+                }
                 if toneSys != 0 {
                     Toggle(tr("聲調光暈"), isOn: $toneGlow)
-                    Toggle(tr("聲調符號照變調寫"), isOn: $toneMarks)
+                    if store.lang == 0 { Toggle(tr("聲調符號照變調寫"), isOn: $toneMarks) }
                 }
                 NavigationLink { ToneColorPicker().environmentObject(store) } label: {
                     HStack {
@@ -175,6 +231,7 @@ private struct LookSettings: View {
                 Text(tr("聲調顏色"))
             } footer: {
                 Text(tr("原本的顏色：華語一聲紅、二聲綠、三聲藍、四聲紫、輕聲灰。在「選聲調顏色」可以換台語和華語每個聲調的顏色。"))
+            }
             }
             if TextSize.onThisDevice {
                 Section {
@@ -200,10 +257,11 @@ private struct LookSettings: View {
                     Text(widgetBG < 0.05 ? trs("透明") : (widgetBG > 0.95 ? trs("不透明") : "\(Int((widgetBG * 100).rounded()))%"))
                         .foregroundStyle(T.muted).monospacedDigit()
                 }
-                .onChange(of: widgetBG) { WidgetBridge.progressChanged(store) }
+                .onChange(of: widgetBG) { WidgetBridge.settingsChanged(store) }
             } header: {
                 Text(tr("小工具背景"))
             }
+            SafariLookupSection()
             Section {
                 Toggle(tr("畫成圖再放大"), isOn: $swellOn)
             } header: {
@@ -227,6 +285,7 @@ private struct LanguageSettings: View {
     @AppStorage("zhRom") private var zhRomSaved = 0
     @AppStorage(Lang.yueRomKey) private var yueRomSaved = 0
     @AppStorage(Lang.hakRomKey) private var hakRomSaved = 0
+    @AppStorage(Lang.jaRomKey) private var jaRomSaved = 1
     @AppStorage(Simp.key) private var simplified = false
 
     var body: some View {
@@ -237,6 +296,7 @@ private struct LanguageSettings: View {
                     Text(tr("華語")).tag(1)
                     Text(tr("粵語")).tag(2)
                     Text(tr("客語")).tag(3)
+                    Text(tr("日語")).tag(4)
                 }
                 .pickerStyle(.segmented)
             } header: {
@@ -255,8 +315,8 @@ private struct LanguageSettings: View {
                 Text(tr("按鈕、選單和說明的語言。詞典的內容（意思、例句）不會變。"))
             }
             Section(tr("台語")) {
-                Picker(tr("羅馬字"), selection: $rom) {
-                    ForEach(0..<3, id: \.self) { Text(trs(ROM_NAMES[$0])).tag($0) }
+                Picker(tr("拼寫"), selection: $rom) {
+                    ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0] == "方音" ? "只用方音" : ROM_NAMES[$0])).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 Picker(tr("腔口"), selection: $place) {
@@ -288,6 +348,12 @@ private struct LanguageSettings: View {
                     ForEach(0..<Lang.zhPlaceNames.count, id: \.self) { Text(trs(Lang.zhPlaceNames[$0])).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                if store.zhPlace == 2 {
+                    Text(ZhDict.sichuanFile.isEmpty
+                         ? tr("還沒有四川話的讀音資料：在 Mac 上重新執行一次安裝（會從維基詞典整理），之前先把 kaikki.org 的中文檔案放在「下載」裡會比較快。現在顯示普通話的讀音。")
+                         : tr("成都話的讀音（維基詞典），用四川話拼音，聲調標在母音上，照聲調的聲音：1 陰平 ā 高平（紅）、2 陽平 a̱ 低降（青綠）、3 上聲 à 高降（紫）、4 去聲 ǎ 低降升（藍）。搜尋的時候聲調可以打數字（ngai4）。讀音的來源：沒有框是維基詞典的；粉紅色的框是照每個字在其他詞裡的讀音推算的；黃色的框是照普通話和四川話一般的語音對應預測的（比較常錯）；橘色的框是沒辦法推的詞，顯示普通話的標準讀音。詞典也查得到四川話自己的詞（標「四川話」，從維基詞典的方言對照表），查華語的詞會列出四川話的講法。發音和聲調練習還是普通話的。"))
+                        .ffFont(.footnote).foregroundStyle(T.muted)
+                }
                 Picker(tr("詞表"), selection: $store.zhList) {
                     ForEach(0..<Lang.listNames.count, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                 }
@@ -320,6 +386,18 @@ private struct LanguageSettings: View {
             } footer: {
                 Text(tr("臺灣客家語拼音（聲調記號照各腔），或客語注音。換腔的時候詞典會重新讀一次。詞是照在辭典例句裡出現的次數分組，每組 500 個。"))
             }
+            Section {
+                Picker(tr("拼寫"), selection: $jaRomSaved) {
+                    Text(trs("假名")).tag(1)
+                    Text(trs("羅馬字")).tag(0)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: jaRomSaved) { if store.lang == 4 { store.zhRom = jaRomSaved } }
+            } header: {
+                Text(tr("日語"))
+            } footer: {
+                Text(tr("讀音用假名或羅馬字（平文式）。詞是 JMdict 標成常用的詞，照常用的程度分組，每組 500 個；漢字卡照報紙裡出現的次數排。"))
+            }
         }
     }
 }
@@ -344,17 +422,13 @@ private struct PracticeSettings: View {
             Section {
                 Toggle(tr("卡片先隱藏意思"), isOn: $hideMeaning)
                 Toggle(tr("卡片先隱藏讀音"), isOn: $hideReading)
-                // (the same switch as 設定 → 詞典 → 主要解釋)
-                Picker(tr("華語卡片的解釋"), selection: $zhEnglish) {
-                    Text(tr("華語")).tag(false)
-                    Text(tr("英文")).tag(true)
-                }
                 Stepper(tr("連續答對 \(goal) 次算學會"), value: $goal, in: 1...6)
                 Stepper(tr("每次練習 \(sessionSize) 個詞"), value: $sessionSize, in: 5...40, step: 5)
                 Toggle(tr("寫字題"), isOn: $practiceWrite)
             } footer: {
                 Text(tr("開始練習和本週學習裡，看意思和讀音把整個詞寫出來，寫完自己對答案。"))
             }
+            MainMeaningSection()
             Section {
                 PenSettings()
                 NavigationLink { InkColorPicker() } label: {
@@ -411,17 +485,7 @@ private struct DictionarySettings: View {
             } footer: {
                 Text(tr("台語和華語各有自己的複製格式。華語可以加英文解釋：{英文} 或 {英文列表}。"))
             }
-            Section {
-                Picker(tr("主要解釋"), selection: $zhEnglish) {
-                    Text(tr("華語")).tag(false)
-                    Text(tr("英文")).tag(true)
-                }
-                .pickerStyle(.segmented)
-            } header: {
-                Text(tr("華語詞典：卡片和列表上的解釋"))
-            } footer: {
-                Text(tr("卡片和查詞列表上先顯示哪一種解釋。點進一個詞以後兩種都看得到。"))
-            }
+            MainMeaningSection()
             InputCodesSettings()
         }
     }
@@ -599,6 +663,7 @@ private struct AboutSettings: View {
                 credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）")
                 credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
                 credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
+                credit(tr("四川話讀音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：成都話的四川話拼音，漢字一樣、普通話讀音也一樣的詞。另外存，不改辭典的內容。")
                 credit(tr("發音"), "裝置內建的語音")
             }
             Section(tr("練習")) {
@@ -642,4 +707,50 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: [url], applicationActivities: nil)
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+
+// MARK: Safari 查詞
+
+/// Safari 查詞: how to turn it on and use it (its own settings are in the card, under 設定)
+private struct SafariLookupSection: View {
+    var body: some View {
+        Section {
+            Text(tr("在 Safari 用 Apple Pencil 停在一個中文字上面（不要碰到螢幕），就會跳出那個詞的華語和台語解釋。沒有懸停功能的 iPad 可以用手指選取一個詞，觸控板的游標也可以。卡片右上角的「設定」可以選拼寫、腔口、聲調顏色和要顯示的語言。按「加到不熟」或「收藏」選好詞以後，按「傳到 App」就會打開方方詞卡把詞加進來。"))
+                .ffFont(.footnote).foregroundStyle(T.muted)
+            if SafariImport.waitingCount > 0 {
+                Text(tr("有 \(SafariImport.waitingCount) 個從 Safari 傳來的詞在等：切到它們的語言（華語或台語）就會加進不熟。"))
+                    .ffFont(.footnote).foregroundStyle(T.oliveInk)
+            }
+        } header: {
+            Text(tr("Safari 查詞"))
+        } footer: {
+            Text(tr("開啟：設定 → App → Safari → 延伸功能 → 方方詞卡 查詞，打開並允許「所有網站」。查詞的資料在安裝的時候放進延伸功能裡，所以重新執行安裝以後才會有新的詞。"))
+        }
+    }
+}
+
+
+/// 設定 → 主要解釋: for each language that has both, the 華語 meaning or the English one on the cards, in practice and
+/// in the lists (粵語's meanings are English already). Opening a word shows both.
+struct MainMeaningSection: View {
+    @AppStorage(ZhMeaning.twKey) private var tw = false
+    @AppStorage(ZhMeaning.key) private var zh = false
+    @AppStorage(ZhMeaning.hakKey) private var hak = false
+    var body: some View {
+        Section {
+            row(trs("台語"), $tw)
+            row(trs("華語"), $zh)
+            row(trs("客語"), $hak)
+        } header: {
+            Text(tr("主要解釋"))
+        } footer: {
+            Text(tr("卡片、練習和查詞列表上先顯示哪一種解釋。點進一個詞以後兩種都看得到。台語的英文解釋來自維基詞典，不是每個詞都有；沒有的話顯示華語的。"))
+        }
+    }
+    private func row(_ name: String, _ v: Binding<Bool>) -> some View {
+        Picker(name, selection: v) {
+            Text(tr("華語")).tag(false)
+            Text(tr("英文")).tag(true)
+        }
+    }
 }

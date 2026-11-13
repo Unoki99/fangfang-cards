@@ -10,6 +10,8 @@ struct FangfangCardsApp: App {
     @AppStorage(AppTheme.key) private var theme = AppTheme.night.rawValue
 
     init() {
+        // 日語 is read in kana until rōmaji is chosen
+        UserDefaults.standard.register(defaults: [Lang.jaRomKey: 1])
         // 皓羅 font (DejaVu Sans subset) so tone marks sit right
         if let url = Bundle.main.url(forResource: "Haolo", withExtension: "ttf") {
             CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
@@ -32,12 +34,17 @@ struct FangfangCardsApp: App {
                 .preferredColorScheme(.dark)
                 .tint(AppTint.accent)
                 .macTextSize()
+                // Safari 查詞's 傳到 App: the words chosen there
+                .onOpenURL { url in SafariImport.handle(url, store) }
+                .onChange(of: store.loaded) { SafariImport.apply(store) }
+                // (a word of the other language: once its dictionary is open)
+                .onChange(of: store.cards.count) { SafariImport.apply(store) }
         }
         .commands { TextSizeCommands() }
         .onChange(of: scenePhase) { _, phase in
             // pull changes from the other device when the app opens, back up when it closes
-            if phase == .active { store.syncNow(); WidgetBridge.appOpened(store) }
-            else if phase == .background { store.saveNow(); store.syncNow() }
+            if phase == .active { store.syncNow(); WidgetBridge.appOpened(store); SafariImport.apply(store) }
+            else if phase == .background { store.saveNow(); store.syncNow(); WidgetBridge.flush(store) }
         }
     }
 }
@@ -97,7 +104,11 @@ struct RootView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .appBackground()
-                .task { store.load() }
+                .task {
+                    store.load()
+                    // 詞典的字體 = 楷體: Apple's downloaded font is made usable again (it's kept, but asked for each time)
+                    if DictFont.chosen == 1 { Kaiti.prepare { _ in } }
+                }
             }
         }
         // the very first time: which language to learn (later: 設定 → 語言)
@@ -108,6 +119,15 @@ struct RootView: View {
                 pickedLanguage = true
             }
             .environmentObject(store)
+        }
+        .overlay {
+            // no 台語 data yet: install it here
+            if store.loaded && store.lang == 0 && store.taigiMissing {
+                ZStack {
+                    T.bg.opacity(0.85).ignoresSafeArea()
+                    MissingDictView(lang: 0)
+                }
+            }
         }
         .overlay {
             // loading the 華語 dictionary (the first time 華語 is chosen)
@@ -133,7 +153,7 @@ struct RootView: View {
             WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store)
         }
         // the 分類 widgets: new spelling, the word list once loaded, local readings once the dictionary is there
-        .onChange(of: rom) { WidgetBridge.writeState(store) }
+        .onChange(of: rom) { if rom == 3 { store.loadDict() }; WidgetBridge.writeState(store) }
         // 聲調顏色 needs the dictionary (word classes, readings in sentences)
         .onChange(of: toneSys) { if toneSys != 0 { store.loadDict() }; WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: toneMarks) { WidgetBridge.rebuildIfNeeded(store) }
@@ -201,13 +221,20 @@ struct RootPageBar<Extra: View>: ViewModifier {
         return UIDevice.current.userInterfaceIdiom == .pad
         #endif
     }
+    /// the iPhone / iPad app running on a Mac (Apple silicon): the window's toolbar drops items that don't fit,
+    /// so ⚙︎ gets an item of its own, the first one kept
+    private var iPadAppOnMac: Bool { ProcessInfo.processInfo.isiOSAppOnMac }
     func body(content: Content) -> some View {
         content
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) { Text("") }
-                if hsc == .compact || onPad {
+                if iPadAppOnMac {
+                    ToolbarItem(placement: .topBarLeading) { extra.fixedSize() }
+                    ToolbarItem(placement: .primaryAction) { SettingsButton() }
+                    ToolbarItem(placement: .topBarTrailing) { CompactReadingMenu().fixedSize() }
+                } else if hsc == .compact || onPad {
                     // a narrow top bar (iPhone held upright), or an iPad (its tabs float in the middle of the top
                     // bar): the page's own button (新詞's group) on the left, the spelling, language and tone colours
                     // in one menu on the right
@@ -272,15 +299,151 @@ struct LanguageWelcome: View {
     let pick: (Int) -> Void
     /// the app's own language (介面語言), chosen here too
     @AppStorage(UILang.key) private var uiLang = 0
+    /// 0: the app's language, the meanings and the spellings; 1: which language to learn first
+    @State private var step = 0
+    @AppStorage(ZhMeaning.key) private var zhEnglish = false
+    @AppStorage(ZhMeaning.twKey) private var twEnglish = false
+    @AppStorage(ZhMeaning.hakKey) private var hakEnglish = false
+    @AppStorage("rom") private var twRom = 0
+    @AppStorage("zhRom") private var zhRom = 0
+    @AppStorage(Lang.yueRomKey) private var yueRom = 0
+    @AppStorage(Lang.hakRomKey) private var hakRom = 0
+    @AppStorage(Lang.jaRomKey) private var jaRom = 1
+    /// the language chosen, its dictionary being downloaded and made (nothing is in the app until then)
+    @State private var installing: Int?
+    @ObservedObject private var installer = DictInstaller.shared
+
     var body: some View {
-        VStack(spacing: 28) {
+        if let l = installing { install(l) } else if step == 0 { setup } else { languages }
+    }
+
+    /// the language's dictionary is there already: straight on; otherwise it's downloaded and made first
+    private func choose(_ l: Int) {
+        guard let p = DictPack.of(lang: l), let main = p.outputs.first, !DataFiles.has(main) else { pick(l); return }
+        installing = l
+        if case .working = installer.state(p) { return }
+        installer.install(p)
+    }
+
+    /// downloading and making the dictionary of the language chosen
+    private func install(_ l: Int) -> some View {
+        let p = DictPack.of(lang: l)
+        let c = T.langColors(l)
+        return VStack(spacing: 22) {
             Spacer(minLength: 0)
-            Picker("", selection: $uiLang) {
-                Text("中文").tag(0)
-                Text("English").tag(1)
+            Text(["台", "華", "粵", "客", "日"][min(max(l, 0), 4)]).scaledFont(54, weight: .bold).foregroundStyle(c.ink)
+                .frame(width: 96, height: 96)
+                .background(Circle().fill(c.edge.opacity(0.35)))
+            Text(tr("安裝\(trs(Lang.names[l]))詞典")).ffFont(.title2, .bold).foregroundStyle(T.glyph)
+            if let p {
+                Text(trs(p.from) + "\n" + trs(p.download)).ffFont(.footnote).foregroundStyle(T.muted)
+                    .multilineTextAlignment(.center).frame(maxWidth: 460)
+                switch installer.state(p) {
+                case .working(let f, let t):
+                    ProgressView(value: f).tint(c.edge).frame(maxWidth: 320)
+                    Text(t).ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(tr("要網路，大概一兩分鐘。請讓 App 開著。")).ffFont(.caption).foregroundStyle(T.muted)
+                        .multilineTextAlignment(.center)
+                case .failed(let m):
+                    Text(m).ffFont(.footnote).foregroundStyle(ToneColors.red).multilineTextAlignment(.center).frame(maxWidth: 460)
+                    Button { installer.install(p) } label: { Text(tr("再試一次")).ffFont(.headline).frame(maxWidth: 260, minHeight: 30) }
+                        .prominentButton(c.edge)
+                case .idle:
+                    if DataFiles.has(p.outputs.first ?? "") {
+                        ProgressView().onAppear { pick(l) }
+                    } else {
+                        Button { installer.install(p) } label: { Text(tr("下載並安裝")).ffFont(.headline).frame(maxWidth: 260, minHeight: 30) }
+                            .prominentButton(c.edge)
+                    }
+                }
+            }
+            HStack(spacing: 18) {
+                Button { installing = nil } label: { Label(tr("換一種語言"), systemImage: "chevron.left") }
+                Button { pick(l) } label: { Text(tr("先不要，進入 App")) }
+            }
+            .ffFont(.subheadline).foregroundStyle(T.muted)
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .appBackground()
+        .interactiveDismissDisabled()
+        // made: into the app, in that language
+        .onChange(of: installer.version) { if let p, DataFiles.has(p.outputs.first ?? "") { pick(l) } }
+    }
+
+    /// the app's language, then the meanings (華語 or English) and each language's spelling
+    private var setup: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                VStack(spacing: 10) {
+                    Text(tr("方方詞卡")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
+                    Picker("", selection: $uiLang) {
+                        Text("中文").tag(0)
+                        Text("English").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(maxWidth: 260)
+                }
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("解釋先用哪一種語言？")).ffFont(.headline).foregroundStyle(T.glyph)
+                        Picker("", selection: Binding(get: { zhEnglish }, set: { zhEnglish = $0; twEnglish = $0; hakEnglish = $0 })) {
+                            Text(tr("華語")).tag(false)
+                            Text(tr("英文")).tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        Text(tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。之後每個語言可以在「設定 → 詞典 → 主要解釋」分開改。"))
+                            .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(tr("每個語言用哪一種拼寫？")).ffFont(.headline).foregroundStyle(T.glyph)
+                        spelling(0, $twRom, ["皓羅", "台羅", "白話字", "方音"])
+                        spelling(1, $zhRom, ["拼音", "注音"])
+                        spelling(2, $yueRom, ["粵拼", "耶魯"])
+                        spelling(3, $hakRom, ["拼音", "注音"])
+                        spelling(4, $jaRom, ["羅馬字", "假名"])
+                        Text(tr("台語選「方音」的話只顯示方音；其他的下面會再加一行方音。"))
+                            .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(18)
+                .background(RoundedRectangle(cornerRadius: 22).fill(T.fn.opacity(0.8)))
+                .overlay(RoundedRectangle(cornerRadius: 22).stroke(T.fnEdge, lineWidth: 1.5))
+                .frame(maxWidth: 520)
+                Button { withAnimation(.snappy) { step = 1 } } label: {
+                    Text(tr("下一步")).ffFont(.headline).frame(maxWidth: 260, minHeight: 30)
+                }
+                .prominentButton(T.blueEdge)
+            }
+            .id(uiLang)
+            .padding(24)
+            .frame(maxWidth: .infinity)
+        }
+        .appBackground()
+        .interactiveDismissDisabled()
+    }
+
+    private func spelling(_ l: Int, _ v: Binding<Int>, _ names: [String]) -> some View {
+        let ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk][l]
+        return HStack(spacing: 10) {
+            Text(trs(Lang.names[l])).ffFont(.subheadline, .bold).foregroundStyle(ink).frame(width: 64, alignment: .leading)
+            Picker(trs(Lang.names[l]), selection: v) {
+                ForEach(names.indices, id: \.self) { Text(trs(names[$0])).tag($0) }
             }
             .pickerStyle(.segmented)
-            .frame(maxWidth: 260)
+        }
+    }
+
+    private var languages: some View {
+        ScrollView {
+        VStack(spacing: 24) {
+            HStack {
+                Button { withAnimation(.snappy) { step = 0 } } label: { Label(tr("上一步"), systemImage: "chevron.left") }
+                    .foregroundStyle(T.muted)
+                Spacer()
+            }
+            .frame(maxWidth: 520)
             VStack(spacing: 10) {
                 Text(tr("方方詞卡")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
                 Text(tr("你想先學哪一種？")).ffFont(.title3).foregroundStyle(T.muted)
@@ -289,27 +452,29 @@ struct LanguageWelcome: View {
             VStack(spacing: 16) {
                 choice(0, title: "台語", sub: "Taiwanese", note: tr("教育部《臺灣台語常用詞辭典》的詞，皓羅、台羅、白話字或方音"))
                 choice(1, title: "華語", sub: "Mandarin", note: tr("《兩岸常用詞典》的詞，HSK／TOCFL，拼音或注音"))
-                choice(2, title: "粵語", sub: "Cantonese", note: tr("CC-Canto、CC-CEDICT 和維基詞典的詞，粵拼或耶魯拼音"))
+                choice(2, title: "粵語", sub: "Cantonese", note: tr("CC-Canto、CC-CEDICT 和 rime-cantonese 的詞，粵拼或耶魯拼音"))
                 choice(3, title: "客語", sub: "Hakka", note: tr("教育部《臺灣客語辭典》的詞，六個腔，拼音或注音"))
+                choice(4, title: "日語", sub: "Japanese", note: tr("JMdict 和 KANJIDIC2 的詞和漢字，假名或羅馬字"))
             }
             .id(uiLang)
             .frame(maxWidth: 520)
-            Text(tr("之後可以在「設定 → 語言與讀音」換。")).id(uiLang)
+            Text(tr("選了以後會下載那個語言的詞典，在這台裝置上整理好（App 裡面沒有內建詞典）。之後可以在「設定 → 語言與讀音」換，其他語言的詞典在「設定 → 詞典資料」安裝。")).id(uiLang)
                 .multilineTextAlignment(.center)
                 .ffFont(.footnote).foregroundStyle(T.muted)
-            Spacer(minLength: 0)
+                .frame(maxWidth: 520)
         }
         .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        }
         .appBackground()
         .interactiveDismissDisabled()
     }
 
     private func choice(_ l: Int, title: String, sub: String, note: String) -> some View {
-        let fill = [T.own, T.blue, T.olive, T.hakFill][l], edge = [T.ownEdge, T.blueEdge, T.oliveEdge, T.hakEdge][l], ink = [T.purpleInk, T.blueInk, T.oliveInk, T.hakInk][l]
-        return Button { pick(l) } label: {
+        let fill = [T.twFill, T.blue, T.olive, T.hakFill, T.jaFill][l], edge = [T.twEdge, T.blueEdge, T.oliveEdge, T.hakEdge, T.jaEdge][l], ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk][l]
+        return Button { choose(l) } label: {
             HStack(spacing: 18) {
-                Text(["台", "華", "粵", "客"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
+                Text(["台", "華", "粵", "客", "日"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
                     .frame(width: 70, height: 70)
                     .background(Circle().fill(edge.opacity(0.35)))
                 VStack(alignment: .leading, spacing: 4) {

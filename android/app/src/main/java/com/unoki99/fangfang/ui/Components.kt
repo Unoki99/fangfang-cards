@@ -52,13 +52,43 @@ fun lat(size: Float): TextStyle = TextStyle(fontSize = size.sp, fontFamily = T.l
 
 @Composable
 fun Txt(text: String, style: TextStyle, color: Color = T.glyph, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
-    Text(text, style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    if (com.unoki99.fangfang.Prefs.dictFont.value > 0 && style.fontFamily == null && text.any { it.code >= 0x3000 })
+        Txt(AnnotatedString(text), style, color, modifier, maxLines)
+    else Text(text, style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
 fun Txt(text: AnnotatedString, style: TextStyle, color: Color = T.glyph, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
-    Text(text, style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    Text(kaiRuns(text, style), style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
 }
+
+/** (kept for the pages that used it: the font now applies everywhere) */
+@Composable
+fun EntryFont(content: @Composable () -> Unit) = content()
+
+/** 字體 (設定 → 顏色與外觀) = a handwriting font: the 漢字 and kana in it; English and the readings stay as they are
+ *  (text with its own font, like 皓羅's, keeps it) */
+@Composable
+private fun kaiRuns(text: AnnotatedString, style: TextStyle): AnnotatedString {
+    val f = com.unoki99.fangfang.Prefs.dictFont.value
+    if (f <= 0 || style.fontFamily != null) return text
+    val s = text.text
+    if (s.none { it.code >= 0x3000 }) return text
+    val fam = Kai.familyOf(f - 1)
+    val b = AnnotatedString.Builder(text)
+    var i = 0
+    while (i < s.length) {
+        if (!cjk(s.codePointAt(i))) { i += Character.charCount(s.codePointAt(i)); continue }
+        val start = i
+        while (i < s.length && cjk(s.codePointAt(i))) i += Character.charCount(s.codePointAt(i))
+        b.addStyle(androidx.compose.ui.text.SpanStyle(fontFamily = fam), start, i)
+    }
+    return b.toAnnotatedString()
+}
+
+/** 漢字, kana and the CJK punctuation */
+private fun cjk(cp: Int) = cp in 0x3000..0x30FF || cp in 0x31F0..0x31FF || cp in 0x3400..0x4DBF || cp in 0x4E00..0x9FFF ||
+    cp in 0xF900..0xFAFF || cp in 0xFF01..0xFF60 || cp in 0x20000..0x3134F
 
 // MARK: little labels
 
@@ -204,12 +234,13 @@ fun PlaceMenu() {
     var open by remember { mutableStateOf(false) }
     val yue = store.isYue
     val hak = store.isHak
+    val ja = store.isJa
     var accent by Prefs.hakAccent
-    val fill = if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.placeFill
-    val edge = if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.placeEdge
-    val ink = if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.purpleInk
+    val fill = if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.placeFill
+    val edge = if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.placeEdge
+    val ink = if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.purpleInk
     val hakNames = com.unoki99.fangfang.engine.Lang.hakAccents
-    val name = if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames[zhPlace.coerceIn(0, 1)]
+    val name = if (ja) "日語" else if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames.getOrElse(zhPlace) { "臺灣" }
         else "台・" + (if (place in PLACE_NAMES.indices) PLACE_NAMES[place].take(2) else "通行")
     Box {
         Row(Modifier.clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { open = true }
@@ -228,7 +259,8 @@ fun PlaceMenu() {
             item(tr("華語"), store.lang == 1) { store.setLanguage(1); open = false }
             item(tr("粵語"), store.lang == 2) { store.setLanguage(2); open = false }
             item(tr("客語"), store.lang == 3) { store.setLanguage(3); open = false }
-            if (yue) {
+            item(tr("日語"), store.lang == 4) { store.setLanguage(4); open = false }
+            if (yue || ja) {
                 // (粵語: one reading)
             } else if (hak) {
                 HorizontalDivider(color = T.fnEdge)
@@ -258,8 +290,12 @@ fun ToneMenu() {
     Box {
         Row(Modifier.clip(CircleShape).background(T.fn).border(2.dp, T.fnEdge, CircleShape).clickable { open = true }
             .padding(horizontal = 9.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (system == 0) Text(tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
-            else if (com.unoki99.fangfang.Store.isHak) for (t in com.unoki99.fangfang.engine.ToneColors.hakTones) {
+            if (system == 0) Text(if (com.unoki99.fangfang.Store.isJa) tr("色") else tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
+            else if (com.unoki99.fangfang.Store.isJa) {
+                // 日語: kanji, hiragana, katakana, particles, suffixes
+                Prefs.jaColors.forEach { it.value }
+                for (i in 0 until 5) Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.JaColors.color(i)), CircleShape))
+            } else if (com.unoki99.fangfang.Store.isHak) for (t in com.unoki99.fangfang.engine.ToneColors.hakTones) {
                 Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.hakColor(t)), CircleShape))
             } else if (com.unoki99.fangfang.Store.isYue) for (t in 1..6) {
                 Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.ToneColors.yueColor(t)), CircleShape))
@@ -270,7 +306,9 @@ fun ToneMenu() {
             }
         }
         DropdownMenu(open, { open = false }, containerColor = T.fn) {
-            for ((v, name) in listOf(0 to tr("關"), 7 to tr("七聲（1 2 3 4 5 7 8）"), 5 to tr("五聲（1=8、3=4）"))) {
+            val choices = if (com.unoki99.fangfang.Store.isJa) listOf(0 to tr("文字顏色關"), 7 to tr("文字顏色開"))
+                else listOf(0 to tr("關"), 7 to tr("七聲（1 2 3 4 5 7 8）"), 5 to tr("五聲（1=8、3=4）"))
+            for ((v, name) in choices) {
                 DropdownMenuItem(text = { Text(name, color = if (system == v) T.greenInk else T.glyph) },
                     leadingIcon = { if (system == v) Icon(Icons.Filled.Check, null, tint = T.greenInk) }, onClick = { system = v; open = false })
             }

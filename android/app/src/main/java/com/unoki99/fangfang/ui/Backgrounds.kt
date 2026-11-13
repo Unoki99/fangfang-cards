@@ -29,6 +29,8 @@ fun AppBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.(
             AppTheme.GOBLIN -> GoblinBackground()
             AppTheme.NIGHT -> NightBackground()
             AppTheme.WINTER -> WinterBackground()
+            AppTheme.SAKURA -> FallingThingsBackground(true)
+            AppTheme.MOMIJI -> FallingThingsBackground(false)
         }
         content()
     }
@@ -281,4 +283,62 @@ private fun DrawScope.drawLeaf(c: Offset, r: Float, deg: Float, col: Color) {
         }
         drawPath(p, col)
     }
+}
+
+
+/** 夜櫻 (cherry petals drifting down past a blossoming branch) and 紅葉狩 (maple leaves falling over autumn hills) */
+@Composable
+private fun FallingThingsBackground(sakura: Boolean) {
+    val moving = com.unoki99.fangfang.Prefs.themeMotion.value
+    var time by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    if (moving) androidx.compose.runtime.LaunchedEffect(Unit) {
+        val start = androidx.compose.runtime.withFrameNanos { it }
+        while (true) androidx.compose.runtime.withFrameNanos { time = (it - start) / 1e9f }
+    }
+    Canvas(Modifier.fillMaxSize()) {
+        val w = size.width; val h = size.height; val d = density
+        drawRect(Brush.verticalGradient(if (sakura) listOf(Color(0xFF261A22), Color(0xFF1D1418), Color(0xFF150F12))
+            else listOf(Color(0xFF2A1A12), Color(0xFF1C130F), Color(0xFF120C09))))
+        glowAt(if (sakura) Color(0xFFFF9EC4) else Color(0xFFFF7A3A), 0.12f, Offset(w * 0.82f, h * 0.1f), max(w, 300f) * 0.6f)
+        // a lantern-like moon
+        val moon = Offset(w * 0.84f, 104 * d)
+        drawCircle(Brush.radialGradient(if (sakura) listOf(Color(0xFFFFF4F8), Color(0xFFF3C9DA)) else listOf(Color(0xFFFFF0D8), Color(0xFFF2B77A)),
+            Offset(moon.x - 3 * d, moon.y - 3 * d), 24 * d), 17 * d, moon, alpha = 0.35f)
+        if (sakura) {
+            // a branch with blossoms
+            val br = Path().apply {
+                moveTo(0f, 70 * d); quadraticTo(w * 0.3f, 80 * d, w * 0.55f, 150 * d)
+                moveTo(w * 0.3f, 102 * d); quadraticTo(w * 0.4f, 90 * d, w * 0.42f, 60 * d)
+            }
+            drawPath(br, Color(0xFF6B4553).copy(alpha = 0.35f), style = Stroke(5 * d, cap = StrokeCap.Round))
+            for (i in 0 until 9) drawCircle(Color(0xFFFFB7D0).copy(alpha = 0.18f), 9 * d, Offset(w * (0.05f + i * 0.055f), (72 + (i * 37) % 60) * d))
+        } else {
+            // autumn hills
+            val hills = Path().apply {
+                moveTo(0f, h - 110 * d)
+                quadraticTo(w * 0.3f, h - 190 * d, w * 0.6f, h - 90 * d)
+                quadraticTo(w * 0.85f, h - 170 * d, w, h - 120 * d)
+                lineTo(w, h); lineTo(0f, h); close()
+            }
+            drawPath(hills, Brush.verticalGradient(listOf(Color(0xFFC0502A).copy(alpha = 0.18f), Color(0xFF7A2E18).copy(alpha = 0.10f)), h - 190 * d, h))
+        }
+        val colors = if (sakura) listOf(0xFFFFC4D8, 0xFFFFD9E6, 0xFFF7A8C4) else listOf(0xFFE4572E, 0xFFF08A24, 0xFFC0392B, 0xFFF2B134)
+        for ((i, f) in fallingThings.withIndex()) {
+            val p = (f[3] + time * f[2]) % 1f
+            val y = p * (h + 30 * d) - 15 * d
+            val x = f[0] * w + sin(time * 0.5f + f[3] * 6.28f) * f[4] * d
+            translate(x, y) {
+                rotate((time * f[5] + f[3] * 6.28f) * 57.3f, Offset.Zero) {
+                    drawPath(if (sakura) petalPath(f[1] * d) else maplePath(f[1] * d * 1.3f), Color(colors[i % colors.size]).copy(alpha = if (sakura) 0.32f else 0.30f))
+                }
+            }
+        }
+    }
+}
+
+/** (x, size, speed, phase, sway, spin) of each petal or leaf: the same every time */
+private val fallingThings: List<FloatArray> = run {
+    var x = 0xC2B2AE3D27D4EB4FuL
+    fun next(): Float { x = x xor (x shl 13); x = x xor (x shr 7); x = x xor (x shl 17); return (x % 10000uL).toFloat() / 10000f }
+    List(34) { floatArrayOf(next(), 3f + next() * 5f, 0.018f + next() * 0.03f, next(), 10f + next() * 24f, next() * 2f - 1f) }
 }

@@ -169,13 +169,30 @@ object Prefs : KeyValue {
     val readingsQuery = Pref("readingsQuery", "學生")
     /** 設定 → 字形: 簡體字 (華語 and 粵語) */
     val simplified = Pref("simplified", false)
+    /** 日語: the spelling (0 rōmaji, 1 かな; かな the first time) */
+    val jaRom = Pref("jaRom", 1)
+    /** 台語 and 客語: the main explanation on cards and lists (false the dictionary's, true English) */
+    val twEnglish = Pref("twMainEnglish", false)
+    val hakEnglish = Pref("hakMainEnglish", false)
+    /** 日語's colours: kanji, hiragana, katakana, particles, endings (0xRRGGBB; -1 = the standard one) */
+    val jaColors = listOf("kanji", "hira", "kata", "particle", "suffix").map { Pref("jaColor.$it", -1) }
+    /** 手寫: a small number at the start of each stroke */
+    val handNumbers = Pref("handwritingStrokeNumbers", false)
+    /** the squares of a 寫字題 (dp): they stay this size, only the slider changes it */
+    val handTestPad = Pref("handwritingTestPadSize", 300f)
+    /** 遊戲: the best score */
+    val fallingBest = Pref("fallingBest", 0)
+    /** 設定 → 詞典 → 字體: 0 the system's, then Kai's fonts (文楷, 芫荽) */
+    val dictFont = Pref("dictFontAndroid", 0)
+    /** 本週學習 → 選詞: the 分類 the words are picked from (-1 = 不熟) */
+    val weekPickTopic = Pref("weekPickTopic", -1)
 
     private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, toneGlow, hideMeaning, autoPlay, volume, goal, sessionSize,
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, practiceWrite, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage) + copyOn + copyStyle + copyPreText
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -188,7 +205,12 @@ object Prefs : KeyValue {
         toneMarks.onChange = { syncEngine() }
         com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value, toneColorsHak.value)
         simplified.onChange = { syncEngine() }
+        loadJaColors()
+        for (p in jaColors) p.onChange = { loadJaColors() }
     }
+
+    /** 日語's colours, for the engine (-1 = the standard one) */
+    fun loadJaColors() = com.unoki99.fangfang.engine.JaColors.load(jaColors.map { it.value })
 
     fun syncEngine() {
         EngineSettings.toneSystem = toneSys.value

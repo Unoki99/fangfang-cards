@@ -41,7 +41,8 @@ extension Store {
     /// 華語: the word with each tone on its last syllable (in 拼音 or 注音, as shown)
     func zhToneQuestion(_ c: Card) -> ToneQuestion? {
         guard let d = zh, let tw = c.zs else { return nil }
-        let syl = zhPlace == 1 ? (c.zl ?? tw) : tw
+        // (四川話: 普通話's tones, as the device's voice says it in 普通話)
+        let syl = zhPlace >= 1 ? (c.zl ?? tw) : tw
         guard let li = syl.lastIndex(where: { $0 != "-" && $0 != "_" }) else { return nil }
         let tone = Zhuyin.tone(syl[li])
         var all: [ToneOption] = [], answer: ToneOption?

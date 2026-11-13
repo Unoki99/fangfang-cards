@@ -12,13 +12,20 @@ struct UnknownView: View {
     @AppStorage("goal") private var goal = 3
     @State private var studying = false
     @State private var toning = false
+    @State private var particles = false
     @State private var scrambling = false
     @State private var readingOrder = false
     @State private var blanks = false
     @State private var memory = false
     @State private var writing = false
+    @State private var freeWriting = false
+    @State private var gaming = false
     @State private var helping = false
     @State private var statsOpen = false
+    /// 要複習 → practise just the words due
+    @State private var reviewWords: [Card] = []
+    @State private var reviewing = false
+    @State private var reviewWriting = false
     @State private var detail: Card?
     @State private var query = ""
 
@@ -35,7 +42,10 @@ struct UnknownView: View {
                 VStack(spacing: 12) {
                 WeekPanel()
                 PracticeScopeMenu()
-                ReviewBar(due: due.count) { statsOpen = true }
+                ReviewBar(due: store.allDueCards.count, stats: { statsOpen = true }) { hand in
+                    reviewWords = store.allDueCards
+                    if hand { reviewWriting = true } else { reviewing = true }
+                }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty || !due.isEmpty) { studying = true }
                     PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
@@ -43,9 +53,16 @@ struct UnknownView: View {
                     PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
                     PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
                     // (客語: no voice to listen to)
-                    PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak) { toning = true }
+                    // (日語: no tones; its particles instead)
+                    if store.isJa {
+                        PracticeTile(title: tr("助詞練習"), icon: "puzzlepiece", enabled: true) { particles = true }
+                    } else {
+                        PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak) { toning = true }
+                    }
                     PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
                     PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: true) { writing = true }
+                    PracticeTile(title: tr("自由寫字"), icon: "square.grid.3x3", enabled: true) { freeWriting = true }
+                    PracticeTile(title: tr("遊戲"), icon: "gamecontroller", enabled: pool.count > 3) { gaming = true }
                     // what each way of practising does
                     PracticeTile(title: tr("怎麼練習"), icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
                 }
@@ -92,11 +109,16 @@ struct UnknownView: View {
 
         .sheet(item: $detail) { CardSheet(card: $0).environmentObject(store) }
         .fullScreenCover(isPresented: $studying) { StudyView().environmentObject(store) }
+        .fullScreenCover(isPresented: $reviewing) { StudyView(words: reviewWords, saveAs: "review").environmentObject(store) }
+        .fullScreenCover(isPresented: $reviewWriting) { StudyView(words: reviewWords, writeOnly: true, saveAs: "reviewWrite").environmentObject(store) }
         .fullScreenCover(isPresented: $blanks) { StudyView(blanksOnly: true).environmentObject(store) }
         .fullScreenCover(isPresented: $toning) { ToneView().environmentObject(store) }
+        .fullScreenCover(isPresented: $particles) { JaParticleQuiz().environmentObject(store) }
         .fullScreenCover(isPresented: $scrambling) { ScrambleView().environmentObject(store) }
         .fullScreenCover(isPresented: $memory) { MemoryView().environmentObject(store) }
         .fullScreenCover(isPresented: $writing) { HandwritingView().environmentObject(store) }
+        .fullScreenCover(isPresented: $freeWriting) { FreeWritingView().environmentObject(store) }
+        .fullScreenCover(isPresented: $gaming) { FallingGameView().environmentObject(store) }
         .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
         .sheet(isPresented: $statsOpen) { NavigationStack { ReviewStatsView() }.environmentObject(store).macTextSize() }
         .fullScreenCover(isPresented: $readingOrder) { ScrambleView(readingMode: true).environmentObject(store) }

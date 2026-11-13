@@ -23,9 +23,15 @@ enum WidgetBridge {
     static func mergeInbox(_ store: Store) {
         let ops = WidgetShared.inbox()
         guard !ops.isEmpty else { return }
+        var waiting: [WidgetInboxOp] = []
         for op in ops {
             // (台語 and 華語 words: either language's cards)
-            if op.known == true {
+            if let u = op.unknown {
+                // 加到不熟 from Safari: a word of a language the app can't open right now waits in the inbox until it can
+                guard let c = store.card(for: op.k) else { waiting.append(op); continue }
+                if u, store.status(c) != 2 { store.mark(c, known: false, undoable: false) }
+                else if !u, store.status(c) == 2 { store.forget(c) }
+            } else if op.known == true {
                 if let c = store.card(for: op.k), store.status(c) != 1 { store.mark(c, known: true, undoable: false) }
             } else if op.known == false {
                 // ✓ taken back on the widget: back to 新詞
@@ -34,15 +40,32 @@ enum WidgetBridge {
                 store.toggleSaved(op.k)
             }
         }
-        WidgetShared.write([WidgetInboxOp](), "inbox.json")
+        WidgetShared.write(waiting, "inbox.json")
         store.saveNow()
     }
 
-    /// progress or settings changed: a moment later, write what the widget needs to know
+    /// progress changed (a swipe…): written when the app goes to the background, or after half a minute
+    /// without changes. Every swipe used to write all your words out and reload the widgets a second later, and
+    /// iOS only lets widgets reload so many times a day
     static func progressChanged(_ store: Store) {
+        dirty = true
+        later(store, seconds: 30)
+    }
+    /// a widget setting changed (設定): shown a moment later
+    static func settingsChanged(_ store: Store) {
+        later(store, seconds: 1)
+    }
+    /// the app goes to the background: what changed, written now
+    static func flush(_ store: Store) {
+        guard dirty else { return }
+        stateTask?.cancel()
+        writeState(store)
+    }
+    private static var dirty = false
+    private static func later(_ store: Store, seconds: Double) {
         stateTask?.cancel()
         stateTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             writeState(store)
         }
@@ -50,6 +73,7 @@ enum WidgetBridge {
 
     static func writeState(_ store: Store) {
         guard store.loaded, WidgetShared.folder != nil else { return }
+        dirty = false
         let d = UserDefaults.standard
         var st = WidgetState()
         st.rom = min(max(d.integer(forKey: "rom"), 0), 2)
@@ -176,7 +200,7 @@ enum WidgetBridge {
         // 華語: the other reading (注音 under 拼音, or 拼音 under 注音), its 詞類, and English as the meaning if chosen
         var z = plain(zy), p = def?.p ?? "", m = def?.t ?? ""
         if c.isZh, let d = store.zh {
-            let syl = Lang.zhPlace == 1 ? (c.zl ?? c.zs ?? []) : (c.zs ?? [])
+            let syl = c.zhSyl(Lang.zhPlace) ?? []
             z = d.readingPlain(syl, Lang.zhRom == 0 ? 1 : 0)
             if let e = d.entry(c.k) {
                 p = e.pos.joined(separator: "、")
@@ -197,7 +221,7 @@ enum WidgetBridge {
     }
 
     /// an AttributedString as pieces of one colour each (for the widget, which can't read SwiftUI colours)
-    private static func segs(_ a: AttributedString) -> [WSeg] {
+    static func segs(_ a: AttributedString) -> [WSeg] {
         var out: [WSeg] = []
         let env = EnvironmentValues()
         for run in a.runs {

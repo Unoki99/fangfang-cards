@@ -184,6 +184,8 @@ fun DictEntryBody(d: Dict, key: String) {
         }
         val senses = remember(key) { d.senses(key) }
         for (s in senses) SenseBlock(d, key, s)
+        // a single character: 說文解字 (when installed)
+        if (han.cpCount == 1) ShuowenBlock(han)
         if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()
         val wl = remember(key) { d.wordLinks(key) }
         if (wl.first.isNotEmpty() || wl.second.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

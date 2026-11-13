@@ -6,8 +6,18 @@
 #   bash ~/Downloads/fangfang-cards-main/install.sh ipad     only Mac, as the iPad app (Apple chip), and remember that
 #   bash ~/Downloads/fangfang-cards-main/install.sh catalyst only Mac, as the Mac version, and remember that
 #   bash ~/Downloads/fangfang-cards-main/install.sh ipa      an app file (FangfangCards.ipa on the Desktop) to install with Sideloadly
+#   … nosafari (after any of the above, e.g. "install.sh ipa nosafari"): skips the Safari pop-up's words.
+#   The app downloads and makes each language's dictionary itself (設定 → 詞典資料); the only data put in it is
+#   Wiktionary's, which the app can't make on its own: 華語's 四川話 readings and 台語 words' English (zh_sc.json, tw_en.json).
+#   The Safari pop-up (查詞) can't see what the app downloads (that would need an App Group, which an app installed
+#   with Sideloadly usually doesn't get), so its words are built on this Mac and put inside the extension only
+#   (the data is kept in ~/FangfangCards/data, never in the app; the first time takes a few minutes).
 # Run it again any time (e.g. every 7 days for iPhone/iPad) to reinstall.
 WHAT="${1:-all}"
+SAFARI=1
+for a in "$@"; do [ "$a" = "nosafari" ] && SAFARI=0; done
+[ -n "$FANGFANG_NOSAFARI" ] && SAFARI=0
+[ "$WHAT" = "safari" ] || [ "$WHAT" = "nosafari" ] && WHAT=all
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DEST="$HOME/FangfangCards"
 DD="$HOME/Library/Developer/fangfangcards-build"
@@ -22,12 +32,15 @@ find "$HERE/FangfangCards" "$HERE/FangfangWidget" -type f \( -name "* 2.swift" -
 if [ "$HERE" != "$DEST" ]; then
   mkdir -p "$DEST"
   # keep word data that was already built there
-  rsync -a --delete --exclude ".DS_Store" --exclude "xcuserdata" --exclude "project.xcworkspace" \
-        --exclude "FangfangCards/dict.json" --exclude "FangfangCards/cards.json" --exclude "FangfangCards/zh.json" --exclude "FangfangCards/inputcodes.json" --exclude "FangfangCards/yue.json" --exclude "FangfangCards/hak.json" --exclude "FangfangCards/tw_en.json" "$HERE/" "$DEST/"
-  for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json; do
-    [ -f "$HERE/FangfangCards/$f" ] && cp "$HERE/FangfangCards/$f" "$DEST/FangfangCards/$f"
+  rsync -a --delete --exclude ".DS_Store" --exclude "xcuserdata" --exclude "project.xcworkspace" --exclude "/data" \
+        --exclude "FangfangCards/dict.json" --exclude "FangfangCards/cards.json" --exclude "FangfangCards/zh.json" --exclude "FangfangCards/inputcodes.json" --exclude "FangfangCards/yue.json" --exclude "FangfangCards/hak.json" --exclude "FangfangCards/tw_en.json" --exclude "FangfangCards/zh_sc.json" --exclude "FangfangSafari/d-*.json" "$HERE/" "$DEST/"
+  mkdir -p "$DEST/data"
+  for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json zh_sc.json; do
+    [ -f "$HERE/FangfangCards/$f" ] && cp "$HERE/FangfangCards/$f" "$DEST/data/$f"
   done
 fi
+# (your own 台語 words, for building 台語 in the app too: 設定 → 詞典資料)
+[ -f "$DEST/tools/own.json" ] && cp "$DEST/tools/own.json" "$DEST/FangfangCards/Install/twown.json" 2>/dev/null || true
 echo "專案：$DEST/FangfangCards.xcodeproj"
 
 # Xcode new enough? (the project needs Xcode 26, which needs macOS Sequoia 15.6 or later)
@@ -41,31 +54,75 @@ elif [ "$XV" -lt 26 ]; then
   exit 1
 fi
 
-# 2. word data (built from the MOE dictionary file if it isn't there yet)
-if [ ! -f "$DEST/FangfangCards/dict.json" ] || [ ! -f "$DEST/FangfangCards/cards.json" ]; then
-  bash "$DEST/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
+# 2. no dictionary data in the app: the app downloads and makes each language's dictionary itself. Data built on
+# this Mac before is kept in ~/FangfangCards/data (for the Safari pop-up), never inside the app.
+DATA="dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json zh_sc.json ja.json shuowen.json"
+mkdir -p "$DEST/data/safari"
+for f in $DATA; do [ -f "$DEST/FangfangCards/$f" ] && mv -f "$DEST/FangfangCards/$f" "$DEST/data/$f"; done
+if [ "$SAFARI" = "1" ]; then
+  # Safari 查詞: the extension needs the words inside it, so they're built here (build-data.sh works in
+  # FangfangCards/: the data is put there for that, then taken out again)
+  for f in $DATA; do [ -f "$DEST/data/$f" ] && cp "$DEST/data/$f" "$DEST/FangfangCards/$f"; done
+  for f in "$DEST"/data/safari/d-*.json; do [ -f "$f" ] && mv -f "$f" "$DEST/FangfangSafari/"; done
+  if [ ! -f "$DEST/FangfangCards/dict.json" ] || [ ! -f "$DEST/FangfangCards/cards.json" ]; then
+    bash "$DEST/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
+  fi
+  # 華語 data (《兩岸常用詞典》)
+  if [ ! -f "$DEST/FangfangCards/zh.json" ]; then
+    bash "$DEST/build-data.sh" zh || { echo "✗ 沒辦法建立華語資料。"; exit 1; }
+  fi
+  # 粵語 data (CC-Canto, CC-CEDICT, Wiktionary…); made again when it was made by an older version
+  Y="$DEST/FangfangCards/yue.json"
+  if [ -f "$Y" ] && ! head -c 80 "$Y" | grep -q '"v":2'; then echo "（粵語資料是舊版做的，重新建立）"; rm -f "$Y"; fi
+  if [ ! -f "$DEST/FangfangCards/yue.json" ]; then
+    bash "$DEST/build-data.sh" yue || echo "（沒辦法建立粵語資料，先跳過：App 裡的粵語會打不開）"
+  fi
+  # 客語 data (教育部《臺灣客語辭典》)
+  if [ ! -f "$DEST/FangfangCards/hak.json" ]; then
+    bash "$DEST/build-data.sh" hak || echo "（沒辦法建立客語資料，先跳過：App 裡的客語會打不開）"
+  fi
+  # 台語 words' English (Wiktionary)
+  if [ ! -f "$DEST/FangfangCards/tw_en.json" ]; then
+    bash "$DEST/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"
+  fi
+  # 華語 words' 四川話 readings (Wiktionary); made again when it was made by an older version (without the guessed and
+  # predicted ones)
+  SC="$DEST/FangfangCards/zh_sc.json"
+  if [ -f "$SC" ] && ! head -c 40 "$SC" | grep -q '"v":4'; then rm -f "$SC"; fi
+  if [ ! -f "$DEST/FangfangCards/zh_sc.json" ]; then
+    bash "$DEST/build-data.sh" sc || echo "（沒辦法建立四川話讀音，先跳過）"
+  fi
+  if [ ! -f "$DEST/FangfangCards/inputcodes.json" ]; then
+    bash "$DEST/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"
+  fi
+  # Safari 查詞: the words, put inside the Safari extension (made again when the word data is newer)
+  SM="$DEST/FangfangSafari/d-meta.json"
+  NEED_SAFARI=0
+  [ -f "$SM" ] || NEED_SAFARI=1
+  for f in dict.json zh.json zh_sc.json tw_en.json; do
+    [ -f "$DEST/FangfangCards/$f" ] && [ "$DEST/FangfangCards/$f" -nt "$SM" ] && NEED_SAFARI=1
+  done
+  [ "$DEST/tools/build_safari.py" -nt "$SM" ] && NEED_SAFARI=1
+  if [ "$NEED_SAFARI" = "1" ]; then
+    echo "準備 Safari 查詞的資料…"
+    /usr/bin/env python3 "$DEST/tools/build_safari.py" "$DEST/FangfangCards/" "$DEST/FangfangSafari/" || echo "（沒辦法準備 Safari 查詞的資料，先跳過）"
+  fi
+  for f in $DATA; do [ -f "$DEST/FangfangCards/$f" ] && mv -f "$DEST/FangfangCards/$f" "$DEST/data/$f"; done
+else
+  # (the Safari pop-up's words from an earlier install: kept aside, not in the app)
+  for f in "$DEST"/FangfangSafari/d-*.json; do [ -f "$f" ] && mv -f "$f" "$DEST/data/safari/"; done
+  echo "（跳過 Safari 查詞的資料：Safari 查詞不會跳出卡片。要的話執行 install.sh 時不要加 nosafari。）"
 fi
-# 華語 data (《兩岸常用詞典》)
-if [ ! -f "$DEST/FangfangCards/zh.json" ]; then
-  bash "$DEST/build-data.sh" zh || { echo "✗ 沒辦法建立華語資料。"; exit 1; }
-fi
-# 粵語 data (CC-Canto, CC-CEDICT, Wiktionary…); made again when it was made by an older version
-Y="$DEST/FangfangCards/yue.json"
-if [ -f "$Y" ] && ! head -c 80 "$Y" | grep -q '"v":2'; then echo "（粵語資料是舊版做的，重新建立）"; rm -f "$Y"; fi
-if [ ! -f "$DEST/FangfangCards/yue.json" ]; then
-  bash "$DEST/build-data.sh" yue || echo "（沒辦法建立粵語資料，先跳過：App 裡的粵語會打不開）"
-fi
-# 客語 data (教育部《臺灣客語辭典》)
-if [ ! -f "$DEST/FangfangCards/hak.json" ]; then
-  bash "$DEST/build-data.sh" hak || echo "（沒辦法建立客語資料，先跳過：App 裡的客語會打不開）"
-fi
-# 台語 words' English (Wiktionary)
-if [ ! -f "$DEST/FangfangCards/tw_en.json" ]; then
-  bash "$DEST/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"
-fi
-if [ ! -f "$DEST/FangfangCards/inputcodes.json" ]; then
-  bash "$DEST/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"
-fi
+# The Wiktionary data (CC BY-SA) put in the app: 華語's 四川話 readings (zh_sc.json) and 台語 words' English, which
+# 台語's English search uses (tw_en.json). The app can't make them itself (it would need Wiktionary's whole 2.5 GB
+# Chinese file), so the copies made on this Mac go in; every other dictionary is downloaded and made by the app.
+for f in zh_sc tw_en; do
+  if [ -f "$DEST/data/$f.json" ]; then
+    cp "$DEST/data/$f.json" "$DEST/FangfangCards/$f.json"
+  else
+    echo "（還沒有 $f.json（維基詞典的資料：四川話讀音、台語詞的英文）：執行 install.sh 時不要加 nosafari，就會在這台 Mac 上建立。）"
+  fi
+done
 
 # Xcode's iOS part (a separate download in new Xcode versions): say how to get it if it's missing
 ensure_ios_platform() {
@@ -95,9 +152,6 @@ if [ "$WHAT" = "ipa" ]; then
      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
      build > "$LOG" 2>&1 < /dev/null || fail
   APP=$(ls -d "$IDD"/Build/Products/Release-iphoneos/*.app | grep -v -i widget | head -1)
-  for f in cards.json dict.json; do
-    [ -f "$APP/$f" ] || { echo "✗ App 裡面沒有 $f（詞典資料沒有建好）。先執行：bash \"$DEST/build-data.sh\"，再執行一次 install.sh ipa。"; exit 1; }
-  done
   PKG=$(mktemp -d)
   mkdir -p "$PKG/Payload"
   cp -R "$APP" "$PKG/Payload/"
@@ -155,9 +209,6 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "ios" ]; then
   build_signed -project "$DEST/FangfangCards.xcodeproj" -scheme FangfangCards -configuration Debug \
      -destination "generic/platform=iOS" -derivedDataPath "$DD" -allowProvisioningUpdates "${TEAMARG[@]}" || fail
   APP=$(ls -d "$DD"/Build/Products/Debug-iphoneos/*.app | head -1)
-  for f in cards.json dict.json; do
-    [ -f "$APP/$f" ] || { echo "✗ App 裡面沒有 $f（詞典資料沒有建好）。先執行：bash \"$DEST/build-data.sh\"，再執行一次這個指令。"; exit 1; }
-  done
   echo "✓ 建置完成"
   JSON=$(mktemp)
   xcrun devicectl list devices --json-output "$JSON" >/dev/null 2>&1 < /dev/null

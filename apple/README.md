@@ -32,7 +32,8 @@ bash ~/Downloads/fangfang-cards-main/install.sh
 - 只裝手機／平板：`install.sh ios`；只裝 Mac：`install.sh mac`
 - Apple 晶片（M1 以後）的 Mac：第一次會問你要裝 **iPad 版**（建議）還是 **Mac 版**，之後會記住。想換：`install.sh ipad` 或 `install.sh catalyst`。Intel Mac 一律裝 Mac 版。
 - 免費 Apple ID：**7 天後再執行一次同一個指令**就好（資料不會不見）。（用 `install.sh catalyst` 裝的 Mac 版不會過期。）
-- 第一次執行時，如果專案裡還沒有詞典資料，它會自動從教育部網站下載 `kautian.ods` 再整理成 App 用的資料（見下面「詞典資料」），大概要幾分鐘。
+- **App 裡面沒有內建任何詞典。** 第一次打開 App 選語言的時候，App 會自己下載那個語言的詞典，在 iPhone／iPad／Mac 上整理好（要網路，大概一兩分鐘）；其他語言的在「設定 → 詞典資料」安裝。
+- Safari 查詞的延伸功能看不到 App 下載的詞典（要 App Group，用 Sideloadly 裝通常沒有），所以 install.sh 會在你的 Mac 上建立詞典資料（放在 `~/FangfangCards/data`，不會放進 App），只把查詞要的詞放進延伸功能。第一次要幾分鐘。不要 Safari 查詞的話，在指令最後加上 `nosafari`（例如 `install.sh ipa nosafari`）。
 - App 的 ID 會用你自己的開發者團隊產生（`com.fangfangcards.你的團隊ID`），因為每個 ID 只能有一個人用。想用別的 ID：`FANGFANG_ID=com.你的名字.fangfang bash …/install.sh`。
 - 建置失敗的話，Terminal 會列出錯誤訊息，完整紀錄在 `~/Library/Logs/fangfangcards-build.log`。
 
@@ -62,16 +63,17 @@ Intel Mac 不能執行 iPad App，一律裝 Mac 版。
 
 ### 詞典資料
 
-（華語模式的資料 `FangfangCards/zh.json` 也是一樣：`build-data.sh` 會一起下載《兩岸常用詞典》並整理；只要華語的話：`bash build-data.sh zh`。）
+App 裡面和 GitHub 上都**沒有任何詞典資料**。詞典的授權不允許散布改過的版本，所以 App 從原本發布的地方下載檔案，在你的裝置上自己整理：第一次打開 App 選語言的時候會自動安裝那個語言的詞典，其他的在「設定 → 詞典資料」。
 
-App 用的兩個資料檔 `FangfangCards/dict.json` 和 `FangfangCards/cards.json` **不放在 GitHub 上**。它們是從教育部《臺灣台語常用詞辭典》整理出來的，辭典的授權（創用CC 姓名標示-禁止改作）不允許散布改過的版本，所以每個人在自己的電腦上從原始檔案產生：
+只有 Safari 查詞要在 Mac 上建立資料（`install.sh` 會自動做，加 `nosafari` 就跳過）。也可以自己執行：
 
 ```
-bash build-data.sh                       # 自動下載 kautian.ods
-bash build-data.sh ~/Downloads/kautian.ods   # 或用已經下載的檔案
+bash build-data.sh                       # 台語（自動下載 kautian.ods）
+bash build-data.sh zh                    # 華語
+bash build-data.sh yue                   # 粵語（含維基詞典）
 ```
 
-需要：Python 3（Mac 上裝了 Xcode 就有）。`install.sh` 找不到資料時會自動執行這一步。
+需要：Python 3（Mac 上裝了 Xcode 就有）。做出來的檔案不會放進 App（install.sh 會把它們移到 `~/FangfangCards/data`）。
 
 ## 功能
 
@@ -83,6 +85,12 @@ bash build-data.sh ~/Downloads/kautian.ods   # 或用已經下載的檔案
 | **轉換** | 方方轉換器（App 本身的畫面）：漢字 ⇄ 皓羅 ⇄ 方音，也讀台羅／白話字。點輸出的詞可以換讀音（會記住）、看辭典解釋、收藏、加到「不熟」。也可以把整段的新詞一次加到「不熟」或收藏。 |
 | **詞典** | **查詞**：查華語詞、各地講法；用 * 和 ? 找台語詞（人* = 人開頭、*仔 = 仔結尾、*水* = 水在中間、?仔 = 兩個字仔結尾）。**分類**：教育部辭典的 199 個分類，每個分類的詞照常用程度排，可以一次把新詞加到「不熟」。**收藏**：收藏的詞，可以匯出 CSV。**自訂**：自己加的詞（漢字＋讀音，讀音用皓羅、台羅、白話字或方音都可以），在「轉換」和「詞典」用紫色和「自訂」標示，跟著備份和同步。在「轉換」點一個字典裡沒有的詞，也可以直接「加到自訂」。列表裡往右滑 = 加到「不熟」，往左滑 = 收藏。 |
 | **⚙︎ 設定**（每個分頁右上角） | 羅馬字、腔口、隱藏意思、自動播放、音量、練習設定、匯出 CSV、備份、匯入。 |
+
+**日語**（設定 → 語言 → 日語）：和其他語言用同一套頁面（新詞、不熟、詞典、熟悉、練習），按鈕是粉紅色。
+- 讀音用假名或羅馬字；漢字、平假名、片假名、助詞、語尾各一個顏色（設定 → 顏色與外觀 → 選日語的顏色）。
+- **詞典**：用漢字、假名、羅馬字或英文查；變化過的形也找得到（食べなかった → 食べる）；英文意思越接近（剛好是那個詞）排越前面。動詞、形容詞有活用表，詞裡的每個漢字有音讀、訓讀和意思（漢字卡）。
+- **助詞**（詞典的方塊）：用法地圖和每個助詞的說明、例句；「練習」裡的「助詞練習」是填空。
+- **實驗室**（詞典的方塊，或詞條裡的「在實驗室組合這個詞」）：查一個動詞或形容詞，用滾輪接上語尾（食べ・させ・られ・たく・なかった），每個滾輪都顯示整個詞，下面說明每一部分的作用和整體的意思。
 
 **捷徑（Shortcuts）**：捷徑 App 裡有兩個方方詞卡的動作。
 - **在方方詞卡查詞**：輸入一個詞（華語、台語漢字、羅馬字或方音），打開 App 的「詞典」查這個詞。在那裡可以聽發音、收藏（收藏可以匯出 CSV）、加到「不熟」。
@@ -137,6 +145,10 @@ bash build-data.sh ~/Downloads/kautian.ods   # 或用已經下載的檔案
 **練習範圍**（「不熟」）：只練一個等級（華語 HSK／TOCFL 的詞或漢字）或一組（台語常用詞／常用字）的不熟的詞；下面的列表也只列那些詞。
 
 **練習做到一半**：關掉練習（或 App）再打開，會接著上次的題目做（每種練習各記一個，台語華語分開，兩個星期以後就不記了）。右上角的 ↺ 可以重新開始。
+
+**在 App 裡安裝詞典**：設定 → 詞典資料。詞典的授權不允許分享改過的版本，所以 App 從原本發布的地方下載檔案，在 iPhone／iPad 上自己整理（`FangfangCards/Install/*.js`，用 JavaScriptCore 跑，和 tools/ 裡的 Python 做出一樣的資料）。台語、華語（含倉頡、五筆碼）、粵語、客語、日語和說文解字都在 App 裡安裝。粵語在手機上不用維基詞典（2.5 GB 太大）：詞、粵拼、英文解釋和漢字都有，沒有維基詞典的例句、錄音和華語對照；台語詞的英文和四川話讀音也是維基詞典的，所以只有 `install.sh` 在 Mac 上建立的資料裡有（給 Safari 查詞用）；其中四川話讀音（`zh_sc.json`）和台語詞的英文（`tw_en.json`，台語的英文查詞要用）會放進 App，是 App 裡唯二的資料。電腦上也可以跑：`node tools/convert.js taigi|mandarin|inputcodes|hakka|cantonese|japanese …`（參數見檔案開頭）。安裝的檔案在 App 的 Application Support/Dictionaries 裡。
+
+**Safari 查詞（iPad／iPhone）**：在 Safari 用 Apple Pencil 停在一個中文字上面（不碰到螢幕），會跳出從那個字開始的華語詞和台語詞。沒有懸停功能的 iPad 用手指選取詞，觸控板的游標也可以。卡片右上角的「設定」選拼寫、腔口、聲調顏色和要顯示的語言；「加到不熟」「收藏」選好詞以後，按「傳到 App」會打開方方詞卡把詞加進來。開啟：設定 → App → Safari → 延伸功能 → 方方詞卡 查詞，允許「所有網站」。查詞的詞是 `install.sh` 在你的 Mac 上從詞典資料做的，放在延伸功能裡（`FangfangSafari/d-*.json`，不在這個專案裡），所以不需要 App Group，用 Sideloadly 裝也可以用。（延伸功能的 ID 是 `FF_ID.safari`。）
 
 **小工具**：除了台語的分類，也可以選「不熟的詞（台語）」「不熟的詞（華語）」或華語的每個等級和漢字等級；編輯小工具時打開「只顯示不熟的詞」就只出現你往左滑過的詞。
 
@@ -217,5 +229,9 @@ bash build-data.sh ~/Downloads/kautian.ods   # 或用已經下載的檔案
 - **漢字卡的字義**：教育部《重編國語辭典修訂本》，授權：[創用CC 姓名標示-禁止改作 3.0 臺灣](https://creativecommons.org/licenses/by-nd/3.0/tw/)；用 g0v 萌典整理的格式 — [github.com/g0v/moedict-data](https://github.com/g0v/moedict-data)。解釋和用例照錄，引用的古書省略；本儲存庫不包含，`build-data.sh` 執行時下載。
 - **漢字等級**：HSK 3.0 漢字表（ivankra/hsk30）、TOCFL（TBCL）漢字表（ivankra/tocfl）。
 - **華語詞的英文解釋**（用英文查詞）：CC-CEDICT — [cc-cedict.org](https://cc-cedict.org/wiki/)，授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。`build-data.sh` 從 Zhongwen 擴充功能的副本下載（[github.com/cschiller/zhongwen](https://github.com/cschiller/zhongwen)）。
+
+- **日語詞典**（日語：詞、讀音、英文意思、詞性；漢字的意思、音讀、訓讀、筆畫）：JMdict 與 KANJIDIC2 — Electronic Dictionary Research and Development Group（EDRDG），授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)，[www.edrdg.org/edrdg/licence.html](https://www.edrdg.org/edrdg/licence.html)。
+  - 本儲存庫**不包含**詞典的內容：在 App 的「設定 → 詞典資料 → 日語」安裝時，手機從 EDRDG 下載 `JMdict_e_examp.gz` 和 `kanjidic2.xml.gz`，用 `FangfangCards/Install/japanese.js` 在手機上整理。說明見 [`licenses/ja-data.txt`](licenses/ja-data.txt)。
+  - 活用、助詞的說明和例句、「實驗室」是本專案自己寫的；英文的「整體意思」是依規則組合出來的大意。
 
 **程式碼**（Swift、Python、shell）：MIT 授權，見 [`LICENSE`](LICENSE)。上面列的資料、音檔、字型不在 MIT 授權範圍內，各自依照原本的授權。

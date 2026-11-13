@@ -17,7 +17,7 @@ import com.unoki99.fangfang.engine.Styled
 
 /** 主題: 方方之夜 is the original look; 女巫小屋 a candle-lit witch's cottage; 星空 deep space; 苔蘚小窩 goblincore. */
 enum class AppTheme(val raw: String, val title: String) {
-    NIGHT("night", "方方之夜"), WITCH("witch", "女巫小屋"), SPACE("space", "星空"), GOBLIN("goblin", "苔蘚小窩"), WINTER("winter", "雪夜");
+    NIGHT("night", "方方之夜"), WITCH("witch", "女巫小屋"), SPACE("space", "星空"), GOBLIN("goblin", "苔蘚小窩"), WINTER("winter", "雪夜"), SAKURA("sakura", "夜櫻"), MOMIJI("momiji", "紅葉狩");
 
     val fontFamily: FontFamily get() = when (this) { WITCH -> FontFamily.Serif; else -> FontFamily.Default }
 
@@ -41,8 +41,10 @@ private object P {
     val space = Palette(0x0b0e1a, 0x262e4a, 0x46578a, 0x161b2e, 0x2f3a5e, 0xeef1ff, 0x9aa3c7, 0x1f2d5c, 0x3b5bd6, 0xc6d4ff, 0x1d4446, 0x2f8f86, 0xc4f5ec, 0xe2ccff, 0x4f4220, 0xc9a43a, 0xffe9a8, 0x56283a, 0xb0446a, 0xffc2d4, 0x4a2858, 0xff7a6e, 0xff9fd2, 0xa14fc2, 0xf3cdfc, 0xc8b4ff, 0x372d66, 0x7a5cff)
     val winter = Palette(0x10161f, 0x2e3b4d, 0x5b7290, 0x1a2330, 0x354659, 0xeef5ff, 0x9fb0c4, 0x24395a, 0x4f7fc0, 0xcfe2ff, 0x1f3b3a, 0x3f8a83, 0xc9f1ea, 0xdcd2fa, 0x3d4656, 0x8fa6c4, 0xe6eefb, 0x4a2f3a, 0x9a5a6e, 0xf6cdd8, 0x40304f, 0xff7a6e, 0xff9fd2, 0x8b5a9e, 0xf0d6f7, 0xc6b4ff, 0x35304f, 0x6f5fb0)
     val goblin = Palette(0x17170f, 0x3d3a24, 0x6e683a, 0x25261a, 0x4d4a2c, 0xeee8d2, 0xaaa58a, 0x2c3a3a, 0x4f7470, 0xcfe3dc, 0x34431f, 0x6b8a2e, 0xdcedb4, 0xdcc7e6, 0x4f4520, 0x9c8a34, 0xf0e2a2, 0x523222, 0x9a5a2c, 0xf1caa6, 0x4d3038, 0xff7a6e, 0xff9fd2, 0x8e5464, 0xf0cfd6, 0xc9b0e0, 0x3e3348, 0x75568a)
+    val sakura = Palette(0x1d1418, 0x4c3440, 0x8e5d73, 0x2a1c22, 0x5b3a49, 0xfdeff4, 0xc7a9b6, 0x353a5e, 0x5a66a8, 0xd2d6ff, 0x37473a, 0x6a8a62, 0xd6ecd0, 0xeacdf5, 0x584a33, 0xa88a52, 0xf6e3b5, 0x5e3240, 0xb85878, 0xffc8d8, 0x6a3550, 0xff7a6e, 0xff9fd2, 0xe07aa6, 0xffd3e6, 0xd6b0ff, 0x4a3358, 0x8b5fb0)
+    val momiji = Palette(0x1c130f, 0x4c2f22, 0x9a4f2c, 0x2a1b14, 0x5e3524, 0xf9ece2, 0xc6a898, 0x2f3550, 0x56619a, 0xd4d8ff, 0x3d4529, 0x7f8a3a, 0xe4ecc0, 0xe9cfe6, 0x5e4520, 0xc9922e, 0xfde3a6, 0x632a1c, 0xd2552b, 0xffc6a8, 0x5c2e34, 0xff7a6e, 0xff9fd2, 0xb5545f, 0xf9cdd2, 0xd0b0ef, 0x45304f, 0x86579f)
     val now: Palette
-        get() = when (AppTheme.current) { AppTheme.NIGHT -> night; AppTheme.WITCH -> witch; AppTheme.SPACE -> space; AppTheme.GOBLIN -> goblin; AppTheme.WINTER -> winter }
+        get() = when (AppTheme.current) { AppTheme.NIGHT -> night; AppTheme.WITCH -> witch; AppTheme.SPACE -> space; AppTheme.GOBLIN -> goblin; AppTheme.WINTER -> winter; AppTheme.SAKURA -> sakura; AppTheme.MOMIJI -> momiji }
 }
 
 fun hex(v: Long): Color = Color(0xFF000000 or v)
@@ -64,13 +66,16 @@ object T {
     val greenEdge get() = hex(P.now.greenEdge)
     val greenInk get() = hex(P.now.greenInk)
     val purpleInk get() = hex(P.now.purpleInk)
-    /** buttons (what used to be green): 華語 blue, 台語 purple */
-    // 台語 purple, 華語 blue, 粵語 yellow
-    val btn get() = when (com.unoki99.fangfang.Store.lang) { 3 -> hakFill; 2 -> olive; 1 -> blue; else -> own }
-    val btnEdge get() = when (com.unoki99.fangfang.Store.lang) { 3 -> hakEdge; 2 -> oliveEdge; 1 -> blueEdge; else -> ownEdge }
-    val btnInk get() = when (com.unoki99.fangfang.Store.lang) { 3 -> hakInk; 2 -> oliveInk; 1 -> blueInk; else -> purpleInk }
-    /** 客語's orange (the same in every theme) */
-    val hakFill = Color(0xFF5C3F1A); val hakEdge = Color(0xFFD9822B); val hakInk = Color(0xFFFFD29A)
+    /** buttons in the language's colour: 台語 green, 華語 blue, 粵語 yellow, 客語 red, 日語 pink */
+    val btn get() = when (com.unoki99.fangfang.Store.lang) { 4 -> jaFill; 3 -> hakFill; 2 -> olive; 1 -> blue; else -> twFill }
+    val btnEdge get() = when (com.unoki99.fangfang.Store.lang) { 4 -> jaEdge; 3 -> hakEdge; 2 -> oliveEdge; 1 -> blueEdge; else -> twEdge }
+    val btnInk get() = when (com.unoki99.fangfang.Store.lang) { 4 -> jaInk; 3 -> hakInk; 2 -> oliveInk; 1 -> blueInk; else -> twInk }
+    /** 台語's green (the same in every theme) */
+    val twFill = Color(0xFF1D4630); val twEdge = Color(0xFF3FAE66); val twInk = Color(0xFFB6F0C8)
+    /** 客語's red (the same in every theme) */
+    val hakFill = Color(0xFF5A1E2A); val hakEdge = Color(0xFFD8434F); val hakInk = Color(0xFFFFB3B8)
+    /** 日語's pink (the same in every theme) */
+    val jaFill = Color(0xFF5A2346); val jaEdge = Color(0xFFFF8CC6); val jaInk = Color(0xFFFFC9E4)
     val olive get() = hex(P.now.olive)
     val oliveEdge get() = hex(P.now.oliveEdge)
     val oliveInk get() = hex(P.now.oliveInk)

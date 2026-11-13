@@ -12,7 +12,7 @@ extension Color {
 /// 主題 (設定 → 顯示 → 主題): 方方之夜 is the original look; 女巫小屋 a candle-lit witch's cottage; 星空 deep space;
 /// 苔蘚小窩 goblincore (moss, mushrooms, pebbles and little treasures); 雪夜 a snowy winter night. The tone colours stay the same in all of them.
 enum AppTheme: String, CaseIterable {
-    case night, witch, space, goblin, winter
+    case night, witch, space, goblin, winter, sakura, momiji
     static let key = "appTheme"
     /// read once per change (set from the app's root view), not on every colour lookup
     nonisolated(unsafe) static var current: AppTheme = AppTheme(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .night
@@ -23,6 +23,8 @@ enum AppTheme: String, CaseIterable {
         case .space: return trs("星空")
         case .goblin: return trs("苔蘚小窩")
         case .winter: return trs("雪夜")
+        case .sakura: return trs("夜櫻")
+        case .momiji: return trs("紅葉狩")
         }
     }
     /// letters and numbers in the theme's own style
@@ -75,6 +77,10 @@ private enum P {
     static let goblin = Palette(bg: 0x17170f, key: 0x3d3a24, keyEdge: 0x6e683a, fn: 0x25261a, fnEdge: 0x4d4a2c, glyph: 0xeee8d2, muted: 0xaaa58a, blue: 0x2c3a3a, blueEdge: 0x4f7470, blueInk: 0xcfe3dc, green: 0x34431f, greenEdge: 0x6b8a2e, greenInk: 0xdcedb4, purpleInk: 0xdcc7e6, olive: 0x4f4520, oliveEdge: 0x9c8a34, oliveInk: 0xf0e2a2, rust: 0x523222, rustEdge: 0x9a5a2c, rustInk: 0xf1caa6, pink: 0x4d3038, guessInk: 0xff7a6e, swapInk: 0xff9fd2, pinkEdge: 0x8e5464, pinkInk: 0xf0cfd6, ownInk: 0xc9b0e0, own: 0x3e3348, ownEdge: 0x75568a)
     /// 雪夜: frosty blue-grey, ice and pine
     static let winter = Palette(bg: 0x10161f, key: 0x2e3b4d, keyEdge: 0x5b7290, fn: 0x1a2330, fnEdge: 0x354659, glyph: 0xeef5ff, muted: 0x9fb0c4, blue: 0x24395a, blueEdge: 0x4f7fc0, blueInk: 0xcfe2ff, green: 0x1f3b3a, greenEdge: 0x3f8a83, greenInk: 0xc9f1ea, purpleInk: 0xdcd2fa, olive: 0x3d4656, oliveEdge: 0x8fa6c4, oliveInk: 0xe6eefb, rust: 0x4a2f3a, rustEdge: 0x9a5a6e, rustInk: 0xf6cdd8, pink: 0x40304f, guessInk: 0xff7a6e, swapInk: 0xff9fd2, pinkEdge: 0x8b5a9e, pinkInk: 0xf0d6f7, ownInk: 0xc6b4ff, own: 0x35304f, ownEdge: 0x6f5fb0)
+    /// 夜櫻: cherry blossoms at night, plum dark and petal pink
+    static let sakura = Palette(bg: 0x1d1418, key: 0x4c3440, keyEdge: 0x8e5d73, fn: 0x2a1c22, fnEdge: 0x5b3a49, glyph: 0xfdeff4, muted: 0xc7a9b6, blue: 0x353a5e, blueEdge: 0x5a66a8, blueInk: 0xd2d6ff, green: 0x37473a, greenEdge: 0x6a8a62, greenInk: 0xd6ecd0, purpleInk: 0xeacdf5, olive: 0x584a33, oliveEdge: 0xa88a52, oliveInk: 0xf6e3b5, rust: 0x5e3240, rustEdge: 0xb85878, rustInk: 0xffc8d8, pink: 0x6a3550, guessInk: 0xff7a6e, swapInk: 0xff9fd2, pinkEdge: 0xe07aa6, pinkInk: 0xffd3e6, ownInk: 0xd6b0ff, own: 0x4a3358, ownEdge: 0x8b5fb0)
+    /// 紅葉狩: an autumn evening, maple red and gold
+    static let momiji = Palette(bg: 0x1c130f, key: 0x4c2f22, keyEdge: 0x9a4f2c, fn: 0x2a1b14, fnEdge: 0x5e3524, glyph: 0xf9ece2, muted: 0xc6a898, blue: 0x2f3550, blueEdge: 0x56619a, blueInk: 0xd4d8ff, green: 0x3d4529, greenEdge: 0x7f8a3a, greenInk: 0xe4ecc0, purpleInk: 0xe9cfe6, olive: 0x5e4520, oliveEdge: 0xc9922e, oliveInk: 0xfde3a6, rust: 0x632a1c, rustEdge: 0xd2552b, rustInk: 0xffc6a8, pink: 0x5c2e34, guessInk: 0xff7a6e, swapInk: 0xff9fd2, pinkEdge: 0xb5545f, pinkInk: 0xf9cdd2, ownInk: 0xd0b0ef, own: 0x45304f, ownEdge: 0x86579f)
     static var now: Palette {
         switch AppTheme.current {
         case .night: return night
@@ -82,6 +88,8 @@ private enum P {
         case .space: return space
         case .goblin: return goblin
         case .winter: return winter
+        case .sakura: return sakura
+        case .momiji: return momiji
         }
     }
 }
@@ -107,20 +115,27 @@ enum T {
     nonisolated(unsafe) static var zh = false
     /// 粵語 shown (its buttons are yellow)
     nonisolated(unsafe) static var yue = false
-    /// 客語 shown (its buttons are orange)
+    /// 客語 shown (its buttons are red)
     nonisolated(unsafe) static var hak = false
-    static var btn: Color { hak ? hakFill : (yue ? olive : (zh ? blue : own)) }
-    static var btnEdge: Color { hak ? hakEdge : (yue ? oliveEdge : (zh ? blueEdge : ownEdge)) }
-    static var btnInk: Color { hak ? hakInk : (yue ? oliveInk : (zh ? blueInk : purpleInk)) }
-    /// 客語's orange (the same in every theme)
-    static let hakFill = Color(hex: 0x5c3f1a), hakEdge = Color(hex: 0xd9822b), hakInk = Color(hex: 0xffd29a)
+    /// 日語 shown (its buttons are pink)
+    nonisolated(unsafe) static var ja = false
+    static var btn: Color { ja ? jaFill : (hak ? hakFill : (yue ? olive : (zh ? blue : twFill))) }
+    static var btnEdge: Color { ja ? jaEdge : (hak ? hakEdge : (yue ? oliveEdge : (zh ? blueEdge : twEdge))) }
+    static var btnInk: Color { ja ? jaInk : (hak ? hakInk : (yue ? oliveInk : (zh ? blueInk : twInk))) }
+    /// 日語's pink (the same in every theme)
+    static let jaFill = Color(hex: 0x5a2346), jaEdge = Color(hex: 0xff8cc6), jaInk = Color(hex: 0xffc9e4)
+    /// 台語's green (the same in every theme)
+    static let twFill = Color(hex: 0x1d4630), twEdge = Color(hex: 0x3fae66), twInk = Color(hex: 0xb6f0c8)
+    /// 客語's red (the same in every theme)
+    static let hakFill = Color(hex: 0x5a1e2a), hakEdge = Color(hex: 0xd8434f), hakInk = Color(hex: 0xffb3b8)
     /// each language's capsule (the language menu): fill, edge, ink
     static func langColors(_ l: Int) -> (fill: Color, edge: Color, ink: Color) {
         switch l {
-        case 3: return (Color(hex: 0x5c3f1a), Color(hex: 0xd9822b), Color(hex: 0xffd29a))
+        case 4: return (jaFill, jaEdge, jaInk)
+        case 3: return (hakFill, hakEdge, hakInk)
         case 2: return (Color(hex: 0x5a4a14), Color(hex: 0xc9a227), Color(hex: 0xffe58a))
         case 1: return (Color(hex: 0x1f3d6b), Color(hex: 0x4f7dff), Color(hex: 0x9ad0ff))
-        default: return (Color(hex: 0x4c3a5b), Color(hex: 0x7b3c9b), T.purpleInk)
+        default: return (twFill, twEdge, twInk)
         }
     }
     static var olive: Color { Color(hex: P.now.olive) }
@@ -142,7 +157,25 @@ enum T {
     static func lat(_ size: CGFloat) -> Font { .custom("DejaVuSans", size: size) }
 }
 
-let ROM_NAMES = ["皓羅", "台羅", "白話字"]
+let ROM_NAMES = ["皓羅", "台羅", "白話字", "方音"]
+
+/// 台語's spelling: 0 皓羅, 1 台羅, 2 白話字 (each with 方音 under it), or 3 = 方音 only
+enum TwRom {
+    static var hongimOnly: Bool { UserDefaults.standard.integer(forKey: "rom") == 3 }
+    /// the spelling of the main reading line (3: 方音)
+    static func lat(_ rom: Int) -> Int { rom == 3 ? 3 : min(max(rom, 0), 2) }
+}
+
+/// the 方音 line under a 台語 reading: left out when 方音 is the only spelling (it's the main line then)
+struct HongimLine: ViewModifier {
+    @AppStorage("rom") private var rom = 0
+    @ViewBuilder func body(content: Content) -> some View {
+        if rom != 3 { content }
+    }
+}
+extension View {
+    func hongimLine() -> some View { modifier(HongimLine()) }
+}
 
 /// the 10 places of the MOE dictionary's 語音差異, in the data's order (腔口 index = position)
 let PLACE_NAMES = ["鹿港偏泉腔", "三峽偏泉腔", "臺北偏泉腔", "宜蘭偏漳腔", "臺南混合腔",
@@ -217,7 +250,7 @@ struct RomButton: View {
         #endif
     }
     private var plainText: some View {
-        Text(trs(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[min(max(rom, 0), 2)]))
+        Text(trs(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[TwRom.lat(rom)]))
             .ffFont(.subheadline, .bold)
             .foregroundStyle(T.btnInk)
     }
@@ -291,10 +324,11 @@ struct PlaceMenuItems: View {
             Text(tr("華語")).tag(1)
             Text(tr("粵語")).tag(2)
             Text(tr("客語")).tag(3)
+            Text(tr("日語")).tag(4)
         }
         .pickerStyle(.inline)
-        if store.isYue {
-            EmptyView()       // (粵語: one reading)
+        if store.isYue || store.isJa {
+            EmptyView()       // (粵語, 日語: one reading)
         } else if store.isHak {
             Picker(tr("客語腔"), selection: $store.hakAccent) {
                 ForEach(0..<Lang.hakAccents.count, id: \.self) { Text(trs(Lang.hakAccents[$0])).tag($0) }
@@ -345,7 +379,7 @@ struct CompactReadingMenu: View {
             } label: { Label(tr("聲調顏色"), systemImage: "paintpalette") }
         } label: {
             HStack(spacing: 5) {
-                Text(trs(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[min(max(rom, 0), 2)]))
+                Text(trs(store.isZh ? Lang.romNames[min(max(store.zhRom, 0), 1)] : ROM_NAMES[TwRom.lat(rom)]))
                     .ffFont(.subheadline, .bold)
                     .lineLimit(1)
                 ToneDots(system: system)
@@ -385,8 +419,9 @@ struct PlaceMenu: View {
     private var name: String { PlaceMenu.name(store, place) }
     static func name(_ store: Store, _ place: Int) -> String {
         if store.isYue { return "粵語" }
+        if store.isJa { return "日語" }
         if store.isHak { return "客・" + Lang.hakAccents[min(max(store.hakAccent, 0), Lang.hakAccents.count - 1)] }
-        if store.isZh { return "華・" + Lang.zhPlaceNames[min(max(store.zhPlace, 0), 1)] }
+        if store.isZh { return "華・" + Lang.zhPlaceNames[min(max(store.zhPlace, 0), Lang.zhPlaceNames.count - 1)] }
         return "台・" + (place >= 0 && place < PLACE_NAMES.count ? String(PLACE_NAMES[place].prefix(2)) : "通行")
     }
 
@@ -474,6 +509,21 @@ extension TextSize {
 /// on iPhone/iPad they're the usual text styles, which follow the phone's own text size.
 enum FFStyle {
     case body, callout, subheadline, footnote, caption, caption2, headline, title3, title2, title, largeTitle
+    var uiStyle: UIFont.TextStyle {
+        switch self {
+        case .body: return .body
+        case .callout: return .callout
+        case .subheadline: return .subheadline
+        case .footnote: return .footnote
+        case .caption: return .caption1
+        case .caption2: return .caption2
+        case .headline: return .headline
+        case .title3: return .title3
+        case .title2: return .title2
+        case .title: return .title1
+        case .largeTitle: return .largeTitle
+        }
+    }
     var textStyle: Font.TextStyle {
         switch self {
         case .body: return .body
@@ -522,12 +572,89 @@ enum FFStyle {
     }
 }
 
+/// 設定 → 詞典 → 字體: the text of a dictionary entry (a word's or a character's page) in the system font or in one
+/// of the handwriting fonts (楷體, 文楷, 芫荽)
+/// 設定 → 顏色與外觀 → 字體: the app's 漢字 and kana in the system font or in one of the handwriting fonts (楷體, 文楷,
+/// 芫荽). Only the characters the system font doesn't have change: English and the readings stay as they are.
+enum DictFont {
+    static let key = "dictFont"
+    /// 0 = the system font, then Kaiti.styles
+    static var names: [String] { ["系統字體"] + Kaiti.styles.map { $0.name } }
+    static var chosen: Int { UserDefaults.standard.integer(forKey: key) }
+
+    /// the system font at a size and weight, its 漢字 and kana from the handwriting font chosen (nil: the system
+    /// font as it is). The system font has no 漢字: what it doesn't have is looked for in its cascade list first, so
+    /// putting the handwriting font there changes only those characters.
+    static func font(_ size: CGFloat, weight: Font.Weight = .regular, on: Bool = true) -> Font? {
+        let c = chosen
+        guard on, c > 0 else { return nil }
+        let key = "\(c)|\(size)|\(weight.hashValue)" as NSString
+        if let hit = cache.object(forKey: key) { return Font(hit as CTFont) }
+        Kaiti.register()
+        let chosenName = Kaiti.styles[min(c - 1, Kaiti.styles.count - 1)].ps
+        let names = [chosenName] + ["LXGWWenKaiTC-Regular", Kaiti.tc, Kaiti.sc].filter { $0 != chosenName }
+        let have = names.filter { UIFont(name: $0, size: size) != nil }
+        guard !have.isEmpty else { return nil }
+        let base = UIFont.systemFont(ofSize: size, weight: uiWeight(weight))
+        let desc = base.fontDescriptor.addingAttributes([.cascadeList: have.map { UIFontDescriptor(name: $0, size: size) }])
+        let f = UIFont(descriptor: desc, size: size)
+        cache.setObject(f, forKey: key)
+        return Font(f as CTFont)
+    }
+    private static let cache: NSCache<NSString, UIFont> = { let c = NSCache<NSString, UIFont>(); c.countLimit = 200; return c }()
+
+    private static func uiWeight(_ w: Font.Weight) -> UIFont.Weight {
+        switch w {
+        case .ultraLight: return .ultraLight
+        case .thin: return .thin
+        case .light: return .light
+        case .medium: return .medium
+        case .semibold: return .semibold
+        case .bold: return .bold
+        case .heavy: return .heavy
+        case .black: return .black
+        default: return .regular
+        }
+    }
+}
+
+private struct InEntryKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// inside a dictionary entry (its text follows 設定 → 詞典 → 字體)
+    var inEntry: Bool {
+        get { self[InEntryKey.self] }
+        set { self[InEntryKey.self] = newValue }
+    }
+}
+extension View {
+    /// a dictionary entry: its text in the font chosen in 設定 → 詞典 → 字體
+    func dictFontArea() -> some View { environment(\.inEntry, true) }
+}
+
 struct FFFont: ViewModifier {
     let style: FFStyle
     var weight: Font.Weight? = nil
     var mono = false
     @AppStorage(TextSize.key) private var level = TextSize.standard
-    func body(content: Content) -> some View {
+    @AppStorage(DictFont.key) private var dictFont = 0
+    @Environment(\.inEntry) private var inEntry
+    @ViewBuilder func body(content: Content) -> some View {
+        // 字體 = a handwriting font: the 漢字 and kana in it (the text style's size, grown with the text size chosen)
+        if dictFont > 0, let f = DictFont.font(fontSize, weight: weight ?? (style == .headline ? .semibold : .regular)) {
+            content.font(mono ? f.monospacedDigit() : f)
+        } else {
+            plain(content)
+        }
+    }
+    private var fontSize: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        return style.size * 0.77 * TextSize.factor(level)
+        #else
+        return TextSize.padScales && level > 0 ? style.size * TextSize.factor(level)
+            : UIFontMetrics(forTextStyle: style.uiStyle).scaledValue(for: style.size)
+        #endif
+    }
+    @ViewBuilder private func plain(_ content: Content) -> some View {
         #if targetEnvironment(macCatalyst)
         // Mac sizes are the iPad sizes × 0.77 (how Mac text compares to iPad text), then the chosen factor
         let f = Font.system(size: style.size * 0.77 * TextSize.factor(level),
@@ -569,12 +696,24 @@ struct ScaledFont: ViewModifier {
     private let weight: Font.Weight
     private let on: Bool
     @AppStorage(TextSize.key) private var level = TextSize.standard
+    @AppStorage(DictFont.key) private var dictFont = 0
+    @Environment(\.inEntry) private var inEntry
     init(_ size: CGFloat, weight: Font.Weight, on: Bool) {
         self.size = size; self.weight = weight; self.on = on
+    }
+    private var scaledSize: CGFloat {
+        #if targetEnvironment(macCatalyst)
+        return size * 0.77 * TextSize.factor(level)
+        #else
+        return size * (TextSize.padScales ? TextSize.factor(level) : 1)
+        #endif
     }
     @ViewBuilder func body(content: Content) -> some View {
         if !on {
             content
+        } else if dictFont > 0, let f = DictFont.font(scaledSize, weight: weight) {
+            // 字體 = a handwriting font: the 漢字 and kana in it
+            content.font(f)
         } else {
             #if targetEnvironment(macCatalyst)
             let s = size * 0.77 * TextSize.factor(level)
@@ -601,6 +740,11 @@ extension View {
 struct TextSizeCommands: Commands {
     @AppStorage(TextSize.key) private var level = TextSize.standard
     var body: some Commands {
+        // 設定… in the app's menu (⌘,): on a Mac the ⚙︎ in the top bar can be left out when the window's bar is full
+        CommandGroup(replacing: .appSettings) {
+            Button(tr("設定…")) { Task { @MainActor in Router.shared.settingsOpen = true } }
+                .keyboardShortcut(",", modifiers: .command)
+        }
         CommandGroup(after: .toolbar) {
             Button(tr("放大文字")) { level = TextSize.clamp(level + 1) }
                 .keyboardShortcut("=", modifiers: .command)   // ⌘+ (the + key is ⇧=)

@@ -11,6 +11,8 @@
 #   bash build-data.sh yue ~/Downloads/kaikki.org-dictionary-Chinese.jsonl   (with that Wiktionary file)
 #   bash build-data.sh hak             (only the 客語 data, FangfangCards/hak.json)
 #   bash build-data.sh twen            (only the 台語 words' English from Wiktionary, FangfangCards/tw_en.json)
+#   bash build-data.sh sc              (only the 華語 words' 四川話 readings from Wiktionary, FangfangCards/zh_sc.json)
+#   bash build-data.sh safari          (only the words inside the Safari extension, FangfangSafari/d-*.json)
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d)"
@@ -63,6 +65,11 @@ build_yue() {
     echo "整理台語詞的英文解釋（維基詞典）…"
     /usr/bin/env python3 "$HERE/tools/build_tw_english.py" "$HERE/FangfangCards/dict.json" "$HERE/FangfangCards/tw_en.json" "$K" || true
   fi
+  # (and the 華語 words' 四川話 readings)
+  if [ "$K" != "-" ] && [ -f "$HERE/FangfangCards/zh.json" ]; then
+    echo "整理華語詞的四川話讀音（維基詞典）…"
+    /usr/bin/env python3 "$HERE/tools/build_sichuan.py" "$HERE/FangfangCards/zh.json" "$HERE/FangfangCards/zh_sc.json" "$K" || true
+  fi
 }
 # 台語: English for the 教育部 dictionary's words, from Wiktionary (a file of its own; dict.json isn't changed)
 build_twen() {
@@ -76,6 +83,22 @@ build_twen() {
   /usr/bin/env python3 "$HERE/tools/build_tw_english.py" "$HERE/FangfangCards/dict.json" "$HERE/FangfangCards/tw_en.json" "$K"
 }
 if [ "$ODS" = "twen" ]; then build_twen "$2"; echo "✓ 完成：FangfangCards/tw_en.json"; exit 0; fi
+# 華語 → 四川話: the 四川話 (成都) readings of the 華語 dictionary's words, from Wiktionary (a file of its own)
+build_sc() {
+  [ -f "$HERE/FangfangCards/zh.json" ] || { echo "✗ 先要有華語詞典資料（zh.json）。"; return 1; }
+  K="${1:-}"
+  for c in "$HOME/Downloads/kaikki.org-dictionary-Chinese.jsonl" "$HOME/Desktop/kaikki.org-dictionary-Chinese.jsonl"; do
+    [ -z "$K" ] && [ -f "$c" ] && K="$c"
+  done
+  if [ -z "$K" ]; then echo "從 kaikki.org 讀維基詞典的中文資料（檔案很大，要等一陣子；不會存到電腦裡）…"; K="-"; fi
+  echo "整理華語詞的四川話讀音（維基詞典）…"
+  /usr/bin/env python3 "$HERE/tools/build_sichuan.py" "$HERE/FangfangCards/zh.json" "$HERE/FangfangCards/zh_sc.json" "$K"
+}
+if [ "$ODS" = "sc" ]; then build_sc "$2"; echo "✓ 完成：FangfangCards/zh_sc.json"; exit 0; fi
+if [ "$ODS" = "safari" ]; then
+  /usr/bin/env python3 "$HERE/tools/build_safari.py" "$HERE/FangfangCards/" "$HERE/FangfangSafari/" && echo "✓ 完成：FangfangSafari/d-*.json"
+  exit 0
+fi
 if [ "$ODS" = "yue" ]; then build_yue "$2"; echo "✓ 完成：FangfangCards/yue.json"; exit 0; fi
 # 客語: 教育部《臺灣客語辭典》, one file per accent (CC BY-ND 3.0 TW, like the 台語 dictionary: built here, not shared)
 build_hak() {

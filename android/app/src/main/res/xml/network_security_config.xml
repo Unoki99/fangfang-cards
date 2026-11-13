@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 日語's dictionary files (JMdict, KANJIDIC2) are published by the EDRDG over http -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">edrdg.org</domain>
+    </domain-config>
+</network-security-config>

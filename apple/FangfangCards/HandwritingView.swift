@@ -73,9 +73,16 @@ enum Kaiti {
     }
 
     /// the chosen font at a size; what it doesn't have comes from 文楷, then 楷體 (TC, then SC), then the system font
-    static func font(_ size: CGFloat) -> UIFont {
+    static func font(_ size: CGFloat) -> UIFont { font(size, style: style) }
+
+    /// a font of `styles` for SwiftUI's Text, made from the UIFont itself (by its name SwiftUI doesn't always find a
+    /// font the app registered or downloaded, which is why 手寫練習 draws its characters itself)
+    static func text(_ size: CGFloat, style s: Int) -> Font { Font(font(size, style: s) as CTFont) }
+
+    /// the font `s` of `styles` at a size, with the same fallbacks
+    static func font(_ size: CGFloat, style s: Int) -> UIFont {
         register()
-        let chosen = styles[style].ps
+        let chosen = styles[min(max(s, 0), styles.count - 1)].ps
         var names = [chosen]
         for n in ["LXGWWenKaiTC-Regular", tc, sc] where n != chosen { names.append(n) }
         let have = names.filter { UIFont(name: $0, size: size) != nil }
@@ -86,6 +93,16 @@ enum Kaiti {
 
     /// a character drawn in 楷體, filling a square (centred on the character's own shape)
     static func image(_ ch: String, side: CGFloat, scale: CGFloat, color: UIColor) -> UIImage {
+        let key = "\(ch)|\(Int(side * 4))|\(scale)|\(color.description)|\(style)|\(ready)" as NSString
+        if let hit = imageCache.object(forKey: key) { return hit }
+        let made = draw(ch, side: side, scale: scale, color: color)
+        imageCache.setObject(made, forKey: key)
+        return made
+    }
+    /// (drawn characters, kept: a page that's drawn again often, like the falling words, doesn't draw them again)
+    private static let imageCache: NSCache<NSString, UIImage> = { let c = NSCache<NSString, UIImage>(); c.countLimit = 600; return c }()
+
+    private static func draw(_ ch: String, side: CGFloat, scale: CGFloat, color: UIColor) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = scale
         format.opaque = false
@@ -101,6 +118,27 @@ enum Kaiti {
             CTLineDraw(line, ctx)
             ctx.restoreGState()
         }
+    }
+}
+
+/// text in the handwriting font chosen, drawn by the app itself (the same way as 手寫練習's character: SwiftUI's Text
+/// doesn't always get a font the app registered)
+struct KaitiText: View {
+    let text: String
+    let size: CGFloat
+    var color: Color = T.glyph
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(text.enumerated()), id: \.offset) { _, ch in
+                Image(uiImage: Kaiti.image(String(ch), side: size * 1.1, scale: 3, color: UIColor(color)))
+                    .resizable()
+                    .frame(width: size * 1.1, height: size * 1.1)
+            }
+        }
+        .id("\(text)\(fontStyle)\(Kaiti.ready)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
     }
 }
 
@@ -481,29 +519,7 @@ private struct HandwritingPad: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
-                    // 字體: 楷體, 文楷 or 芫荽 (the character at the top and the one to trace)
-                    Menu {
-                        Picker(tr("字體"), selection: $fontStyle) {
-                            ForEach(Kaiti.styles.indices, id: \.self) { Text(trs(Kaiti.styles[$0].name)).tag($0) }
-                        }
-                        .pickerStyle(.inline)
-                    } label: {
-                        Label(tr("字體"), systemImage: "textformat")
-                    }
-                    .accessibilityLabel(tr("字體：") + trs(Kaiti.styles[Kaiti.style].name))
-                    // 筆: which pen, how thick, 彩色
-                    Button { penOpen = true } label: { Label(tr("筆"), systemImage: "pencil.tip") }
-                        .popover(isPresented: $penOpen) {
-                            PenSettings(compact: true).presentationCompactAdaptation(.popover)
-                        }
-                    // 顏色: the dark ink, the rainbow (a new colour every stroke) or a colour of its own
-                    Button { colorOpen = true } label: {
-                        Label { Text(tr("顏色")) } icon: { InkSwatch(size: 20) }
-                    }
-                    .popover(isPresented: $colorOpen) {
-                        InkColorPicker(compact: true).presentationCompactAdaptation(.popover)
-                    }
-                    .accessibilityLabel(tr("筆的顏色"))
+                    PenTools()
                     // 描字: on = the icon glows (no filled background), off = plain
                     Button { withAnimation(.easeInOut(duration: 0.25)) { trace.toggle() } } label: {
                         Label(tr("描字"), systemImage: "character.cursor.ibeam")
@@ -563,11 +579,11 @@ private struct HandwritingPad: View {
         return HStack(alignment: .center, spacing: 16) {
             // tap: the words with this character (to learn it in context); on an iPad they're beside the square
             if wide {
-                Text(ch).font(Kaiti.swiftUI(64)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
+                KaitiText(text: ch, size: 64, color: T.blueInk).id("\(kaiti)\(fontStyle)")
             } else {
                 Button { wordsFor = WordsRef(ch: ch) } label: {
                     VStack(spacing: 0) {
-                        Text(ch).font(Kaiti.swiftUI(64)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
+                        KaitiText(text: ch, size: 64, color: T.blueInk).id("\(kaiti)\(fontStyle)")
                         Label(tr("看詞"), systemImage: "text.magnifyingglass").ffFont(.caption2, .semibold).foregroundStyle(T.muted)
                     }
                     .contentShape(Rectangle())
@@ -625,6 +641,7 @@ private struct HandwritingPad: View {
                 drawn = !d.strokes.isEmpty
                 if trace { score = TraceScore.score(target: target, drawing: d, side: side) }
             }
+            StrokeNumbers(drawing: lastDrawing)
         }
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
         .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -678,6 +695,8 @@ enum HandInk {
     static let colorKey = "handwritingInkColor"
     /// 延遲: how many seconds after the pen the writing shows up (0 = right away)
     static let delayKey = "handwritingInkDelay"
+    /// 筆畫編號: a small circled number at the start of each stroke
+    static let numbersKey = "handwritingStrokeNumbers"
     /// the dark ink (the same on every theme)
     static let dark = UIColor(red: 0x1a / 255, green: 0x1a / 255, blue: 0x1c / 255, alpha: 1)
     /// PencilKit's pens: the name, what it's like, the thinnest and thickest it's drawn here
@@ -723,6 +742,7 @@ struct PenSettings: View {
     @AppStorage(HandInk.rainbowKey) private var rainbow = false
     @AppStorage(HandInk.delayKey) private var delay = 0.0
     @AppStorage(HandInk.colorKey) private var inkColor = 0
+    @AppStorage(HandInk.numbersKey) private var numbers = false
     /// in the pop-over (no Form around it)
     var compact = false
 
@@ -750,6 +770,7 @@ struct PenSettings: View {
                 sizeRow
                 preview
                 delayRow
+                Toggle(tr("筆畫編號"), isOn: $numbers).ffFont(.subheadline)
             }
             .padding(18)
             .frame(width: 330)
@@ -760,6 +781,7 @@ struct PenSettings: View {
             sizeRow
             preview
             delayRow
+            Toggle(tr("筆畫編號"), isOn: $numbers)
         }
     }
 
@@ -1439,7 +1461,12 @@ struct WordWriteArea: View {
     let grade: (Bool) -> Void
     /// just practising (a card's 寫整個詞): after 對答案, 再寫一次 (grade(false)) or 完成 (grade(true))
     var practiceOnly = false
+    /// 不會寫: shows the answer, and the word is written again a little later (only then)
+    var dontKnow: (() -> Void)? = nil
     @State private var drawings: [PKDrawing]
+    /// 格子大小: the squares stay this size (only the slider changes it; smaller only when they don't fit)
+    @AppStorage("handwritingTestPadSize") private var fixedSize = 300.0
+    @State private var avail: CGFloat = 0
     /// changes when a square is cleared (清掉)
     @State private var clears: [Int]
     @State private var cur = 0
@@ -1449,73 +1476,120 @@ struct WordWriteArea: View {
     @AppStorage(Kaiti.styleKey) private var fontStyle = 0
     @Environment(\.horizontalSizeClass) private var hSize
 
-    init(chars: [String], answered: Bool, practiceOnly: Bool = false, grade: @escaping (Bool) -> Void) {
-        self.chars = chars; self.answered = answered; self.practiceOnly = practiceOnly; self.grade = grade
+    init(chars: [String], answered: Bool, practiceOnly: Bool = false, dontKnow: (() -> Void)? = nil, grade: @escaping (Bool) -> Void) {
+        self.chars = chars; self.answered = answered; self.practiceOnly = practiceOnly; self.dontKnow = dontKnow; self.grade = grade
         _drawings = State(initialValue: Array(repeating: PKDrawing(), count: chars.count))
         _clears = State(initialValue: Array(repeating: 0, count: chars.count))
     }
 
     private var showAnswer: Bool { checked || answered }
+    /// a square's side: the size chosen, smaller only when n of them don't fit side by side
+    private func side(_ n: Int) -> CGFloat {
+        let want = CGFloat(min(max(fixedSize, 140), 640))
+        guard avail > 0 else { return want }
+        let gap: CGFloat = 16
+        return max(110, min(want, (avail - gap * CGFloat(max(n, 1) - 1)) / CGFloat(max(n, 1))))
+    }
     /// an iPad (not a narrow split view): every character gets a big square at once
     private var wide: Bool { hSize == .regular }
 
     var body: some View {
         VStack(spacing: 12) {
-            if !showAnswer {
-                if wide {
-                    allPads
-                    HStack(spacing: 12) {
-                        Button { for i in chars.indices { clear(i) } } label: {
-                            Label(chars.count > 1 ? trs("全部清掉") : trs("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
-                        }
-                        .softButton()
-                        checkButton
+            // after 對答案: what you wrote next to the character, to compare
+            // (on a tablet the big squares already show the answer: the small ones would be the same thing twice)
+            if showAnswer && !wide { slots }
+            if wide {
+                allPads
+                HStack(spacing: 12) {
+                    Button { for i in chars.indices { clear(i) } } label: {
+                        Label(chars.count > 1 ? trs("全部清掉") : trs("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
                     }
-                    .frame(maxWidth: 560)
-                } else {
-                    slots
-                    pad(cur).id(cur)
-                        .aspectRatio(1, contentMode: .fit)
-                        .frame(maxWidth: 420, maxHeight: .infinity)
-                        .frame(maxWidth: .infinity)
-                    HStack(spacing: 12) {
-                        Button { clear(cur) } label: {
-                            Label(tr("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
-                        }
-                        .softButton()
-                        if cur + 1 < chars.count {
-                            Button { cur += 1 } label: {
-                                Label(tr("下一個字"), systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 40)
-                            }
-                            .prominentButton(T.btnEdge)
-                        } else {
-                            checkButton
-                        }
-                    }
+                    .softButton()
+                    if !showAnswer, let dontKnow { dontKnowButton(dontKnow) }
+                    if !showAnswer { checkButton }
                 }
+                .frame(maxWidth: 560)
             } else {
-                slots
-                if !answered {
-                    Text(tr("淡淡的字是正確的寫法，和你寫的比一比。")).ffFont(.footnote).foregroundStyle(T.muted)
-                        .frame(maxWidth: .infinity, alignment: wide ? .center : .leading)
-                    HStack(spacing: 12) {
-                        Button { grade(false) } label: {
-                            Label(practiceOnly ? trs("再寫一次") : trs("寫錯了"), systemImage: practiceOnly ? "arrow.counterclockwise" : "xmark")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .softButton()
-                        Button { grade(true) } label: {
-                            Label(practiceOnly ? trs("完成") : trs("寫對了"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 44)
+                if !showAnswer { slots }
+                pad(cur).id(cur)
+                    .frame(width: side(1), height: side(1))
+                    .frame(maxWidth: .infinity)
+                HStack(spacing: 12) {
+                    Button { clear(cur) } label: {
+                        Label(tr("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 40)
+                    }
+                    .softButton()
+                    if !showAnswer, cur + 1 >= chars.count || chars.count == 1, let dontKnow { dontKnowButton(dontKnow) }
+                    if cur + 1 < chars.count {
+                        Button { cur += 1 } label: {
+                            Label(tr("下一個字"), systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 40)
                         }
                         .prominentButton(T.btnEdge)
+                    } else if !showAnswer {
+                        checkButton
+                    } else if chars.count > 1 {
+                        Button { cur = 0 } label: {
+                            Label(tr("第一個字"), systemImage: "arrow.uturn.left").frame(maxWidth: .infinity, minHeight: 40)
+                        }
+                        .softButton()
                     }
-                    .frame(maxWidth: wide ? 560 : .infinity)
                 }
+                sizeSlider
+            }
+            if showAnswer && !answered {
+                // (the squares stay: write the character a few more times, over the faint one, before going on)
+                Text(tr("淡淡的字是正確的寫法，和你寫的比一比；也可以在格子裡照著多寫幾次。")).ffFont(.footnote).foregroundStyle(T.muted)
+                    .frame(maxWidth: .infinity, alignment: wide ? .center : .leading)
+                HStack(spacing: 12) {
+                    Button { grade(false) } label: {
+                        Label(practiceOnly ? trs("再寫一次") : trs("寫錯了"), systemImage: practiceOnly ? "arrow.counterclockwise" : "xmark")
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .softButton()
+                    Button { grade(true) } label: {
+                        Label(practiceOnly ? trs("完成") : trs("寫對了"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .prominentButton(T.btnEdge)
+                }
+                .frame(maxWidth: wide ? 560 : .infinity)
             }
         }
+        .background(GeometryReader { g in
+            Color.clear
+                .onAppear { avail = g.size.width }
+                .onChange(of: g.size.width) { avail = g.size.width }
+        })
         .onAppear {
             if !Kaiti.ready { Kaiti.prepare { ok in kaiti = ok } }
         }
+    }
+
+    /// 格子大小 (the squares change size only with this)
+    private var sizeSlider: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.resize.down").foregroundStyle(T.muted)
+            Slider(value: $fixedSize, in: 140...640).tint(T.btnEdge).accessibilityLabel(tr("格子大小"))
+            Image(systemName: "square.resize.up").foregroundStyle(T.muted)
+        }
+        .frame(maxWidth: 420)
+    }
+
+    /// 不會寫: the answer shows, and (in practice and tests) the word comes back to be written again
+    private func dontKnowButton(_ action: @escaping () -> Void) -> some View {
+        Button { withAnimation(.snappy) { checked = true }; action() } label: {
+            Label(tr("不會寫"), systemImage: "questionmark").frame(maxWidth: .infinity, minHeight: 40)
+        }
+        .softButton()
+    }
+
+    /// the character, faint (the same picture as 手寫練習's: the font chosen, drawn by the app itself)
+    private func ghost(_ ch: String, _ s: CGFloat, _ opacity: Double) -> some View {
+        Image(uiImage: Kaiti.image(ch, side: max(s, 1), scale: 2, color: UIColor(T.btnInk)))
+            .resizable()
+            .frame(width: s, height: s)
+            .opacity(opacity)
+            .allowsHitTesting(false)
+            .id("\(ch)\(kaiti)\(fontStyle)\(Int(s))")
     }
 
     private var checkButton: some View {
@@ -1527,9 +1601,8 @@ struct WordWriteArea: View {
 
     /// iPad: a big square for each character, side by side (as big as the space lets them be)
     private var allPads: some View {
-        GeometryReader { g in
-            let n = CGFloat(chars.count), gap: CGFloat = 16
-            let s = max(120, min(420, (g.size.width - gap * (n - 1)) / n, g.size.height - 24))
+        let s = side(chars.count), gap: CGFloat = 16
+        return VStack(spacing: 10) {
             HStack(spacing: gap) {
                 ForEach(chars.indices, id: \.self) { i in
                     VStack(spacing: 6) {
@@ -1546,7 +1619,8 @@ struct WordWriteArea: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            sizeSlider
         }
     }
 
@@ -1557,10 +1631,7 @@ struct WordWriteArea: View {
             ForEach(chars.indices, id: \.self) { i in
                 ZStack {
                     RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.75))
-                    if showAnswer {
-                        Text(chars[i]).font(Kaiti.swiftUI(s * 0.78)).foregroundStyle(T.btnInk.opacity(0.4))
-                            .id("\(kaiti)\(fontStyle)")
-                    }
+                    if showAnswer { ghost(chars[i], s, 0.4) }
                     if side > 0 && !drawings[i].strokes.isEmpty {
                         Image(uiImage: picture(drawings[i])).resizable().scaledToFit()
                     }
@@ -1569,7 +1640,7 @@ struct WordWriteArea: View {
                 .overlay(RoundedRectangle(cornerRadius: 12)
                     .stroke(!showAnswer && i == cur ? T.btnEdge : T.fnEdge, lineWidth: !showAnswer && i == cur ? 2.5 : 1))
                 .contentShape(RoundedRectangle(cornerRadius: 12))
-                .onTapGesture { if !showAnswer && i != cur { cur = i } }
+                .onTapGesture { if i != cur { cur = i } }
                 .accessibilityLabel(tr("第 \(i + 1) 個字"))
             }
         }
@@ -1592,10 +1663,13 @@ struct WordWriteArea: View {
                 .stroke(T.fnEdge, style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
                 .onAppear { side = w }
                 .onChange(of: w) { side = w }
+                // after 對答案: the character, faint, to write over
+                if showAnswer { ghost(chars[i], w, 0.22) }
             }
             WritingPad(clearCount: clears[i], initial: drawings[i]) { d in
                 if i < drawings.count { drawings[i] = d }
             }
+            StrokeNumbers(drawing: drawings[i])
         }
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
         .clipShape(RoundedRectangle(cornerRadius: 18))
@@ -1637,8 +1711,8 @@ struct WordWriteSheet: View {
             VStack(alignment: .leading, spacing: 14) {
                 Panel {
                     HStack(alignment: .center, spacing: 16) {
-                        Text(hidden ? String(repeating: "？", count: card.h.count) : card.h)
-                            .font(Kaiti.swiftUI(56)).foregroundStyle(T.blueInk).id("\(kaiti)\(fontStyle)")
+                        KaitiText(text: hidden ? String(repeating: "？", count: card.h.count) : card.h, size: 56, color: T.blueInk)
+                            .id("\(kaiti)\(fontStyle)")
                         VStack(alignment: .leading, spacing: 4) {
                             Text(store.cardRom(card, rom, place)).latFont(22).toneGlow().foregroundStyle(T.greenInk)
                             let m = store.practiceMeaning(card)
@@ -1666,6 +1740,7 @@ struct WordWriteSheet: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
                 }
+                ToolbarItem(placement: .topBarTrailing) { PenTools() }
                 ToolbarItem(placement: .topBarTrailing) {
                     // 藏字: write it from memory
                     Button { withAnimation(.snappy) { hidden.toggle() } } label: {
@@ -1675,5 +1750,242 @@ struct WordWriteSheet: View {
             }
             .onAppear { if !Kaiti.ready { Kaiti.prepare { ok in kaiti = ok } } }
         }
+    }
+}
+
+
+/// the writing tools of the top bar: 字體 (楷體, 文楷 or 芫荽), 筆 (which pen, how thick, 筆畫編號) and 顏色 (the dark
+/// ink, the rainbow or a colour of its own); the same in every place that's written in
+struct PenTools: View {
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
+    @State private var penOpen = false
+    @State private var colorOpen = false
+    var body: some View {
+        HStack {
+            Menu {
+                Picker(tr("字體"), selection: $fontStyle) {
+                    ForEach(Kaiti.styles.indices, id: \.self) { Text(trs(Kaiti.styles[$0].name)).tag($0) }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label(tr("字體"), systemImage: "textformat")
+            }
+            .accessibilityLabel(tr("字體：") + trs(Kaiti.styles[Kaiti.style].name))
+            Button { penOpen = true } label: { Label(tr("筆"), systemImage: "pencil.tip") }
+                .popover(isPresented: $penOpen) {
+                    PenSettings(compact: true).presentationCompactAdaptation(.popover)
+                }
+            Button { colorOpen = true } label: {
+                Label { Text(tr("顏色")) } icon: { InkSwatch(size: 20) }
+            }
+            .popover(isPresented: $colorOpen) {
+                InkColorPicker(compact: true).presentationCompactAdaptation(.popover)
+            }
+            .accessibilityLabel(tr("筆的顏色"))
+        }
+    }
+}
+
+
+/// 筆畫編號 (設定 or the pen's pop-over): a small circled number by the start of each stroke, in the stroke's own
+/// colour, just above where it starts (or beside it), never on top of a line
+struct StrokeNumbers: View {
+    let drawing: PKDrawing
+    @AppStorage(HandInk.numbersKey) private var on = false
+    @AppStorage(HandInk.pressureKey) private var level = 1
+    @AppStorage(HandInk.sizeKey) private var size = HandInk.sizeDefault
+    @AppStorage(HandInk.rainbowKey) private var rainbow = false
+    @AppStorage(HandInk.colorKey) private var inkColor = 0
+
+    static func circled(_ n: Int) -> String {
+        switch n {
+        case 1...20: return String(UnicodeScalar(0x2460 + n - 1)!)
+        case 21...35: return String(UnicodeScalar(0x3251 + n - 21)!)
+        case 36...50: return String(UnicodeScalar(0x32B1 + n - 36)!)
+        default: return "\(n)"
+        }
+    }
+
+    /// where each number goes: the first place around the stroke's start (above first) with no line near it
+    static func places(_ d: PKDrawing, size: CGSize) -> [CGPoint] {
+        let pts: [CGPoint] = d.strokes.flatMap { s in
+            s.path.interpolatedPoints(by: .distance(3)).map { $0.location.applying(s.transform) }
+        }
+        let r: CGFloat = 8, gap: CGFloat = 13
+        let dirs: [CGVector] = [CGVector(dx: 0, dy: -1), CGVector(dx: -0.7, dy: -0.7), CGVector(dx: 0.7, dy: -0.7),
+                                CGVector(dx: -1, dy: 0), CGVector(dx: 1, dy: 0), CGVector(dx: -0.7, dy: 0.7),
+                                CGVector(dx: 0.7, dy: 0.7), CGVector(dx: 0, dy: 1)]
+        var taken: [CGPoint] = []
+        return d.strokes.map { s in
+            guard let first = s.path.first?.location.applying(s.transform) else { return .zero }
+            var best = CGPoint(x: first.x, y: first.y - gap), bestRoom: CGFloat = -1
+            for dist in [gap, gap * 1.6, gap * 2.3] {
+                for v in dirs {
+                    let c = CGPoint(x: first.x + v.dx * dist, y: first.y + v.dy * dist)
+                    guard c.x > r, c.y > r, c.x < size.width - r, c.y < size.height - r else { continue }
+                    let room = min(pts.map { hypot($0.x - c.x, $0.y - c.y) }.min() ?? 99,
+                                   taken.map { hypot($0.x - c.x, $0.y - c.y) - r }.min() ?? 99)
+                    if room > r + 2 { taken.append(c); return c }
+                    if room > bestRoom { best = c; bestRoom = room }
+                }
+            }
+            taken.append(best)
+            return best
+        }
+    }
+
+    var body: some View {
+        if on && !drawing.strokes.isEmpty {
+            GeometryReader { g in
+                let at = Self.places(drawing, size: g.size)
+                ForEach(at.indices, id: \.self) { i in
+                    Text(Self.circled(i + 1))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color(uiColor: HandInk.tool(stroke: i, rainbow: rainbow, pen: level, size: size).color))
+                        .position(at[i])
+                }
+            }
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+}
+
+// MARK: - 自由寫字: a whole sheet of squares
+
+/// a sheet of writing squares with no space between them (the size chosen with the slider, also very small); type a
+/// sentence and its characters fill the squares, faint, to write over (calligraphy practice). The pen, its colour and
+/// the 字體 are the same as everywhere; only here there's 上一筆 (take back the last stroke).
+struct FreeWritingView: View {
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("freeWritingCell") private var cell = 90.0
+    @AppStorage("freeWritingText") private var text = ""
+    @AppStorage("handwritingTrace") private var trace = true
+    @AppStorage(Kaiti.styleKey) private var fontStyle = 0
+    @State private var drawing = PKDrawing()
+    @State private var clearCount = 0
+    @State private var page = 0
+    @State private var kaiti = Kaiti.ready
+    @State private var editing = false
+
+    private var chars: [String] { text.filter { !$0.isWhitespace && !$0.isNewline }.map(String.init) }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "square.grid.3x3").foregroundStyle(T.muted)
+                    Slider(value: $cell, in: 28...200, step: 2)
+                    Text("\(Int(cell))").latFont(13).monospacedDigit().foregroundStyle(T.muted).frame(width: 34)
+                }
+                .padding(.horizontal)
+                HStack(spacing: 8) {
+                    TextField(tr("打一句話，字會出現在格子裡（可以照著寫）"), text: $text)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: text) { page = 0 }
+                    if !text.isEmpty {
+                        Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(T.muted) }
+                            .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+                GeometryReader { g in
+                    let s = CGFloat(cell)
+                    let cols = max(1, Int(g.size.width / s)), rows = max(1, Int(g.size.height / s))
+                    let w = CGFloat(cols) * s, h = CGFloat(rows) * s
+                    let perPage = cols * rows
+                    let pages = max(1, (chars.count + perPage - 1) / max(perPage, 1))
+                    ZStack(alignment: .topLeading) {
+                        // the squares (米字格), no space between them
+                        Path { p in
+                            for c in 0...cols { p.move(to: CGPoint(x: CGFloat(c) * s, y: 0)); p.addLine(to: CGPoint(x: CGFloat(c) * s, y: h)) }
+                            for r in 0...rows { p.move(to: CGPoint(x: 0, y: CGFloat(r) * s)); p.addLine(to: CGPoint(x: w, y: CGFloat(r) * s)) }
+                        }
+                        .stroke(T.fnEdge, lineWidth: 1.2)
+                        Path { p in
+                            for r in 0..<rows {
+                                for c in 0..<cols {
+                                    let x = CGFloat(c) * s, y = CGFloat(r) * s
+                                    p.move(to: CGPoint(x: x + s / 2, y: y)); p.addLine(to: CGPoint(x: x + s / 2, y: y + s))
+                                    p.move(to: CGPoint(x: x, y: y + s / 2)); p.addLine(to: CGPoint(x: x + s, y: y + s / 2))
+                                    if s >= 60 {
+                                        p.move(to: CGPoint(x: x, y: y)); p.addLine(to: CGPoint(x: x + s, y: y + s))
+                                        p.move(to: CGPoint(x: x + s, y: y)); p.addLine(to: CGPoint(x: x, y: y + s))
+                                    }
+                                }
+                            }
+                        }
+                        .stroke(T.fnEdge.opacity(0.6), style: StrokeStyle(lineWidth: 0.8, dash: [4, 4]))
+                        // the sentence's characters, faint, one per square
+                        if trace {
+                            ForEach(0..<min(perPage, max(0, chars.count - page * perPage)), id: \.self) { i in
+                                // (drawn by the app in the font chosen, like 手寫練習's character)
+                                Image(uiImage: Kaiti.image(chars[page * perPage + i], side: max(s, 1), scale: 2, color: UIColor(T.btnInk)))
+                                    .resizable()
+                                    .opacity(0.25)
+                                    .frame(width: s, height: s)
+                                    .position(x: CGFloat(i % cols) * s + s / 2, y: CGFloat(i / cols) * s + s / 2)
+                            }
+                            .id("\(kaiti)\(fontStyle)")
+                        }
+                        WritingPad(clearCount: clearCount, initial: drawing) { d in drawing = d }
+                            .frame(width: w, height: h)
+                        StrokeNumbers(drawing: drawing).frame(width: w, height: h)
+                    }
+                    .frame(width: w, height: h)
+                    .background(RoundedRectangle(cornerRadius: 4).fill(T.fn.opacity(0.75)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .overlay(alignment: .bottom) {
+                        if pages > 1 {
+                            HStack(spacing: 14) {
+                                Button { page = max(0, page - 1); clearPage() } label: { Image(systemName: "chevron.left") }
+                                    .disabled(page == 0)
+                                Text("\(page + 1)／\(pages)").latFont(14).monospacedDigit()
+                                Button { page = min(pages - 1, page + 1); clearPage() } label: { Image(systemName: "chevron.right") }
+                                    .disabled(page >= pages - 1)
+                            }
+                            .padding(.horizontal, 14).padding(.vertical, 6)
+                            .background(Capsule().fill(T.fn.opacity(0.95)))
+                            .offset(y: 18)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
+                .noStarBursts()
+            }
+            .appBackground()
+            .navigationTitle(tr("自由寫字"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
+                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    // 上一筆: only in 自由寫字
+                    Button { undo() } label: { Label(tr("上一筆"), systemImage: "arrow.uturn.backward") }
+                        .disabled(drawing.strokes.isEmpty)
+                    Button { clearPage() } label: { Label(tr("清掉"), systemImage: "eraser") }
+                        .disabled(drawing.strokes.isEmpty)
+                    PenTools()
+                    Button { withAnimation(.easeInOut(duration: 0.25)) { trace.toggle() } } label: {
+                        Label(tr("描字"), systemImage: "character.cursor.ibeam").foregroundStyle(trace ? T.btnInk : T.muted)
+                    }
+                    .accessibilityValue(trace ? trs("開") : trs("關"))
+                }
+            }
+            .onAppear { if !Kaiti.ready { Kaiti.prepare { ok in kaiti = ok } } }
+        }
+    }
+
+    private func undo() {
+        guard !drawing.strokes.isEmpty else { return }
+        drawing = PKDrawing(strokes: Array(drawing.strokes.dropLast()))
+        clearCount += 1
+    }
+
+    private func clearPage() {
+        drawing = PKDrawing()
+        clearCount += 1
     }
 }

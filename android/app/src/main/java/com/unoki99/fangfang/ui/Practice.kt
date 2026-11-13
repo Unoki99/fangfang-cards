@@ -51,6 +51,8 @@ fun PracticeHost(p: Practice) {
                 Practice.SCRAMBLE -> ScrambleScreen(false, stars)
                 Practice.READING -> ScrambleScreen(true, stars)
                 Practice.TONES -> ToneScreen(stars)
+                Practice.JA_PARTICLES -> JaParticleQuiz { close() }
+                Practice.FALLING -> FallingGameScreen { close() }
                 Practice.STATS -> ReviewStatsScreen { close() }
                 Practice.WEEK_WRITE -> StudyScreen(false, stars, words = Store.weekCards, writeOnly = true)
                 Practice.WORD_WRITE -> UI.writeCard?.let { WordWriteScreen(it) { UI.writeCard = null; close() } }
@@ -95,6 +97,9 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     var wrong by remember { mutableIntStateOf(0) }
     val learned = remember { mutableStateListOf<Card>() }
     val retried = remember { HashSet<String>() }
+    /** 寫字題: how many times a word was asked again after 不會寫; the test: the questions asked again (not counted) */
+    val writeTries = remember { HashMap<String, Int>() }
+    val practiceAgain = remember { HashSet<String>() }
     var started by remember { mutableStateOf(false) }
     val missed = remember { mutableStateListOf<Card>() }
     val pool0 = remember { words }
@@ -144,7 +149,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
         if (writeOnly) {
             // every word that can be written, once (one wrong is asked again later)
             queue.clear(); queue.addAll((pool0 ?: Store.studyCards).filter { Store.canWrite(it.h) }.shuffled().map { make(it, QuizKind.WRITE) })
-            idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear()
+            idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear(); writeTries.clear(); practiceAgain.clear()
             started = true
             saveNow()
             return
@@ -153,7 +158,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
             // every word of the week once, in a random way
             queue.clear()
             queue.addAll((pool0 ?: emptyList()).shuffled().mapNotNull { c -> kinds(c).randomOrNull()?.let { make(c, it) } })
-            idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear()
+            idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear(); writeTries.clear(); practiceAgain.clear()
             started = true
             saveNow()
             return
@@ -176,23 +181,40 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
             }
         }
         queue.clear(); queue.addAll(first.shuffled() + second.shuffled())
-        idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear()
+        idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear(); writeTries.clear(); practiceAgain.clear()
         started = true
         saveNow()
     }
     LaunchedEffect(Unit) { if (!started && !restore()) start() }
     LaunchedEffect(idx) { if (started) saveNow() }
 
-    fun record(q: Question, ok: Boolean) {
+    /** again: 不會寫 (the word is written again a little later; a word written wrong isn't asked again) */
+    fun record(q: Question, ok: Boolean, again: Boolean = false) {
+        // (the test: a word written again after 不會寫 is only practice, it isn't counted)
+        if (test && practiceAgain.contains(q.id)) { saveNow(true); return }
         if (ok) right++ else { wrong++; if (test) missed.add(q.card) }
         if (q.kind != QuizKind.LISTEN) q.card.audio?.let { Player.play(it) }
-        if (test) { Store.answer(q.card, ok, goal); saveNow(true); return }
+        if (test) {
+            Store.answer(q.card, ok, goal)
+            if (!ok && q.kind == QuizKind.WRITE && again) {
+                // 不會寫: written once more right after the next word, to practise it
+                val a = make(q.card, QuizKind.WRITE)
+                practiceAgain.add(a.id)
+                queue.add(minOf(idx + 2, queue.size), a)
+            }
+            saveNow(true); return
+        }
         if (Store.answer(q.card, ok, goal)) {
             learned.add(q.card)
             val rest = queue.subList(idx + 1, queue.size).filter { it.card != q.card }
             val head = queue.subList(0, idx + 1).toList()
             queue.clear(); queue.addAll(head + rest)
-        } else if (!ok && !retried.contains(q.card.k)) {
+        } else if (!ok && q.kind == QuizKind.WRITE && again && (writeTries[q.card.k] ?: 0) < 3) {
+            // 不會寫: asked again right after the next word (at most three more times)
+            writeTries[q.card.k] = (writeTries[q.card.k] ?: 0) + 1
+            retried.add(q.card.k)
+            queue.add(minOf(idx + 2, queue.size), make(q.card, QuizKind.WRITE))
+        } else if (!ok && q.kind != QuizKind.WRITE && !retried.contains(q.card.k)) {
             retried.add(q.card.k)
             val other = if (writeOnly) QuizKind.WRITE else kinds(q.card).filter { it != q.kind }.randomOrNull() ?: q.kind
             queue.add(make(q.card, other))
@@ -205,10 +227,10 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
         record(q, o == q.card)
     }
     /** 寫字題: graded by you */
-    fun wrote(q: Question, ok: Boolean) {
+    fun wrote(q: Question, ok: Boolean, again: Boolean = false) {
         if (chosen != null) return
         wroteRight = ok; chosen = q.card
-        record(q, ok)
+        record(q, ok, again)
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -237,7 +259,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
                         // (寫字題: no scrolling, the finger writes in the square)
                         if (q.kind == QuizKind.WRITE) key(q.id) {
                             WordWriteArea(q.card.h.codePoints().toArray().map { String(Character.toChars(it)) }, chosen != null,
-                                if (chosen == null) Modifier.weight(1f) else Modifier) { ok -> wrote(q, ok) }
+                                if (chosen == null) Modifier.weight(1f) else Modifier, dontKnow = { wrote(q, false, again = true) }) { ok -> wrote(q, ok) }
                         } else Options(q, chosen, rom, place) { pick(it, q) }
                         chosen?.let { c ->
                             val ok = if (q.kind == QuizKind.WRITE) wroteRight == true else c == q.card

@@ -88,61 +88,37 @@ export JAVA_HOME="$PICK" ANDROID_HOME="$SDK"
 echo "（用的 Java：${JAVA_HOME}）"
 echo "sdk.dir=$SDK" > "$A/local.properties"
 
-# the word data (the same files as the Apple version): made on this computer from the dictionaries' own files,
-# because their licences don't allow sharing the made files (see README)
+# The dictionaries aren't in the app: it downloads and makes each language's dictionary itself (設定 → 詞典資料).
+# The one data file put in is Wiktionary's English for the 台語 words (tw_en.json, CC BY-SA), which 台語's English
+# search uses: the phone can't make it (it would need Wiktionary's whole 2.5 GB Chinese file), so it's made on this
+# computer (once; kept in ~/FangfangCards/data, the same place the Apple version keeps its data).
 ASSETS="$A/app/src/main/assets"
 mkdir -p "$ASSETS"
 APD="$HERE/apple/FangfangCards"
-# the data made once is kept in ~/FangfangCards/FangfangCards (the same place the Apple version keeps it), so a new
-# download of the project, dragged over the old one, doesn't have to make it again
-KEEP="$HOME/FangfangCards/FangfangCards"
-mkdir -p "$KEEP"
-# (粵語 data made by an older version: made again)
-for Y in "$APD/yue.json" "$KEEP/yue.json" "$ASSETS/yue.json"; do
-  if [ -f "$Y" ] && ! head -c 80 "$Y" | grep -q '"v":2'; then rm -f "$Y"; fi
+DATA="$HOME/FangfangCards/data"
+mkdir -p "$DATA"
+# (dictionaries put in the app by an older version: taken out)
+for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json ja.json shuowen.json zh_sc.json; do rm -f "$ASSETS/$f"; done
+TWEN=""
+for d in "$DATA" "$HOME/FangfangCards/FangfangCards" "$APD"; do
+  if [ -f "$d/tw_en.json" ]; then TWEN="$d/tw_en.json"; break; fi
 done
-for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json; do
-  if [ ! -f "$APD/$f" ] && [ -f "$KEEP/$f" ]; then cp "$KEEP/$f" "$APD/$f"; fi
-done
-if [ ! -f "$ASSETS/dict.json" ] || [ ! -f "$ASSETS/cards.json" ] || [ ! -f "$ASSETS/zh.json" ] || [ ! -f "$ASSETS/yue.json" ]; then
-  echo "建立詞典資料…（第一次要下載詞典，幾分鐘）"
-  if [ ! -f "$APD/dict.json" ] || [ ! -f "$APD/cards.json" ]; then
-    bash "$HERE/apple/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
-  fi
-  if [ ! -f "$APD/zh.json" ]; then
-    bash "$HERE/apple/build-data.sh" zh || { echo "✗ 沒辦法建立華語資料。"; exit 1; }
-  fi
-  if [ ! -f "$APD/inputcodes.json" ]; then
-    bash "$HERE/apple/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"
-  fi
-  # 粵語 (in the project already when it's on GitHub; else made here)
-  if [ ! -f "$APD/yue.json" ]; then
-    bash "$HERE/apple/build-data.sh" yue || echo "（沒辦法建立粵語資料，先跳過：App 裡的粵語會打不開）"
-  fi
-  for f in dict.json cards.json zh.json inputcodes.json yue.json; do
-    if [ -f "$APD/$f" ]; then
-      cp "$APD/$f" "$ASSETS/$f"
-      [ -f "$KEEP/$f" ] || cp "$APD/$f" "$KEEP/$f"
-    fi
+if [ -z "$TWEN" ]; then
+  echo "建立台語詞的英文解釋…（第一次要下載台語詞典和維基詞典，幾分鐘）"
+  for d in "$DATA" "$HOME/FangfangCards/FangfangCards"; do
+    for f in dict.json cards.json; do [ ! -f "$APD/$f" ] && [ -f "$d/$f" ] && cp "$d/$f" "$APD/$f"; done
   done
+  if [ ! -f "$APD/dict.json" ]; then bash "$HERE/apple/build-data.sh" || echo "（沒辦法建立台語詞典，先跳過）"; fi
+  if [ -f "$APD/dict.json" ]; then bash "$HERE/apple/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"; fi
+  for f in dict.json cards.json tw_en.json; do [ -f "$APD/$f" ] && mv -f "$APD/$f" "$DATA/$f"; done
+  [ -f "$DATA/tw_en.json" ] && TWEN="$DATA/tw_en.json"
 fi
-
-# 客語 (教育部《臺灣客語辭典》) and the 台語 words' English (Wiktionary): added to the app when they aren't there yet
-for f in hak.json tw_en.json; do
-  if [ ! -f "$ASSETS/$f" ]; then
-    if [ ! -f "$APD/$f" ]; then
-      if [ "$f" = "hak.json" ]; then
-        bash "$HERE/apple/build-data.sh" hak || echo "（沒辦法建立客語資料，先跳過：App 裡的客語會打不開）"
-      elif [ -f "$APD/dict.json" ]; then
-        bash "$HERE/apple/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"
-      fi
-    fi
-    if [ -f "$APD/$f" ]; then
-      cp "$APD/$f" "$ASSETS/$f"
-      [ -f "$KEEP/$f" ] || cp "$APD/$f" "$KEEP/$f"
-    fi
-  fi
-done
+if [ -n "$TWEN" ]; then
+  cp "$TWEN" "$ASSETS/tw_en.json"
+else
+  rm -f "$ASSETS/tw_en.json"
+  echo "（App 裡沒有台語詞的英文解釋：台語不能用英文查詞。）"
+fi
 
 # copies of source files left by putting a new download over the old folder ("Dict 2.kt"): the same code twice
 find "$A/app/src" -type f \( -name "* 2.kt" -o -name "* - Copy.kt" -o -name "* (1).kt" \) -print -delete 2>/dev/null | sed 's/^/（刪掉多出來的複本：/; s/$/）/'

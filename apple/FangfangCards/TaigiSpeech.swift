@@ -211,10 +211,10 @@ struct TaigiSpeakButton: View {
                 Text(ph == .failed ? "連不上鬥拍字" : (ph == .playing || ph == .loading ? "停" : "唸出來"))
             }
             .ffFont(.footnote, .semibold)
-            .foregroundStyle(ph == .failed ? T.rustInk : T.purpleInk)
+            .foregroundStyle(ph == .failed ? T.rustInk : T.twInk)
             .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(ph == .failed ? T.rust : Color(hex: 0x4c3a5b)))
-            .overlay(Capsule().stroke(ph == .failed ? T.rustEdge : Color(hex: 0x7b3c9b), lineWidth: 1.5))
+            .background(Capsule().fill(ph == .failed ? T.rust : T.twFill))
+            .overlay(Capsule().stroke(ph == .failed ? T.rustEdge : T.twEdge, lineWidth: 1.5))
         }
         .buttonStyle(.plain)
         .disabled(text.isEmpty)

@@ -7,32 +7,35 @@ import java.text.Normalizer
 // 漢語拼音 is spelled from it here, by rule.
 
 object Lang {
-    /** 0 台語, 1 華語, 2 粵語, 3 客語 (粵語 and 客語 use the 華語 pages, with their own dictionaries: yue.json, hak.json) */
-    val names = listOf("台語", "華語", "粵語", "客語")
-    const val count = 4
+    /** 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語 (粵語, 客語 and 日語 use the 華語 pages, with their own dictionaries:
+     *  yue.json, hak.json, ja.json) */
+    val names = listOf("台語", "華語", "粵語", "客語", "日語")
+    const val count = 5
     val isYue: Boolean get() = EngineSettings.yue
     val isHak: Boolean get() = EngineSettings.hak
-    /** 粵語 and 客語: no HSK / TOCFL lists (the words come in groups of how common they are) */
-    val ownGroups: Boolean get() = isYue || isHak
+    val isJa: Boolean get() = EngineSettings.ja
+    /** 粵語, 客語 and 日語: no HSK / TOCFL lists (the words come in groups of how common they are) */
+    val ownGroups: Boolean get() = isYue || isHak || isJa
     /** 客語's six accents */
     val hakAccents = listOf("四縣", "海陸", "大埔", "饒平", "詔安", "南四縣")
     /** 華語: 拼音 / 注音; 粵語: 粵拼 / 耶魯 */
-    val romNames: List<String> get() = if (isYue) listOf("粵拼", "耶魯") else listOf("拼音", "注音")
+    val romNames: List<String> get() = if (isJa) listOf("羅馬字", "假名") else if (isYue) listOf("粵拼", "耶魯") else listOf("拼音", "注音")
     /** 粵語: the words and characters come in groups of how common they are (no official lists) */
     const val yueGroup = 500
     fun yueLevelName(l: Int) = "常用詞 ${(l - 1) * yueGroup + 1}–${l * yueGroup}"
     fun yueCharLevelName(l: Int) = "常用字 ${(l - 1) * yueGroup + 1}–${l * yueGroup}"
-    val placeNames = listOf("臺灣", "大陸")
+    val placeNames: List<String> get() = if (isJa) listOf("日本語") else listOf("臺灣", "大陸")
     val listNames = listOf("HSK", "TOCFL")
     private val tocflNames = listOf("", "準備一級", "準備二級", "入門級", "基礎級", "進階級", "高階級", "流利級")
     fun hskName(l: Int) = if (l >= 7) "HSK 7–9" else "HSK $l"
     fun tocflName(l: Int) = tocflNames.getOrElse(l) { "" }
     fun levelName(list: Int, l: Int) = if (ownGroups) yueLevelName(l) else if (list == 1) "TOCFL " + tocflName(l) else hskName(l)
 
-    /** a character card's key: "字\t字" (粵語: "字\t粵字", 客語: "字\t客字") */
-    fun charKey(ch: String, yue: Boolean = isYue, hak: Boolean = isHak) = ch + (if (yue) "\t粵字" else if (hak) "\t客字" else "\t字")
+    /** a character card's key: "字\t字" (粵語: "字\t粵字", 客語: "字\t客字", 日語: "字\t日字") */
+    fun charKey(ch: String, yue: Boolean = isYue, hak: Boolean = isHak, ja: Boolean = isJa) =
+        ch + (if (ja) "\t日字" else if (yue) "\t粵字" else if (hak) "\t客字" else "\t字")
     /** the character of a character card's key (null = a word) */
-    fun charOf(k: String): String? = if (k.endsWith("\t粵字") || k.endsWith("\t客字")) k.dropLast(3) else if (k.endsWith("\t字")) k.dropLast(2) else null
+    fun charOf(k: String): String? = if (k.endsWith("\t粵字") || k.endsWith("\t客字") || k.endsWith("\t日字")) k.dropLast(3) else if (k.endsWith("\t字")) k.dropLast(2) else null
     /** the 新詞 topics of the character cards: 100 + level, 108 = more characters */
     const val charTopicBase = 100
     const val moreChars = 108
@@ -52,14 +55,16 @@ object Lang {
         if (t < 0 || t + 1 >= k.length) return false
         if (k.endsWith("\t字")) return true
         val c = k.codePointAt(t + 1)
-        return c in 0x3100..0x312F || c in 0x31A0..0x31BF || c == '˙'.code || c == '粵'.code || c == '客'.code
+        return c in 0x3100..0x312F || c in 0x31A0..0x31BF || c == '˙'.code || c == '粵'.code || c == '客'.code || c == '日'.code
     }
     /** a 粵語 word's or character's key ("漢字\t粵…") */
     fun isYueKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("粵", t + 1) }
     /** a 客語 word's or character's key ("漢字\t客…") */
     fun isHakKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("客", t + 1) }
-    /** which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語 */
-    fun kind(k: String): Int = if (isYueKey(k)) 2 else if (isHakKey(k)) 3 else if (isZhKey(k)) 1 else 0
+    /** a 日語 word's or character's key ("食べる\t日たべる", "食\t日字") */
+    fun isJaKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("日", t + 1) }
+    /** which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語 */
+    fun kind(k: String): Int = if (isYueKey(k)) 2 else if (isHakKey(k)) 3 else if (isJaKey(k)) 4 else if (isZhKey(k)) 1 else 0
 }
 
 /** 設定 → 字形: 華語 and 粵語 shown in 簡體字. The keys and the data stay 正體; what's shown is changed, character by
@@ -67,7 +72,7 @@ object Lang {
 object Simp {
     private val table = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     private val back = java.util.concurrent.ConcurrentHashMap<Int, Int>()
-    val on: Boolean get() = EngineSettings.simplified && EngineSettings.zhShown && !EngineSettings.hak
+    val on: Boolean get() = EngineSettings.simplified && EngineSettings.zhShown && !EngineSettings.hak && !EngineSettings.ja
 
     fun learn(pairs: List<Pair<String, String>>) {
         for ((h, a) in pairs) {
@@ -274,7 +279,13 @@ class ZhEntry(
     val acc: List<List<String>?>? = null,
     /** 客語: the accents that say it with another word (accent → word) */
     val otherWords: Map<Int, String> = emptyMap(),
+    /** 日語: JMdict's codes (v1, v5k, adj-i…, "*uk" for its notes), for 活用 */
+    val jp: List<String> = emptyList(),
+    /** 客語: the accent chosen doesn't have the word: its reading is made character by character (fillAccent) */
+    val hakGuess: Boolean = false,
 ) {
+    fun withTw(t: List<String>, guess: Boolean) = ZhEntry(k, h, t, lu, spec, alt, senses, en, hsk, tocfl, extra, pos, syn, ant, eq,
+        audio, acc, otherWords, jp, guess)
     /** the English meanings, one each (CC-CEDICT separates them with ;) */
     val enList: List<String> by lazy { (en ?: "").split(";").map { it.trim() }.filter { it.isNotEmpty() } }
     fun syl(place: Int): List<String> = if (place == 1) (lu ?: tw) else tw
@@ -302,8 +313,12 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
     var isYue = false; private set
     /** the 客語 dictionary (hak.json, tools/build_hakka.py) */
     var isHak = false; private set
-    /** 1 華語, 2 粵語, 3 客語 */
-    val lang: Int get() = if (isHak) 3 else if (isYue) 2 else 1
+    /** the 日語 dictionary (ja.json: JMdict and KANJIDIC2, made in the app by Install/japanese.js) */
+    var isJa = false; private set
+    /** 1 華語, 2 粵語, 3 客語, 4 日語 */
+    val lang: Int get() = if (isJa) 4 else if (isHak) 3 else if (isYue) 2 else 1
+    /** 日語: each entry's reading in hiragana (for searching by the start of the reading) */
+    var jaKana: List<String> = emptyList(); private set
     /** 客語: each accent's tone marks (per tone category) and each syllable's 注音 */
     var hakMarks: List<List<String>> = emptyList(); private set
     var hakZy: Map<String, String> = emptyMap(); private set
@@ -374,7 +389,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
         fun head(j: JReader, key: String): Boolean {
             when (key) {
                 "nc" -> nc = j.nextInt()
-                "lang" -> { val l = j.nextString(); isYue = l == "yue"; isHak = l == "hak" }
+                "lang" -> { val l = j.nextString(); isYue = l == "yue"; isHak = l == "hak"; isJa = l == "ja" }
                 "ht" -> { val m = ArrayList<List<String>>(); j.arr { m.add(j.strList()) }; hakMarks = m }
                 "hz" -> { val m = HashMap<String, String>(); j.obj { k -> m[k] = j.nextString() }; hakZy = m }
                 "r" -> j.arr {
@@ -402,6 +417,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
                                 j.hasNext(); var py = j.nextString()
                                 // 粵語: [耶魯, 粵拼, …]; the 粵拼 syllable is kept, the readings are made from it
                                 if (isYue) zy = py
+                                if (isJa) py = JaKana.romaji(zy)
                                 j.hasNext(); val ds = j.strList2().map { Pair(it.getOrElse(0) { "" }, it.getOrElse(1) { "" }) }
                                 var label: String? = null
                                 if (j.hasNext()) label = if (j.isNull()) null else j.nextString()
@@ -461,16 +477,28 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
         radicals = rads
         radicalInside = rx
         for (r in rads) for ((ch, rest) in r.chars) if (!strokesOf.containsKey(ch)) strokesOf[ch] = r.strokes + rest
+        // 客語: a word the accent chosen doesn't have (惜圓): each character read the way this accent reads it
+        if (isHak) fillAccent(out)
         entries = out
         Simp.learn(out.mapNotNull { e -> e.alt?.let { e.h to it } })
         for ((i, e) in out.withIndex()) for (m in e.eq) { val l = byMandarin.getOrPut(m) { ArrayList() }; if (l.lastOrNull() != i) l.add(i) }
         cardCount = if (nc > 0) nc else out.size
         var m = 1
+        val jk = if (isJa) ArrayList<String>(out.size) else null
         for ((i, e) in out.withIndex()) {
             index[e.k] = i
             byHan.getOrPut(e.h) { ArrayList() }.add(i)
             if (e.alt != null && e.alt != e.h) byHan.getOrPut(e.alt) { ArrayList() }.add(i)
             m = maxOf(m, e.h.codePointCount(0, e.h.length))
+            if (jk != null) {
+                // 日語: by the reading in hiragana and in rōmaji, and by the other spellings
+                val kana = JaKana.hiragana(e.tw.joinToString(""))
+                jk.add(kana)
+                add(byPlain, kana, i)
+                add(byPlain, JaKana.romaji(kana).filter { it.isLetter() }, i)
+                for (o in e.eq) { byHan.getOrPut(o) { ArrayList() }.add(i); add(byPlain, JaKana.hiragana(o), i) }
+                continue
+            }
             for (syl in listOfNotNull(e.tw, e.lu)) {
                 val ss = syl.filter { it != "-" }
                 val py = ss.map { Zhuyin.plainSyllable(it) }
@@ -482,6 +510,42 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
             }
         }
         maxLen = minOf(m, 12)
+        if (jk != null) jaKana = jk
+    }
+
+    /** 客語: a word the accent chosen doesn't have is shown in another accent's reading (`tw` is the first accent that
+     *  has it). Instead, each character gets the reading this accent has for it: from the words both accents have,
+     *  "惜 in 四縣 siag is xiag in this accent" (the most common one when there are several). A character no word tells
+     *  keeps the other accent's reading. */
+    private fun fillAccent(out: MutableList<ZhEntry>) {
+        val map = HashMap<String, HashMap<String, Int>>()
+        fun chars(h: String) = h.cps().filter { Zhuyin.isHan(it.firstCp()) }
+        for (e in out) {
+            val acc = e.acc ?: continue
+            val mine = acc.getOrNull(accent) ?: continue
+            val cs = chars(e.h)
+            if (cs.size != mine.size) continue
+            for ((a, other) in acc.withIndex()) {
+                if (a == accent || other == null || other.size != cs.size) continue
+                for (i in cs.indices) { val m = map.getOrPut("$a\u0001${cs[i]}\u0001${other[i]}") { HashMap() }; m[mine[i]] = (m[mine[i]] ?: 0) + 1 }
+            }
+        }
+        for (i in out.indices) {
+            val acc = out[i].acc ?: continue
+            if (accent >= acc.size || acc[accent] != null) continue
+            val cs = chars(out[i].h)
+            val tw = out[i].tw.toMutableList()
+            if (cs.size != tw.size) continue
+            var changed = false
+            for (n in cs.indices) {
+                if (!Zhuyin.isHak(tw[n])) continue
+                val a = Zhuyin.hakParts(tw[n]).third
+                val hits = map["$a\u0001${cs[n]}\u0001${tw[n]}"] ?: continue
+                val best = hits.entries.sortedWith(compareBy<Map.Entry<String, Int>>({ -it.value }, { it.key })).firstOrNull()?.key ?: continue
+                tw[n] = best; changed = true
+            }
+            if (changed) out[i] = out[i].withTw(tw, true)
+        }
     }
 
     /** one entry of zh.json */
@@ -490,7 +554,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
         var en: String? = null; var x = 0; var y = 0; var q = 0
         var w: List<String> = emptyList(); var sy: List<String> = emptyList(); var an: List<String> = emptyList()
         var eq: List<String> = emptyList(); var u: String? = null
-        var acc: List<List<String>?>? = null; val others = HashMap<Int, String>()
+        var acc: List<List<String>?>? = null; val others = HashMap<Int, String>(); var jp: List<String> = emptyList()
         val senses = ArrayList<ZhSense>()
         j.obj { f ->
             when (f) {
@@ -498,7 +562,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
                 "l" -> l = j.nextString(); "p" -> p = j.nextInt(); "a" -> a = j.nextString()
                 "n" -> en = j.nextString(); "x" -> x = j.nextInt(); "y" -> y = j.nextInt(); "q" -> q = j.nextInt()
                 "w" -> w = j.strList(); "j" -> sy = j.strList(); "f" -> an = j.strList()
-                "m" -> eq = j.strList(); "u" -> u = j.nextString()
+                "m" -> eq = j.strList(); "u" -> u = j.nextString(); "jp" -> jp = j.strList()
                 "v" -> { val v = ArrayList<List<String>?>(); j.arr { v.add(if (j.isNull()) null else j.nextString().split(" ")) }; acc = v }
                 "o" -> j.obj { a -> val w = j.nextString(); a.toIntOrNull()?.let { others[it] = w } }
                 "d" -> j.arr {
@@ -519,7 +583,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
         if (k.isEmpty()) return null
         // 客語: this accent's reading (the main one when the accent doesn't have the word)
         val tw = acc?.getOrNull(accent) ?: s.split(" ")
-        return ZhEntry(k, h, tw, l?.split(" "), p, a, senses, en, x, y, q == 1, w, sy, an, eq, u, acc, others)
+        return ZhEntry(k, h, tw, l?.split(" "), p, a, senses, en, x, y, q == 1, w, sy, an, eq, u, acc, others, jp)
     }
 
     private fun add(d: HashMap<String, MutableList<Int>>, k: String, i: Int) {
@@ -534,9 +598,16 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
 
     /** a word's reading: 0 = 拼音, 1 = 注音; in tone colours when they're on */
     fun reading(syl: List<String>, mode: Int, colours: Int = EngineSettings.toneSystem): Styled {
+        if (isJa) {
+            // 日語: 0 = rōmaji, 1 = kana (in the script colours when colours are on)
+            val kana = syl.filter { it != "-" && it != "_" }.joinToString("")
+            if (mode == 0) return styled(JaKana.romaji(kana))
+            return if (colours != 0) JaInk.word(kana) else styled(kana)
+        }
         val b = StyledBuilder()
         var first = true
-        for (s in syl) {
+        val hak = hakTints(syl, colours)
+        for ((si, s) in syl.withIndex()) {
             if (s == "-" || s == "_") continue
             val t = if (Zhuyin.isHak(s)) (if (first) "" else " ") + hakSyllable(s, mode)
             else if (Zhuyin.isJyut(s)) (if (first) "" else " ") + (if (mode == 1) Yale.of(s) else s)
@@ -544,10 +615,29 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
                 val p = Zhuyin.pinyin(s)
                 (if (!first && p.isNotEmpty() && p[0] in "aāáǎàoōóǒòeēéěèê") "'" else "") + p
             }
-            b.add(t, Zhuyin.color(Zhuyin.tone(s), colours, isYue, isHak))
+            b.add(t, hak?.get(si) ?: Zhuyin.color(Zhuyin.tone(s), colours, isYue, isHak))
             first = false
         }
         return b.build()
+    }
+
+    /** 客語: each syllable's colour by the pitch it's said in within the word (the accent's tone changes, HakSandhi) */
+    private fun hakTints(syl: List<String>, colours: Int): Map<Int, Int>? {
+        if (!isHak || colours == 0) return null
+        val idx = syl.indices.filter { Zhuyin.isHak(syl[it]) }
+        val first = idx.firstOrNull() ?: return null
+        val accent = Zhuyin.hakParts(syl[first]).third
+        val parts = idx.map { i ->
+            val p = Zhuyin.hakParts(syl[i]); val l = p.first
+            p.second to ((l.lastOrNull()?.let { it in "bdg" } ?: false) && !l.endsWith("ng"))
+        }
+        val ps = HakSandhi.pitches(parts, accent)
+        val out = HashMap<Int, Int>()
+        for ((n, i) in idx.withIndex()) {
+            val p = ps[n] ?: continue
+            ToneColors.hakPitchColor(p.first, p.second, colours != 5)?.let { out[i] = it }
+        }
+        return out
     }
 
     /** one 客語 syllable as it's shown: 拼音 (0) or 注音 (1), then its accent's tone mark ("bauˊ", "ㄅㄠˊ") */
@@ -562,13 +652,21 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
     /** 漢字 in tone colours (one syllable per 漢字; 兒 after -ㄦ takes the colour before it) */
     fun hanText(han: String, syl: List<String>, base: Int?, colours: Int = EngineSettings.toneSystem): Styled {
         val b = StyledBuilder()
+        if (isJa) {
+            // 日語: kanji, hiragana and katakana each in their colour
+            for (ch in han.cps()) b.add(ch, if (colours != 0) (JaColors.of(ch) ?: base) else base)
+            return b.build()
+        }
         var i = 0; var last = 1
+        val hak = hakTints(syl, colours)
+        var lastHak: Int? = null
         for (ch in Simp.show(han).cps()) {
             if (Zhuyin.isHan(ch.firstCp()) && i < syl.size) {
                 val s = syl[i]; i++
                 val t = if (s == "-") last else Zhuyin.tone(s)
                 last = t
-                b.add(ch, Zhuyin.color(t, colours, isYue, isHak) ?: base)
+                if (s != "-") lastHak = hak?.get(i - 1)
+                b.add(ch, lastHak ?: Zhuyin.color(t, colours, isYue, isHak) ?: base)
             } else b.add(ch, base)
         }
         return b.build()
@@ -716,7 +814,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
             if (isYue) Yale.of(it.zy) else if (isHak) readingPlain(listOf(it.zy), 1) else it.zy) }
         val l = c.level(list)
         val topic = if (l > 0) Lang.charTopicBase + l else Lang.moreChars
-        return Card(Lang.charKey(c.h, isYue, isHak), Simp.show(c.h), listOf(if (isHak) readingPlain(listOf(main.zy), 0) else main.py),
+        return Card(Lang.charKey(c.h, isYue, isHak, isJa), Simp.show(c.h), listOf(if (isHak) readingPlain(listOf(main.zy), 0) else main.py),
             if (isYue) Yale.of(main.zy) else if (isHak) readingPlain(listOf(main.zy), 1) else main.zy, null, "", defs, null, null, null,
             others.ifEmpty { null }, null, "漢字", null, null, listOf(topic), listOf(main.zy), null)
     }
@@ -769,6 +867,7 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
         val q = q0.trim()
         val f = Found()
         if (q.isEmpty()) return f
+        if (isJa && !q.any { it in "*?＊？" }) return searchJa(q)
         // only tone numbers: words with those tones (0 or 5 = light tone): 34、3-4、1 0
         if (q.all { it in "012345678 -,，、" } && q.any { it.isDigit() }) {
             val want = if (lang != 1) q.filter { it.isDigit() } else q.filter { it.isDigit() }.map { if (it == '5') '0' else it }.joinToString("")
@@ -842,6 +941,50 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
             val (list, best) = englishHits(q)
             f.english.addAll(list)
             f.englishFirst = best <= 1
+        }
+        return f
+    }
+
+    /** 日語: the word itself (kanji, kana or rōmaji), the dictionary forms of a conjugated word (食べなかった →
+     *  食べる), words that start with it, words with it inside, and English */
+    private fun searchJa(q: String): Found {
+        val f = Found()
+        val seen = HashSet<Int>()
+        fun take(l: List<Int>): List<Int> = l.sorted().filter { seen.add(it) }
+        val latin = q.all { it.code < 128 }
+        val letters = q.lowercase().filter { it.isLetter() }
+        var kana = JaKana.hiragana(q)
+        val fromRom = if (latin) JaKana.fromRomaji(letters) else null
+        if (fromRom != null) kana = fromRom
+        val exact = ArrayList<Int>()
+        byHan[q]?.let { exact.addAll(it) }
+        byPlain[kana]?.let { exact.addAll(it) }
+        if (latin) byPlain[letters]?.let { exact.addAll(it) }
+        f.words.addAll(take(exact))
+        val forms = ArrayList<Int>()
+        for (key in setOf(q, kana)) {
+            for ((base, _) in JaGrammar.deinflect(key)) {
+                for (i in (byHan[base] ?: emptyList<Int>()) + (byPlain[base] ?: emptyList())) if (JaGrammar.classOf(entries[i]) != null) forms.add(i)
+            }
+        }
+        f.words.addAll(take(forms))
+        if (!latin || fromRom != null) {
+            val starts = ArrayList<Int>(); val inside = ArrayList<Int>()
+            for ((i, e) in entries.withIndex()) {
+                if (seen.contains(i)) continue
+                val r = jaKana.getOrElse(i) { "" }
+                if (e.h.startsWith(q) || (kana.isNotEmpty() && r.startsWith(kana))) {
+                    if (starts.size < 150) starts.add(i)
+                } else if (!latin && e.h.contains(q) && inside.size < 150) inside.add(i)
+                if (starts.size >= 150 && (latin || inside.size >= 150)) break
+            }
+            f.starts.addAll(take(starts))
+            f.contains.addAll(take(inside))
+        }
+        if (latin && letters.isNotEmpty()) {
+            val (list, best) = englishHits(q)
+            f.english.addAll(list)
+            f.englishFirst = best <= 1 && (f.words.isEmpty() || best == 0)
         }
         return f
     }

@@ -323,7 +323,8 @@ fun WordCard(card: Card, isTop: Boolean) {
                 // 華語: the 詞類 (from the word lists), and the English meanings if they're the main ones
                 val ze = if (card.isZh && Lang.charOf(card.k) == null) Store.zh?.entry(card.k) else null
                 if (ze != null && ze.pos.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { for (p in ze.pos) Chip(p) }
-                val ens = if (ze != null && Prefs.zhEnglish.value && ze.enList.isNotEmpty()) ze.enList else null
+                Prefs.zhEnglish.value; Prefs.twEnglish.value; Prefs.hakEnglish.value      // (drawn again when 設定 changes)
+                val ens = if (Lang.charOf(card.k) == null) Store.englishMeanings(card) else null
                 val exs = card.cardExamples.take(if (ens == null) 2 else 1)
                 if (ens != null) EnglishList(ens, max = 5, maxLines = 1, style = ff(FF.Body))
                 else {
@@ -484,9 +485,12 @@ fun UnknownTab() {
                         PT(tr("例句填空"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
                         PT(tr("排句子"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
                         PT(tr("看字排讀音"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
-                        PT(tr("聲調練習"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),       // (客語: no voice to listen to)
+                        // (客語: no voice to listen to; 日語: no tones, 助詞練習 instead)
+                        if (Store.isJa) PT(tr("助詞練習"), Icons.Filled.Extension, true, Practice.JA_PARTICLES)
+                        else PT(tr("聲調練習"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),
                         PT(tr("翻牌配對"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
+                        PT(tr("遊戲"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
                     )
                     // the last tile: 怎麼練習, what each way of practising does
                     var help by remember { mutableStateOf(false) }

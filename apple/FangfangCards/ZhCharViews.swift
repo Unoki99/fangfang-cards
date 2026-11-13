@@ -12,7 +12,7 @@ struct ZhCharView: View {
     var body: some View {
         ScrollView {
             if let i = dict.charIndex[ch] {
-                ZhCharBody(dict: dict, char: dict.chars[i])
+                ZhCharBody(dict: dict, char: dict.chars[i]).dictFontArea()
                     .padding()
                     .frame(maxWidth: 760)
                     .frame(maxWidth: .infinity)
@@ -42,7 +42,7 @@ struct ZhCharSheet: View {
             Group {
                 // straight to the 兩岸 dictionary's entry for the usual reading (with the character card's buttons
                 // and 《重編國語辭典》 at the bottom), not a page that only leads to it
-                if let e = ZhCharSheet.entry(dict, ch) {
+                if !dict.isJa, let e = ZhCharSheet.entry(dict, ch) {
                     ZhEntryView(dict: dict, key: e.k)
                 } else {
                     ZhCharView(dict: dict, ch: ch)
@@ -91,16 +91,16 @@ struct ZhCharBody: View {
                     if known { Chip(text: tr("在熟悉的詞裡"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                 }
                 HStack(spacing: 6) {
-                    if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if char.tocfl > 0 { Chip(text: tr("漢字 ") + UILang.label(Lang.levelName(1, char.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if let r = char.radical { Text(tr("部首 \(r)")).ffFont(.footnote).foregroundStyle(T.muted) }
                     if let n = char.strokes { Text(tr("\(n) 畫")).ffFont(.footnote).foregroundStyle(T.muted) }
                 }
-                InputCodesRow(han: char.h)
+                if !dict.isJa { InputCodesRow(han: char.h) }
             }
             ForEach(Array(char.readings.enumerated()), id: \.offset) { _, r in reading(r) }
             words
-            Text(dict.isHak ? tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）的單字詞條。") : dict.isYue ? tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") : tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
+            Text(dict.isJa ? tr("資料：KANJIDIC2（EDRDG，CC BY-SA 4.0）。讀音：片假名是音讀，平假名是訓讀。") : dict.isHak ? tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）的單字詞條。") : dict.isYue ? tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") : tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,7 +193,7 @@ struct ZhCharCardRow: View {
                     }
                 }
                 HStack(spacing: 6) {
-                    if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.green, edge: T.greenEdge, ink: T.greenInk) }
+                    if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if char.tocfl > 0 { Chip(text: tr("漢字 ") + UILang.label(Lang.levelName(1, char.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if let r = char.radical { Text(tr("部首 \(r)")).ffFont(.footnote).foregroundStyle(T.muted) }
                     if let n = char.strokes { Text(tr("\(n) 畫")).ffFont(.footnote).foregroundStyle(T.muted) }

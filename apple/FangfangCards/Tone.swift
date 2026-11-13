@@ -63,6 +63,18 @@ enum ToneColors {
     /// 台語's colours for the same categories
     static let hakTones = [1, 2, 3, 4, 5, 7, 8]
     static let hakStandard: [Int: UInt32] = [1: 0xff6b6b, 2: 0xc39bff, 3: 0x6eaaff, 4: 0xffa94d, 5: 0x6fdc7f, 7: 0xffe066, 8: 0xff8cc6]
+    /// 四川話 (華語 with 讀音 = 四川話): 1 high level red, 2 low falling teal, 3 high falling purple, 4 low dipping
+    /// blue, 5 (入聲, where it's kept) like 2
+    static func scColor(_ t: Int) -> Color? {
+        switch t {
+        case 1: return red
+        case 2, 5: return teal
+        case 3: return purple
+        case 4: return blue
+        default: return nil
+        }
+    }
+
     /// the tones of a set of colours: 0 台語, 1 華語, 2 粵語, 3 客語
     static func tones(set: Int) -> [Int] { [twTones, zhTones, yueTones, hakTones][set >= 0 && set <= 3 ? set : 0] }
 
@@ -106,7 +118,47 @@ enum ToneColors {
     static func twColor(_ t: Int) -> Color? { table(0)[t] }
     static func zhColor(_ t: Int) -> Color? { table(1)[t] }
     static func yueColor(_ t: Int) -> Color? { table(2)[t] }
-    static func hakColor(_ t: Int) -> Color? { table(3)[t] }
+    static func hakColor(_ t: Int) -> Color? { hakAccentColor(Lang.hakAccent, t, seven: system != 5) }
+
+    /// 客語: each accent's tones by how they sound (調值, 教育部《臺灣客語辭典》's 聲調符號表): accent → category → pitch
+    static let hakPitch: [[Int: String]] = [
+        [1: "24", 5: "11", 2: "31", 3: "55", 4: "2", 8: "5"],                  // 四縣
+        [1: "53", 5: "55", 2: "24", 3: "11", 7: "33", 4: "5", 8: "2"],         // 海陸
+        [1: "35", 5: "113", 2: "31", 3: "53", 4: "21", 8: "54"],               // 大埔 (陰平 also 33)
+        [1: "11", 5: "55", 2: "53", 7: "24", 4: "2", 8: "5"],                  // 饒平
+        [1: "11", 2: "31", 4: "24", 5: "53", 7: "55", 8: "43"],                // 詔安
+        [1: "24", 5: "11", 2: "31", 3: "55", 4: "2", 8: "5"],                  // 南四縣 (陰平 also 33)
+    ]
+    /// a 客語 tone's colour in an accent: the same pitch is the same colour in every accent (24/35 green, 11/113 blue,
+    /// 31 teal, 55 red, 53 purple, 33 yellow). 入聲 (4, 8): in 七聲 their own colours (low orange, high pink), in 五聲
+    /// the colour of the long tone they sound like (2/21 blue, 5/54 red, 24 green, 43 purple)
+    static func hakAccentColor(_ accent: Int, _ cat: Int, seven: Bool) -> Color? {
+        guard accent >= 0, accent < hakPitch.count, let p = hakPitch[accent][cat] else { return nil }
+        return hakPitchColor(p, short: cat == 4 || cat == 8, seven: seven)
+    }
+    /// the colour of a pitch (short: an 入聲 syllable, ending in b, d, g)
+    static func hakPitchColor(_ p: String, short: Bool, seven: Bool) -> Color? {
+        if short {
+            let low = ["2", "21", "24", "3"].contains(p)
+            if seven { return low ? orange : pink }
+            switch p {
+            case "2", "21": return blue
+            case "24": return green
+            case "3": return yellow
+            case "43": return purple
+            default: return red
+            }
+        }
+        switch p {
+        case "24", "35": return green
+        case "11", "113": return blue
+        case "31": return teal
+        case "55": return red
+        case "53": return purple
+        case "33": return yellow
+        default: return nil
+        }
+    }
 
     /// picks a colour for a tone (nil = back to the standard one); everything is drawn again
     @MainActor static func set(set: Int, _ t: Int, _ v: UInt32?) {
@@ -457,16 +509,30 @@ struct ToneMenuItems: View {
     @AppStorage(ToneColors.key) private var system = 0
     @AppStorage(ToneColors.marksKey) private var marks = true
     @AppStorage(ToneColors.glowKey) private var glow = ToneColors.glowStandard
+    @ObservedObject private var store = Store.shared
     var body: some View {
-        Picker(tr("聲調顏色"), selection: $system) {
-            Text(tr("關")).tag(0)
-            Text(tr("七聲（1 2 3 4 5 7 8）")).tag(7)
-            Text(tr("五聲（1=8、3=4）")).tag(5)
-        }
-        .pickerStyle(.inline)
-        if system != 0 {
-            Toggle(tr("聲調符號照變調寫"), isOn: $marks)
-            Toggle(tr("聲調光暈"), isOn: $glow)
+        // 七聲 / 五聲 and 變調 are 台語's; the other languages only turn the colours on and off
+        if store.lang == 0 || store.lang == 3 {
+            // (客語: 七聲 gives the 入聲 colours of their own, 五聲 the colour of the tone they sound like)
+            Picker(tr("聲調顏色"), selection: $system) {
+                Text(tr("關")).tag(0)
+                Text(tr("七聲")).tag(7)
+                Text(tr("五聲")).tag(5)
+            }
+            .pickerStyle(.inline)
+            if system != 0 {
+                if store.lang == 0 { Toggle(tr("聲調符號照變調寫"), isOn: $marks) }
+                Toggle(tr("聲調光暈"), isOn: $glow)
+            }
+        } else {
+            Picker(store.lang == 4 ? tr("文字顏色") : tr("聲調顏色"), selection: Binding(get: { system == 0 ? 0 : 1 }, set: { system = $0 == 0 ? 0 : (system == 0 ? 7 : system) })) {
+                Text(tr("關")).tag(0)
+                Text(tr("開")).tag(1)
+            }
+            .pickerStyle(.inline)
+            if system != 0 {
+                Toggle(tr("聲調光暈"), isOn: $glow)
+            }
         }
     }
 }
@@ -489,7 +555,7 @@ struct ToneDots: View {
                 }
             } else {
                 if store.isHak {
-                    ForEach(ToneColors.hakTones, id: \.self) { t in
+                    ForEach(ToneColors.hakTones.filter { ToneColors.hakPitch[Lang.hakAccent][$0] != nil }, id: \.self) { t in
                         Circle().fill(ToneColors.hakColor(t) ?? T.muted).frame(width: 5, height: 5)
                     }
                 } else if store.isYue {
@@ -605,5 +671,53 @@ extension Dict {
             idx.map = m
         }
         return idx.map?[han + "\u{1}" + tpl]
+    }
+}
+
+
+// MARK: - 客語 變調 (教育部《臺灣客語辭典》's 客語變調規則)
+
+/// the pitches a 客語 word's syllables are said in: every syllable but the last one changes as its accent's rules say
+/// (only the one before changes, never the one after):
+///   四縣、南四縣  陰平 24 before 陰平, 去聲, 陽入 → 11
+///   海陸        上聲 24 → 33; 陰入 5 → 2
+///   大埔        陽平 113 before 陽平 → 33; 去聲 53 before 上聲, 去聲, 陰入, 陽入 → 55
+///   饒平        上聲 53 before 陰平, 上聲 → 33, else → 11; 陰入 2 → 5; 陽平 55 before 陰平, 上聲, 陰入 → 53, else → 33;
+///              陽去 24 → 33
+///   詔安        上聲 31 before 上聲 → 55, else → 11; 陰入 24 → 5 (no b/d/g at the end: 55); 陽平 53 → 33;
+///              陽去 55 → 33; 陽入 43 → 3
+enum HakSandhi {
+    /// for each syllable (category, ends in b/d/g): its pitch, and whether it's still short
+    static func pitches(_ syl: [(cat: Int, stop: Bool)], accent: Int) -> [(pitch: String, short: Bool)?] {
+        guard accent >= 0, accent < ToneColors.hakPitch.count else { return syl.map { _ in nil } }
+        let table = ToneColors.hakPitch[accent]
+        return syl.enumerated().map { i, s in
+            guard let own = table[s.cat] else { return nil }
+            let short = s.cat == 4 || s.cat == 8
+            guard i + 1 < syl.count else { return (own, short) }
+            let next = syl[i + 1].cat
+            switch accent {
+            case 0, 5:
+                if s.cat == 1 && [1, 3, 8].contains(next) { return ("11", false) }
+            case 1:
+                if s.cat == 2 { return ("33", false) }
+                if s.cat == 4 { return ("2", true) }
+            case 2:
+                if s.cat == 5 && next == 5 { return ("33", false) }
+                if s.cat == 3 && [2, 3, 4, 8].contains(next) { return ("55", false) }
+            case 3:
+                if s.cat == 2 { return ([1, 2].contains(next) ? "33" : "11", false) }
+                if s.cat == 4 { return ("5", true) }
+                if s.cat == 5 { return ([1, 2, 4].contains(next) ? "53" : "33", false) }
+                if s.cat == 7 { return ("33", false) }
+            case 4:
+                if s.cat == 2 { return (next == 2 ? "55" : "11", false) }
+                if s.cat == 4 { return s.stop ? ("5", true) : ("55", false) }
+                if s.cat == 5 || s.cat == 7 { return ("33", false) }
+                if s.cat == 8 { return ("3", true) }
+            default: break
+            }
+            return (own, short)
+        }
     }
 }

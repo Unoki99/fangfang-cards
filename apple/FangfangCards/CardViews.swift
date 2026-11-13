@@ -11,6 +11,8 @@ struct WordCard: View {
     @AppStorage("hideMeaning") private var hideMeaning = false
     @AppStorage(CardLook.hideReadingKey) private var hideReading = false
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
+    @AppStorage(ZhMeaning.twKey) private var twEnglish = false
+    @AppStorage(ZhMeaning.hakKey) private var hakEnglish = false
     @State private var revealed = false
     @State private var showDetail = false
     @EnvironmentObject var store: Store
@@ -71,18 +73,18 @@ struct WordCard: View {
                     Text(store.cardRom(card, rom, place)).latFont(compact ? 22 : 34).toneGlow().foregroundStyle(T.greenInk)
                         .lineLimit(1).minimumScaleFactor(0.5)
                     if !card.isZh {
-                        Text(store.cardZy(card, place)).scaledFont(20).toneGlow().foregroundStyle(T.purpleInk)
+                        Text(store.cardZy(card, place)).scaledFont(20).toneGlow().foregroundStyle(T.purpleInk).hongimLine()
                             .lineLimit(1).minimumScaleFactor(0.5)
                     }
                     if let x = store.alsoSaid(card, rom, place).first {
                         HStack(spacing: 6) {
-                            Chip(text: tr("也講"), fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                            Chip(text: tr("也講"), fill: T.twFill, edge: T.twEdge, ink: T.twInk)
                             Text(x.rom).latFont(15).foregroundStyle(T.greenInk.opacity(0.85))
                         }
                     } else if let o = card.o?.first {
                         HStack(spacing: 6) {
                             Chip(text: o.l)
-                            Text(o.r[min(max(rom, 0), 2)]).latFont(15).foregroundStyle(T.greenInk.opacity(0.85))
+                            Text(rom == 3 ? o.z : o.r[min(max(rom, 0), 2)]).latFont(15).foregroundStyle(T.greenInk.opacity(0.85))
                         }
                     }
                 }
@@ -115,9 +117,9 @@ struct WordCard: View {
 extension WordCard {
     /// 華語 cards with 主要解釋 = 英文: the English meanings (nil = show the 華語 ones)
     var englishMeanings: [String]? {
-        guard card.isZh, zhEnglish, Lang.charOf(card.k) == nil, let e = store.zh?.entry(card.k) else { return nil }
-        let l = e.enList
-        return l.isEmpty ? nil : l
+        _ = (zhEnglish, twEnglish, hakEnglish)      // (redrawn when 設定 changes)
+        guard Lang.charOf(card.k) == nil else { return nil }
+        return store.englishMeanings(card)
     }
 }
 
@@ -178,7 +180,7 @@ struct CardDetail: View {
                                 if let a = card.audio { PlayButton(path: a, size: 40) }
                             }
                             Text(store.cardRom(card, rom, place)).latFont(24).foregroundStyle(T.greenInk)
-                            Text(store.cardZy(card, place)).scaledFont(17).foregroundStyle(T.purpleInk)
+                            Text(store.cardZy(card, place)).scaledFont(17).foregroundStyle(T.purpleInk).hongimLine()
                             // other readings, and the 通行 one when a place is shown
                             ForEach(Array(store.alsoSaid(card, rom, place).enumerated()), id: \.offset) { _, x in
                                 OtherRow(label: trs("也講"), rom: x.rom, zy: x.zy)
@@ -186,13 +188,14 @@ struct CardDetail: View {
                             if store.cardDiffers(card, place), !store.alsoSaid(card, rom, place).contains(where: { $0.rom == card.rom(rom) }) {
                                 OtherRow(label: trs("通行"), rom: card.rom(rom), zy: card.z)
                             }
-                            // 華語: the 臺灣 / 大陸 reading that isn't shown, where they differ
-                            if card.isZh, let zl = card.zl, let d = store.zh {
-                                let tw = store.zhPlace == 1
-                                OtherRow(label: tw ? trs("臺灣") : trs("大陸"), rom: d.readingPlain(tw ? card.zs ?? [] : zl, store.zhRom), zy: "")
+                            // 華語: the 國語 / 普通話 / 四川話 readings that aren't shown, where they differ
+                            if card.isZh, let d = store.zh {
+                                ForEach(Array(store.zhOtherReadings(card).enumerated()), id: \.offset) { _, o in
+                                    OtherRow(label: o.label, rom: d.readingPlain(o.syl, store.zhRom), zy: "")
+                                }
                             }
                             ForEach(Array((card.o ?? []).enumerated()), id: \.offset) { _, o in
-                                OtherRow(label: o.l, rom: o.r[min(max(rom, 0), 2)], zy: o.z)
+                                OtherRow(label: o.l, rom: rom == 3 ? o.z : o.r[min(max(rom, 0), 2)], zy: o.z)
                             }
                             if let cs = card.cats, !cs.isEmpty {
                                 HStack(spacing: 6) {
@@ -284,7 +287,11 @@ struct WordRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(card.h).ffFont(.title3, .medium).foregroundStyle(T.blueInk)
                     Text(store.cardRom(card, rom, place)).latFont(16).foregroundStyle(T.greenInk)
-                    Text(store.cardZy(card, place)).ffFont(.footnote).foregroundStyle(T.purpleInk)
+                    Text(store.cardZy(card, place)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
+                    // 四川話: where the reading is from (no box: Wiktionary)
+                    if card.isZh, store.lang == 1, store.zhPlace == 2, let k = SichuanChip.kind(card.zc == nil ? nil : (card.zcKind ?? 0)) {
+                        SichuanChip(kind: k, small: true)
+                    }
                 }
                 Text(card.firstMeaning).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
             }
@@ -313,8 +320,12 @@ struct CardChips: View {
             RegChip(reg: card.g)
             if card.s == 1 { Chip(text: tr("替"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
             if let t = card.t { Chip(text: t, fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+            // 四川話: no 四川話 reading (the 普通話 one is shown: orange), a guessed one (pink) or a predicted one (yellow)
+            if card.isZh, store.lang == 1, store.zhPlace == 2, let k = SichuanChip.kind(card.zc == nil ? nil : (card.zcKind ?? 0)) {
+                SichuanChip(kind: k)
+            }
             if store.cardDiffers(card, place), place < store.places.count {
-                Chip(text: String(store.places[place].prefix(2)), fill: Color(hex: 0x4c3a5b), edge: Color(hex: 0x7b3c9b), ink: T.purpleInk)
+                Chip(text: String(store.places[place].prefix(2)), fill: T.twFill, edge: T.twEdge, ink: T.twInk)
                 if store.isGuessed(card, place) { Chip(text: tr("推測"), fill: T.fn, edge: T.fnEdge, ink: T.muted) }
             }
         }
@@ -329,7 +340,7 @@ struct OtherRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Chip(text: label)
             Text(rom).latFont(17).foregroundStyle(T.greenInk)
-            Text(zy).ffFont(.footnote).foregroundStyle(T.purpleInk)
+            Text(zy).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
         }
     }
 }
@@ -377,5 +388,48 @@ struct CardSheet: View {
             }
         }
         .onAppear { if !card.isZh { store.loadDict() } }
+    }
+}
+
+/// 四川話: a word without a 四川話 reading (orange: the 普通話 one is shown), with one guessed from its characters
+/// (pink), or with one predicted from the sound changes (yellow). `kind`: 0 none, 1 guessed, 2 predicted
+struct SichuanChip: View {
+    let kind: Int
+    /// small: the short word, for a list of results
+    var small = false
+    /// the box to show for a reading's kind (nil = no reading: 0; Wiktionary's: none)
+    static func kind(_ scKind: Int?) -> Int? {
+        guard let k = scKind else { return 0 }
+        return k == 0 ? nil : k
+    }
+    static func colours(_ kind: Int) -> (fill: Color, edge: Color, ink: Color) {
+        switch kind {
+        case 1: return (Color(hex: 0x5a2346), ToneColors.pink, Color(hex: 0xffc9e4))
+        case 2: return (Color(hex: 0x57501a), ToneColors.yellow, Color(hex: 0xfff1a8))
+        default: return (Color(hex: 0x5c3f1a), ToneColors.orange, Color(hex: 0xffd29a))
+        }
+    }
+    var body: some View {
+        let c = Self.colours(kind)
+        let text = small ? [tr("普通話"), tr("推算"), tr("預測")][min(max(kind, 0), 2)]
+                         : [tr("標準讀音（普通話）"), tr("推算的四川話讀音"), tr("預測的四川話讀音")][min(max(kind, 0), 2)]
+        Chip(text: text, fill: c.fill, edge: c.edge, ink: c.ink)
+    }
+}
+
+/// 四川話: the same, as a box with a sentence (a word's page)
+struct SichuanNote: View {
+    let kind: Int
+    var body: some View {
+        let c = SichuanChip.colours(kind)
+        Text([tr("這個詞沒有四川話的讀音資料，這裡是標準讀音（普通話）。"),
+              tr("四川話讀音是推算的：照每個字在其他詞裡的四川話讀音拼起來，可能不對。"),
+              tr("四川話讀音是預測的：有的字沒有任何四川話讀音的資料，照普通話和四川話一般的語音對應（聲母、韻母、聲調，入聲字照粵語判斷）推出來的，常常會錯。")][min(max(kind, 0), 2)])
+            .ffFont(.footnote)
+            .foregroundStyle(c.ink)
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(c.fill.opacity(0.9)))
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(c.edge, lineWidth: 1.5))
     }
 }
