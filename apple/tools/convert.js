@@ -5,6 +5,7 @@
 //   node tools/convert.js taigi kautian.ods tools/own.json essay.txt dict.json cards.json
 //   node tools/convert.js japanese JMdict_e_examp.gz kanjidic2.xml.gz ja.json
 //   node tools/convert.js cantonese SRC_DIR yue.json
+//   node tools/convert.js swedish folkets_sv_en_public.xml sv_50k.txt|- kaikki.org-dictionary-瑞典語.jsonl|- sv.json [cedict_ts.u8|- [essay.txt]]
 "use strict";
 const fs = require("fs"), path = require("path"), zlib = require("zlib"), cp = require("child_process"), vm = require("vm");
 
@@ -78,6 +79,14 @@ if (what === "hakka") {
     // JMdict_e_examp.gz kanjidic2.xml.gz|- out.json
     ctx.args = { jmdict: args[0], kanjidic: opt(args[1]), out: args[2] };
     vm.runInContext("buildJapanese(args)", ctx);
+} else if (what === "shuowen") {
+    // swjz.xml out.json
+    ctx.args = { src: args[0], out: args[1] };
+    vm.runInContext("buildShuowen(args)", ctx);
+} else if (what === "swedish") {
+    // folkets_sv_en_public.xml sv_50k.txt|- kaikki.org-dictionary-瑞典語.jsonl|- out.json [cedict_ts.u8|- [essay.txt]]
+    ctx.args = { folkets: args[0], freq: opt(args[1]), zhwikt: opt(args[2]), out: args[3], cedict: opt(args[4]), essay: opt(args[5]) };
+    vm.runInContext("buildSwedish(args)", ctx);
 } else {
     console.error("usage: node tools/convert.js hakka SRC OUT [essay|-] [cedict|-]  |  taigi ODS OWN ESSAY DICT CARDS");
     process.exit(1);

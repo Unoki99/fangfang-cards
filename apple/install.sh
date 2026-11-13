@@ -56,7 +56,7 @@ fi
 
 # 2. no dictionary data in the app: the app downloads and makes each language's dictionary itself. Data built on
 # this Mac before is kept in ~/FangfangCards/data (for the Safari pop-up), never inside the app.
-DATA="dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json zh_sc.json ja.json shuowen.json"
+DATA="dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json zh_sc.json ja.json shuowen.json sv.json"
 mkdir -p "$DEST/data/safari"
 for f in $DATA; do [ -f "$DEST/FangfangCards/$f" ] && mv -f "$DEST/FangfangCards/$f" "$DEST/data/$f"; done
 if [ "$SAFARI" = "1" ]; then
@@ -92,6 +92,13 @@ if [ "$SAFARI" = "1" ]; then
   if [ ! -f "$DEST/FangfangCards/zh_sc.json" ]; then
     bash "$DEST/build-data.sh" sc || echo "（沒辦法建立四川話讀音，先跳過）"
   fi
+  # 瑞典語 data (Folkets lexikon), for the Safari pop-up's Swedish words; made again when it was made by an older
+  # version (without the 華語 guessed from the English)
+  SV="$DEST/FangfangCards/sv.json"
+  if [ -f "$SV" ] && ! head -c 40 "$SV" | grep -q '"v":3'; then rm -f "$SV"; fi
+  if [ ! -f "$DEST/FangfangCards/sv.json" ]; then
+    bash "$DEST/build-data.sh" sv || echo "（沒辦法建立瑞典語資料，先跳過：Safari 查詞不會查瑞典語）"
+  fi
   if [ ! -f "$DEST/FangfangCards/inputcodes.json" ]; then
     bash "$DEST/build-data.sh" ime || echo "（沒辦法建立輸入法拆碼，先跳過）"
   fi
@@ -99,7 +106,7 @@ if [ "$SAFARI" = "1" ]; then
   SM="$DEST/FangfangSafari/d-meta.json"
   NEED_SAFARI=0
   [ -f "$SM" ] || NEED_SAFARI=1
-  for f in dict.json zh.json zh_sc.json tw_en.json; do
+  for f in dict.json zh.json zh_sc.json tw_en.json sv.json; do
     [ -f "$DEST/FangfangCards/$f" ] && [ "$DEST/FangfangCards/$f" -nt "$SM" ] && NEED_SAFARI=1
   done
   [ "$DEST/tools/build_safari.py" -nt "$SM" ] && NEED_SAFARI=1

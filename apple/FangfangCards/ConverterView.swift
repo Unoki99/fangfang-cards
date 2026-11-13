@@ -104,6 +104,8 @@ struct ConverterView: View {
             Group {
                 if tab == 1 {
                     ReadingsPane()
+                } else if store.isSv {
+                    ZhGate { z in SvConvertPane(dict: z) }
                 } else if store.isZh {
                     ZhGate { z in ZhConvertPane(dict: z) }
                 } else {
@@ -3220,25 +3222,28 @@ struct TwPlaceRows: View {
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
     var body: some View {
+        // every 腔口 side by side (the name, its reading under it), wrapping onto more lines when needed
         if !dict.raw.places.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                row(-1)
-                ForEach(dict.raw.places.indices, id: \.self) { p in row(p) }
+            FlowLayout(spacing: 10) {
+                cell(-1)
+                ForEach(dict.raw.places.indices, id: \.self) { p in cell(p) }
             }
         }
     }
-    private func row(_ p: Int) -> some View {
+    private func cell(_ p: Int) -> some View {
         let mine = p == place
         let guessed = p >= 0 && !dict.guessedSyllables(key, p).isEmpty
         let name = p < 0 ? trs("通行") : String(dict.raw.places[p].prefix(2))
-        return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Chip(text: name, fill: mine ? T.twFill : T.fn, edge: mine ? T.twEdge : T.fnEdge, ink: mine ? T.twInk : T.muted)
+        return VStack(alignment: .center, spacing: 2) {
+            HStack(spacing: 3) {
+                Chip(text: name, fill: mine ? T.twFill : T.fn, edge: mine ? T.twEdge : T.fnEdge, ink: mine ? T.twInk : T.muted)
+                if guessed { Text(tr("推測")).ffFont(.caption2).foregroundStyle(T.muted) }
+            }
             Text(dict.wordText(key, rom, p)).latFont(15).foregroundStyle(T.greenInk)
-            if rom != 3 { Text(dict.wordText(key, 3, p)).ffFont(.footnote).foregroundStyle(T.purpleInk) }
-            if guessed { InfoChip.grey(tr("推測")) }
+            if rom != 3 { Text(dict.wordText(key, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk) }
             if p >= 0 {
                 ForEach(dict.alsoSaid(key, p), id: \.self) { x in
-                    Text(tr("也講") + " " + dict.codes(x, rom, p)).ffFont(.caption).foregroundStyle(T.muted)
+                    Text(tr("也講") + " " + dict.codes(x, rom, p)).ffFont(.caption2).foregroundStyle(T.muted)
                 }
             }
         }

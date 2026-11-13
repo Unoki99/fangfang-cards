@@ -11,7 +11,7 @@ import SwiftUI
     private var started = false
 
     func load(_ store: Store) {
-        if let d = store.zh { switch d.lang { case 2: yue = d; case 3: hak = d; case 4: break; default: zh = d } }
+        if let d = store.zh { switch d.lang { case 2: yue = d; case 3: hak = d; case 4, 5: break; default: zh = d } }
         guard !started else { return }
         started = true
         for kind in [1, 2, 3] where [zh, zh, yue, hak][kind] == nil {

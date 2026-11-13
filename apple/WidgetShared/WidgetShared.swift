@@ -59,6 +59,19 @@ enum WidgetCat {
     static let zhUnknown = -3
     /// 華語 word list level n (HSK / TOCFL, as chosen in the app): 10000 + n; its character level: 10100 + n
     static let zhBase = 10000
+
+    /// each language's levels: 10000 × its number (華語 10000, 粵語 20000, 客語 30000, 日語 40000, 瑞典語 50000)
+    static func base(_ kind: Int) -> Int { kind <= 1 ? zhBase : kind * 10000 }
+    /// each language's 不熟 words (台語 -2, 華語 -3, the others -12, -13, -14, -15)
+    static func unknown(_ kind: Int) -> Int { kind == 0 ? twUnknown : (kind == 1 ? zhUnknown : -10 - kind) }
+    static func isUnknown(_ id: Int) -> Bool { id == twUnknown || id == zhUnknown || (id <= -12 && id >= -19) }
+    /// whose a 分類 is (0 台語, 1 華語…)
+    static func kind(of id: Int) -> Int {
+        if id == zhUnknown { return 1 }
+        if id <= -12 && id >= -19 { return -10 - id }
+        if id >= zhBase { return id / 10000 }
+        return 0
+    }
 }
 
 /// a 收藏 change made on the widget: the app applies it the next time it's opened

@@ -88,37 +88,102 @@ export JAVA_HOME="$PICK" ANDROID_HOME="$SDK"
 echo "（用的 Java：${JAVA_HOME}）"
 echo "sdk.dir=$SDK" > "$A/local.properties"
 
-# The dictionaries aren't in the app: it downloads and makes each language's dictionary itself (設定 → 詞典資料).
-# The one data file put in is Wiktionary's English for the 台語 words (tw_en.json, CC BY-SA), which 台語's English
-# search uses: the phone can't make it (it would need Wiktionary's whole 2.5 GB Chinese file), so it's made on this
-# computer (once; kept in ~/FangfangCards/data, the same place the Apple version keeps its data).
+# The dictionaries are made on this computer and put into the app (making the big ones on the phone ran out of
+# memory). Their licences don't allow sharing the made files, so only this computer's own build has them. They're
+# kept in ~/FangfangCards/data (the same place the Apple version keeps its data), so they're made only once.
 ASSETS="$A/app/src/main/assets"
 mkdir -p "$ASSETS"
 APD="$HERE/apple/FangfangCards"
 DATA="$HOME/FangfangCards/data"
 mkdir -p "$DATA"
-# (dictionaries put in the app by an older version: taken out)
-for f in dict.json cards.json zh.json inputcodes.json yue.json hak.json ja.json shuowen.json zh_sc.json; do rm -f "$ASSETS/$f"; done
-TWEN=""
-for d in "$DATA" "$HOME/FangfangCards/FangfangCards" "$APD"; do
-  if [ -f "$d/tw_en.json" ]; then TWEN="$d/tw_en.json"; break; fi
-done
-if [ -z "$TWEN" ]; then
-  echo "建立台語詞的英文解釋…（第一次要下載台語詞典和維基詞典，幾分鐘）"
-  for d in "$DATA" "$HOME/FangfangCards/FangfangCards"; do
-    for f in dict.json cards.json; do [ ! -f "$APD/$f" ] && [ -f "$d/$f" ] && cp "$d/$f" "$APD/$f"; done
+BD="$HERE/apple/build-data.sh"
+FILES="dict.json cards.json zh.json inputcodes.json yue.json hak.json tw_en.json ja.json shuowen.json"
+# (made before, somewhere else: taken over)
+for f in $FILES; do
+  for d in "$HOME/FangfangCards/FangfangCards" "$APD"; do
+    [ ! -f "$DATA/$f" ] && [ -f "$d/$f" ] && cp "$d/$f" "$DATA/$f"
   done
-  if [ ! -f "$APD/dict.json" ]; then bash "$HERE/apple/build-data.sh" || echo "（沒辦法建立台語詞典，先跳過）"; fi
-  if [ -f "$APD/dict.json" ]; then bash "$HERE/apple/build-data.sh" twen || echo "（沒辦法建立台語詞的英文解釋，先跳過）"; fi
-  for f in dict.json cards.json tw_en.json; do [ -f "$APD/$f" ] && mv -f "$APD/$f" "$DATA/$f"; done
-  [ -f "$DATA/tw_en.json" ] && TWEN="$DATA/tw_en.json"
+done
+# (粵語 made by an older version: made again)
+[ -f "$DATA/yue.json" ] && ! head -c 80 "$DATA/yue.json" | grep -q '"v":2' && rm -f "$DATA/yue.json"
+# build-data.sh makes its files in apple/FangfangCards: each is moved into $DATA when it's made
+made() { for f in "$@"; do [ -f "$APD/$f" ] && mv -f "$APD/$f" "$DATA/$f"; done; return 0; }
+if [ ! -f "$DATA/dict.json" ] || [ ! -f "$DATA/cards.json" ]; then
+  echo "建立台語詞典…"
+  bash "$BD" && made dict.json cards.json || echo "（沒辦法建立台語詞典，先跳過）"
 fi
-if [ -n "$TWEN" ]; then
-  cp "$TWEN" "$ASSETS/tw_en.json"
-else
-  rm -f "$ASSETS/tw_en.json"
-  echo "（App 裡沒有台語詞的英文解釋：台語不能用英文查詞。）"
+if [ ! -f "$DATA/zh.json" ]; then echo "建立華語詞典…"; bash "$BD" zh && made zh.json || echo "（沒辦法建立華語詞典，先跳過）"; fi
+if [ ! -f "$DATA/inputcodes.json" ]; then bash "$BD" ime && made inputcodes.json || echo "（沒辦法建立輸入法拆碼，先跳過）"; fi
+if [ ! -f "$DATA/yue.json" ]; then echo "建立粵語詞典…"; bash "$BD" yue && made yue.json || echo "（沒辦法建立粵語詞典，先跳過）"; fi
+if [ ! -f "$DATA/hak.json" ]; then echo "建立客語詞典…"; bash "$BD" hak && made hak.json || echo "（沒辦法建立客語詞典，先跳過）"; fi
+if [ ! -f "$DATA/tw_en.json" ] && [ -f "$DATA/dict.json" ]; then
+  echo "建立台語詞的英文解釋…（要讀維基詞典，幾分鐘）"
+  cp "$DATA/dict.json" "$APD/dict.json"
+  bash "$BD" twen && made tw_en.json || echo "（沒辦法建立台語詞的英文解釋，先跳過）"
+  rm -f "$APD/dict.json"
 fi
+# 日語 (JMdict, KANJIDIC2) and 說文解字: the app's own converters (Install/*.js) run by Node.js on this computer
+# (a Node.js of our own is downloaded once when there's none)
+if [ ! -f "$DATA/ja.json" ] || [ ! -f "$DATA/shuowen.json" ]; then
+  NODE="$(command -v node || true)"
+  OWNNODE="$HOME/Library/Application Support/FangfangCards/node"
+  [ -z "$NODE" ] && NODE="$(ls "$OWNNODE"/*/bin/node 2>/dev/null | head -1)"
+  if [ -z "$NODE" ]; then
+    echo "下載 Node.js（整理日語和說文解字的資料用，只有第一次，大概 40 MB）…"
+    NARCH=$( [ "$(uname -m)" = "arm64" ] && echo arm64 || echo x64 )
+    NT="$(mktemp -d)/node.tar.gz"
+    if curl -fL --progress-bar -o "$NT" "https://nodejs.org/dist/v22.11.0/node-v22.11.0-darwin-$NARCH.tar.gz"; then
+      rm -rf "$OWNNODE"; mkdir -p "$OWNNODE"
+      tar -xzf "$NT" -C "$OWNNODE" && rm -f "$NT"
+      NODE="$(ls "$OWNNODE"/*/bin/node 2>/dev/null | head -1)"
+    fi
+  fi
+  if [ -z "$NODE" ]; then
+    echo "（沒有 Node.js：日語和說文解字先不放進 App）"
+  else
+    JT="$(mktemp -d)"
+    if [ ! -f "$DATA/ja.json" ]; then
+      echo "下載日語資料（JMdict、KANJIDIC2）…"
+      if curl -fL --progress-bar -o "$JT/JMdict_e_examp.gz" "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz"; then
+        KD="$JT/kanjidic2.xml.gz"
+        curl -fsSL -o "$KD" "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz" || KD="-"
+        echo "整理日語資料中…（幾分鐘）"
+        "$NODE" --max-old-space-size=6144 "$HERE/apple/tools/convert.js" japanese "$JT/JMdict_e_examp.gz" "$KD" "$DATA/ja.json" > "$JT/log" 2>&1 \
+          || { tail -8 "$JT/log"; rm -f "$DATA/ja.json"; echo "（沒辦法建立日語資料，先跳過）"; }
+      else
+        echo "（下載不到日語資料，先跳過）"
+      fi
+    fi
+    if [ ! -f "$DATA/shuowen.json" ]; then
+      echo "下載《說文解字注》（cjkvi-dict）…"
+      if curl -fsSL -o "$JT/swjz.xml" "https://raw.githubusercontent.com/cjkvi/cjkvi-dict/master/swjz.xml"; then
+        "$NODE" --max-old-space-size=4096 "$HERE/apple/tools/convert.js" shuowen "$JT/swjz.xml" "$DATA/shuowen.json" > "$JT/log" 2>&1 \
+          || { tail -8 "$JT/log"; rm -f "$DATA/shuowen.json"; echo "（沒辦法建立說文解字，先跳過）"; }
+      else
+        echo "（下載不到說文解字，先跳過）"
+      fi
+    fi
+    rm -rf "$JT"
+  fi
+fi
+# into the app (and what the Android version doesn't use out)
+for f in $FILES; do
+  if [ -f "$DATA/$f" ]; then cp "$DATA/$f" "$ASSETS/$f"; else rm -f "$ASSETS/$f"; fi
+done
+# 日語: made smaller for Android (all of JMdict doesn't fit in the memory Android gives an app)
+if [ -f "$ASSETS/ja.json" ]; then
+  [ -z "${NODE:-}" ] && NODE="$(command -v node || ls "$HOME/Library/Application Support/FangfangCards/node"/*/bin/node 2>/dev/null | head -1 || true)"
+  if [ -n "${NODE:-}" ] && "$NODE" "$HERE/apple/tools/android_ja.js" "$ASSETS/ja.json" "$ASSETS/ja.small.json"; then
+    mv -f "$ASSETS/ja.small.json" "$ASSETS/ja.json"
+  else
+    rm -f "$ASSETS/ja.json" "$ASSETS/ja.small.json"
+    echo "（沒辦法把日語詞典變小：先不放進 Android App）"
+  fi
+fi
+rm -f "$ASSETS/zh_sc.json" "$ASSETS/sv.json"
+for f in dict.json cards.json zh.json; do
+  [ -f "$ASSETS/$f" ] || { echo "✗ 詞典資料沒有建好（少了 $f）。把上面的訊息傳給 Claude。"; exit 1; }
+done
 
 # copies of source files left by putting a new download over the old folder ("Dict 2.kt"): the same code twice
 find "$A/app/src" -type f \( -name "* 2.kt" -o -name "* - Copy.kt" -o -name "* (1).kt" \) -print -delete 2>/dev/null | sed 's/^/（刪掉多出來的複本：/; s/$/）/'

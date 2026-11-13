@@ -236,11 +236,24 @@ object Store {
     fun setLanguage(want0: Int) {
         val want = want0.coerceIn(0, Lang.count - 1)
         Prefs.lang.value = want
+        // (the latest one asked for: a language chosen while another is still being read is switched to after it,
+        // instead of being forgotten)
+        latestWanted = want
         if (want == lang || switching) return
         if (want != 0) Prefs.lastZh.value = want
         if (want == 0) { if (otherKind == 0) swapDecks(); shown(0); return }
         // the deck waiting is the one wanted (台語 → 華語 / 粵語)
         if (lang == 0 && otherKind == want) { swapDecks(); shown(want); return }
+        // from one of the other languages to another: back to 台語 while the new one is read, and the old one's
+        // deck let go (two big dictionaries and their decks at once don't fit in the phone's memory)
+        if (lang != 0) {
+            if (otherKind == 0) swapDecks()
+            if (otherKind != 0) other = null
+            shown(0)
+            Prefs.lang.value = want
+        }
+        // (a language waiting in the background that isn't the one wanted: let go too)
+        if (otherKind > 0 && otherKind != want) other = null
         switching = true
         scope.launch {
             try {
@@ -248,14 +261,22 @@ object Store {
                 useZh(d, deck)
             } catch (e: Throwable) {
                 android.util.Log.e("Fangfang", "zh failed", e)
-                zhError = if (e is java.io.FileNotFoundException) tr("還沒有{0}詞典：到「設定 → 詞典資料」安裝。", tr(Lang.names[want]))
-                    else "${Lang.names[want]}詞典讀取失敗：${e.javaClass.simpleName} ${e.message ?: ""}"
-                Prefs.lang.value = lang
                 zhJob = null
+                // (said only when it's still the one wanted; another one chosen meanwhile is read next)
+                if (latestWanted == want) {
+                    zhError = if (e is java.io.FileNotFoundException) tr("還沒有{0}詞典：到「設定 → 詞典資料」安裝。", tr(Lang.names[want]))
+                        else "${Lang.names[want]}詞典讀取失敗：${e.javaClass.simpleName} ${e.message ?: ""}"
+                    Prefs.lang.value = lang
+                    latestWanted = lang
+                }
+                System.gc()
             }
             switching = false
+            val next = latestWanted
+            if (next != lang && next != want) setLanguage(next)
         }
     }
+    private var latestWanted = 0
 
     /** the 華語 / 粵語 dictionary and deck being read (shared: reading it at start-up and switching meanwhile read it once) */
     private var zhJob: kotlinx.coroutines.Deferred<Pair<ZhDict, Deck>>? = null
@@ -270,9 +291,11 @@ object Store {
         val accent = Prefs.hakAccent.value.coerceIn(0, 5)
         val j = scope.async(Dispatchers.Default) {
             val name = listOf("zh", "zh", "yue", "hak", "ja")[kind.coerceIn(0, 4)]
-            val d = have ?: ZhDict(DataFiles.readText(name) ?: throw java.io.FileNotFoundException("$name.json"), accent).also { d ->
+            // (the dictionary shown before is let go first: two big ones at once don't fit in memory)
+            if (have == null && zh != null) { withContext(Dispatchers.Main) { zh = null }; System.gc() }
+            val d = have ?: ZhDict(DataFiles.reader(name) ?: throw java.io.FileNotFoundException("$name.json"), accent).also { d ->
                 // 粵語, 客語: the radicals (部首查字) from the 華語 data, when it's there
-                if (d.lang != 1 && d.lang != 4) DataFiles.readText("zh")?.let { z -> try { d.borrowRadicals(z) } catch (_: Exception) {} }
+                if (d.lang != 1 && d.lang != 4) DataFiles.reader("zh")?.let { z -> try { d.borrowRadicals(z) } catch (_: Exception) {} }
             }
             d to makeZhDeck(d, list, keys).also { it.kind = kind }
         }

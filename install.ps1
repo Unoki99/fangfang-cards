@@ -131,7 +131,7 @@ foreach ($y in @((Join-Path $Keep "yue.json"), (Join-Path $Assets "yue.json"), (
         if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":2')) { Remove-Item $y -Force }
     }
 }
-foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json")) {
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json", "ja.json", "shuowen.json")) {
     $k = Join-Path $Keep $f
     if ((Test-Path $k) -and -not (Test-Path (Join-Path $Assets $f))) { Copy-Item $k (Join-Path $Assets $f) -Force }
 }
@@ -309,16 +309,94 @@ if ($need) {
         if (-not (Test-Path (Join-Path $Assets $f))) { Fail "詞典資料沒有建好（少了 $f）。" }
     }
 }
+# 日語 (JMdict, KANJIDIC2) and 說文解字: made with the app's own converters (Install/*.js) run by Node.js on this
+# computer (a Node.js of our own is downloaded once when there's none)
+$needJs = @("ja.json", "shuowen.json") | Where-Object { -not (Test-Path (Join-Path $Assets $_)) }
+if ($needJs) {
+    $Node = $null
+    $nc = Get-Command node -ErrorAction SilentlyContinue
+    if ($nc) { $Node = $nc.Source }
+    $OwnNode = Join-Path $LogDir "node"
+    if (-not $Node) {
+        $ne = Get-ChildItem -Path $OwnNode -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($ne) { $Node = $ne.FullName }
+    }
+    if (-not $Node) {
+        Write-Host "下載 Node.js（整理日語和說文解字的資料用，只有第一次，大概 30 MB）…"
+        $narch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+        $nzip = Join-Path $env:TEMP "fangfang-node.zip"
+        try {
+            Invoke-WebRequest -Uri "https://nodejs.org/dist/v22.11.0/node-v22.11.0-win-$narch.zip" -OutFile $nzip -UseBasicParsing -ErrorAction Stop
+            Remove-Item -Recurse -Force $OwnNode -ErrorAction SilentlyContinue
+            Expand-Archive -Path $nzip -DestinationPath $OwnNode -Force
+            Remove-Item $nzip -Force -ErrorAction SilentlyContinue
+        } catch { Write-Host "（下載 Node.js 失敗：$($_.Exception.Message)）" }
+        $ne = Get-ChildItem -Path $OwnNode -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($ne) { $Node = $ne.FullName }
+    }
+    if (-not $Node) {
+        Write-Host "（沒有 Node.js：日語和說文解字先不放進 App）"
+    } else {
+        $Conv = Join-Path $Here "apple\tools\convert.js"
+        $JTmp = Join-Path $env:TEMP ("fangfang-js-" + [guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $JTmp | Out-Null
+        $JLog = Join-Path $JTmp "node.log"
+        if (-not (Test-Path (Join-Path $Assets "ja.json"))) {
+            Write-Host "下載日語資料（JMdict、KANJIDIC2）…"
+            $jm = Join-Path $JTmp "JMdict_e_examp.gz"
+            $kd = Join-Path $JTmp "kanjidic2.xml.gz"
+            try {
+                Invoke-WebRequest -Uri "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz" -OutFile $jm -UseBasicParsing -ErrorAction Stop
+                try { Invoke-WebRequest -Uri "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz" -OutFile $kd -UseBasicParsing -ErrorAction Stop } catch { $kd = "-" }
+                Write-Host "整理日語資料中…（幾分鐘）"
+                & $Node "--max-old-space-size=6144" $Conv japanese $jm $kd (Join-Path $Assets "ja.json") *> $JLog
+                if ($LASTEXITCODE -ne 0) { Get-Content $JLog -Tail 8 | Write-Host; Remove-Item (Join-Path $Assets "ja.json") -Force -ErrorAction SilentlyContinue; Write-Host "（沒辦法建立日語資料，先跳過）" }
+            } catch { Write-Host "（下載不到日語資料，先跳過：$($_.Exception.Message)）" }
+        }
+        if (-not (Test-Path (Join-Path $Assets "shuowen.json"))) {
+            Write-Host "下載《說文解字注》（cjkvi-dict）…"
+            $sw = Join-Path $JTmp "swjz.xml"
+            try {
+                Invoke-WebRequest -Uri "https://raw.githubusercontent.com/cjkvi/cjkvi-dict/master/swjz.xml" -OutFile $sw -UseBasicParsing -ErrorAction Stop
+                & $Node "--max-old-space-size=4096" $Conv shuowen $sw (Join-Path $Assets "shuowen.json") *> $JLog
+                if ($LASTEXITCODE -ne 0) { Get-Content $JLog -Tail 8 | Write-Host; Remove-Item (Join-Path $Assets "shuowen.json") -Force -ErrorAction SilentlyContinue; Write-Host "（沒辦法建立說文解字，先跳過）" }
+            } catch { Write-Host "（下載不到說文解字，先跳過：$($_.Exception.Message)）" }
+        }
+        Remove-Item -Recurse -Force $JTmp -ErrorAction SilentlyContinue
+    }
+}
+
+# 日語: made smaller for Android (all of JMdict doesn't fit in the memory Android gives an app); the full one is kept
+$JaA = Join-Path $Assets "ja.json"
+$JaK = Join-Path $Keep "ja.json"
+if (Test-Path $JaA) {
+    if (-not (Test-Path $JaK)) { Copy-Item $JaA $JaK -Force }
+    $N = $null
+    $nc2 = Get-Command node -ErrorAction SilentlyContinue
+    if ($nc2) { $N = $nc2.Source } else {
+        $ne2 = Get-ChildItem -Path (Join-Path $LogDir "node") -Recurse -Filter node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($ne2) { $N = $ne2.FullName }
+    }
+    $small = Join-Path $Assets "ja.small.json"
+    $ok = $false
+    if ($N) {
+        & $N (Join-Path $Here "apple\tools\android_ja.js") $JaK $small
+        $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $small)
+    }
+    if ($ok) { Move-Item $small $JaA -Force }
+    else { Remove-Item $JaA, $small -Force -ErrorAction SilentlyContinue; Write-Host "（沒辦法把日語詞典變小：先不放進 Android App）" }
+}
+
 # keep what was made (for the next time)
-foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json")) {
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json", "ja.json", "shuowen.json")) {
     $src = Join-Path $Assets $f
     if ((Test-Path $src) -and -not (Test-Path (Join-Path $Keep $f))) { Copy-Item $src (Join-Path $Keep $f) -Force }
 }
 
-# The dictionaries aren't in the app: it downloads and makes each language's dictionary itself (設定 → 詞典資料).
-# The one file put in is Wiktionary's English for the 台語 words (tw_en.json), which 台語's English search uses and
-# the phone can't make (it would need Wiktionary's whole 2.5 GB file). What was made above stays in $Keep.
-foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "ja.json", "shuowen.json", "zh_sc.json")) {
+# The dictionaries made above go into the app (its assets): making them on the phone ran out of memory with the
+# big ones. (Only this computer's own build has them: the licences don't allow sharing the made files.) What the
+# Android version doesn't use is taken out.
+foreach ($f in @("zh_sc.json", "sv.json")) {
     Remove-Item (Join-Path $Assets $f) -Force -ErrorAction SilentlyContinue
 }
 

@@ -35,8 +35,17 @@ import com.unoki99.fangfang.ui.*
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // a crash is written down, and shown the next time the app opens (so it can be sent to be fixed)
+        val crashFile = java.io.File(applicationContext.filesDir, "last-crash.txt")
+        val before = Thread.getDefaultUncaughtExceptionHandler()
+        if (before !is CrashNote) Thread.setDefaultUncaughtExceptionHandler(CrashNote(crashFile, before))
         Prefs.init(applicationContext)
         Store.init(applicationContext)
+        if (crashFile.exists()) {
+            val t = try { crashFile.readText().take(1500) } catch (_: Exception) { "" }
+            crashFile.delete()
+            if (t.isNotBlank()) Store.zhError = "上次當掉了（可以把這段傳給 Claude）：\n$t"
+        }
         enableEdgeToEdge()
         setContent { App() }
     }
@@ -270,3 +279,16 @@ private fun Spelling(l: Int, pref: Pref<Int>, names: List<String>) {
     }
 }
 
+
+
+/** writes an uncaught crash down (the error and where it happened), then lets it crash as before */
+private class CrashNote(val file: java.io.File, val next: Thread.UncaughtExceptionHandler?) : Thread.UncaughtExceptionHandler {
+    override fun uncaughtException(t: Thread, e: Throwable) {
+        try {
+            val sw = java.io.StringWriter()
+            e.printStackTrace(java.io.PrintWriter(sw))
+            file.writeText("${e.javaClass.simpleName}: ${e.message}\n(${t.name})\n" + sw.toString().lines().take(25).joinToString("\n"))
+        } catch (_: Throwable) {}
+        next?.uncaughtException(t, e)
+    }
+}

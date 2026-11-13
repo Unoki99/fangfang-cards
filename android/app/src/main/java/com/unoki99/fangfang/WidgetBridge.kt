@@ -11,6 +11,8 @@ import kotlinx.coroutines.*
  */
 object WidgetBridge {
     const val commonCount = 1000
+    /** (the most words of one level written for the widget) */
+    const val PER_LEVEL = 600
     private val scope = MainScope()
     private var building = false
     private var stateJob: Job? = null
@@ -131,7 +133,8 @@ object WidgetBridge {
         scope.launch {
             val cards = twCards
             val topics = twTopics
-            withContext(Dispatchers.Default) {
+            // (a failure, out of memory with a big dictionary, leaves the widget's words as they were: not a crash)
+            try { withContext(Dispatchers.Default) {
                 val byCat = HashMap<Int, MutableList<WidgetFiles.Word>>()
                 val common = ArrayList<WidgetFiles.Word>()
                 for ((i, c) in cards.withIndex()) {
@@ -141,11 +144,15 @@ object WidgetBridge {
                     for (cat in cats) byCat.getOrPut(cat) { ArrayList() }.add(w)
                     if (i < commonCount) common.add(w)
                 }
-                // 華語: each level of the word list, and each character level (not 更多常用字)
+                // 華語: each level of the word list, and each character level (not 更多常用字): only the cards are
+                // grouped here; each level's words are made and written one level at a time, at most PER_LEVEL each
+                // (日語 has tens of thousands: all of them at once ran out of memory)
+                val zhByLevel = HashMap<Int, MutableList<Card>>()
                 for (c in zhCards) {
                     val l = c.cats?.firstOrNull() ?: continue
                     if (l == Lang.moreChars) continue
-                    byCat.getOrPut(WidgetFiles.ZH_BASE + l) { ArrayList() }.add(word(c, place))
+                    val g = zhByLevel.getOrPut(l) { ArrayList() }
+                    if (g.size < PER_LEVEL) g.add(c)
                 }
                 val list = arrayListOf(WidgetFiles.Category(-1, "常用詞", common.size))
                 WidgetFiles.writeWords(Store.app, -1, common)
@@ -159,15 +166,16 @@ object WidgetBridge {
                 if (zhCards.isNotEmpty()) {
                     list.add(WidgetFiles.Category(WidgetFiles.ZH_UNKNOWN, "不熟的詞（華語）", 0))
                     for (t in zhTopics) {
-                        val ws = byCat[WidgetFiles.ZH_BASE + t.id] ?: continue
-                        if (ws.isEmpty()) continue
+                        val cs = zhByLevel[t.id] ?: continue
+                        if (cs.isEmpty()) continue
+                        val ws = cs.map { word(it, place) }
                         WidgetFiles.writeWords(Store.app, WidgetFiles.ZH_BASE + t.id, ws)
                         list.add(WidgetFiles.Category(WidgetFiles.ZH_BASE + t.id, "華語・" + t.name, ws.size))
                     }
                 }
                 WidgetFiles.writeCategories(Store.app, list)
                 WidgetFiles.setStamp(Store.app, stamp)
-            }
+            } } catch (e: Throwable) { android.util.Log.e("Fangfang", "widget words", e); System.gc() }
             building = false
             unknownStamp = ""
             writeUnknown(Store.progress.status.filter { it.value == 2 }.keys.sorted())

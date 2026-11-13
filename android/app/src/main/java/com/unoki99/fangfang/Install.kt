@@ -46,6 +46,12 @@ object DataFiles {
     fun isBuiltIn(name: String): Boolean = try { Store.app.assets.open("$name.json").close(); true } catch (_: Exception) { false }
     fun has(name: String) = isInstalled(name) || isBuiltIn(name)
     fun size(name: String): Long = installed(name).let { if (it.exists()) it.length() else 0L }
+    /** the file to read line by line (the installed copy first), or null */
+    fun reader(name: String): java.io.BufferedReader? {
+        val f = installed(name)
+        if (f.exists()) return try { java.io.BufferedReader(java.io.InputStreamReader(java.io.FileInputStream(f), Charsets.UTF_8), 1 shl 16) } catch (_: Exception) { null }
+        return try { java.io.BufferedReader(java.io.InputStreamReader(Store.app.assets.open("$name.json"), Charsets.UTF_8), 1 shl 16) } catch (_: Exception) { null }
+    }
     /** the file's text (the installed copy first), or null */
     fun readText(name: String): String? {
         val f = installed(name)

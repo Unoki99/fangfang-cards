@@ -22,7 +22,10 @@ struct ZhGate<Content: View>: View {
     @ViewBuilder let content: (ZhDict) -> Content
     var body: some View {
         Group {
-            if let d = store.zh {
+            if store.missingDict {
+                // (its dictionary isn't installed: the page offers it; see the app's overlay)
+                Color.clear
+            } else if let d = store.zh {
                 content(d)
                     // (a new dictionary (華語 ↔ 粵語): everything made again, nothing kept from the other one, such as
                     // search results pointing into it)
@@ -92,7 +95,7 @@ struct ZhLookupPane: View {
     var body: some View {
         List {
             Section {
-                TextField(Lang.isJa ? tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") : Lang.isHak ? tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") : Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
+                TextField(Lang.isSv ? tr("瑞典文、英文或中文，例如：läsa、bilarna、read、汽車") : Lang.isJa ? tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") : Lang.isHak ? tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") : Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
                     .scaledFont(18)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -118,7 +121,7 @@ struct ZhLookupPane: View {
                             NavigationLink { JaLabPage(dict: dict, start: nil) } label: { TileLabel(icon: "slider.horizontal.3", title: trs("實驗室")) }
                                 .buttonStyle(.plain)
                         }
-                    } else {
+                    } else if !dict.isSv {
                     HStack(spacing: 10) {
                         NavigationLink {
                             RadicalPage(isChar: { dict.byHan[$0] != nil }) { query += $0 }
@@ -145,7 +148,8 @@ struct ZhLookupPane: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
             if query.isEmpty {
-                Text(Lang.isJa ? tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                Text(Lang.isSv ? tr("可以查瑞典文（變化過的形也可以：bilarna → bil）、英文（read）或中文的意思（汽車）。\n每個詞分成詞素：詞根、前綴、後綴、連接音和詞尾各用一種顏色。點進一個詞，再點它的一個部分，看那個部分的意思和作用。\n* 代表一個以上的字母，? 代表剛好一個：*het → het 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                     : Lang.isJa ? tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : Lang.isHak ? tr("可以查漢字、客語拼音（不用打聲調：siid fan）、華語的意思（吃飯）或英文（eat）。\n* 代表一個以上的字，? 代表剛好一個字：\n*仔 → 仔結尾　食* → 食開頭\n打聲調類別的數字找聲調組合：1 陰平、2 上聲、3 去聲、4 陰入、5 陽平、7 陽去、8 陽入，例如 8-3。\n讀音照選的腔顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : Lang.isYue ? tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞　*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「國語／普通話／四川話」和「拼音／注音」顯示（四川話拼音也可以查）。\n往右滑一個詞加到「不熟」，往左滑收藏。"))
@@ -157,8 +161,32 @@ struct ZhLookupPane: View {
             group(dict.isYue ? tr("華語「\(query)」的粵語講法") : (dict.isHak ? tr("華語「\(query)」的客語講法") : tr("「\(query)」的四川話講法")), found.mandarin)
             if found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
             group("「\(query)」", found.words)
+            // 瑞典語: a compound the dictionary doesn't have, in its parts
+            if let est = found.svEst {
+                Section(tr("拆開來看")) { SvCompoundBlock(dict: dict, word: query, est: est).padding(.vertical, 4) }
+                    .listRowBackground(T.fn.opacity(0.7))
+            }
             ForEach(Array(found.parts.enumerated()), id: \.offset) { i, w in
                 group("「\(w)」", found.partWords[i])
+            }
+            // 瑞典語: 華語 → English → 瑞典語, each marked as guessed
+            if !found.svVia.isEmpty {
+                Section {
+                    ForEach(found.svVia.prefix(60).filter { $0 < dict.entries.count }, id: \.self) { i in
+                        let e = dict.entries[i]
+                        EntryLink(value: ZhKey(k: e.k)) {
+                            HStack(spacing: 8) {
+                                ZhWordRow(dict: dict, entry: e)
+                                InfoChip.grey(tr("推測"))
+                            }
+                        }
+                    }
+                } header: {
+                    Text(tr("經由英文推測：「\(query)」→ \(found.svViaEnglish)")).textCase(nil)
+                } footer: {
+                    Text(tr("這些詞是照「\(query)」在 CC-CEDICT 裡的英文意思，再用英文找瑞典文，不一定是同一個意思。"))
+                }
+                .listRowBackground(T.fn.opacity(0.7))
             }
             group(tr("開頭是「\(query)」"), found.starts)
             if !found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
@@ -357,9 +385,29 @@ struct ZhEntryBody: View {
     }
 
     var body: some View {
-        let syl = entry.syl(store.zhPlace)
+        let syl = dict.isSv ? dict.svSyl(entry) : entry.syl(store.zhPlace)
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
+                if dict.isSv {
+                    // 瑞典語: the word, and its morphemes right under it (long words don't fit side by side)
+                    HStack(alignment: .center, spacing: 12) {
+                        Text(dict.hanText(entry.h, syl, base: T.glyph)).toneGlow().latFont(34).fontWeight(.semibold)
+                            .textSelection(.enabled)
+                        PlayButton(path: entry.audio ?? "tts:" + entry.h)
+                        Spacer()
+                    }
+                    let r = dict.reading(syl, store.zhRom)
+                    if !r.characters.isEmpty {
+                        Text(r).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
+                    }
+                    // (found through the English of a 華語 word: a guess)
+                    if let v = SvVia.found[entry.k] {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            InfoChip.grey(tr("推測"))
+                            Text(tr("由「\(v.zh)」經英文（\(v.en)）推測的詞，不一定是同一個意思。")).ffFont(.caption).foregroundStyle(T.muted)
+                        }
+                    }
+                } else {
                 HStack(alignment: .center, spacing: 12) {
                     // tap a character to see it on its own (the entry with the same reading)
                     TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl)) { tapped = ZhKey(k: $0) }
@@ -369,14 +417,15 @@ struct ZhEntryBody: View {
                     PlayButton(path: entry.audio ?? "tts:" + entry.h)
                     Spacer()
                 }
+                }
                 HStack(spacing: 8) {
                     saveButton
                     star
                 }
                 // a single character: its character card too
-                if entry.h.count == 1 { ZhCharCardRow(dict: dict, ch: entry.h) }
+                if entry.h.count == 1 && !dict.isSv { ZhCharCardRow(dict: dict, ch: entry.h) }
                 // the other reading system, small (四川話: the same either way, so not again)
-                if !(store.zhPlace == 2 && entry.sc != nil) {
+                if !dict.isSv && !(store.zhPlace == 2 && entry.sc != nil) {
                     Text(dict.reading(syl, store.zhRom == 0 ? 1 : 0)).ffFont(.subheadline).foregroundStyle(T.purpleInk).textSelection(.enabled)
                 }
                 // 客語: how the other accents say it
@@ -387,7 +436,7 @@ struct ZhEntryBody: View {
                 }
                 // 國語, 普通話 and 四川話: every one, the one chosen in colour (like 客語's accents)
                 if dict.lang == 1 { ZhPlaceRows(dict: dict, entry: entry) }
-                if !dict.isJa { InputCodesRow(han: entry.h) }
+                if !dict.isJa && !dict.isSv { InputCodesRow(han: entry.h) }
                 // the English meanings, one per line
                 let ens = dict.isJa ? [] : entry.enList
                 if !ens.isEmpty {
@@ -397,7 +446,7 @@ struct ZhEntryBody: View {
                     }
                 }
                 // 粵語: the 華語 word(s) with the same meaning
-                if !entry.eq.isEmpty {
+                if !entry.eq.isEmpty && !dict.isSv {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Chip(text: dict.isJa ? tr("也寫") : tr("華"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk)
                         Text(entry.eq.joined(separator: "、")).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
@@ -438,7 +487,14 @@ struct ZhEntryBody: View {
                     }
                 }
             }
-            ForEach(entry.senses, id: \.n) { s in sense(s) }
+            // 日語: the meanings small and numbered (like the English ones), not as boxes
+            if dict.isJa {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(entry.senses, id: \.n) { s in jaSense(s) }
+                }
+            } else {
+                ForEach(entry.senses, id: \.n) { s in sense(s) }
+            }
             // 近義詞 / 反義詞 (《重編國語辭典修訂本》), the ones this dictionary has
             let syn = entry.syn.compactMap { dict.usual($0).map { dict.entries[$0] } }
             let ant = entry.ant.compactMap { dict.usual($0).map { dict.entries[$0] } }
@@ -450,14 +506,18 @@ struct ZhEntryBody: View {
             }
             // 日語: the kanji of the word, and its 活用
             if dict.isJa { JaWordExtras(dict: dict, entry: entry) }
+            // 瑞典語: the word's parts (tap one), its Chinese meanings, its forms
+            if dict.isSv { SvWordExtras(dict: dict, entry: entry) }
             FoundSentences(key: entry.k)
             // a single character: 說文解字 (when installed)
-            if entry.h.count == 1 && !dict.isJa { ShuowenBlock(ch: entry.h) }
+            if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }
             if entry.extra {
                 Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
                     .ffFont(.caption).foregroundStyle(T.muted)
             }
-            Text(dict.isJa
+            Text(dict.isSv
+                 ? tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）；中文意思：維基詞典（CC BY-SA）；常用詞：FrequencyWords（CC BY-SA 4.0）。詞的組成依規則推算，可能有誤。")
+                 : dict.isJa
                  ? tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。")
                  : dict.isHak
                  ? tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
@@ -511,6 +571,21 @@ struct ZhEntryBody: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.55)))
+    }
+
+    /// 日語: one meaning, a small number in front of it, its examples under it
+    private func jaSense(_ s: ZhSense) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            EnNum(n: s.n)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(s.text).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
+                ForEach(Array(s.ex.enumerated()), id: \.offset) { _, x in
+                    ZhExampleBlock(dict: dict, ex: x)
+                }
+            }
+            Spacer(minLength: 4)
+            SenseSaveButton(item: SavedSense(key: entry.k, sense: s.n - 1), store: store)
+        }
     }
 
     @ViewBuilder private func links(_ name: String, _ es: [ZhEntry], _ fill: Color, _ edge: Color, _ ink: Color) -> some View {
@@ -575,7 +650,7 @@ struct ZhExampleBlock: View {
     /// 設定 → 例句的詞分開一點
     @AppStorage("wordGap") private var gap = true
     var body: some View {
-        if dict.isJa { jaBody } else { zhBody }
+        if dict.isJa { jaBody } else if dict.isSv { SvExampleBody(dict: dict, ex: ex) } else { zhBody }
     }
 
     /// 日語: the sentence (kanji, hiragana, katakana in their colours) and its English (Tatoeba's, through JMdict)
@@ -977,22 +1052,23 @@ struct HakAccentRows: View {
     let entry: ZhEntry
     @EnvironmentObject var store: Store
     var body: some View {
+        // every accent side by side (the name, its reading under it), wrapping onto more lines when needed
         if let acc = entry.acc {
-            VStack(alignment: .leading, spacing: 4) {
+            FlowLayout(spacing: 10) {
                 ForEach(0..<Lang.hakAccents.count, id: \.self) { a in
                     let mine = a == dict.accent
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    VStack(alignment: .center, spacing: 2) {
                         Chip(text: trs(Lang.hakAccents[a]), fill: mine ? T.hakFill : T.fn, edge: mine ? T.hakEdge : T.fnEdge, ink: mine ? T.hakInk : T.muted)
                         if a < acc.count, let syl = acc[a] {
                             Text(dict.reading(syl, store.zhRom)).latFont(15).foregroundStyle(T.greenInk)
                         } else if mine && entry.hakGuess {
                             // (put together from how this accent reads each character)
                             Text(dict.reading(entry.tw, store.zhRom)).latFont(15).foregroundStyle(T.greenInk)
-                            InfoChip.grey(tr("推測"))
+                            Text(tr("推測")).ffFont(.caption2).foregroundStyle(T.muted)
                         } else if let w = entry.otherWords[a] {
-                            Text(tr("說「\(w)」")).ffFont(.subheadline).foregroundStyle(T.glyph)
+                            Text(tr("說「\(w)」")).ffFont(.caption).foregroundStyle(T.glyph)
                         } else {
-                            Text(tr("（沒有收）")).ffFont(.subheadline).foregroundStyle(T.muted)
+                            Text(tr("（沒有收）")).ffFont(.caption).foregroundStyle(T.muted)
                         }
                     }
                 }
@@ -1079,14 +1155,17 @@ struct ZhPlaceRows: View {
     let entry: ZhEntry
     @EnvironmentObject var store: Store
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        // side by side (the name, its reading under it)
+        FlowLayout(spacing: 10) {
             ForEach(0..<Lang.zhPlaceNames.count, id: \.self) { i in
                 let mine = i == store.zhPlace
                 let s: [String] = i == 0 ? entry.tw : (i == 1 ? (entry.lu ?? entry.tw) : (entry.sc ?? entry.lu ?? entry.tw))
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Chip(text: trs(Lang.zhPlaceNames[i]), fill: mine ? T.blue : T.fn, edge: mine ? T.blueEdge : T.fnEdge, ink: mine ? T.blueInk : T.muted)
-                    Text(dict.reading(s, i == 2 ? store.zhRom : store.zhRom)).latFont(15).foregroundStyle(T.greenInk)
-                    if i == 2, let k = SichuanChip.kind(entry.sc == nil ? nil : entry.scKind) { SichuanChip(kind: k, small: true) }
+                VStack(alignment: .center, spacing: 2) {
+                    HStack(spacing: 3) {
+                        Chip(text: trs(Lang.zhPlaceNames[i]), fill: mine ? T.blue : T.fn, edge: mine ? T.blueEdge : T.fnEdge, ink: mine ? T.blueInk : T.muted)
+                        if i == 2, let k = SichuanChip.kind(entry.sc == nil ? nil : entry.scKind) { SichuanChip(kind: k, small: true) }
+                    }
+                    Text(dict.reading(s, store.zhRom)).latFont(15).foregroundStyle(T.greenInk)
                 }
             }
         }

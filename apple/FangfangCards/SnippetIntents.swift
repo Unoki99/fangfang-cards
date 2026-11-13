@@ -24,7 +24,7 @@ final class IntentDict {
     func zhDict(_ kind: Int) throws -> ZhDict {
         if let d = zh[kind] { return d }
         if let d = Store.shared.zh, d.lang == kind { zh[kind] = d; return d }
-        guard (1...4).contains(kind), let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja"][kind]) else { throw CocoaError(.fileNoSuchFile) }
+        guard (1...5).contains(kind), let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv"][kind]) else { throw CocoaError(.fileNoSuchFile) }
         let accent = min(max(UserDefaults.standard.integer(forKey: Lang.hakPlaceKey), 0), Lang.hakAccents.count - 1)
         let d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent, from: url)
         zh[kind] = d

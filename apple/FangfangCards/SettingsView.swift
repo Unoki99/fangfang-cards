@@ -34,7 +34,9 @@ struct SettingsView: View {
     private var topics: [Topic] {
         let themeName = (AppTheme(rawValue: theme) ?? .night).name
         let tones = toneSys == 0 ? trs("聲調顏色關") : (store.lang != 0 && store.lang != 3 ? trs("聲調顏色開") : (toneSys == 7 ? trs("七聲") : trs("五聲")))
-        let lang: String = store.isJa
+        let lang: String = store.isSv
+            ? trs("瑞典語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
+            : store.isJa
             ? trs("日語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
             : store.isYue
             ? trs("粵語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
@@ -181,7 +183,25 @@ private struct LookSettings: View {
                 Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。"))
             }
             // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour
-            if store.isJa {
+            if store.isSv {
+                Section {
+                    Toggle(tr("詞素顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? (toneSys == 0 ? 7 : toneSys) : 0 }))
+                    if toneSys != 0 { Toggle(tr("顏色光暈"), isOn: $toneGlow) }
+                    NavigationLink { ToneColorPicker(set: 5).environmentObject(store) } label: {
+                        HStack {
+                            Text(tr("選瑞典語的顏色"))
+                            Spacer()
+                            HStack(spacing: 3) {
+                                ForEach(0..<SvColors.keys.count, id: \.self) { i in Circle().fill(SvColors.color(i)).frame(width: 7, height: 7) }
+                            }
+                        }
+                    }
+                } header: {
+                    Text(tr("詞素顏色"))
+                } footer: {
+                    Text(tr("瑞典語：詞根黃（複合詞的第二個詞根橘）、前綴青、後綴粉紅、連接音灰、詞尾紫。"))
+                }
+            } else if store.isJa {
                 Section {
                     Toggle(tr("文字顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? (toneSys == 0 ? 7 : toneSys) : 0 }))
                     if toneSys != 0 { Toggle(tr("顏色光暈"), isOn: $toneGlow) }
@@ -286,21 +306,24 @@ private struct LanguageSettings: View {
     @AppStorage(Lang.yueRomKey) private var yueRomSaved = 0
     @AppStorage(Lang.hakRomKey) private var hakRomSaved = 0
     @AppStorage(Lang.jaRomKey) private var jaRomSaved = 1
+    @AppStorage(Lang.svRomKey) private var svRomSaved = 0
+    @AppStorage(SvGuess.key) private var svGuess = true
     @AppStorage(Simp.key) private var simplified = false
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
             Section {
                 Picker(tr("語言"), selection: Binding(get: { store.lang }, set: { store.setLanguage($0) })) {
-                    Text(tr("台語")).tag(0)
-                    Text(tr("華語")).tag(1)
-                    Text(tr("粵語")).tag(2)
-                    Text(tr("客語")).tag(3)
-                    Text(tr("日語")).tag(4)
+                    // (short: six don't fit side by side; English: TW ZH YUE HAK JA SV)
+                    ForEach(0..<Lang.count, id: \.self) { i in
+                        Text(UILang.english ? ["TW", "ZH", "YUE", "HAK", "JA", "SV"][i] : ["台", "華", "粵", "客", "日", "瑞"][i]).tag(i)
+                    }
                 }
                 .pickerStyle(.segmented)
             } header: {
                 Text(tr("要學的語言"))
+            } footer: {
+                Text(trs(Lang.names[min(max(store.lang, 0), Lang.count - 1)]))
             }
             // the app's own language (buttons, menus, explanations); the dictionaries stay as they are
             Section {
@@ -397,6 +420,19 @@ private struct LanguageSettings: View {
                 Text(tr("日語"))
             } footer: {
                 Text(tr("讀音用假名或羅馬字（平文式）。詞是 JMdict 標成常用的詞，照常用的程度分組，每組 500 個；漢字卡照報紙裡出現的次數排。"))
+            }
+            Section {
+                Picker(tr("詞下面"), selection: $svRomSaved) {
+                    Text(trs("詞素")).tag(0)
+                    Text(trs("不顯示")).tag(1)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: svRomSaved) { if store.lang == 5 { store.zhRom = svRomSaved } }
+                Toggle(tr("沒有中文解釋的詞：由英文推測中文"), isOn: $svGuess)
+            } header: {
+                Text(tr("瑞典語"))
+            } footer: {
+                Text(tr("詞下面用連字號分開詞素（be-tal-a），每個部分一種顏色。詞是照字幕裡出現的次數分組，每組 500 個（FrequencyWords）。由英文推測的中文是照 CC-CEDICT 裡英文解釋相同的華語詞，標「由英文推測」，不一定準（要重新安裝一次瑞典語詞典才有）。"))
             }
         }
     }

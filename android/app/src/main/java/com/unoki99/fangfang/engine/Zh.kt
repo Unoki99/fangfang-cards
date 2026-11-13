@@ -307,7 +307,13 @@ class ZhPiece(val text: List<String>, val tw: List<String>?, val lu: List<String
 }
 
 /** accent: 客語, the accent whose readings are used */
-class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
+/** (the line the entries start after, and how many lines are read in one batch) */
+private const val ENTRIES = ",\"e\":["
+private const val BATCH = 3000
+
+class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAccent) {
+    /** (from text in memory: small files, tests) */
+    constructor(text: String, accent: Int = EngineSettings.hakAccent) : this(java.io.BufferedReader(java.io.StringReader(text)), accent)
     val entries: List<ZhEntry>
     /** the 粵語 dictionary (yue.json, tools/build_cantonese.py), not the 華語 one */
     var isYue = false; private set
@@ -348,11 +354,21 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
 
     /** 粵語: yue.json doesn't carry the radicals (they're the 華語 data's, whose licence doesn't allow sharing them in
      *  another file), so they're read from the beginning of zh.json when it's there */
-    fun borrowRadicals(zhText: String) {
-        if (radicals.isNotEmpty()) return
-        val mi = zhText.indexOf(",\"e\":[\n"); if (mi < 0) return
+    fun borrowRadicals(zh: java.io.BufferedReader) {
+        if (radicals.isNotEmpty()) { zh.close(); return }
+        // (only the part before the entries is read)
+        val sb = StringBuilder()
+        var found = false
+        zh.use { r ->
+            while (true) {
+                val line = r.readLine() ?: break
+                if (line.endsWith(ENTRIES)) { sb.append(line, 0, line.length - ENTRIES.length); found = true; break }
+                sb.append(line).append('\n')
+            }
+        }
+        if (!found) return
         val rads = ArrayList<ZhRadical>(); val rx = HashMap<String, List<String>>()
-        val j = JReader(zhText.substring(0, mi) + "}")
+        val j = JReader(sb.append('}').toString())
         j.obj { key ->
             when (key) {
                 "r" -> j.arr {
@@ -441,35 +457,58 @@ class ZhDict(text: String, val accent: Int = EngineSettings.hakAccent) {
             return true
         }
         val out = ArrayList<ZhEntry>()
-        val marker = ",\"e\":[\n"
-        val mi = text.indexOf(marker)
-        if (mi >= 0) {
-            // the entries are one per line after the rest: read in parts at the same time, on all the cores
-            val hj = JReader(text.substring(0, mi) + "}")
-            hj.obj { key -> if (!head(hj, key)) hj.skip() }
-            val end = text.lastIndexOf("\n]}").let { if (it < mi) text.length else it }
-            val lines = text.substring(mi + marker.length, end).split('\n')
-            val parts = maxOf(4, Runtime.getRuntime().availableProcessors() * 2)
-            val size = (lines.size + parts - 1) / parts
-            val res = arrayOfNulls<List<ZhEntry>>(parts)
-            val threads = (0 until parts).map { p ->
-                Thread {
-                    val l = ArrayList<ZhEntry>()
-                    for (k in p * size until minOf(lines.size, (p + 1) * size)) {
-                        val line = lines[k].trimEnd().removeSuffix(",")
-                        if (line.isEmpty()) continue
-                        readEntry(JReader(line))?.let { l.add(it) }
-                    }
-                    res[p] = l
-                }.also { it.start() }
+        // The file is read line by line, never whole (the big ones, 日語, would need hundreds of MB as one text):
+        // the part before the entries, then the entries one per line, read in batches at the same time on all the
+        // cores (a few batches at a time, so the lines don't pile up)
+        val headSb = StringBuilder()
+        var inEntries = false
+        src.use { r ->
+            while (true) {
+                val line = r.readLine() ?: break
+                if (line.endsWith(ENTRIES)) { headSb.append(line, 0, line.length - ENTRIES.length); inEntries = true; break }
+                headSb.append(line).append('\n')
             }
-            threads.forEach { it.join() }
-            for (r in res) if (r != null) out.addAll(r)
-        } else {
-            val j = JReader(text)
-            j.obj { key ->
-                if (key == "e") j.arr { readEntry(j)?.let { out.add(it) } }
-                else if (!head(j, key)) j.skip()
+            if (inEntries) {
+                val hj = JReader(headSb.append('}').toString())
+                headSb.setLength(0)
+                hj.obj { key -> if (!head(hj, key)) hj.skip() }
+                val cores = maxOf(2, Runtime.getRuntime().availableProcessors())
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(cores)
+                try {
+                    val pending = java.util.ArrayDeque<java.util.concurrent.Future<List<ZhEntry>>>()
+                    var batch = ArrayList<String>(BATCH)
+                    fun flush() {
+                        if (batch.isEmpty()) return
+                        val b = batch
+                        batch = ArrayList(BATCH)
+                        pending.add(pool.submit<List<ZhEntry>> {
+                            val l = ArrayList<ZhEntry>(b.size)
+                            for (raw in b) {
+                                val line = raw.trimEnd().removeSuffix(",")
+                                if (line.isEmpty()) continue
+                                readEntry(JReader(line))?.let { l.add(it) }
+                            }
+                            l
+                        })
+                        while (pending.size > cores * 2) out.addAll(pending.poll()!!.get())
+                    }
+                    while (true) {
+                        val line = r.readLine() ?: break
+                        if (line.startsWith("]}")) break
+                        batch.add(line)
+                        if (batch.size >= BATCH) flush()
+                    }
+                    flush()
+                    while (pending.isNotEmpty()) out.addAll(pending.poll()!!.get())
+                } finally { pool.shutdown() }
+            } else {
+                // (an older file, not one entry per line: read whole)
+                val j = JReader(headSb.toString())
+                headSb.setLength(0)
+                j.obj { key ->
+                    if (key == "e") j.arr { readEntry(j)?.let { out.add(it) } }
+                    else if (!head(j, key)) j.skip()
+                }
             }
         }
         chars = cs

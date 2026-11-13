@@ -2,7 +2,7 @@
 // when it's on, its settings (the same as the card's 設定: one column per language, then the rest) and the words
 // chosen to send to the app.
 const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
-    yue: true, hak: true, hakAcc: 0, hakRom: 0, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0 };
+    yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0 };
 const store = browser.storage.local;
 
 function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -66,12 +66,16 @@ async function main() {
         select(hak, "顯示", "hak", yesNo);
         select(hak, "腔", "hakAcc", ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"].map((n, i) => [i, n]));
         select(hak, "拼寫", "hakRom", [[0, "拼音"], [1, "注音"]]);
+        const sv = col("sv", "瑞典語");
+        select(sv, "顯示", "sv", yesNo);
+        select(sv, "由英文推測中文", "svGuess", yesNo);
         parent.appendChild(grid);
         // the rest
         const gen = el("div", null, "gen");
         const g = () => { const d = el("div"); gen.appendChild(d); return d; };
         select(g(), "聲調顏色", "colours", [[true, "開"], [false, "關"]]);
         select(g(), "英文解釋", "en", [[false, "不顯示"], [true, "顯示"]]);
+        select(g(), "英文查中文", "en2zh", [[true, "開"], [false, "關"]]);
         select(g(), "字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "最大"]]);
         select(g(), "位置", "pos", [["word", "詞的旁邊"], ["tl", "左上角"], ["tr", "右上角"], ["bl", "左下角"], ["br", "右下角"]]);
         select(g(), "網頁上收藏的詞", "ring", [[false, "不標"], [true, "彩虹框"]]);

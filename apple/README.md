@@ -92,6 +92,14 @@ bash build-data.sh yue                   # 粵語（含維基詞典）
 - **助詞**（詞典的方塊）：用法地圖和每個助詞的說明、例句；「練習」裡的「助詞練習」是填空。
 - **實驗室**（詞典的方塊，或詞條裡的「在實驗室組合這個詞」）：查一個動詞或形容詞，用滾輪接上語尾（食べ・させ・られ・たく・なかった），每個滾輪都顯示整個詞，下面說明每一部分的作用和整體的意思。
 
+**瑞典語**（設定 → 語言 → 瑞典語，只有 iOS／iPadOS 版）：和其他語言用同一套頁面，按鈕是青綠色。
+- 每個詞分成詞素：詞根黃（複合詞的第二個詞根橘）、前綴青、後綴粉紅、連接音（arbet**s**plats 的 s）灰、詞尾紫，詞下面寫成 be-tal-a（設定 → 顏色與外觀 → 選瑞典語的顏色）。
+- **詞典**：用瑞典文（變化過的形也可以：bilarna → bil）、英文或中文查。詞條裡有中文和英文解釋、例句（點例句裡的詞可以打開它）、變化（詞尾用詞尾的顏色）、同義詞；「詞的組成」點一個部分，看它的意思和作用（中文和英文說明、例子），和其他有同一個詞根、前綴或後綴的詞。
+- 詞典裡沒有的詞會照詞典裡的詞和構詞規則推算：變化（bussarna → buss + arna）、複合詞（varningsområdet = varning + s + område + t）、後綴和詞尾一個接一個（omhändertagandet = omhänderta + -ande 動詞變名詞 + -t 名詞的限定形；每個後綴只接在對的詞類後面），結果會一步一步列出來，在詞典、轉換、例句和 Safari 查詞都一樣。
+- 沒有中文解釋的詞（和詞素）可以用 CC-CEDICT 由英文推測中文（照 rime-essay 選常用的詞），標「由英文推測」，在「設定 → 瑞典語」可以關掉。
+- 詞素是照規則推算的（前綴、後綴表，和 Folkets lexikon 標的複合詞界線），可能有錯。
+- **Safari 查詞**也查瑞典語：用 Pencil 停在一個瑞典文的詞上（或選取它），卡片顯示上色的詞素、每個部分的意思，和中文、英文解釋。
+
 **捷徑（Shortcuts）**：捷徑 App 裡有兩個方方詞卡的動作。
 - **在方方詞卡查詞**：輸入一個詞（華語、台語漢字、羅馬字或方音），打開 App 的「詞典」查這個詞。在那裡可以聽發音、收藏（收藏可以匯出 CSV）、加到「不熟」。
 - **方方查詞（小視窗）**（iOS／iPadOS／macOS 26）：在目前的畫面上跳出一張小卡片，顯示最多 4 個結果（漢字、讀音、意思）。卡片上可以 ▶ 聽發音、收藏、加到「不熟」，或按 ↗ 在 App 裡打開，都不用離開你正在用的 App。
@@ -146,7 +154,7 @@ bash build-data.sh yue                   # 粵語（含維基詞典）
 
 **練習做到一半**：關掉練習（或 App）再打開，會接著上次的題目做（每種練習各記一個，台語華語分開，兩個星期以後就不記了）。右上角的 ↺ 可以重新開始。
 
-**在 App 裡安裝詞典**：設定 → 詞典資料。詞典的授權不允許分享改過的版本，所以 App 從原本發布的地方下載檔案，在 iPhone／iPad 上自己整理（`FangfangCards/Install/*.js`，用 JavaScriptCore 跑，和 tools/ 裡的 Python 做出一樣的資料）。台語、華語（含倉頡、五筆碼）、粵語、客語、日語和說文解字都在 App 裡安裝。粵語在手機上不用維基詞典（2.5 GB 太大）：詞、粵拼、英文解釋和漢字都有，沒有維基詞典的例句、錄音和華語對照；台語詞的英文和四川話讀音也是維基詞典的，所以只有 `install.sh` 在 Mac 上建立的資料裡有（給 Safari 查詞用）；其中四川話讀音（`zh_sc.json`）和台語詞的英文（`tw_en.json`，台語的英文查詞要用）會放進 App，是 App 裡唯二的資料。電腦上也可以跑：`node tools/convert.js taigi|mandarin|inputcodes|hakka|cantonese|japanese …`（參數見檔案開頭）。安裝的檔案在 App 的 Application Support/Dictionaries 裡。
+**在 App 裡安裝詞典**：設定 → 詞典資料。詞典的授權不允許分享改過的版本，所以 App 從原本發布的地方下載檔案，在 iPhone／iPad 上自己整理（`FangfangCards/Install/*.js`，用 JavaScriptCore 跑，和 tools/ 裡的 Python 做出一樣的資料）。台語、華語（含倉頡、五筆碼）、粵語、客語、日語、瑞典語和說文解字都在 App 裡安裝。粵語在手機上不用維基詞典（2.5 GB 太大）：詞、粵拼、英文解釋和漢字都有，沒有維基詞典的例句、錄音和華語對照；台語詞的英文和四川話讀音也是維基詞典的，所以只有 `install.sh` 在 Mac 上建立的資料裡有（給 Safari 查詞用）；其中四川話讀音（`zh_sc.json`）和台語詞的英文（`tw_en.json`，台語的英文查詞要用）會放進 App，是 App 裡唯二的資料。電腦上也可以跑：`node tools/convert.js taigi|mandarin|inputcodes|hakka|cantonese|japanese …`（參數見檔案開頭）。安裝的檔案在 App 的 Application Support/Dictionaries 裡。
 
 **Safari 查詞（iPad／iPhone）**：在 Safari 用 Apple Pencil 停在一個中文字上面（不碰到螢幕），會跳出從那個字開始的華語詞和台語詞。沒有懸停功能的 iPad 用手指選取詞，觸控板的游標也可以。卡片右上角的「設定」選拼寫、腔口、聲調顏色和要顯示的語言；「加到不熟」「收藏」選好詞以後，按「傳到 App」會打開方方詞卡把詞加進來。開啟：設定 → App → Safari → 延伸功能 → 方方詞卡 查詞，允許「所有網站」。查詞的詞是 `install.sh` 在你的 Mac 上從詞典資料做的，放在延伸功能裡（`FangfangSafari/d-*.json`，不在這個專案裡），所以不需要 App Group，用 Sideloadly 裝也可以用。（延伸功能的 ID 是 `FF_ID.safari`。）
 
@@ -233,5 +241,9 @@ bash build-data.sh yue                   # 粵語（含維基詞典）
 - **日語詞典**（日語：詞、讀音、英文意思、詞性；漢字的意思、音讀、訓讀、筆畫）：JMdict 與 KANJIDIC2 — Electronic Dictionary Research and Development Group（EDRDG），授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)，[www.edrdg.org/edrdg/licence.html](https://www.edrdg.org/edrdg/licence.html)。
   - 本儲存庫**不包含**詞典的內容：在 App 的「設定 → 詞典資料 → 日語」安裝時，手機從 EDRDG 下載 `JMdict_e_examp.gz` 和 `kanjidic2.xml.gz`，用 `FangfangCards/Install/japanese.js` 在手機上整理。說明見 [`licenses/ja-data.txt`](licenses/ja-data.txt)。
   - 活用、助詞的說明和例句、「實驗室」是本專案自己寫的；英文的「整體意思」是依規則組合出來的大意。
+
+- **瑞典語詞典**：Folkets lexikon — KTH（Viggo Kann、Joachim Hollman），授權：[創用CC 姓名標示-相同方式分享 2.5](https://creativecommons.org/licenses/by-sa/2.5/)，[folkets-lexikon.csc.kth.se](http://folkets-lexikon.csc.kth.se/folkets/)。中文解釋：維基詞典（中文版，經 [kaikki.org](https://kaikki.org/) 整理），授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。常用詞：FrequencyWords（Hermit Dave，OpenSubtitles），授權：[創用CC 姓名標示-相同方式分享 4.0](https://creativecommons.org/licenses/by-sa/4.0/)。
+  - 本儲存庫**不包含**詞典的內容：在 App 的「設定 → 詞典資料 → 瑞典語」安裝時，手機下載這三個檔案，用 `FangfangCards/Install/swedish.js` 在手機上整理（Mac 上 `tools/build_swedish.py` 做出一樣的資料給 Safari 查詞）。說明見 [`licenses/sv-data.txt`](licenses/sv-data.txt)。
+  - 詞素的切分、前綴和後綴的說明是本專案自己寫的。
 
 **程式碼**（Swift、Python、shell）：MIT 授權，見 [`LICENSE`](LICENSE)。上面列的資料、音檔、字型不在 MIT 授權範圍內，各自依照原本的授權。

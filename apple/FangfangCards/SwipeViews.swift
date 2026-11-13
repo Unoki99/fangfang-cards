@@ -547,6 +547,8 @@ struct CharSideCard: View {
             VStack(spacing: 4) {
                 Text(store.cardHan(card, place, base: T.blueInk)).toneGlow()
                     .scaledFont(small ? 38 : 56, weight: .medium)
+                    // (瑞典語: a word, not a character)
+                    .lineLimit(1).minimumScaleFactor(0.35)
                 Text(store.cardRom(card, rom, place)).latFont(small ? 15 : 20).toneGlow().foregroundStyle(T.greenInk)
                     .lineLimit(1).minimumScaleFactor(0.5)
                 // the character card's place now
@@ -718,6 +720,16 @@ extension Store {
     /// the side cards of a word (2 characters or more): 華語, each character's card; 台語, each character's own
     /// word in the dictionary with the reading it has in this word (a character is often read several ways)
     func sideCards(_ word: Card) -> [Card] {
+        // 瑞典語: each root's own word (be|tal|a: tala; sjuk|hus: sjuk, hus), when it isn't the word itself
+        if word.isZh, let d = zh, d.isSv {
+            var seen = Set<String>()
+            return SvMorpheme.parse(word.zs ?? []).filter { $0.kind == .root }.compactMap { m -> Card? in
+                let w = m.word
+                guard let e = d.svEntries(w).first(where: { $0.h.lowercased() == w && $0.k != word.k }) ?? d.svEntries(w).first(where: { $0.k != word.k }),
+                      seen.insert(e.k).inserted else { return nil }
+                return card(for: e.k)
+            }
+        }
         if word.isZh {
             // (from the key: the 正體 characters, also when 簡體 is shown)
             let han = word.k.split(separator: "\t").first.map(String.init) ?? word.h

@@ -90,8 +90,9 @@ object T {
     val ownInk get() = hex(P.now.ownInk)
     val own get() = hex(P.now.own)
     val ownEdge get() = hex(P.now.ownEdge)
-    val placeFill = hex(0x4c3a5b)
-    val placeEdge = hex(0x7b3c9b)
+    // (台語's places: its green, as on iOS)
+    val placeFill = Color(0xFF1D4630)
+    val placeEdge = Color(0xFF3FAE66)
 
     /** 皓羅 / 台羅 / 白話字 text (DejaVu Sans subset, so the tone marks sit right) */
     val lat = FontFamily(Font(R.font.haolo))

@@ -53,7 +53,7 @@ struct CategoryQuery: EntityStringQuery {
 
 struct WordWidgetIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "分類詞卡"
-    static let description = IntentDescription("選一個分類（台語的分類、華語的 HSK／TOCFL 等級和漢字等級，或「不熟的詞」），小工具會顯示裡面的詞（「熟悉」的詞不會出現）。打開「只顯示不熟的詞」就只顯示你往左滑過的詞。")
+    static let description = IntentDescription("選一個分類（台語的分類，華語、粵語、客語、日語、瑞典語的等級，或各語言「不熟的詞」），小工具會顯示裡面的詞（「熟悉」的詞不會出現）。打開「只顯示不熟的詞」就只顯示你往左滑過的詞。")
     @Parameter(title: "分類") var category: CategoryEntity?
     @Parameter(title: "只顯示不熟的詞", default: false) var unknownOnly: Bool
     init() {}
@@ -111,7 +111,7 @@ struct WordProvider: AppIntentTimelineProvider {
         // the word already on show stays (also right after ✓); a new one leaves out the 熟悉 words
         var w: WidgetWord
         // 只顯示不熟的詞 (the 不熟 分類 are 不熟 words already)
-        let unknownOnly = config.unknownOnly || catID == WidgetCat.twUnknown || catID == WidgetCat.zhUnknown
+        let unknownOnly = config.unknownOnly || WidgetCat.isUnknown(catID)
         let unknown = unknownOnly ? WidgetShared.unknownNow() : []
         if unknownOnly && !all.contains(where: { unknown.contains($0.k) }) {
             return WordEntry(date: date, word: nil, category: catID, categoryName: name, rom: st.rom, saved: false,

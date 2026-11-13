@@ -144,6 +144,8 @@ struct DictPack: Identifiable {
         var optional = false
         /// the converter's name for it (nil: from the file's name)
         var arg: String? = nil
+        /// not downloaded when this other file was (a second place to get the same file from)
+        var unless: String? = nil
     }
     let id: String
     /// the language (0 台語, 1 華語, 2 粵語, 3 客語)
@@ -241,8 +243,23 @@ struct DictPack: Identifiable {
             download: "約 25 MB")
     }()
 
+    /// 瑞典語: Folkets lexikon (KTH, CC BY-SA 2.5; from GitHub, or from KTH when GitHub doesn't have it), the
+    /// FrequencyWords list (CC BY-SA 4.0) for the common words, and the Chinese meanings from the Chinese Wiktionary
+    /// (kaikki.org, CC BY-SA)
+    static let swedish = DictPack(
+        id: "sv", lang: 5, name: "瑞典語", outputs: ["sv"],
+        sources: [Source(file: "folkets.xml", url: "https://raw.githubusercontent.com/antonlisq/convert-dict/main/folkets_sv_en_public.xml", optional: true, arg: "folkets2"),
+                  Source(file: "folkets_kth.xml", url: "http://folkets-lexikon.csc.kth.se/folkets/folkets_sv_en_public.xml", optional: true, arg: "folkets", unless: "folkets.xml"),
+                  Source(file: "sv_50k.txt", url: "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt", optional: true, arg: "freq"),
+                  Source(file: cedict.file, url: cedict.url, optional: true, arg: "cedict"),
+                  Source(file: essay.file, url: essay.url, optional: true, arg: "essay"),
+                  Source(file: "zhwikt-sv.jsonl", url: "https://kaikki.org/zhwiktionary/%E7%91%9E%E5%85%B8%E8%AA%9E/kaikki.org-dictionary-%E7%91%9E%E5%85%B8%E8%AA%9E.jsonl", optional: true, arg: "zhwikt")],
+        script: "swedish", function: "buildSwedish",
+        from: "Folkets lexikon（KTH，CC BY-SA 2.5）、FrequencyWords 詞頻（CC BY-SA 4.0）、維基詞典的中文解釋（kaikki.org，CC BY-SA）、CC-CEDICT（由英文推測的中文解釋，CC BY-SA）；詞素依規則推算",
+        download: "約 95 MB（中文解釋佔大部分）")
+
     /// every dictionary the app can install
-    static let all: [DictPack] = [taigi, mandarin, cantonese, hakka, japanese, shuowen]
+    static let all: [DictPack] = [taigi, mandarin, cantonese, hakka, japanese, swedish, shuowen]
     static func of(lang: Int) -> DictPack? { all.first { $0.lang == lang } }
 }
 
@@ -283,6 +300,7 @@ final class DictInstaller: ObservableObject {
                 // 1. the original files
                 var have: [String: String] = [:]
                 for (i, s) in p.sources.enumerated() {
+                    if let u = s.unless, have[u] != nil { continue }
                     states[p.id] = .working(0.3 * Double(i) / Double(max(p.sources.count, 1)), tr("下載 \(s.file)…"))
                     do {
                         let dest = work.appendingPathComponent(s.file)

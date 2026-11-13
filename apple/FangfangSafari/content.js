@@ -11,6 +11,8 @@
     const HIDE = 900;             // ms after leaving the word and the card before the card goes
     const MAXLEN = 12;
     const isHan = cp => (cp >= 0x3400 && cp <= 0x9fff) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0x20000 && cp <= 0x3ffff);
+    // 瑞典語: a letter of a Latin-script word (a-z, å, ä, ö, é…)
+    const isLat = cp => (cp >= 0x41 && cp <= 0x5a) || (cp >= 0x61 && cp <= 0x7a) || (cp >= 0xc0 && cp <= 0x24f && cp !== 0xd7 && cp !== 0xf7);
 
     // ── settings (the card's own; kept in the extension) ────────────────────────────────────
     // pos: where the card shows (word: next to the word; tl / tr / bl / br: a corner of the screen); w, h: its size
@@ -19,7 +21,7 @@
     // yue / hak: 粵語 and 客語 (hakAcc: the accent, hakRom: 0 拼音 / 1 注音); ring: a rainbow around the words saved
     // here when they're on a page; tint: the characters of saved words in their tone colours on the page
     const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
-        yue: true, hak: true, hakAcc: 0, hakRom: 0, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0 };
+        yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0 };
     let prefs = { ...DEFAULTS };
     let queue = [];               // [{k, w: "unknown" | "saved", h, x: the sentence}] waiting for 傳到 App
     let saved = [];               // [{h, c: [colours]}]: every word saved here (for the rainbow and the colours on the page)
@@ -104,6 +106,16 @@
         return out;
     }
 
+    // 瑞典語: the whole word around a letter (bil|arna: from its first letter to its last), and where it starts
+    function latWordAt(node, off) {
+        const t = node.data;
+        let a = off, b = off;
+        while (a > 0 && isLat(t.charCodeAt(a - 1))) a--;
+        while (b < t.length && isLat(t.charCodeAt(b))) b++;
+        const w = t.slice(a, b);
+        return w ? { text: w, start: a } : null;
+    }
+
     // ── looking up ──────────────────────────────────────────────────────────────────────────
     function ask(msg) {
         return browser.runtime.sendMessage(msg).catch(e => ({ ok: false, error: String(e) }));
@@ -125,12 +137,268 @@
         return metaP;
     }
     function shardName(lang, cp, meta) { return `d-${lang}-${String(cp % ((meta && meta.shards) || 256)).padStart(3, "0")}.json`; }
+    // (瑞典語: by the word's first two letters, in small letters)
+    function svShard(w, meta) {
+        const n = (meta && meta.shards) || 256;
+        return `d-sv-${String((w.charCodeAt(0) * 31 + (w.length > 1 ? w.charCodeAt(1) : 0)) % n).padStart(3, "0")}.json`;
+    }
     function prefetch(cp) {
         getMeta().then(m => {
             if (!m) return;
             for (const l of ["zh", "tw", "yue", "hak"]) if (prefs[l] && (m[l] === undefined || m[l] > 0)) getFile(shardName(l, cp, m));
         });
     }
+
+    // 瑞典語: the word, or one of its forms (bilarna → bil)
+    async function findSv(text) {
+        const meta = await getMeta();
+        if (!meta) return { ok: true, ready: false };
+        const out = { ok: true, ready: true, tab: meta };
+        const w = text.toLowerCase();
+        if (!w || !prefs.sv || !meta.sv) return out;
+        const sh = await getFile(svShard(w, meta));
+        if (sh && sh[w]) {
+            // (a word the dictionary has without its parts, Arvsfonden: worked out all the same)
+            const list = [];
+            for (const e of sh[w]) {
+                if (svMs(e).length <= 1 && !svHeadOf(e).includes(" ") && w.length >= 5) {
+                    const est = await svEstimate(w, meta, true);
+                    if (est && est.ms.length > 1) { list.push({ ...e, est, inDict: true }); continue; }
+                }
+                list.push(e);
+            }
+            out.sv = { w: text, list, form: text };
+            return out;
+        }
+        // a word the dictionary doesn't have, worked out by rules from words it has: omhändertagandet = omhänderta
+        // + -ande (a verb made a noun) + -t (the noun's definite form); varningsområdet = varning + s + område + t
+        const est = await svEstimate(w, meta);
+        if (est) {
+            const words = est.parts.filter(p => !p.link);
+            const one = words.length === 1 ? words[0].e : null;
+            const gl = words.map(p => { const g = svGloss(p.e); return svHeadOf(p.e) + (g ? "（" + g + "）" : ""); });
+            out.sv = { w: text, form: text, list: [{ k: one ? one.k : "", est, w: SV_CLS_NAME[est.cls] || "", m: one ? one.m : gl.join(" ＋ "), q: one ? one.q : "", e: one ? one.e : "" }] };
+            return out;
+        }
+        const inf = await svInflected(w, meta);
+        if (inf) { out.sv = { w: text, list: [inf], form: text }; return out; }
+        return out;
+    }
+
+    // ── English → the Chinese languages: the words whose English meaning it is ("eat" → 吃, 食…) ─────────────────
+    function enShard(w, meta) { return svShard(w, meta).replace("d-sv-", "d-en-"); }
+    async function findEn(text) {
+        const meta = await getMeta();
+        if (!meta) return { ok: true, ready: false };
+        const out = { ok: true, ready: true, tab: meta };
+        let w = text.toLowerCase();
+        if (!prefs.en2zh || !meta.en || w.length < 2) return out;
+        const sh = await getFile(enShard(w, meta));
+        let hit = sh && sh[w];
+        // (eats, eating, eaten: the word without its ending)
+        if (!hit) for (const end of ["ing", "ed", "es", "s"]) {
+            if (!w.endsWith(end) || w.length - end.length < 3) continue;
+            for (const b of [w.slice(0, -end.length), w.slice(0, -end.length) + "e"]) {
+                const s2 = await getFile(enShard(b, meta));
+                if (s2 && s2[b]) { hit = s2[b]; break; }
+            }
+            if (hit) break;
+        }
+        if (!hit) return out;
+        for (const lang of ["zh", "tw", "yue", "hak"]) {
+            if (!prefs[lang] || !hit[lang]) continue;
+            const list = [];
+            for (const h of hit[lang]) {
+                const s2 = await getFile(shardName(lang, h.codePointAt(0), meta));
+                for (const e of (s2 && s2[h]) || []) {
+                    // (the word's own entries, not the 台語 words given for a 華語 word)
+                    if (e.k.split("\t")[0] !== h || e.v || list.some(x => x.k === e.k)) continue;
+                    list.push(e);
+                }
+            }
+            if (list.length) out[lang] = { w: text, list: list.slice(0, 6), en: true };
+        }
+        return out;
+    }
+    // a Latin word: 瑞典語 and English together
+    async function findLatin(text) {
+        const a = prefs.sv ? await findSv(text) : { ok: true, ready: true };
+        if (!a.ok || !a.ready) return a;
+        const b = await findEn(text);
+        if (!b.ready) return a.tab ? a : b;
+        for (const l of ["zh", "tw", "yue", "hak"]) if (b[l]) a[l] = b[l];
+        if (!a.tab) a.tab = b.tab;
+        return a;
+    }
+
+    // ── 瑞典語 words worked out by rules (the same as the app's ZhDict.svEstimate) ─────────────────────────────────
+    const SV_CLS = { "名詞": "n", "專有名詞": "n", "動詞": "v", "形容詞": "a", "序數詞": "a", "副詞": "d" };
+    const SV_CLS_NAME = { n: "名詞", v: "動詞", a: "形容詞", d: "副詞" };
+    // [text, kind (e ending, s suffix), what it's added to, what the word is then, what it does]
+    const SV_RULES = [
+        ["arna", "e", "n", "n", "名詞複數的限定形（the …s）"], ["erna", "e", "n", "n", "名詞複數的限定形（the …s）"], ["orna", "e", "n", "n", "名詞複數的限定形（the …s）"],
+        ["ar", "e", "n", "n", "名詞複數"], ["er", "e", "n", "n", "名詞複數"], ["or", "e", "n", "n", "名詞複數"], ["na", "e", "n", "n", "名詞複數的限定形"],
+        ["en", "e", "n", "n", "名詞單數的限定形（en-詞：the）"], ["et", "e", "n", "n", "名詞單數的限定形（ett-詞：the）"], ["n", "e", "n", "n", "名詞的限定形（the）"],
+        ["t", "e", "n", "n", "名詞單數的限定形（ett-詞：the）"], ["s", "e", "n", "n", "所有格（…的）"],
+        ["t", "e", "a", "a", "形容詞的中性（ett-詞）或副詞"], ["a", "e", "a", "a", "形容詞的複數或限定形"], ["e", "e", "a", "a", "形容詞的限定形（男性）"],
+        ["are", "e", "ad", "a", "比較級（更…）"], ["ast", "e", "ad", "a", "最高級（最…）"], ["aste", "e", "a", "a", "最高級的限定形（最…的）"],
+        ["ar", "e", "v", "v", "動詞現在式"], ["er", "e", "v", "v", "動詞現在式"], ["r", "e", "v", "v", "動詞現在式"],
+        ["ade", "e", "v", "v", "動詞過去式"], ["de", "e", "v", "v", "動詞過去式"], ["te", "e", "v", "v", "動詞過去式"],
+        ["at", "e", "v", "v", "動詞完成式（har …at）"], ["it", "e", "v", "v", "動詞完成式（har …it）"], ["s", "e", "v", "v", "被動或相互（-s 動詞）"],
+        ["ad", "e", "v", "a", "過去分詞（被…的）"], ["en", "e", "v", "a", "過去分詞（被…的）"],
+        ["ande", "s", "v", "n", "把動詞變成名詞：那個動作（…的行為）"], ["ende", "s", "v", "n", "把動詞變成名詞：那個動作（…的行為）"],
+        ["ning", "s", "v", "n", "把動詞變成名詞：動作或它的結果"], ["ing", "s", "v", "n", "把動詞變成名詞：動作或它的結果"],
+        ["are", "s", "v", "n", "把動詞變成名詞：做這件事的人或工具"], ["else", "s", "v", "n", "把動詞變成名詞：動作或它的結果"],
+        ["nad", "s", "v", "n", "把動詞變成名詞：動作或它的結果"], ["eri", "s", "vn", "n", "名詞：地方、行業或一種行為"],
+        ["bar", "s", "v", "a", "把動詞變成形容詞：可以被…的"], ["sam", "s", "vn", "a", "變成形容詞：有…傾向的"],
+        ["het", "s", "a", "n", "把形容詞變成名詞：…性、…度"], ["lig", "s", "nv", "a", "變成形容詞：…的、像…的"],
+        ["ig", "s", "n", "a", "把名詞變成形容詞：有…的"], ["isk", "s", "n", "a", "把名詞變成形容詞：…的、…式的"],
+        ["lös", "s", "n", "a", "把名詞變成形容詞：沒有…的"], ["fri", "s", "n", "a", "把名詞變成形容詞：無…的"],
+        ["full", "s", "n", "a", "把名詞變成形容詞：充滿…的"], ["aktig", "s", "na", "a", "變成形容詞：像…的、有點…"],
+        ["mässig", "s", "n", "a", "把名詞變成形容詞：依…的"], ["skap", "s", "na", "n", "變成名詞：…關係、…身分"],
+        ["dom", "s", "an", "n", "變成名詞：…狀態、…時期"], ["itet", "s", "a", "n", "把形容詞變成名詞：…性"],
+        ["ism", "s", "an", "n", "變成名詞：…主義"], ["ist", "s", "n", "n", "名詞：…者、…家"], ["inna", "s", "n", "n", "名詞：女…"],
+        ["vis", "s", "na", "d", "變成副詞：以…方式、按…"], ["era", "s", "n", "v", "把名詞變成動詞"],
+    ];
+    function svCompoundMs(parts) {
+        const ms = [];
+        for (const p of parts) {
+            if (p.link) { ms.push({ t: p.t, k: "l", g: null }); continue; }
+            // (each word of a compound whole, varning|s|område|t: what each word is made of is in its own entry)
+            const g = svGloss(p.e);
+            ms.push(...svForForm(p.t, svHeadOf(p.e), []).map(m => m.k === "r" ? { ...m, g } : m));
+        }
+        return ms;
+    }
+    async function svEstimate(w, meta, skipSelf) {
+        if (w.length < 3 || w.length > 40 || w.includes(" ")) return null;
+        const memo = new Map();
+        const prefixes = Object.keys(SV_AFFIX.p).sort((a, b) => b.length - a.length);
+        async function core(s, prefixOK) {
+            const out = [];
+            for (const e of (skipSelf && s === w ? [] : (await svWord(s, meta)) || [])) {
+                if (svHeadOf(e).includes(" ")) continue;
+                const c = SV_CLS[e.w] || "any";
+                out.push({ ms: svForForm(s, svHeadOf(e), svMs(e)).map(m => m.k === "r" && !m.g ? { ...m, g: svGloss(e) } : m), cls: c, parts: [{ t: s, e, link: false }], steps: [], cost: c === "any" ? 1 : 0, adj: 0 });
+            }
+            if (out.length) return out;
+            const p = await svCompound(s, meta);
+            if (p) { const last = p[p.length - 1].e; return [{ ms: svCompoundMs(p), cls: SV_CLS[last.w] || "any", parts: p, steps: [], cost: 3 * (p.filter(x => !x.link).length - 1), adj: 0 }]; }
+            if (prefixOK) {
+                for (const pre of prefixes) {
+                    if (!s.startsWith(pre) || s.length - pre.length < 3) continue;
+                    const r = await core(s.slice(pre.length), false);
+                    if (r.length) return r.map(x => ({ ...x, ms: [{ t: pre, k: "p", g: null }, ...x.ms],
+                        steps: [{ t: pre, k: "p", zh: "前綴：" + SV_AFFIX.p[pre], cls: x.cls }, ...x.steps], cost: x.cost + 2 }));
+                }
+            }
+            return out;
+        }
+        function onto(base, b, ms) {
+            if (b === base) return ms;
+            const out = svForForm(base, b, ms);
+            if (out.length >= 2 && out[out.length - 1].k === "e" && out[out.length - 1].t.length === 1 && out[out.length - 2].k === "r") {
+                out[out.length - 2] = { ...out[out.length - 2], t: out[out.length - 2].t + out[out.length - 1].t };
+                out.pop();
+            }
+            return out;
+        }
+        // (the fewest guesses; then the fewest letters added to or taken off a base: tal → tala; then the fewest parts)
+        const better = (x, y) => x.cost !== y.cost ? x.cost < y.cost : (x.adj !== y.adj ? x.adj < y.adj : x.ms.length < y.ms.length);
+        async function analyze(s) {
+            if (memo.has(s)) return memo.get(s);
+            memo.set(s, []);
+            const best = {};
+            const keep = x => { const o = best[x.cls]; if (!o || better(x, o)) best[x.cls] = x; };
+            for (const x of await core(s, true)) keep(x);
+            for (const [t, k, from, to, zh] of SV_RULES) {
+                if (!s.endsWith(t) || s.length - t.length < 2) continue;
+                const base = s.slice(0, -t.length);
+                const cands = [base];
+                if (from.includes("v") || from.includes("n")) cands.push(base + "a");
+                if (from.includes("n")) cands.push(base + "e");
+                if (from.includes("v") && /[gd]$/.test(base) && base.length > 2) cands.push(base.slice(0, -1));
+                // (vänn|en → vän: a doubled last letter as one)
+                if (base.length > 3 && base[base.length - 1] === base[base.length - 2] && !/[aeiouyåäö]/.test(base[base.length - 1])) cands.push(base.slice(0, -1));
+                for (const b of cands) {
+                    for (const r of await analyze(b)) {
+                        if (!from.includes(r.cls) && r.cls !== "any") continue;
+                        keep({ ms: [...onto(base, b, r.ms), { t, k, g: null }], cls: to, parts: r.parts,
+                               steps: [...r.steps, { t, k, zh, cls: to }], cost: r.cost + 1 + (r.cls === "any" ? 1 : 0), adj: r.adj + (b === base ? 0 : 1) });
+                    }
+                }
+            }
+            const out = Object.values(best).sort((x, y) => better(x, y) ? -1 : (better(y, x) ? 1 : 0));
+            memo.set(s, out);
+            return out;
+        }
+        const top = (await analyze(w))[0];
+        if (!top || (!top.steps.length && top.parts.length < 2)) return null;
+        return top;
+    }
+
+    // ── 瑞典語 words the dictionary doesn't have (the same as the app's ZhDict.svInflected / svCompound) ──
+    async function svWord(s, meta) { const sh = await getFile(svShard(s, meta)); return (sh && sh[s]) || null; }
+    const svHeadOf = e => e.k.split("\t")[0];
+    async function svHead(s, meta) {
+        const l = await svWord(s, meta);
+        return (l && l.find(e => svHeadOf(e).toLowerCase() === s && !svHeadOf(e).includes(" "))) || null;
+    }
+    const SV_ENDS = ["arnas", "ernas", "ornas", "arna", "erna", "orna", "ens", "ets", "en", "et", "na", "ar", "er", "or", "ade", "de", "te", "t", "n", "s"];
+    async function svInflected(s, meta) {
+        for (const end of SV_ENDS) {
+            if (!s.endsWith(end) || s.length - end.length < 2) continue;
+            const st = s.slice(0, -end.length);
+            const tries = [st];
+            if (st.length > 2 && st[st.length - 1] === st[st.length - 2]) tries.push(st.slice(0, -1));
+            if (end === "n") tries.push(st + "e");
+            for (const t of tries) { const e = await svHead(t, meta); if (e) return e; }
+        }
+        return null;
+    }
+    async function svLast(s, meta) {
+        const l = await svWord(s, meta);
+        // (a form of a shorter word first: områden → område + n, though the dictionary also has områden itself)
+        const base = l && l.find(e => { const h = svHeadOf(e).toLowerCase(); return h.length < s.length && s.startsWith(h) && !h.includes(" "); });
+        if (base) return base;
+        const h = await svHead(s, meta);
+        if (h) return h;
+        // (the endings are the rules' to work out: svEstimate)
+        return (l && l.find(e => !svHeadOf(e).includes(" "))) || null;
+    }
+    async function svFront(s, meta) { return (await svHead(s, meta)) || (await svHead(s + "a", meta)) || (await svHead(s + "e", meta)); }
+    async function svCompound(w, meta) {
+        const n = w.length;
+        if (n < 6 || n > 40) return null;
+        const words = c => c.filter(p => !p.link).length, links = c => c.filter(p => p.link).length;
+        const better = (c, t) => !t || (words(c) !== words(t) ? words(c) < words(t) : (links(c) !== links(t) ? links(c) < links(t) : c[0].t.length > t[0].t.length));
+        const memo = new Map();
+        async function best(i) {
+            if (memo.has(i)) return memo.get(i);
+            memo.set(i, null);
+            let top = null;
+            if (n - i >= 3) { const e = await svLast(w.slice(i), meta); if (e) top = [{ t: w.slice(i), e, link: false }]; }
+            if (n - i >= 6) {
+                for (let j = n - 3; j >= i + 3; j--) {
+                    const e = await svFront(w.slice(i, j), meta);
+                    if (!e) continue;
+                    const head = { t: w.slice(i, j), e, link: false };
+                    const r = await best(j);
+                    if (r && better([head, ...r], top)) top = [head, ...r];
+                    if (j < n - 3 && "seauo".includes(w[j])) {
+                        const r2 = await best(j + 1);
+                        if (r2) { const c = [head, { t: w[j], e: null, link: true }, ...r2]; if (better(c, top)) top = c; }
+                    }
+                }
+            }
+            memo.set(i, top);
+            return top;
+        }
+        const r = await best(0);
+        return r && words(r) >= 2 ? r : null;
+    }
+    // (華語 guessed from the English, ≈, when there's no Chinese meaning and the 設定 says so)
+    function svGloss(e) { return e.m ? e.m.split("、")[0] : (prefs.svGuess && e.q ? "≈" + e.q.split("、")[0] : (e.e ? e.e.split(";")[0].trim() : "")); }
 
     async function find(text) {
         const meta = await getMeta();
@@ -153,17 +421,17 @@
     }
 
     // `at`: where the word starts on the page (its text node and offset), to mark it
-    async function lookup(text, rect, spot, at) {
+    async function lookup(text, rect, spot, at, sv) {
         const n = ++busy;
-        const res = await find(text);
+        const res = sv ? await findLatin(text) : await find(text);
         if (n !== busy) return;                       // (a newer one was asked meanwhile)
         if (!res || !res.ok) { show(rect, spot, message("查詞沒有回應。請在 Safari 的延伸功能設定裡允許「方方詞卡 查詞」。")); return; }
         if (!res.ready) { show(rect, spot, message("查詞的資料不在延伸功能裡：請在 Mac 上重新執行一次安裝。")); return; }
-        if (!res.zh && !res.tw && !res.yue && !res.hak) { hide(); return; }
+        if (!res.zh && !res.tw && !res.yue && !res.hak && !res.sv) { hide(); return; }
         last = { res, rect, spot };
         show(rect, spot, render(res));
         // the word on the page, marked in light blue (the longer of the 華語 and the 台語 word found)
-        const len = Math.max(...["zh", "tw", "yue", "hak"].map(l => res[l] ? [...res[l].w].length : 0));
+        const len = Math.max(...["zh", "tw", "yue", "hak", "sv"].map(l => res[l] ? [...res[l].w].length : 0));
         if (at) markWord(at.node, at.off, len); else unmark();
         lastSentence = at ? sentenceAt(at.node, at.off) : (window.getSelection ? sentenceOfSelection() : "");
     }
@@ -391,6 +659,136 @@
         return { h: hanSegs(e.k.split("\t")[0], parsed.map((_, i) => i + 1), cols), r, r2: null, guess: !!(e.a && !e.a[acc]) };
     }
 
+    // ── 瑞典語: the word in its morphemes (roots yellow and orange, prefixes teal, suffixes pink, linking letters grey,
+    // endings purple: the app's colours), each with what it means ───────────────────────────────────────────────
+    const SV_COL = { r: "ffe991", r2: "ffb36b", p: "6fe0cf", s: "ff94c8", l: "bdbdbd", e: "c7a6ff" };
+    const SV_KIND = { r: "詞根", p: "前綴", s: "後綴", l: "連接音", e: "詞尾" };
+    const SV_AFFIX = {
+        p: { o: "不、非", be: "（使動）", "för": "使…、過度", an: "向、對", av: "離開、去掉", in: "進、入", ut: "出、外", upp: "上、起",
+            till: "向、加", "över": "上方、超過", under: "下方、不足", efter: "之後", "före": "之前", fram: "向前", om: "重新、圍繞",
+            mot: "相對、反", med: "一起", miss: "錯、失", sam: "共同", "sär": "分開、特別", van: "不好、錯", "åter": "再、回",
+            ur: "原、最初", er: "（得到）", ge: "（從德語來）", bi: "旁、副", all: "全、非常", icke: "非", anti: "反", super: "超",
+            mini: "小", multi: "多", inter: "之間", ex: "前、出", re: "再、回", pre: "前", post: "後", sub: "下、次", trans: "跨、越過" },
+        s: { het: "…性、…度（名詞）", ning: "…的行為（名詞）", ing: "…的行為（名詞）", are: "…的人、…器", ande: "…的人；…中的",
+            ende: "…的人；…中的", lig: "…的（形容詞）", ig: "有…的", isk: "…的、…式的", bar: "可以…的", sam: "有…傾向的",
+            "lös": "沒有…的", fri: "無…的", full: "充滿…的", aktig: "像…的", "mässig": "依…的", skap: "…關係、…身分", dom: "…狀態、…時期",
+            else: "…的行為（名詞）", nad: "…的行為（名詞）", eri: "…店、…業", era: "（動詞）", ering: "…的行為", tion: "…的行為",
+            sion: "…的行為", itet: "…性", ism: "…主義", ist: "…者、…家", inna: "女…", ska: "女…；…語", "ör": "…者", vis: "以…方式（副詞）" },
+        l: { s: "（連接，無意思）", e: "（連接，無意思）", a: "（連接，無意思）", u: "（連接，無意思）", o: "（連接，無意思）", es: "（連接，無意思）" },
+        e: { a: "動詞原形", are: "更…（比較級）", ast: "最…（最高級）", aste: "最…（最高級）" },
+    };
+    // an affix on an affix: the colour of the one next to it, a step darker for each (samtyck|lig|a: -a is -lig's
+    // pink, darker; o|be|…: o- is be-'s teal, darker); roots alternate in each word of a phrase
+    function darker(hex, d) {
+        if (!d) return hex;
+        let r = parseInt(hex.slice(0, 2), 16) / 255, g = parseInt(hex.slice(2, 4), 16) / 255, b = parseInt(hex.slice(4, 6), 16) / 255;
+        const v = Math.max(r, g, b), mn = Math.min(r, g, b);
+        let sat = v ? (v - mn) / v : 0;
+        let h = 0;
+        if (v !== mn) {
+            if (v === r) h = ((g - b) / (v - mn)) % 6; else if (v === g) h = (b - r) / (v - mn) + 2; else h = (r - g) / (v - mn) + 4;
+            h *= 60; if (h < 0) h += 360;
+        }
+        const nv = v * Math.pow(0.74, d), ns = Math.min(1, sat * (1 + 0.18 * d));
+        const c = nv * ns, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = nv - c;
+        const [a1, a2, a3] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0] : h < 180 ? [0, c, x] : h < 240 ? [0, x, c] : h < 300 ? [x, 0, c] : [c, 0, x];
+        return [a1, a2, a3].map(t => Math.round((t + m) * 255).toString(16).padStart(2, "0")).join("");
+    }
+    function svColours(ms) {
+        return ms.map((m, i) => {
+            if (m.k === "r") {
+                let n = 0;
+                for (let j = i - 1; j >= 0 && ms[j].k !== "w"; j--) if (ms[j].k === "r") n++;
+                return n % 2 ? SV_COL.r2 : SV_COL.r;
+            }
+            if (m.k === "p") {
+                let d = 0;
+                for (let j = i + 1; j < ms.length && ms[j].k === "p"; j++) d++;
+                return darker(SV_COL.p, d);
+            }
+            if (m.k === "s" || m.k === "e") {
+                let st = i;
+                while (st > 0 && (ms[st - 1].k === "s" || ms[st - 1].k === "e")) st--;
+                return darker(SV_COL[ms[st].k], i - st);
+            }
+            return SV_COL.l;
+        });
+    }
+    // a word's morphemes from the data ("be:p tal:r:tala a:e"), each root with its meaning (e.g)
+    function svMs(e) {
+        return (e.s || "").split(" ").filter(Boolean).map((x, i) => {
+            const p = x.split(":");
+            let g = p[1] === "r" ? (e.g || {})[String(i)] : null;
+            if (g && g[0] === "≈" && !prefs.svGuess) g = null;
+            return { t: p[1] === "w" ? " " : p[0], k: p[1], g };
+        }).filter(m => m.t && (SV_KIND[m.k] || m.k === "w"));
+    }
+    // a form of a word (Hittade of hitta): the word's morphemes for what they share, the rest as an ending
+    function svForForm(form, lemma, ms0) {
+        const low = form.toLowerCase();
+        const ms = ms0.length ? ms0.map(m => ({ ...m })) : [{ t: lemma, k: "r", g: null }];
+        const fits = l => l.length > 0 && low.startsWith(l.map(m => m.t).join("").toLowerCase());
+        let use = ms.slice();
+        while (use.length && use[use.length - 1].k === "e") use.pop();
+        if (!fits(use) || low === lemma.toLowerCase()) use = ms.slice();
+        if (!fits(use)) {
+            const t = ms.map(m => m.t).join("").toLowerCase();
+            let n = 0;
+            while (n < t.length && n < low.length && t[n] === low[n]) n++;
+            const cut = [];
+            let at = 0;
+            for (const m of ms) { if (at >= n) break; const take = Math.min(m.t.length, n - at); cut.push({ ...m, t: m.t.slice(0, take) }); at += take; }
+            use = cut;
+        }
+        const out = [];
+        let at = 0;
+        for (const m of use) { if (at + m.t.length > form.length) break; out.push({ ...m, t: form.slice(at, at + m.t.length) }); at += m.t.length; }
+        const rest = form.slice(at);
+        // (ta → tag-, dra → drag-: the stem's -g / -d stays with the root)
+        if (/^[gd]$/i.test(rest) && out.length && out[out.length - 1].k === "r" && /[aeiouyåäö]$/i.test(out[out.length - 1].t)) out[out.length - 1] = { ...out[out.length - 1], t: out[out.length - 1].t + rest };
+        else if (rest) out.push({ t: rest, k: "e", g: null });
+        return out;
+    }
+    function svParts(e, form) {
+        let ms, head;
+        if (e.est) {
+            // (worked out by rules: its morphemes, from the base word(s) and the suffixes and endings)
+            head = form;
+            ms = e.est.ms;
+            // (in the letters as written on the page)
+            let at = 0;
+            ms = ms.map(m => { const t = form.slice(at, at + m.t.length); at += m.t.length; return { ...m, t }; });
+        } else if (form && form.toLowerCase() !== svHeadOf(e).toLowerCase()) {
+            head = form;
+            ms = svForForm(form, svHeadOf(e), svMs(e));
+        } else {
+            head = form || svHeadOf(e);
+            ms = svMs(e);
+        }
+        const cols = svColours(ms);
+        const many = ms.filter(m => m.k !== "w").length > 1;
+        const whole = ms.map(m => m.t).join("") === head;
+        const h = whole && many ? ms.map((m, i) => ({ t: m.t, c: prefs.colours && m.k !== "w" ? cols[i] : null })) : [{ t: head, c: null }];
+        const r = many ? ms.map((m, i) => ({ t: m.k === "w" ? " " : ((i && ms[i - 1].k !== "w" ? "-" : "") + m.t), c: prefs.colours && m.k !== "w" ? cols[i] : null })) : [];
+        let parts = null;
+        if (many) {
+            parts = el("div", "parts");
+            ms.forEach((m, i) => {
+                if (m.k === "w") { parts.appendChild(el("span", "gap", "")); return; }
+                if (i && ms[i - 1].k !== "w") parts.appendChild(el("span", "plus", "+"));
+                const b = el("div", "part");
+                b.style.borderColor = "#" + cols[i];
+                b.style.background = "#" + cols[i] + "33";
+                b.appendChild(el("span", "pt", m.k === "p" ? m.t + "-" : (m.k === "r" ? m.t : "-" + m.t)));
+                b.appendChild(el("span", "pk", SV_KIND[m.k]));
+                const g = m.k === "r" ? m.g : (SV_AFFIX[m.k] || {})[m.t.toLowerCase()];
+                if (g) b.appendChild(el("span", "pg", g));
+                parts.appendChild(b);
+            });
+        }
+        return { h, r, r2: null, parts };
+    }
+
     // ── the sentence a word is in (kept with it when it's saved): from the stop before it to the stop after it ──
     let lastSentence = "";
     const STOPS = "。！？!?；;\n";
@@ -589,6 +987,7 @@
         .sec.tw { background: rgba(63, 174, 102, 0.10); border-left-color: #3fae66; }
         .sec.yue { background: rgba(201, 162, 39, 0.10); border-left-color: #c9a227; }
         .sec.hak { background: rgba(216, 67, 79, 0.10); border-left-color: #d8434f; }
+        .sec.sv { background: rgba(63, 201, 189, 0.08); border-left-color: #3fc9bd; }
         .cols { display: flex; gap: 8px; align-items: flex-start; }
         .cols > .sec { flex: 1 1 0; min-width: 190px; margin-top: 0; }
         .lang { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 6px; margin-bottom: 4px; }
@@ -596,6 +995,17 @@
         .lang.tw { background: #1d4630; border: 1px solid #3fae66; color: #b6f0c8; }
         .lang.yue { background: #5a4a14; border: 1px solid #c9a227; color: #ffe58a; }
         .lang.hak { background: #5a1e2a; border: 1px solid #d8434f; color: #ffb3b8; }
+        .lang.sv { background: #0f4a4a; border: 1px solid #3fc9bd; color: #9cf0e6; }
+        .chip.sv { background: #163f3c; border-color: #3fc9bd; color: #9cf0e6; }
+        .parts { display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch; margin-top: 4px; }
+        .part { display: flex; flex-direction: column; align-items: center; padding: 2px 7px; border-radius: 7px; border: 1.5px solid; }
+        .part .pt { font-size: 15px; font-weight: 600; color: #f2f2f2; }
+        .part .pk { font-size: 10px; color: #a3a3a8; }
+        .part .pg { font-size: 11px; color: #e8e8e8; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .plus { color: #8e8e93; align-self: center; font-size: 12px; }
+        .gap { width: 10px; }
+        .steps { margin-top: 5px; padding: 5px 7px; border-radius: 7px; background: rgba(255,255,255,0.05); }
+        .step { font-size: 12px; color: #d8d8dc; line-height: 1.45; }
         .via { font-size: 12px; color: #a3a3a8; margin: 2px 0 1px; }
         .e + .e { margin-top: 8px; }
         .head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
@@ -689,15 +1099,15 @@
         // (at a corner of the screen: the languages side by side; next to the word: one under the other)
         const holder = (prefs.pos || "word") !== "word" ? el("div", "cols") : box;
         if (holder !== box) box.appendChild(holder);
-        const NAMES = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語" };
-        for (const lang of ["zh", "tw", "yue", "hak"]) {
+        const NAMES = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語", sv: "瑞典語" };
+        for (const lang of ["zh", "tw", "yue", "hak", "sv"]) {
             const part = res[lang];
             if (!part) continue;
             const sec = el("div", "sec " + lang);
-            sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? "・" + tab.hacc[prefs.hakAcc] : "")));
+            sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? "・" + tab.hacc[prefs.hakAcc] : "") + (part.en ? "・英文「" + part.w + "」" : "")));
             for (const e of part.list) {
                 if (lang === "zh" && e.p === 3 && prefs.zhPlace !== 2) continue;     // (四川話's own words: with 四川話 only)
-                const p = lang === "zh" ? zhParts(e, tab) : (lang === "tw" ? twParts(e, tab) : (lang === "yue" ? yueParts(e) : hakParts(e, tab)));
+                const p = lang === "sv" ? svParts(e, part.form) : lang === "zh" ? zhParts(e, tab) : (lang === "tw" ? twParts(e, tab) : (lang === "yue" ? yueParts(e) : hakParts(e, tab)));
                 const d = el("div", "e");
                 if (e.v) d.appendChild(el("div", "via", "華語「" + e.v + "」的台語講法"));
                 const head = el("div", "head");
@@ -717,15 +1127,34 @@
                     }
                 }
                 if (lang === "hak" && p.guess) chips.push(["這個腔沒有收", "p0"]);
+                if (lang === "sv" && e.w) chips.push([e.w, "sv"]);
+                if (lang === "sv" && e.est && !e.inDict) chips.push(["詞典裡沒有：照詞和構詞規則推算，可能有誤", "p0"]);
+                if (lang === "sv" && part.form && !e.est && part.form.toLowerCase() !== e.k.split("\t")[0].toLowerCase()) chips.push(["「" + e.k.split("\t")[0] + "」的變化", "sv"]);
                 if (chips.length) {
                     const c = el("div", "chips");
                     for (const [t, k] of chips) c.appendChild(el("span", "chip " + k, t));
                     d.appendChild(c);
                 }
+                // 瑞典語: the parts of the word, each in its colour with what it means
+                if (lang === "sv" && p.parts) d.appendChild(p.parts);
+                // (worked out: the base word(s) and each step)
+                if (lang === "sv" && e.est) {
+                    const box = el("div", "steps");
+                    for (const q of e.est.parts) if (!q.link) box.appendChild(el("div", "step", svHeadOf(q.e) + (q.e.w ? "（" + q.e.w + "）" : "") + "：" + svGloss(q.e)));
+                    for (const st of e.est.steps) {
+                        const row = el("div", "step");
+                        const t = el("b", null, st.k === "p" ? st.t + "-" : "-" + st.t);
+                        t.style.color = "#" + (st.k === "p" ? SV_COL.p : (st.k === "s" ? SV_COL.s : SV_COL.e));
+                        row.append(t, document.createTextNode(" " + st.zh + (st.k !== "p" && SV_CLS_NAME[st.cls] ? " → " + SV_CLS_NAME[st.cls] : "")));
+                        box.appendChild(row);
+                    }
+                    d.appendChild(box);
+                }
                 if (e.m) d.appendChild(el("div", "m", e.m));
+                else if (lang === "sv" && e.q && prefs.svGuess) d.appendChild(el("div", "m", "≈ " + e.q + "（由英文推測）"));
                 if (e.eq && e.eq.length && lang === "zh" && prefs.zhPlace === 2) d.appendChild(el("div", "en", "華語：" + e.eq.join("、")));
-                if (prefs.en && e.e) d.appendChild(el("div", "en", e.e));
-                d.appendChild(buttons(e.k, e.k.split("\t")[0], p.h));
+                if ((prefs.en || (lang === "sv" && !e.m)) && e.e) d.appendChild(el("div", "en", e.e));
+                if (e.k) d.appendChild(buttons(e.k, e.k.split("\t")[0], p.h));
                 sec.appendChild(d);
             }
             if (sec.children.length > 1) holder.appendChild(sec);
@@ -823,6 +1252,9 @@
         row("客語", "hak", yesNo);
         row("客語腔", "hakAcc", ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"].map((n, i) => [i, n]));
         row("客語拼寫", "hakRom", [[0, "拼音"], [1, "注音"]]);
+        row("瑞典語", "sv", yesNo);
+        row("英文查中文", "en2zh", yesNo);
+        row("瑞典語：由英文推測中文", "svGuess", [[true, "顯示"], [false, "不顯示"]]);
         row("聲調顏色", "colours", [[true, "開"], [false, "關"]]);
         row("字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "最大"]]);
         row("網頁上收藏的詞", "ring", [[false, "不標"], [true, "彩虹框"]]);
@@ -953,14 +1385,23 @@
         if (!metaP) getMeta();                                    // (the Pencil is near: the tables read already)
         if (inCard(e)) { clearTimeout(hideTimer); clearTimeout(dwellTimer); return; }
         const hit = charAt(e.clientX, e.clientY);
-        if (!hit || !isHan(hit.cp)) { clearTimeout(dwellTimer); lastSpot = ""; hideSoon(); return; }
-        const spot = hit.off + "@" + Math.round(hit.rect.left) + "," + Math.round(hit.rect.top);
+        // (瑞典語: a Latin letter, the whole word around it)
+        // (a Latin word: 瑞典語, and English → the Chinese languages)
+        const lat = hit && !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
+        if (!hit || (!isHan(hit.cp) && !lat)) { clearTimeout(dwellTimer); lastSpot = ""; hideSoon(); return; }
+        const spot = lat ? "w" + lat.start + ":" + lat.text + "@" + Math.round(hit.rect.top) : hit.off + "@" + Math.round(hit.rect.left) + "," + Math.round(hit.rect.top);
         if (spot === shownSpot) { clearTimeout(hideTimer); return; }
         if (spot === lastSpot) return;
         lastSpot = spot;
         clearTimeout(dwellTimer);
-        prefetch(hit.cp);
+        if (lat) {
+            getMeta().then(m => {
+                if (m && m.sv && prefs.sv) getFile(svShard(lat.text.toLowerCase(), m));
+                if (m && m.en && prefs.en2zh) getFile(enShard(lat.text.toLowerCase(), m));
+            });
+        } else prefetch(hit.cp);
         const go = () => {
+            if (lat) { lookup(lat.text, hit.rect, spot, { node: hit.node, off: lat.start }, true); return; }
             const text = textFrom(hit.node, hit.off);
             if (text) lookup(text, hit.rect, spot, { node: hit.node, off: hit.off });
         };
@@ -985,11 +1426,14 @@
             const sel = document.getSelection();
             if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
             const s = sel.toString().trim();
-            if (!s || [...s].length > MAXLEN || !isHan(s.codePointAt(0))) return;
+            if (!s) return;
+            // (瑞典語: one Latin word)
+            const sv = (prefs.sv || prefs.en2zh) && isLat(s.charCodeAt(0)) && [...s].every(c => isLat(c.charCodeAt(0)));
+            if (!sv && ([...s].length > MAXLEN || !isHan(s.codePointAt(0)))) return;
             const rect = sel.getRangeAt(0).getBoundingClientRect();
             const spot = "sel:" + s + "@" + Math.round(rect.left) + "," + Math.round(rect.top);
             if (spot === shownSpot) return;
-            lookup(s, rect, spot);
+            lookup(s, rect, spot, null, sv);
         }, 600);
     });
 })();

@@ -51,17 +51,17 @@ struct UnknownView: View {
                     PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
                                  enabled: (pool + due).contains { !$0.blankExamples.isEmpty }) { blanks = true }
                     PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
-                    PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty) { readingOrder = true }
+                    PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty && !store.isSv) { readingOrder = true }
                     // (客語: no voice to listen to)
                     // (日語: no tones; its particles instead)
                     if store.isJa {
                         PracticeTile(title: tr("助詞練習"), icon: "puzzlepiece", enabled: true) { particles = true }
                     } else {
-                        PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak) { toning = true }
+                        PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak && !store.isSv) { toning = true }
                     }
                     PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
-                    PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: true) { writing = true }
-                    PracticeTile(title: tr("自由寫字"), icon: "square.grid.3x3", enabled: true) { freeWriting = true }
+                    PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: !store.isSv) { writing = true }
+                    PracticeTile(title: tr("自由寫字"), icon: "square.grid.3x3", enabled: !store.isSv) { freeWriting = true }
                     PracticeTile(title: tr("遊戲"), icon: "gamecontroller", enabled: pool.count > 3) { gaming = true }
                     // what each way of practising does
                     PracticeTile(title: tr("怎麼練習"), icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }

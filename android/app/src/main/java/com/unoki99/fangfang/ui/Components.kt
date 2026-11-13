@@ -112,7 +112,7 @@ fun RegChip(reg: String) {
 fun OwnChip() = Chip(tr("自訂"), T.own, T.ownEdge, T.ownInk)
 
 @Composable
-fun PlaceChip(text: String) = Chip(text, T.placeFill, T.placeEdge, T.purpleInk)
+fun PlaceChip(text: String) = Chip(text, T.placeFill, T.placeEdge, T.twInk)
 
 @Composable
 fun NumBadge(n: Int) {
@@ -224,7 +224,7 @@ fun RomButton() {
             .clickable { if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 3 }.padding(horizontal = 10.dp, vertical = 4.dp))
 }
 
-/** 台語 / 華語, and where it's said: always the coloured capsule (台語 purple, 華語 blue), so you see which dictionary you're in */
+/** 台語 / 華語, and where it's said: always the coloured capsule (台語 green, 華語 blue), so you see which dictionary you're in */
 @Composable
 fun PlaceMenu() {
     var place by Prefs.place
@@ -236,9 +236,9 @@ fun PlaceMenu() {
     val hak = store.isHak
     val ja = store.isJa
     var accent by Prefs.hakAccent
-    val fill = if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.placeFill
-    val edge = if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.placeEdge
-    val ink = if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.purpleInk
+    val fill = if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.twFill
+    val edge = if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.twEdge
+    val ink = if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.twInk
     val hakNames = com.unoki99.fangfang.engine.Lang.hakAccents
     val name = if (ja) "日語" else if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames.getOrElse(zhPlace) { "臺灣" }
         else "台・" + (if (place in PLACE_NAMES.indices) PLACE_NAMES[place].take(2) else "通行")

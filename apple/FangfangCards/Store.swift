@@ -52,12 +52,13 @@ final class Store: ObservableObject {
     /// the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile)
     @Published private(set) var isZh = false { didSet { T.zh = isZh } }
     /// the language shown: 0 台語, 1 華語, 2 粵語, 3 客語 (粵語 and 客語 use the 華語 pages, with their own dictionaries)
-    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3; T.ja = lang == 4; listsChanged() } }
+    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3; T.ja = lang == 4; T.sv = lang == 5; listsChanged() } }
     /// a hint to show (粵語 without a Cantonese voice on the device)
     @Published var speechHint: String?
     var isYue: Bool { lang == 2 }
     var isHak: Bool { lang == 3 }
     var isJa: Bool { lang == 4 }
+    var isSv: Bool { lang == 5 }
     /// which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3)
     private var zhKind: Int { zh?.lang ?? 1 }
     /// switching language: the other deck is being loaded
@@ -184,9 +185,11 @@ final class Store: ObservableObject {
         UserDefaults.standard.set(want, forKey: Lang.key)
         guard want != lang, !switching else { return }
         if want != 0 { UserDefaults.standard.set(want, forKey: Store.lastZhKey) }
-        func shown(_ l: Int) { lang = l; isZh = l != 0; zhRom = Lang.zhRom; undoStack = []; canUndo = false; recount() }
+        func shown(_ l: Int) { lang = l; isZh = l != 0; zhRom = Lang.zhRom; undoStack = []; canUndo = false; missingDict = false; recount() }
         if want == 0 {
             if otherKind == 0 { swapDecks() }
+            // (leaving a language whose dictionary isn't installed: its empty deck isn't kept)
+            if missingDict { other = nil }
             shown(0)
             return
         }
@@ -202,11 +205,15 @@ final class Store: ObservableObject {
             case .success(let (d, deck)):
                 useZh(d, deck: deck)
             case .failure(let e):
-                zhError = DataFiles.has(["zh", "zh", "yue", "hak", "ja"][want])
-                    ? "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
-                    : tr("還沒有\(trs(Lang.names[want]))詞典：到「設定 → 詞典資料」安裝。")
-                UserDefaults.standard.set(lang, forKey: Lang.key)
                 zhLoad = nil
+                if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][want]) {
+                    // its dictionary isn't installed yet: the language chosen is still the one shown (and the one the
+                    // app opens in), with its dictionary offered to install where its words would be
+                    showMissing(want)
+                } else {
+                    zhError = "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
+                    UserDefaults.standard.set(lang, forKey: Lang.key)
+                }
             }
             switching = false
         }
@@ -229,10 +236,10 @@ final class Store: ObservableObject {
             do {
                 let d: ZhDict
                 if let have = loadedDict { d = have } else {
-                    guard let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja"][kind]) else { throw CocoaError(.fileNoSuchFile) }
+                    guard let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv"][kind]) else { throw CocoaError(.fileNoSuchFile) }
                     d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent, from: url)
                     // 粵語, 客語: the radicals (部首查字) from the 華語 data, if it's there
-                    if d.lang != 1, d.lang != 4, let zu = DataFiles.url("zh"),
+                    if d.lang != 1, d.lang != 4, d.lang != 5, let zu = DataFiles.url("zh"),
                        let zd = try? Data(contentsOf: zu, options: .mappedIfSafe) { d.borrowRadicals(from: zd) }
                 }
                 return .success((d, Store.makeZhDeck(d, list: list, keys: keys, size: size)))
@@ -270,7 +277,7 @@ final class Store: ObservableObject {
             guard lang != kind else { return }
             if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }
             cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
-            lang = kind; isZh = true; zhRom = Lang.zhRom; undoStack = []; canUndo = false; recount()
+            lang = kind; isZh = true; zhRom = Lang.zhRom; undoStack = []; canUndo = false; missingDict = false; recount()
             newStart = 0; queueTopic = -1
             save()
         } else if lang == 0 {
@@ -283,6 +290,21 @@ final class Store: ObservableObject {
 
     /// no 台語 data (cards.json): it can be installed in 設定 → 詞典資料
     @Published private(set) var taigiMissing = false
+    /// the language shown (華語, 粵語, 客語 or 日語) has no dictionary installed yet: its pages offer to install it
+    @Published private(set) var missingDict = false
+
+    /// a language without its dictionary: shown anyway (empty), so the app stays in the language chosen
+    private func showMissing(_ want: Int) {
+        // 台語's words wait, ready to switch back
+        if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }
+        cards = []; byKey = [:]; rank = [:]; pools = [:]; topics = []
+        newStart = 0; queueTopic = -1
+        lang = want; isZh = true; zhRom = Lang.zhRom; undoStack = []; canUndo = false
+        missingDict = true
+        UserDefaults.standard.set(want, forKey: Lang.key)
+        recount()
+        listVersion += 1
+    }
 
     /// 台語's words (cards.json) and dictionary, read again after installing them
     func reloadTaigi() {
@@ -326,7 +348,7 @@ final class Store: ObservableObject {
         if kind == 0 { if DataFiles.has("cards") { reloadTaigi() }; return }
         if zh?.lang == kind && lang != kind { zh = nil }
         if lang == kind {
-            if kind == 3 { hakAccentChanged() }
+            if kind == 3 && !missingDict { hakAccentChanged() }
             else if !switching {
                 switching = true
                 Task {
@@ -338,6 +360,8 @@ final class Store: ObservableObject {
                         zh = d
                         cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
                         undoStack = []; canUndo = false
+                        missingDict = false
+                        recount()
                         listVersion += 1
                     }
                     switching = false
@@ -466,7 +490,7 @@ final class Store: ObservableObject {
 
     // MARK: 本週學習 (this week's words)
 
-    private var weekLang: String { ["tw", "zh", "yue", "hak", "ja"][min(max(lang, 0), 4)] }
+    private var weekLang: String { ["tw", "zh", "yue", "hak", "ja", "sv"][min(max(lang, 0), 5)] }
 
     /// this week's words (in the language shown), in the order they were picked
     var weekCards: [Card] {
@@ -982,6 +1006,8 @@ final class Store: ObservableObject {
     /// a card's example in 羅馬字, in the chosen place's readings when the dictionary is loaded
     /// (guessed readings are red)
     func exampleRom(_ card: Card, _ x: Example, _ rom: Int, _ place: Int) -> AttributedString {
+        // 瑞典語: the sentence with its words split into morphemes (sam-tyck-lig-a)
+        if card.isZh, let d = zh, d.isSv { return d.svSentence(x.h, hyphens: true, base: T.greenInk) }
         if let w = x.w, let d = zh { return d.sentence(ZhDict.pieces(x.h, w), Lang.zhRom, Lang.zhPlace) }
         // (客語: the sentences have no reading of their own: the dictionary's words, as in 轉換)
         if card.isZh { return zh.map { $0.sentence(examplePieces($0, card, x.h), Lang.zhRom, Lang.zhPlace) } ?? AttributedString() }
@@ -992,6 +1018,8 @@ final class Store: ObservableObject {
 
     /// a card's example in 漢字; with a place, the words that place says differently are swapped in (pink)
     func exampleHan(_ card: Card, _ x: Example, _ place: Int) -> AttributedString {
+        // 瑞典語: each word in its morphemes' colours
+        if card.isZh, let d = zh, d.isSv { return d.svSentence(x.h, hyphens: false, base: T.blueInk) }
         if let w = x.w, let d = zh { return d.sentenceHan(ZhDict.pieces(x.h, w), Lang.zhPlace, base: T.blueInk) }
         if card.isZh {
             if let d = zh { return d.sentenceHan(examplePieces(d, card, x.h), Lang.zhPlace, base: T.blueInk) }
@@ -1006,6 +1034,7 @@ final class Store: ObservableObject {
 
     /// 例句填空: the example with the word blanked out, in the chosen place's readings
     func blankRom(_ card: Card, _ x: Example, _ rom: Int, _ place: Int) -> AttributedString? {
+        if card.isZh, zh?.isSv == true { return nil }
         if let w = x.w, let d = zh { return d.sentence(ZhDict.pieces(x.h, w), Lang.zhRom, Lang.zhPlace, blank: card.h) }
         if card.isZh { return zh.map { $0.sentence(examplePieces($0, card, x.h), Lang.zhRom, Lang.zhPlace, blank: card.h) } }
         let r = TwRom.lat(rom)

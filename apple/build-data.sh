@@ -12,6 +12,7 @@
 #   bash build-data.sh hak             (only the 客語 data, FangfangCards/hak.json)
 #   bash build-data.sh twen            (only the 台語 words' English from Wiktionary, FangfangCards/tw_en.json)
 #   bash build-data.sh sc              (only the 華語 words' 四川話 readings from Wiktionary, FangfangCards/zh_sc.json)
+#   bash build-data.sh sv              (only the 瑞典語 data, FangfangCards/sv.json: Folkets lexikon, for the Safari pop-up)
 #   bash build-data.sh safari          (only the words inside the Safari extension, FangfangSafari/d-*.json)
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -117,6 +118,26 @@ build_hak() {
     "$([ -f "$TMP/essay.txt" ] && echo "$TMP/essay.txt" || echo -)" "$([ -f "$TMP/cedict_ts.u8" ] && echo "$TMP/cedict_ts.u8" || echo -)" > /dev/null
 }
 if [ "$ODS" = "hak" ]; then build_hak; echo "✓ 完成：FangfangCards/hak.json"; exit 0; fi
+# 瑞典語: Folkets lexikon (KTH, CC BY-SA 2.5), FrequencyWords (CC BY-SA 4.0), the Chinese Wiktionary's Swedish words
+# (kaikki.org, CC BY-SA): the same as the app makes with Install/swedish.js
+build_sv() {
+  D="$TMP/sv"; mkdir -p "$D"
+  echo "下載 Folkets lexikon…"
+  curl -fsSL -o "$D/folkets.xml" "https://raw.githubusercontent.com/antonlisq/convert-dict/main/folkets_sv_en_public.xml" \
+    || curl -fsSL -o "$D/folkets.xml" "http://folkets-lexikon.csc.kth.se/folkets/folkets_sv_en_public.xml" \
+    || { echo "✗ 下載不到 Folkets lexikon。"; return 1; }
+  curl -fsSL -o "$D/sv_50k.txt" "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt" || rm -f "$D/sv_50k.txt"
+  echo "下載維基詞典的瑞典語詞（中文解釋，約 60 MB）…"
+  curl -fL --progress-bar -o "$D/zh.jsonl" "https://kaikki.org/zhwiktionary/%E7%91%9E%E5%85%B8%E8%AA%9E/kaikki.org-dictionary-%E7%91%9E%E5%85%B8%E8%AA%9E.jsonl" || rm -f "$D/zh.jsonl"
+  # (CC-CEDICT, for 華語 meanings guessed from the English ones)
+  [ -f "$TMP/cedict_ts.u8" ] || curl -fsSL -o "$TMP/cedict_ts.u8" "https://raw.githubusercontent.com/cschiller/zhongwen/main/data/cedict_ts.u8" || true
+  [ -f "$TMP/essay.txt" ] || curl -fsSL -o "$TMP/essay.txt" "https://raw.githubusercontent.com/rime/rime-essay/master/essay.txt" || true
+  echo "整理瑞典語資料中…"
+  /usr/bin/env python3 "$HERE/tools/build_swedish.py" "$D/folkets.xml" "$([ -f "$D/sv_50k.txt" ] && echo "$D/sv_50k.txt" || echo -)" \
+    "$([ -f "$D/zh.jsonl" ] && echo "$D/zh.jsonl" || echo -)" "$HERE/FangfangCards/sv.json" "$([ -f "$TMP/cedict_ts.u8" ] && echo "$TMP/cedict_ts.u8" || echo -)" \
+    "$([ -f "$TMP/essay.txt" ] && echo "$TMP/essay.txt" || echo -)"
+}
+if [ "$ODS" = "sv" ]; then build_sv; echo "✓ 完成：FangfangCards/sv.json"; exit 0; fi
 if [ -n "$ONLY_ZH" ]; then :; elif [ -z "$ODS" ]; then
   ODS="$TMP/kautian.ods"
   echo "下載教育部《臺灣台語常用詞辭典》資料（kautian.ods）…"

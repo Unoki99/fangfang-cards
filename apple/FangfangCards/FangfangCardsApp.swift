@@ -79,9 +79,18 @@ struct RootView: View {
         }
     }
 
+    /// the very first start: which language to learn comes first (the app opens in it; later: the one used last)
+    private var needsWelcome: Bool { !pickedLanguage && !alreadyUsed }
+
     var body: some View {
         Group {
-            if store.loaded {
+            if store.loaded && needsWelcome {
+                // (the app's pages aren't made until then: nothing of 台語 is shown or offered first)
+                LanguageWelcome { l in
+                    store.setLanguage(l)
+                    pickedLanguage = true
+                }
+            } else if store.loaded {
                 if #available(iOS 18.0, *) {
                     // iPad and Mac: the tabs can become a sidebar
                     TabView(selection: $router.tab) {
@@ -111,22 +120,16 @@ struct RootView: View {
                 }
             }
         }
-        // the very first time: which language to learn (later: 設定 → 語言)
-        .fullScreenCover(isPresented: Binding(get: { store.loaded && !pickedLanguage && !alreadyUsed },
-                                              set: { if !$0 { pickedLanguage = true } })) {
-            LanguageWelcome { l in
-                store.setLanguage(l)
-                pickedLanguage = true
-            }
-            .environmentObject(store)
-        }
         .overlay {
-            // no 台語 data yet: install it here
-            if store.loaded && store.lang == 0 && store.taigiMissing {
+            // the language shown has no dictionary yet (台語's words, or 華語 / 粵語 / 客語 / 日語): install it here
+            if store.loaded && !needsWelcome && !store.switching
+                && ((store.lang == 0 && store.taigiMissing) || (store.lang != 0 && store.missingDict)) {
                 ZStack {
-                    T.bg.opacity(0.85).ignoresSafeArea()
-                    MissingDictView(lang: 0)
+                    T.bg.opacity(0.85).ignoresSafeArea(edges: .bottom)
+                    MissingDictView(lang: store.lang)
                 }
+                // (below the top bar: its language menu stays, to switch to another language)
+                .padding(.top, 64)
             }
         }
         .overlay {
@@ -164,6 +167,8 @@ struct RootView: View {
         .onChange(of: store.zhPlace) { WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: store.loaded) { WidgetBridge.appOpened(store) }
         .onChange(of: store.dict != nil) { WidgetBridge.rebuildIfNeeded(store) }
+        // (another language's dictionary opened: its 分類 for the widgets too)
+        .onChange(of: store.zh?.lang) { WidgetBridge.rebuildIfNeeded(store) }
     }
 }
 
@@ -309,6 +314,7 @@ struct LanguageWelcome: View {
     @AppStorage(Lang.yueRomKey) private var yueRom = 0
     @AppStorage(Lang.hakRomKey) private var hakRom = 0
     @AppStorage(Lang.jaRomKey) private var jaRom = 1
+    @AppStorage(Lang.svRomKey) private var svRom = 0
     /// the language chosen, its dictionary being downloaded and made (nothing is in the app until then)
     @State private var installing: Int?
     @ObservedObject private var installer = DictInstaller.shared
@@ -331,7 +337,7 @@ struct LanguageWelcome: View {
         let c = T.langColors(l)
         return VStack(spacing: 22) {
             Spacer(minLength: 0)
-            Text(["台", "華", "粵", "客", "日"][min(max(l, 0), 4)]).scaledFont(54, weight: .bold).foregroundStyle(c.ink)
+            Text(["台", "華", "粵", "客", "日", "瑞"][min(max(l, 0), 5)]).scaledFont(54, weight: .bold).foregroundStyle(c.ink)
                 .frame(width: 96, height: 96)
                 .background(Circle().fill(c.edge.opacity(0.35)))
             Text(tr("安裝\(trs(Lang.names[l]))詞典")).ffFont(.title2, .bold).foregroundStyle(T.glyph)
@@ -403,6 +409,7 @@ struct LanguageWelcome: View {
                         spelling(2, $yueRom, ["粵拼", "耶魯"])
                         spelling(3, $hakRom, ["拼音", "注音"])
                         spelling(4, $jaRom, ["羅馬字", "假名"])
+                        spelling(5, $svRom, ["詞素", "不顯示"])
                         Text(tr("台語選「方音」的話只顯示方音；其他的下面會再加一行方音。"))
                             .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
                     }
@@ -425,7 +432,7 @@ struct LanguageWelcome: View {
     }
 
     private func spelling(_ l: Int, _ v: Binding<Int>, _ names: [String]) -> some View {
-        let ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk][l]
+        let ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk, T.svInk][l]
         return HStack(spacing: 10) {
             Text(trs(Lang.names[l])).ffFont(.subheadline, .bold).foregroundStyle(ink).frame(width: 64, alignment: .leading)
             Picker(trs(Lang.names[l]), selection: v) {
@@ -455,6 +462,7 @@ struct LanguageWelcome: View {
                 choice(2, title: "粵語", sub: "Cantonese", note: tr("CC-Canto、CC-CEDICT 和 rime-cantonese 的詞，粵拼或耶魯拼音"))
                 choice(3, title: "客語", sub: "Hakka", note: tr("教育部《臺灣客語辭典》的詞，六個腔，拼音或注音"))
                 choice(4, title: "日語", sub: "Japanese", note: tr("JMdict 和 KANJIDIC2 的詞和漢字，假名或羅馬字"))
+                choice(5, title: "瑞典語", sub: "Svenska", note: tr("Folkets lexikon 的詞，中文和英文解釋，每個詞分成詞素（詞根、前綴、後綴）用顏色標出來"))
             }
             .id(uiLang)
             .frame(maxWidth: 520)
@@ -471,10 +479,10 @@ struct LanguageWelcome: View {
     }
 
     private func choice(_ l: Int, title: String, sub: String, note: String) -> some View {
-        let fill = [T.twFill, T.blue, T.olive, T.hakFill, T.jaFill][l], edge = [T.twEdge, T.blueEdge, T.oliveEdge, T.hakEdge, T.jaEdge][l], ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk][l]
+        let fill = [T.twFill, T.blue, T.olive, T.hakFill, T.jaFill, T.svFill][l], edge = [T.twEdge, T.blueEdge, T.oliveEdge, T.hakEdge, T.jaEdge, T.svEdge][l], ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk, T.svInk][l]
         return Button { choose(l) } label: {
             HStack(spacing: 18) {
-                Text(["台", "華", "粵", "客", "日"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
+                Text(["台", "華", "粵", "客", "日", "瑞"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
                     .frame(width: 70, height: 70)
                     .background(Circle().fill(edge.opacity(0.35)))
                 VStack(alignment: .leading, spacing: 4) {

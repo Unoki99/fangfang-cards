@@ -95,33 +95,33 @@ enum WidgetBridge {
     private static var cacheStamp = ""
     private static func writeUnknown(_ store: Store, _ keys: [String]) {
         let place = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
-        let stamp = "\(keys.hashValue)|\(place)|\(store.zh != nil)|\(store.dict != nil)|\(ToneColors.system)|\(ToneColors.marks)|\(ToneColors.signature)|\(ZhMeaning.english)|\(Lang.zhRom)|\(Lang.zhPlace)"
+        let stamp = "\(keys.hashValue)|\(place)|\(store.zh?.lang ?? -1)|\(store.dict != nil)|\(ToneColors.system)|\(ToneColors.marks)|\(ToneColors.signature)|\(ZhMeaning.english)|\(Lang.zhRom)|\(Lang.zhPlace)"
         guard stamp != unknownStamp else { return }
         unknownStamp = stamp
         // the words already written out stay good while the settings stay the same
         let settings = stamp.split(separator: "|", maxSplits: 1).last.map(String.init) ?? ""
         if cacheStamp != settings { wordCache = [:]; cacheStamp = settings }
-        // the newest 400 of each language
+        // the newest 400 of each language: 台語's, and the language whose dictionary is open (the others' files stay
+        // as they were written when theirs was)
         let newest = store.progress.status.filter { $0.value == 2 }.map(\.key)
             .sorted { (store.progress.added[$0] ?? 0) > (store.progress.added[$1] ?? 0) }
-        var tw: [WidgetWord] = [], zh: [WidgetWord] = []
+        let open = store.zh?.lang
+        var byKind: [Int: [WidgetWord]] = [0: []]
+        if let open { byKind[open] = [] }
         for k in newest {
-            let isZh = Lang.isZhKey(k)
-            if isZh ? zh.count >= 400 : tw.count >= 400 { continue }
-            if isZh && store.zh == nil { continue }
-            guard let c = store.card(for: k) else { continue }
+            let kind = Lang.kind(k)
+            guard var l = byKind[kind], l.count < 400, let c = store.card(for: k) else { continue }
             let w: WidgetWord
             if let cached = wordCache[k] { w = cached }
             else { w = word(store, c, place) }
             wordCache[k] = w
-            if isZh { zh.append(w) } else { tw.append(w) }
-            if tw.count >= 400 && zh.count >= 400 { break }
+            l.append(w)
+            byKind[kind] = l
         }
-        WidgetShared.write(tw, WidgetShared.categoryFile(WidgetCat.twUnknown))
-        WidgetShared.write(zh, WidgetShared.categoryFile(WidgetCat.zhUnknown))
+        for (kind, ws) in byKind { WidgetShared.write(ws, WidgetShared.categoryFile(WidgetCat.unknown(kind))) }
         var list = WidgetShared.categories()
         if !list.isEmpty {
-            for (id, n) in [(WidgetCat.twUnknown, tw.count), (WidgetCat.zhUnknown, zh.count)] {
+            for (id, n) in byKind.map({ (WidgetCat.unknown($0.key), $0.value.count) }) {
                 if let i = list.firstIndex(where: { $0.i == id }) { list[i] = WidgetCategory(i: id, n: list[i].n, c: n) }
             }
             WidgetShared.write(list, "categories.json")
@@ -138,7 +138,8 @@ enum WidgetBridge {
         if tones != 0 && store.dict == nil { store.loadDict() }    // tone colours need the dictionary: called again then
         let needsDict = place >= 0 || tones != 0
         let tw = store.twDeck, zh = store.zhDeck
-        let stamp = "v3|\(tw.cards.count)|\(tw.cards.first?.k ?? "")|\(place)|\(needsDict && store.dict != nil)|\(tones)|\(ToneColors.marks)|\(ToneColors.signature)"
+        let kind = store.zh?.lang ?? 1
+        let stamp = "v4|\(kind)|\(tw.cards.count)|\(tw.cards.first?.k ?? "")|\(place)|\(needsDict && store.dict != nil)|\(tones)|\(ToneColors.marks)|\(ToneColors.signature)"
             + "|zh\(zh.cards.count)|\(store.zhList)|\(Lang.zhRom)|\(Lang.zhPlace)|\(ZhMeaning.english)"
         if WidgetShared.defaults?.string(forKey: "words-stamp") == stamp,
            WidgetShared.read([WidgetCategory].self, "categories.json") != nil { return }
@@ -155,11 +156,13 @@ enum WidgetBridge {
                 for cat in cats { byCat[cat, default: []].append(w) }
                 if i < commonCount { common.append(w) }
             }
-            // 華語: each level of the word list, and each character level (not 更多常用字)
+            // the language whose dictionary is open (華語, 粵語, 客語, 日語, 瑞典語): each level of the word list,
+            // and each character level (not 更多常用字)
+            let base = WidgetCat.base(kind)
             for (i, c) in zh.cards.enumerated() {
                 if i % 150 == 0 { await Task.yield() }
                 guard let l = c.cats?.first, l != Lang.moreChars else { continue }
-                byCat[WidgetCat.zhBase + l, default: []].append(word(store, c, place))
+                byCat[base + l, default: []].append(word(store, c, place))
             }
             var list = [WidgetCategory(i: WidgetCat.common, n: "常用詞", c: common.count)]
             WidgetShared.write(common, WidgetShared.categoryFile(WidgetCat.common))
@@ -169,12 +172,19 @@ enum WidgetBridge {
                 WidgetShared.write(ws, WidgetShared.categoryFile(t.id))
                 list.append(WidgetCategory(i: t.id, n: t.name, c: ws.count))
             }
-            if !zh.cards.isEmpty {
-                list.append(WidgetCategory(i: WidgetCat.zhUnknown, n: "不熟的詞（華語）", c: 0))
-                for t in zh.topics {
-                    guard let ws = byCat[WidgetCat.zhBase + t.id], !ws.isEmpty else { continue }
-                    WidgetShared.write(ws, WidgetShared.categoryFile(WidgetCat.zhBase + t.id))
-                    list.append(WidgetCategory(i: WidgetCat.zhBase + t.id, n: "華語・" + t.name, c: ws.count))
+            // each language's 分類: the open one's made now, the others' kept from when theirs was open
+            let before = WidgetShared.categories()
+            let name = Lang.names[min(max(kind, 0), Lang.names.count - 1)]
+            for k in 1..<Lang.count {
+                if k == kind && !zh.cards.isEmpty {
+                    list.append(WidgetCategory(i: WidgetCat.unknown(kind), n: "不熟的詞（\(name)）", c: 0))
+                    for t in zh.topics {
+                        guard let ws = byCat[base + t.id], !ws.isEmpty else { continue }
+                        WidgetShared.write(ws, WidgetShared.categoryFile(base + t.id))
+                        list.append(WidgetCategory(i: base + t.id, n: name + "・" + t.name, c: ws.count))
+                    }
+                } else {
+                    list += before.filter { WidgetCat.kind(of: $0.i) == k }
                 }
             }
             WidgetShared.write(list, "categories.json")

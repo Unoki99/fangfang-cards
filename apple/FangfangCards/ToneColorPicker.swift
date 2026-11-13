@@ -7,27 +7,30 @@ struct ToneColorPicker: View {
     @EnvironmentObject var store: Store
     @AppStorage(ToneColors.versionKey) private var version = 0
     @AppStorage(ToneColors.key) private var toneSys = 0
-    /// whose colours: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語
+    /// whose colours: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語
     @State private var which: Int
     @State private var selected: Int
     /// (日語's colours changed: drawn again)
     @State private var jaVersion = 0
 
     init(set start: Int? = nil) {
-        let s = min(max(start ?? Lang.current, 0), 4)
+        let s = min(max(start ?? Lang.current, 0), 5)
         _which = State(initialValue: s)
-        _selected = State(initialValue: s == 4 ? 0 : 1)
+        _selected = State(initialValue: s >= 4 ? 0 : 1)
     }
 
-    private var tones: [Int] { which == 4 ? Array(0..<JaColors.keys.count) : ToneColors.tones(set: which) }
+    /// 日語 and 瑞典語: kinds of text (not tones), their colours in UserDefaults under their own keys
+    private var own: Bool { which >= 4 }
+    private var ownKeys: [String] { which == 5 ? SvColors.keys : JaColors.keys }
+    private var tones: [Int] { own ? Array(0..<ownKeys.count) : ToneColors.tones(set: which) }
 
     /// a tone's colour (日語: a kind of text's)
     private func hexOf(_ t: Int) -> UInt32 {
-        which == 4 ? UInt32(truncatingIfNeeded: JaColors.hex(t)) : ToneColors.hex(set: which, t)
+        which == 5 ? UInt32(truncatingIfNeeded: SvColors.hex(t)) : (which == 4 ? UInt32(truncatingIfNeeded: JaColors.hex(t)) : ToneColors.hex(set: which, t))
     }
     private func pick(_ t: Int, _ hex: UInt32) {
-        if which == 4 {
-            UserDefaults.standard.set(Int(hex & 0xFFFFFF), forKey: JaColors.keys[t])
+        if own {
+            UserDefaults.standard.set(Int(hex & 0xFFFFFF), forKey: ownKeys[t])
             jaVersion += 1
         } else {
             ToneColors.set(set: which, t, hex)
@@ -35,6 +38,7 @@ struct ToneColorPicker: View {
     }
 
     private func name(_ t: Int) -> String {
+        if which == 5 { return trs(SvColors.names[t]) }
         if which == 4 { return trs(JaColors.names[t]) }
         if which == 1 { return t == 0 ? trs("輕聲") : ["", trs("一聲"), trs("二聲"), trs("三聲"), trs("四聲")][t] }
         if which == 3 { return trs([1: "陰平", 2: "上聲", 3: "去聲", 4: "陰入", 5: "陽平", 7: "陽去", 8: "陽入"][t] ?? "") }
@@ -54,15 +58,16 @@ struct ToneColorPicker: View {
                     Text(tr("粵語")).tag(2)
                     Text(tr("客語")).tag(3)
                     Text(tr("日語")).tag(4)
+                    Text(tr("瑞典語")).tag(5)
                 }
                 .pickerStyle(.segmented)
-                .onChange(of: which) { selected = which == 4 ? 0 : 1 }
+                .onChange(of: which) { selected = which >= 4 ? 0 : 1 }
             }
             .listRowBackground(Color.clear)
 
             Section {
                 // the tones: tap one, then tap a ball below
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: which == 2 ? 6 : (which == 3 ? 4 : 5)), spacing: 10) {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: which == 2 || which == 5 ? 6 : (which == 3 ? 4 : 5)), spacing: 10) {
                     ForEach(tones, id: \.self) { t in
                         let on = selected == t
                         Button { withAnimation(.snappy) { selected = t } } label: {
@@ -83,7 +88,7 @@ struct ToneColorPicker: View {
                 }
                 .padding(.vertical, 4)
             } header: {
-                Text(which == 4 ? tr("文字（點一個，再點下面的顏色）") : tr("聲調（點一個，再點下面的顏色）"))
+                Text(own ? tr("文字（點一個，再點下面的顏色）") : tr("聲調（點一個，再點下面的顏色）"))
             } footer: {
                 if which == 0 && toneSys == 5 { Text(tr("五聲：第 8 聲用第 1 聲的顏色，第 4 聲用第 3 聲的顏色。")) }
                 if which == 3 { Text(tr("客語的聲調照類別上色：同一個類別在各腔的調值不一樣，顏色一樣（例如陰平在四縣是 24，在海陸是 53）。")) }
@@ -106,7 +111,8 @@ struct ToneColorPicker: View {
             } header: {
                 Text(tr("\(name(selected))的顏色"))
             } footer: {
-                Text(which == 4 ? tr("中間那一排是原本的顏色，往上越淺，往下越深。球裡的數字是已經用這個顏色的文字（1 漢字、2 平假名、3 片假名、4 助詞、5 語尾）。")
+                Text(which == 5 ? tr("中間那一排是原本的顏色，往上越淺，往下越深。球裡的數字是已經用這個顏色的部分（1 詞根、2 第二個詞根、3 前綴、4 後綴、5 連接音、6 詞尾）。")
+                     : which == 4 ? tr("中間那一排是原本的顏色，往上越淺，往下越深。球裡的數字是已經用這個顏色的文字（1 漢字、2 平假名、3 片假名、4 助詞、5 語尾）。")
                      : tr("中間那一排是原本的顏色，往上越淺，往下越深。球裡的數字是已經用這個顏色的聲調。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
@@ -120,8 +126,8 @@ struct ToneColorPicker: View {
 
             Section {
                 Button(tr("恢復原本的顏色（\(trs(Lang.names[which]))）")) {
-                    if which == 4 {
-                        for k in JaColors.keys { UserDefaults.standard.removeObject(forKey: k) }
+                    if own {
+                        for k in ownKeys { UserDefaults.standard.removeObject(forKey: k) }
                         jaVersion += 1
                     } else {
                         ToneColors.resetAll(set: which)
@@ -133,7 +139,7 @@ struct ToneColorPicker: View {
         }
         .scrollContentBackground(.hidden)
         .appBackground()
-        .navigationTitle(which == 4 ? tr("日語的顏色") : tr("選聲調顏色"))
+        .navigationTitle(which == 5 ? tr("瑞典語的顏色") : which == 4 ? tr("日語的顏色") : tr("選聲調顏色"))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -149,7 +155,7 @@ struct ToneColorPicker: View {
                 .overlay(Circle().stroke(picked ? T.glyph : Color.clear, lineWidth: 2.5).padding(-3))
                 .overlay {
                     if !who.isEmpty {
-                        Text(who.map { which == 4 ? String($0 + 1) : ($0 == 0 ? trs("輕") : String($0)) }.joined(separator: ""))
+                        Text(who.map { own ? String($0 + 1) : ($0 == 0 ? trs("輕") : String($0)) }.joined(separator: ""))
                             .font(.system(size: who.count > 1 ? 9 : 12, weight: .bold))
                             .foregroundStyle(.black.opacity(0.7))
                             .minimumScaleFactor(0.5)
@@ -167,7 +173,20 @@ struct ToneColorPicker: View {
 
     /// every tone in its colour, on a word
     @ViewBuilder private var sample: some View {
-        if which == 4 {
+        if which == 5 {
+            // words with every kind of part: o|lyck|lig, sam|tyck|lig|a (-a after -lig: darker), arbet|s|lös|het, be|tal|a, sjuk|hus
+            VStack(spacing: 6) {
+                ForEach(["o:p lyck:r lig:s", "sam:p tyck:r lig:s a:e", "arbet:r s:l lös:s het:s", "be:p tal:r a:e", "sjuk:r hus:r"], id: \.self) { w in
+                    let ms = SvMorpheme.parse(w.components(separatedBy: " "))
+                    HStack(spacing: 0) {
+                        ForEach(ms) { m in Text(m.text).foregroundStyle(SvColors.color(of: m, in: ms)) }
+                    }
+                    .latFont(26)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .id(jaVersion)
+        } else if which == 4 {
             // a sentence with every kind: kanji, hiragana, katakana, particles, a suffix
             Text(JaInk.attributed(JaInk.marked("猫[が]ミルク[を]飲み{ます}。"))).scaledFont(28)
                 .frame(maxWidth: .infinity)
