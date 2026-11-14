@@ -1510,6 +1510,14 @@
         if (isOpen() && !card.querySelector(".set")) hideTimer = setTimeout(hide, HIDE);
     }
     const inCard = e => host && e.composedPath && e.composedPath().includes(host);
+    /// the pointer over the subtitle panel (its words open with a tap or a click there, never by hovering)
+    function overSubs(e) {
+        if (e.target && e.target.closest && e.target.closest("#ff-subs")) return true;
+        const p = typeof subs !== "undefined" && subs && subs.panel;
+        if (!p || p.classList.contains("hidden")) return false;
+        const r = p.getBoundingClientRect();
+        return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    }
 
     // ── the Pencil (or a trackpad / mouse) hovering ─────────────────────────────────────────
     // (the Pencil, a trackpad or a mouse; on the Mac, Safari may send only mouse events)
@@ -1528,12 +1536,13 @@
         // (網頁查詞 turned off in Safari's toolbar: only the subtitle panel's words are still looked up)
         if (!alive() || (!prefs.on && !(e.target && e.target.closest && e.target.closest("#ff-subs")))) return;
         // (the subtitle panel: nothing by hovering; its words open with a tap or a click)
-        const inPanel = e.target && e.target.closest && e.target.closest("#ff-subs");
-        if (inPanel) { clearTimeout(dwellTimer); return; }
+        // (checked three ways: the element under the pointer, the panel's place on the screen, and the text found)
+        if (overSubs(e)) { clearTimeout(dwellTimer); return; }
         if (e.buttons !== 0) return;                              // writing / dragging, not hovering
         if (!metaP) getMeta();                                    // (the Pencil is near: the tables read already)
         if (inCard(e)) { clearTimeout(hideTimer); clearTimeout(dwellTimer); return; }
         const hit = charAt(e.clientX, e.clientY);
+        if (hit && hit.node && hit.node.parentElement && hit.node.parentElement.closest("#ff-subs")) { clearTimeout(dwellTimer); return; }
         // (瑞典語: a Latin letter, the whole word around it)
         // (a Latin word: 瑞典語, and English → the Chinese languages)
         const lat = hit && !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
@@ -1574,6 +1583,9 @@
             if (!prefs.on || !alive()) return;
             const sel = document.getSelection();
             if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+            // (text selected in the subtitle panel: its words open with a tap there)
+            const an = sel.anchorNode && (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+            if (an && an.closest && an.closest("#ff-subs")) return;
             const s = sel.toString().trim();
             if (!s) return;
             // (瑞典語: one Latin word)
@@ -1588,7 +1600,7 @@
 
     // ── 影片字幕: the video's subtitles in a panel beside it (under it on a phone) ─────────────
     // The lines before and after the one being said are there too; the panel glides up as the video plays. Words
-    // in it are looked up like anywhere else (Pencil / trackpad hover, or a tap with a finger), and when one is
+    // in it are looked up with a tap or a click (not by hovering, as elsewhere on the page), and when one is
     // saved, its line is kept with it as its sentence. The subtitles are the ones the site itself has: on YouTube
     // the video's own (or YouTube's automatic ones), on Viki the ones its player loads, and on any site whose
     // player has subtitle tracks Safari can read.
