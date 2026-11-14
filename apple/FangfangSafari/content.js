@@ -37,6 +37,8 @@
         subsFlow: false,
         // over / under the words you don't know in the subtitles: their reading, and their meaning (English or 中文, as 英文 is set)
         subsRd: true, subsGl: true,
+        // the reading's size, against the characters'
+        subsRdSize: 0.56,
         // keyKnown / keyNew: with the pointer on a word, the key that marks it 認識, and the one that marks it 不熟 and
         // saves it (with its sentence); keys: on or off
         keys: true, keyKnown: "a", keyNew: "s",
@@ -2043,12 +2045,13 @@
 #ff-subs .new { text-decoration: underline dotted rgba(255,255,255,0.55); text-underline-offset: 5px; text-decoration-thickness: 2px; }
 #ff-subs .learn { text-decoration: underline solid rgba(255,214,102,0.85); text-underline-offset: 5px; text-decoration-thickness: 2px; }
 #ff-subs .h { text-shadow: 0 0 7px currentColor; }
-#ff-subs .w { display: inline-flex; flex-direction: column; align-items: center; vertical-align: bottom; margin: 0 .14em;
-  line-height: 1.2; }
+#ff-subs .w { display: inline-flex; flex-direction: column; align-items: center; vertical-align: top; line-height: 1.2; }
+#ff-subs .w.a { margin: 0 .14em; }
+#ff-subs .line:has(.w) .tm { vertical-align: middle; }
 #ff-subs .cw { white-space: nowrap; }
 #ff-subs .rd, #ff-subs .gl { user-select: none; -webkit-user-select: none; white-space: nowrap; pointer-events: none;
   font-family: -apple-system, system-ui, "PingFang TC", sans-serif; }
-#ff-subs .rd { font-size: .56em; margin-bottom: 1px; }
+#ff-subs .rd { font-size: var(--ff-rd, .56em); margin-bottom: 1px; }
 #ff-subs .gl { font-size: .5em; color: #b6bad0; max-width: 9em; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 #ff-subs.flow .view { top: 38px; }
 #ff-subs.flow .top b { margin-right: 2px; }
@@ -2151,7 +2154,7 @@
         // (the row at the bottom: tall enough for the letters)
         // (one line on top; the readings and meanings over and under the words need room too)
         const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl;
-        st.panel.style.height = flow && !st.collapsed ? Math.round(38 + Math.max(76, fs * (anno ? 4.2 : 3))) + "px" : "";
+        st.panel.style.height = flow && !st.collapsed ? Math.round(38 + Math.max(76, fs * (anno ? 3.6 + (prefs.subsRdSize || 0.56) : 3))) + "px" : "";
         const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
@@ -2230,6 +2233,7 @@
         const st = subs;
         if (!st || !st.rail) return;
         st.rail.style.fontSize = Math.round(18 * (prefs.subsFont || 1)) + "px";
+        st.rail.style.setProperty("--ff-rd", (prefs.subsRdSize || 0.56) + "em");
         st.centers = [];
         requestAnimationFrame(() => { subsMeasure(); subsPlace(false); });
     }
@@ -2289,7 +2293,19 @@
             const chars = [...st.cues[li].t];
             const frag = document.createDocumentFragment();
             let plain = "";
-            const flush = () => { if (plain) { frag.appendChild(document.createTextNode(plain)); plain = ""; } };
+            // (readings / meanings on: every word, also the ones without them, in a box of the same height, so the
+            // characters of a line stay on one level)
+            const annoOn = !!(prefs.subsRd || prefs.subsGl);
+            const flush = () => {
+                if (!plain) return;
+                if (!annoOn) frag.appendChild(document.createTextNode(plain));
+                else for (const t of plain.split(/(\s+)/)) {
+                    if (!t) continue;
+                    if (/^\s+$/.test(t)) frag.appendChild(document.createTextNode(t));
+                    else subsAnnotate(frag, null, null).appendChild(document.createTextNode(t));
+                }
+                plain = "";
+            };
             let i = 0;
             while (i < chars.length) {
                 const cp = chars[i].codePointAt(0);
@@ -2311,7 +2327,7 @@
                 let box = frag;
                 const known = isKnown(word);
                 // (a word you don't know: its reading over it and its meaning under it)
-                if (entry && !known && (prefs.subsRd || prefs.subsGl)) box = subsAnnotate(frag, entry, meta);
+                if (annoOn) box = subsAnnotate(frag, entry && !known ? entry : null, meta);
                 if (knownSet) {
                     total++;
                     const k = known;
@@ -2354,11 +2370,13 @@
     }
     /// a word you don't know in the subtitles: a box with its reading (注音 or 拼音, in the tone colours) over it
     /// and a short meaning under it; returns where its characters go
+    /// (e null: a word without them, the same height: an empty line over and under it)
     function subsAnnotate(frag, e, meta) {
-        const w = document.createElement("span"); w.className = "w";
+        const w = document.createElement("span"); w.className = e ? "w a" : "w";
         if (prefs.subsRd) {
             const rd = document.createElement("span"); rd.className = "rd ffx";
-            (zhParts(e, meta).r || []).forEach((sg, i) => {
+            if (!e) rd.textContent = "\u00a0";
+            else (zhParts(e, meta).r || []).forEach((sg, i) => {
                 const x = document.createElement("span");
                 x.textContent = i && !sg.t.startsWith(" ") ? " " + sg.t : sg.t;
                 if (sg.c && prefs.colours) x.style.color = "#" + sg.c;
@@ -2369,7 +2387,7 @@
         const cw = document.createElement("span"); cw.className = "cw";
         w.appendChild(cw);
         if (prefs.subsGl) {
-            const g = subsGloss(e);
+            const g = e ? subsGloss(e) : "";
             const gl = document.createElement("span"); gl.className = "gl ffx";
             gl.textContent = g || "\u00a0";
             if (g) gl.title = g;

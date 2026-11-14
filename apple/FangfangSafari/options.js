@@ -141,6 +141,7 @@
     row(subPart, "查詞時影片暫停", "點字幕的詞時（卡片關掉後繼續）", sc("subsPause", [[true, "開"], [false, "關"]]));
     row(subPart, "影片上原本的字幕", "面板開著的時候", sc("subsHideVideo", [[true, "隱藏"], [false, "顯示"]]));
     row(subPart, "不認識的詞：上面標讀音", "注音或拼音（照華語的設定），也有聲調顏色", sc("subsRd", [[true, "開"], [false, "關"]]));
+    row(subPart, "讀音的大小", "注音或拼音和字的大小比", sc("subsRdSize", [[0.45, "小"], [0.56, "中"], [0.7, "大"], [0.85, "更大"], [1, "和字一樣"]]));
     row(subPart, "不認識的詞：下面標意思", prefs.en ? "現在是英文（語言裡的「英文」開著）" : "現在是中文（語言裡的「英文」打開就變英文）", sc("subsGl", [[true, "開"], [false, "關"]]));
     const tools = el("div", null, "tools");
     for (const [b, t] of [["上一句", "回到上一句"], ["重複", "一直重複這一句，練聽和跟讀"], ["慢速", "放慢到 0.75 倍"],
