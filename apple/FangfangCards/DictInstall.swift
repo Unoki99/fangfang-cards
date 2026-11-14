@@ -290,8 +290,30 @@ final class DictInstaller: ObservableObject {
 
     func install(_ p: DictPack) {
         if case .working = state(p) { return }
-        states[p.id] = .working(0, trs("下載中…"))
+        Task { await run(p) }
+    }
+
+    /// 全部安裝: the dictionaries not installed yet, one after another (each takes the device's attention for a while)
+    @Published private(set) var allRunning: (n: Int, of: Int)? = nil
+    func installAll() {
+        guard allRunning == nil, !busy else { return }
+        let todo = DictPack.all.filter { p in !Self.isInstalled(p) && !p.outputs.prefix(1).allSatisfy { o in DataFiles.isBuiltIn(o) } }
+        guard !todo.isEmpty else { return }
+        allRunning = (0, todo.count)
         Task {
+            for (i, p) in todo.enumerated() {
+                allRunning = (i + 1, todo.count)
+                await run(p)
+            }
+            allRunning = nil
+        }
+    }
+    static func isInstalled(_ p: DictPack) -> Bool { p.outputs.prefix(1).allSatisfy { DataFiles.isInstalled($0) } }
+
+    private func run(_ p: DictPack) async {
+        if case .working = state(p) { return }
+        states[p.id] = .working(0, trs("下載中…"))
+        do {
             do {
                 let work = FileManager.default.temporaryDirectory.appendingPathComponent("install-" + p.id, isDirectory: true)
                 try? FileManager.default.removeItem(at: work)
@@ -519,6 +541,32 @@ struct DictDataSettings: View {
 
     var body: some View {
         SettingsPage(title: tr("詞典資料")) {
+            // 全部安裝: every dictionary not installed yet, one after another
+            Section {
+                let _ = installer.version
+                let missing = DictPack.all.filter { p in !DictInstaller.isInstalled(p) && !p.outputs.prefix(1).allSatisfy { o in DataFiles.isBuiltIn(o) } }
+                VStack(alignment: .leading, spacing: 8) {
+                    if let r = installer.allRunning {
+                        ProgressView(value: Double(r.n - 1), total: Double(max(r.of, 1))) {
+                            Text(tr("全部安裝：第 \(r.n) / \(r.of) 個")).ffFont(.subheadline, .semibold)
+                        }
+                    } else {
+                        Button {
+                            installer.installAll()
+                        } label: {
+                            Label(missing.isEmpty ? trs("全部詞典都安裝好了") : tr("安裝全部詞典（還有 \(missing.count) 個）"),
+                                  systemImage: missing.isEmpty ? "checkmark.circle" : "arrow.down.circle")
+                                .ffFont(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(missing.isEmpty || installer.busy)
+                    }
+                    Text(tr("一個接一個下載和整理，全部要幾分鐘。整理的時候讓 App 開著。")).ffFont(.caption).foregroundStyle(T.muted)
+                }
+                .padding(.vertical, 4)
+            }
             Section {
                 ForEach(DictPack.all) { p in row(p) }
             } footer: {

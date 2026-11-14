@@ -39,6 +39,8 @@
         subsRd: true, subsGl: true,
         // the reading's size, against the characters'
         subsRdSize: 0.56,
+        // the language the subtitles are read in: "auto" (from the subtitles' own language), or zh / tw / yue / hak
+        subsLang: "auto",
         // keyKnown / keyNew: with the pointer on a word, the key that marks it 認識, and the one that marks it 不熟 and
         // saves it (with its sentence); keys: on or off
         keys: true, keyKnown: "a", keyNew: "s",
@@ -51,12 +53,21 @@
     // subtitle panel marks the others and tells how much of a video you know
     let knownSet = null, learnSet = new Set();
     let localKnown = new Set();   // 認識 on the card here (sent to the app with 傳到 App, too)
+    let knownBy = {}, learnBy = {};   // the same, by language (tw, zh, yue, hak, …)
     const isKnown = w => (knownSet && knownSet.has(w)) || localKnown.has(w);
+    // (a word of one language: known there; without the app's words by language, known in any)
+    const isKnownIn = (w, l) => localKnown.has(w) || (knownBy[l] ? knownBy[l].has(w) : !!(knownSet && knownSet.has(w)));
+    const learnIn = (w, l) => learnBy[l] ? learnBy[l].has(w) : learnSet.has(w);
     let watchCache = {};          // {"2026-11-14": minutes watched with the subtitle panel}, sent with 傳到 App
     function setKnown(o) {
-        if (!o || !o.k) { knownSet = null; learnSet = new Set(); return; }
+        if (!o || !o.k) { knownSet = null; learnSet = new Set(); knownBy = {}; learnBy = {}; return; }
         knownSet = new Set(Object.values(o.k).flat());
         learnSet = new Set(Object.values(o.u || {}).flat());
+        knownBy = {}; learnBy = {};
+        for (const l of ["tw", "zh", "yue", "hak", "ja", "sv"]) {
+            knownBy[l] = new Set(o.k[l] || []);
+            learnBy[l] = new Set((o.u || {})[l] || []);
+        }
     }
     const store = browser.storage && browser.storage.local;
     if (store) {
@@ -81,7 +92,7 @@
             if (ch.ffPrefs && subs && subs.panel) {
                 const o = ch.ffPrefs.oldValue || {}, n = ch.ffPrefs.newValue || {};
                 subsSize(); subsLayout();
-                if (["subsRd", "subsGl", "en", "zhRom", "zhPlace", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
+                if (["subsRd", "subsGl", "subsLang", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
             }
         });
     }
@@ -1573,7 +1584,9 @@
         if (!res || !res.ok) return;
         // the first language the card would show
         let pick = null, lang = "";
-        for (const l of ["zh", "tw", "yue", "hak", "sv"]) {
+        const order = ["zh", "tw", "yue", "hak", "sv"];
+        if (inSubs && subs && subs.lang) order.sort((a, b) => (b === subs.lang) - (a === subs.lang));
+        for (const l of order) {
             const part = res[l];
             if (!part || !part.list) continue;
             const e0 = part.list.find(x => x.k && !(l === "zh" && x.p === 3 && prefs.zhPlace !== 2));
@@ -2027,6 +2040,7 @@
   padding: 0 10px; box-sizing: border-box; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.07); scrollbar-width: none; }
 #ff-subs .study::-webkit-scrollbar { display: none; }
 #ff-subs .study .btn { flex: none; }
+#ff-subs .study select { flex: none; max-width: 120px; }
 #ff-subs .study .btn.on { background: rgba(120,200,255,0.25); color: #e9f6ff; box-shadow: inset 0 0 0 1px rgba(150,215,255,0.55); }
 #ff-subs .study .meter { flex: none; margin-left: auto; font-size: 12px; color: #a7abc0; padding-left: 6px; }
 #ff-subs.mini .study { display: none; }
@@ -2271,6 +2285,29 @@
     }
 
     // the 漢字 in their tone colours (華語's, as the page colours work), glowing a little; letters stay plain
+    // ── the subtitles' language: 華語, 台語, 粵語 or 客語 (its words, readings, colours and meanings) ──
+    const SUBS_LANGS = [["zh", "華語"], ["tw", "台語"], ["yue", "粵語"], ["hak", "客語"]];
+    const subsHas = (l, meta) => !!meta && (l === "zh" || (meta[l] !== undefined ? meta[l] > 0 : l === "tw"));
+    /// from the subtitles' language code (YouTube's: nan-TW 台語, yue 粵語, hak 客語, the rest 華語)
+    function subsLangOfTrack() {
+        const id = (subs && subs.cur) || "";
+        const code = (id.includes(">") ? id.split(">")[1] : id.split("|")[0]).toLowerCase();
+        if (/^(nan|zh-min|tw-nan|tai)/.test(code)) return "tw";
+        if (/^(yue|zh-yue|can)/.test(code)) return "yue";
+        if (/^hak/.test(code)) return "hak";
+        return "zh";
+    }
+    function subsLangNow(meta) {
+        const want = prefs.subsLang && prefs.subsLang !== "auto" ? prefs.subsLang : subsLangOfTrack();
+        return subsHas(want, meta) ? want : "zh";
+    }
+    /// a word's characters (in the tone colours) and reading, in the subtitles' language
+    function subsParts(e, L, meta) {
+        return L === "tw" ? twParts(e, meta) : L === "yue" ? yueParts(e) : L === "hak" ? hakParts(e, meta) : zhParts(e, meta);
+    }
+    /// the entry to use of a word's entries (華語: not 四川話's own words, unless 四川話 is chosen)
+    const subsEntry = (list, L) => list.find(x => x.k && !(L === "zh" && x.p === 3 && prefs.zhPlace !== 2)) || null;
+
     async function subsColour(key) {
         if (!prefs.colours && !knownSet && !localKnown.size && !prefs.subsRd && !prefs.subsGl) {
             subs.lines.forEach((line, li) => { const tx = line.querySelector(".tx"); if (tx.querySelector(".w")) tx.textContent = subs.cues[li].t; });
@@ -2279,12 +2316,14 @@
         const meta = await getMeta();
         const st = subs;
         if (!meta || st.key !== key) return;
+        const SL = subsLangNow(meta);
+        st.lang = SL;
         const cps = new Set();
         for (const c of st.cues) for (const ch of c.t) { const cp = ch.codePointAt(0); if (isHan(cp)) cps.add(cp % (meta.shards || 256)); }
         // (the video's dictionary parts, kept with it: 生詞 and redrawing use them again without asking for them)
         const files = st.dict && st.dictKey === key ? st.dict : new Map();
         await Promise.all([...cps].map(async i => {
-            const nm = `d-zh-${String(i).padStart(3, "0")}.json`;
+            const nm = `d-${SL}-${String(i).padStart(3, "0")}.json`;
             if (!files.has(nm)) files.set(nm, await getFile(nm));
         }));
         if (st.key !== key) return;
@@ -2313,13 +2352,13 @@
                 const cp = chars[i].codePointAt(0);
                 if (!isHan(cp)) { plain += chars[i]; i++; continue; }
                 const wordStart = i;
-                const sh = files.get(`d-zh-${String(cp % (meta.shards || 256)).padStart(3, "0")}.json`);
+                const sh = files.get(`d-${SL}-${String(cp % (meta.shards || 256)).padStart(3, "0")}.json`);
                 let cols = [], len = 1, entry = null;
                 if (sh) for (let L = Math.min(meta.max || 12, chars.length - i); L >= 1; L--) {
                     const w = chars.slice(i, i + L).join("");
                     if (sh[w]) {
-                        len = L; entry = sh[w][0];
-                        cols = (zhParts(entry, meta).h || []).flatMap(sg => [...sg.t].map(() => sg.c || null));
+                        len = L; entry = subsEntry(sh[w], SL) || sh[w][0];
+                        try { cols = (subsParts(entry, SL, meta).h || []).flatMap(sg => [...sg.t].map(() => sg.c || null)); } catch (err) { cols = []; }
                         break;
                     }
                 }
@@ -2327,16 +2366,16 @@
                 // (the word: 認識 → as it is; 不熟 → a line under it; never seen → a dotted line)
                 const word = chars.slice(wordStart, wordStart + len).join("");
                 let box = frag;
-                const known = isKnown(word);
+                const known = isKnownIn(word, SL);
                 // (a word you don't know: its reading over it and its meaning under it)
-                if (annoOn) box = subsAnnotate(frag, entry && !known ? entry : null, meta);
+                if (annoOn) box = subsAnnotate(frag, entry && !known ? entry : null, meta, SL);
                 if (knownSet) {
                     total++;
                     const k = known;
                     if (k) knownN++;
                     else {
                         const u = document.createElement("span");
-                        u.className = learnSet.has(word) ? "learn" : "new";
+                        u.className = learnIn(word, SL) ? "learn" : "new";
                         box.appendChild(u);
                         box = u;
                     }
@@ -2373,17 +2412,22 @@
     /// a word you don't know in the subtitles: a box with its reading (注音 or 拼音, in the tone colours) over it
     /// and a short meaning under it; returns where its characters go
     /// (e null: a word without them, the same height: an empty line over and under it)
-    function subsAnnotate(frag, e, meta) {
+    function subsAnnotate(frag, e, meta, L) {
         const w = document.createElement("span"); w.className = e ? "w a" : "w";
         if (prefs.subsRd) {
             const rd = document.createElement("span"); rd.className = "rd ffx";
             if (!e) rd.textContent = "\u00a0";
-            else (zhParts(e, meta).r || []).forEach((sg, i) => {
+            else {
+                let r = [];
+                try { r = subsParts(e, L || "zh", meta).r || []; } catch (err) { r = []; }
+                r.forEach((sg, i) => {
                 const x = document.createElement("span");
-                x.textContent = i && !sg.t.startsWith(" ") ? " " + sg.t : sg.t;
+                // (華語's 拼音 comes without spaces; the others bring their own spaces and hyphens)
+                x.textContent = i && (L || "zh") === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t;
                 if (sg.c && prefs.colours) x.style.color = "#" + sg.c;
                 rd.appendChild(x);
-            });
+                });
+            }
             w.appendChild(rd);
         }
         const cw = document.createElement("span"); cw.className = "cw";
@@ -2403,7 +2447,7 @@
         const en = () => e.e ? e.e.split(";")[0].replace(/\([^)]*\)/g, "").trim() : "";
         const zh = () => {
             if (!e.m) return "";
-            let m = e.m.replace(/^(\s*[〔［\[（(][^〕］\]）)]*[〕］\]）)])+/, "").split(/[。；]/)[0].trim();
+            let m = e.m.replace(/^\s*[0-9０-９]+[.．、]\s*/, "").replace(/^(\s*[〔［\[（(][^〕］\]）)]*[〕］\]）)])+/, "").split(/[。；]/)[0].trim();
             return [...m].length > 10 ? [...m].slice(0, 9).join("") + "…" : m;
         };
         return prefs.en ? (en() || zh()) : (zh() || en());
@@ -2510,6 +2554,18 @@
             if (st.loop >= 0) st.loop = i;
             if (vv.paused) vv.play().catch(() => {});
         };
+        // (the language the subtitles are read in: 自動 follows the subtitles' own language)
+        const ls = document.createElement("select");
+        ls.className = "lang"; ls.title = "字幕的讀音和意思用哪個語言";
+        const LN = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語" };
+        const auto = document.createElement("option"); auto.value = "auto";
+        auto.textContent = "自動" + (st.lang ? "（" + LN[st.lang] + "）" : "");
+        ls.appendChild(auto);
+        for (const [v, t] of SUBS_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = t; ls.appendChild(o); }
+        ls.value = prefs.subsLang || "auto";
+        ls.addEventListener("click", e => e.stopPropagation());
+        ls.addEventListener("change", () => { prefs.subsLang = ls.value; savePrefs(); subsRedraw(); });
+        st.study.appendChild(ls);
         b("上一句", false, "回到上一句", () => go(-1));
         b("重複", st.loop >= 0, "一直重複這一句", () => { st.loop = st.loop >= 0 ? -1 : Math.max(0, st.now); });
         b("慢速", !!st.slow, "放慢到 0.75 倍", () => { st.slow = !st.slow; const vv = v(); if (vv) vv.playbackRate = st.slow ? 0.75 : 1; });
@@ -2534,10 +2590,11 @@
         const st = subs, meta = await getMeta();
         if (!meta || !st.cues.length) return [];
         const sh = meta.shards || 256;
+        const SL = subsLangNow(meta);
         const files = st.dict && st.dictKey === st.key ? st.dict : new Map();
         const cps = new Set();
         for (const c of st.cues) for (const ch of c.t) { const cp = ch.codePointAt(0); if (isHan(cp)) cps.add(cp % sh); }
-        await Promise.all([...cps].map(async i => { const nm = `d-zh-${String(i).padStart(3, "0")}.json`; if (!files.has(nm)) files.set(nm, await getFile(nm)); }));
+        await Promise.all([...cps].map(async i => { const nm = `d-${SL}-${String(i).padStart(3, "0")}.json`; if (!files.has(nm)) files.set(nm, await getFile(nm)); }));
         st.dict = files; st.dictKey = st.key;
         const words = new Map();
         st.cues.forEach((cue, li) => {
@@ -2546,23 +2603,23 @@
             while (i < chars.length) {
                 const cp = chars[i].codePointAt(0);
                 if (!isHan(cp)) { i++; continue; }
-                const f = files.get(`d-zh-${String(cp % sh).padStart(3, "0")}.json`);
+                const f = files.get(`d-${SL}-${String(cp % sh).padStart(3, "0")}.json`);
                 let len = 1, e = null;
                 if (f) for (let L = Math.min(meta.max || 12, chars.length - i); L >= 1; L--) {
                     const w = chars.slice(i, i + L).join("");
-                    if (f[w]) { len = L; e = f[w].find(x => x.k && !(x.p === 3 && prefs.zhPlace !== 2)) || null; break; }
+                    if (f[w]) { len = L; e = subsEntry(f[w], SL); break; }
                 }
                 const w = chars.slice(i, i + len).join("");
                 i += len;
                 if (!e) continue;
                 const o = words.get(w);
                 if (o) { o.n++; continue; }
-                words.set(w, { w, e, k: e.k, li, n: 1, at: words.size });
+                words.set(w, { w, e, k: e.k, li, n: 1, at: words.size, L: SL });
             }
         });
         // (not the ones known, already in 不熟, or already chosen here)
         const chosen = new Set(queue.filter(q => q.w === "unknown" || q.w === "known").map(q => q.h));
-        return [...words.values()].filter(o => !isKnown(o.w) && !learnSet.has(o.w) && !chosen.has(o.w) && !chosen.has(o.k.split("\t")[0]));
+        return [...words.values()].filter(o => !isKnownIn(o.w, SL) && !learnIn(o.w, SL) && !chosen.has(o.w) && !chosen.has(o.k.split("\t")[0]));
     }
 
     async function subsWordList() {
@@ -2622,7 +2679,8 @@
         let order = "at";
 
         const hd = el("div", "hd");
-        hd.appendChild(el("h2", null, "這部影片的生詞"));
+        const LN = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語" };
+        hd.appendChild(el("h2", null, "這部影片的生詞" + (list[0] ? "（" + LN[list[0].L] + "）" : "")));
         const sub = el("div", "sub");
         hd.appendChild(sub);
         const seg = el("div", "seg");
@@ -2654,9 +2712,10 @@
             const items = [...list].sort(order === "n" ? (a, b) => b.n - a.n || a.at - b.at : (a, b) => a.at - b.at);
             for (const o of items) {
                 const t = el("div", "t" + (known.has(o.w) ? " on" : ""));
-                const p = zhParts(o.e, meta);
+                let p = { h: [], r: [] };
+                try { p = subsParts(o.e, o.L, meta); } catch (err) {}
                 const rd = el("div", "rd");
-                (p.r || []).forEach((sg, i) => { const x = el("span", null, i && !sg.t.startsWith(" ") ? " " + sg.t : sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; rd.appendChild(x); });
+                (p.r || []).forEach((sg, i) => { const x = el("span", null, i && o.L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; rd.appendChild(x); });
                 const h = el("div", "h");
                 (p.h || []).forEach(sg => { const x = el("span", null, sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; h.appendChild(x); });
                 if (!h.textContent) h.textContent = o.w;
