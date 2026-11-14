@@ -1526,7 +1526,7 @@
     const inCard = e => host && e.composedPath && e.composedPath().includes(host);
     /// the pointer over the subtitle panel (its words open with a tap or a click there, never by hovering)
     function overSubs(e) {
-        if (e.target && e.target.closest && e.target.closest("#ff-subs")) return true;
+        if (e.target && e.target.closest && e.target.closest("#ff-subs, #ff-mine")) return true;
         const p = typeof subs !== "undefined" && subs && subs.panel;
         if (!p || p.classList.contains("hidden")) return false;
         const r = p.getBoundingClientRect();
@@ -1558,7 +1558,7 @@
         // (typing somewhere: not ours)
         const a = document.activeElement;
         if (a && (a.isContentEditable || /^(input|textarea|select)$/i.test(a.tagName))) return;
-        if (px < 0) return;
+        if (px < 0 || document.getElementById("ff-mine")) return;
         const hit = charAt(px, py);
         if (!hit) return;
         const inSubs = hit.node.parentElement && hit.node.parentElement.closest("#ff-subs");
@@ -2281,12 +2281,14 @@
         if (!meta || st.key !== key) return;
         const cps = new Set();
         for (const c of st.cues) for (const ch of c.t) { const cp = ch.codePointAt(0); if (isHan(cp)) cps.add(cp % (meta.shards || 256)); }
-        const files = new Map();
+        // (the video's dictionary parts, kept with it: 生詞 and redrawing use them again without asking for them)
+        const files = st.dict && st.dictKey === key ? st.dict : new Map();
         await Promise.all([...cps].map(async i => {
             const nm = `d-zh-${String(i).padStart(3, "0")}.json`;
-            files.set(nm, await getFile(nm));
+            if (!files.has(nm)) files.set(nm, await getFile(nm));
         }));
         if (st.key !== key) return;
+        st.dict = files; st.dictKey = key;
         let total = 0, knownN = 0;
         st.lines.forEach((line, li) => {
             const tx = line.querySelector(".tx");
@@ -2516,11 +2518,186 @@
         // (over and under the words you don't know yet)
         b("讀音", !!prefs.subsRd, "不認識的詞上面標讀音", () => { prefs.subsRd = !prefs.subsRd; savePrefs(); subsRedraw(); });
         b("意思", !!prefs.subsGl, "不認識的詞下面標意思（英文或中文，跟著「英文」的設定）", () => { prefs.subsGl = !prefs.subsGl; savePrefs(); subsRedraw(); });
+        // (all the words of the video you don't know yet, in a big window: tick the ones you know)
+        b("生詞", false, "這部影片裡還不認識的詞，一次標完", () => subsWordList());
         // (how much of the video's words you know: 懂 87%)
         const m = document.createElement("span"); m.className = "meter";
         m.textContent = st.known != null ? "懂 " + st.known + "%" : "";
         m.title = "這部影片的字幕裡，你認識的詞佔多少";
         st.study.appendChild(m);
+    }
+
+    // ── 生詞: the words of the video you don't know yet, all in one big window ──────────────────
+    // Tap the ones you do know. 確定: those become 認識. 確定，其他加到不熟: the rest go to 不熟 too (with the line each
+    // was first heard in as its sentence). Both wait in 傳到 App, like the card's buttons.
+    async function subsWordListWords() {
+        const st = subs, meta = await getMeta();
+        if (!meta || !st.cues.length) return [];
+        const sh = meta.shards || 256;
+        const files = st.dict && st.dictKey === st.key ? st.dict : new Map();
+        const cps = new Set();
+        for (const c of st.cues) for (const ch of c.t) { const cp = ch.codePointAt(0); if (isHan(cp)) cps.add(cp % sh); }
+        await Promise.all([...cps].map(async i => { const nm = `d-zh-${String(i).padStart(3, "0")}.json`; if (!files.has(nm)) files.set(nm, await getFile(nm)); }));
+        st.dict = files; st.dictKey = st.key;
+        const words = new Map();
+        st.cues.forEach((cue, li) => {
+            const chars = [...cue.t];
+            let i = 0;
+            while (i < chars.length) {
+                const cp = chars[i].codePointAt(0);
+                if (!isHan(cp)) { i++; continue; }
+                const f = files.get(`d-zh-${String(cp % sh).padStart(3, "0")}.json`);
+                let len = 1, e = null;
+                if (f) for (let L = Math.min(meta.max || 12, chars.length - i); L >= 1; L--) {
+                    const w = chars.slice(i, i + L).join("");
+                    if (f[w]) { len = L; e = f[w].find(x => x.k && !(x.p === 3 && prefs.zhPlace !== 2)) || null; break; }
+                }
+                const w = chars.slice(i, i + len).join("");
+                i += len;
+                if (!e) continue;
+                const o = words.get(w);
+                if (o) { o.n++; continue; }
+                words.set(w, { w, e, k: e.k, li, n: 1, at: words.size });
+            }
+        });
+        // (not the ones known, already in 不熟, or already chosen here)
+        const chosen = new Set(queue.filter(q => q.w === "unknown" || q.w === "known").map(q => q.h));
+        return [...words.values()].filter(o => !isKnown(o.w) && !learnSet.has(o.w) && !chosen.has(o.w) && !chosen.has(o.k.split("\t")[0]));
+    }
+
+    async function subsWordList() {
+        const st = subs;
+        const v = subsVideo();
+        if (v && !v.paused) { v.pause(); }
+        let list = await subsWordListWords();
+        const meta = await getMeta();
+        if (!document.getElementById("ff-mine-css")) {
+            const css = document.createElement("style");
+            css.id = "ff-mine-css";
+            css.textContent = `
+#ff-mine { all: initial; position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center;
+  background: rgba(6,7,12,.62); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  font: 15px/1.45 -apple-system, "PingFang TC", "Heiti TC", system-ui, sans-serif; color: #eef0f6; }
+#ff-mine * { box-sizing: border-box; }
+#ff-mine .win { width: min(1180px, 94vw); height: min(900px, 90vh); display: flex; flex-direction: column;
+  background: #15161d; border: 1px solid #2e3039; border-radius: 22px; box-shadow: 0 30px 80px rgba(0,0,0,.55); overflow: hidden;
+  animation: ffMineIn .28s cubic-bezier(.2,.9,.3,1); }
+@keyframes ffMineIn { from { opacity: 0; transform: translateY(14px) scale(.985); } }
+#ff-mine .hd { flex: none; padding: 20px 26px 14px; border-bottom: 1px solid #262833; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+#ff-mine .hd h2 { margin: 0; font-size: 22px; font-weight: 700; }
+#ff-mine .hd .sub { color: #9a9eb0; font-size: 14px; flex: 1 1 260px; }
+#ff-mine .seg { display: flex; gap: 6px; }
+#ff-mine button { all: unset; cursor: pointer; font-size: 14px; padding: 7px 14px; border-radius: 11px; background: #23242c;
+  border: 1px solid #2e3039; color: #eef0f6; white-space: nowrap; }
+#ff-mine button:hover { background: #2b2c36; }
+#ff-mine .seg button.on { background: rgba(195,155,255,.22); border-color: #c39bff; }
+#ff-mine .grid { flex: 1; overflow-y: auto; padding: 20px 26px 28px; display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-content: start; }
+#ff-mine .t { position: relative; cursor: pointer; padding: 14px 16px 12px; border-radius: 16px; background: #1c1d25;
+  border: 1.5px solid #2e3039; transition: border-color .15s, background-color .15s, transform .12s; user-select: none; -webkit-user-select: none; }
+#ff-mine .t:active { transform: scale(.98); }
+#ff-mine .t.on { border-color: #6fdc7f; background: rgba(111,220,127,.10); }
+#ff-mine .t .rd { font-size: 13px; letter-spacing: .5px; min-height: 18px; }
+#ff-mine .t .h { font-size: 30px; font-weight: 600; line-height: 1.25; text-shadow: 0 0 8px currentColor; }
+#ff-mine .t .gl { color: #c9ccdb; font-size: 13.5px; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#ff-mine .t .sn { color: #7f8399; font-size: 12.5px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ff-mine .t .n { position: absolute; top: 10px; right: 12px; font-size: 12px; color: #8b90a8; }
+#ff-mine .t .ok { position: absolute; top: 9px; right: 10px; font-size: 12px; font-weight: 700; color: #0f2d16; background: #6fdc7f;
+  border-radius: 8px; padding: 1px 8px; display: none; }
+#ff-mine .t.on .ok { display: block; } #ff-mine .t.on .n { display: none; }
+#ff-mine .empty { grid-column: 1 / -1; padding: 60px 0; text-align: center; color: #9a9eb0; font-size: 16px; }
+#ff-mine .ft { flex: none; padding: 14px 26px 18px; border-top: 1px solid #262833; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+#ff-mine .ft .sp { flex: 1; }
+#ff-mine .ft .count { color: #9a9eb0; font-size: 14px; }
+#ff-mine button.go { background: rgba(111,220,127,.18); border-color: #6fdc7f; font-weight: 600; }
+#ff-mine button.rest { background: rgba(255,169,77,.16); border-color: #ffa94d; font-weight: 600; }`;
+            (document.head || document.documentElement).appendChild(css);
+        }
+        const old = document.getElementById("ff-mine"); if (old) old.remove();
+        const box = document.createElement("div"); box.id = "ff-mine";
+        const el = (tag, cls, text) => { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; };
+        const win = el("div", "win");
+        box.appendChild(win);
+        const known = new Set();
+        let order = "at";
+
+        const hd = el("div", "hd");
+        hd.appendChild(el("h2", null, "這部影片的生詞"));
+        const sub = el("div", "sub");
+        hd.appendChild(sub);
+        const seg = el("div", "seg");
+        const sortBtn = (o, t) => { const b = el("button", order === o ? "on" : "", t); b.addEventListener("click", () => { order = o; [...seg.children].forEach(x => x.classList.toggle("on", x === b)); draw(); }); seg.appendChild(b); };
+        sortBtn("at", "出現順序"); sortBtn("n", "出現次數");
+        hd.appendChild(seg);
+        const grid = el("div", "grid");
+        const ft = el("div", "ft");
+        const allBtn = el("button", null, "全部認識"), noneBtn = el("button", null, "全部取消");
+        const count = el("span", "count");
+        const close = el("button", null, "關掉");
+        const go = el("button", "go"), rest = el("button", "rest");
+        ft.append(allBtn, noneBtn, count, el("span", "sp"), close, go, rest);
+        win.append(hd, grid, ft);
+
+        const paint = () => {
+            const k = known.size, r = list.length - k;
+            sub.textContent = list.length ? "點你已經認識的詞（綠色）。還沒在 App 標成熟悉、也還沒選過的詞都在這裡。" : "";
+            count.textContent = list.length ? "認識 " + k + " 個・其他 " + r + " 個" : "";
+            go.textContent = "確定（" + k + " 個認識）";
+            rest.textContent = "確定，其他 " + r + " 個加到不熟";
+            go.style.display = list.length ? "" : "none";
+            rest.style.display = list.length ? "" : "none";
+            allBtn.style.display = noneBtn.style.display = list.length ? "" : "none";
+        };
+        const draw = () => {
+            grid.replaceChildren();
+            if (!list.length) { grid.appendChild(el("div", "empty", "這部影片裡沒有還不認識的詞了。")); paint(); return; }
+            const items = [...list].sort(order === "n" ? (a, b) => b.n - a.n || a.at - b.at : (a, b) => a.at - b.at);
+            for (const o of items) {
+                const t = el("div", "t" + (known.has(o.w) ? " on" : ""));
+                const p = zhParts(o.e, meta);
+                const rd = el("div", "rd");
+                (p.r || []).forEach((sg, i) => { const x = el("span", null, i && !sg.t.startsWith(" ") ? " " + sg.t : sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; rd.appendChild(x); });
+                const h = el("div", "h");
+                (p.h || []).forEach(sg => { const x = el("span", null, sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; h.appendChild(x); });
+                if (!h.textContent) h.textContent = o.w;
+                const gl = el("div", "gl", subsGloss(o.e));
+                const sn = el("div", "sn", subs.cues[o.li] ? subs.cues[o.li].t : "");
+                t.append(rd, h, gl, sn, el("span", "n", o.n > 1 ? "×" + o.n : ""), el("span", "ok", "認識"));
+                t.addEventListener("click", () => { if (known.has(o.w)) known.delete(o.w); else known.add(o.w); t.classList.toggle("on", known.has(o.w)); paint(); });
+                grid.appendChild(t);
+            }
+            paint();
+        };
+        const shut = () => { box.remove(); document.removeEventListener("keydown", esc, true); };
+        const esc = e => { if (e.key === "Escape") { e.stopPropagation(); shut(); } };
+        document.addEventListener("keydown", esc, true);
+        box.addEventListener("click", e => { if (e.target === box) shut(); });
+        close.addEventListener("click", shut);
+        allBtn.addEventListener("click", () => { list.forEach(o => known.add(o.w)); draw(); });
+        noneBtn.addEventListener("click", () => { known.clear(); draw(); });
+        const finish = restToo => {
+            for (const o of list) {
+                const han = o.k.split("\t")[0];
+                if (known.has(o.w)) {
+                    queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
+                    queue.push({ k: o.k, w: "known", h: han });
+                    localKnown.add(o.w); localKnown.add(han);
+                } else if (restToo) {
+                    queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
+                    queue.push({ k: o.k, w: "unknown", h: han, x: subs.cues[o.li] ? subs.cues[o.li].t.replace(/\s+/g, " ").trim() : "" });
+                }
+            }
+            saveQueue(); saveKnownLocal();
+            pageMarks();
+            if (subs && subs.key) subsColour(subs.key);
+            const k = known.size, r = restToo ? list.length - k : 0;
+            shut();
+            toast("認識 " + k + " 個" + (r ? "・不熟 " + r + " 個" : "") + "（按「傳到 App」傳過去）", "#3fae66");
+        };
+        go.addEventListener("click", () => finish(false));
+        rest.addEventListener("click", () => finish(true));
+        draw();
+        fsTarget().appendChild(box);
     }
 
     // where each line's middle is (the row at the bottom), measured once its words are drawn
