@@ -205,12 +205,7 @@
     const sd = part("send", "傳到 App", v("--send"), "卡片上按「加到不熟」「收藏」的詞先存在這裡，傳到 App 的時候連你存詞的那一句話一起傳。看影片字幕的時間也一起傳（App 的練習統計）。");
     const q = d.queue;
     const mins = Object.values(d.watch).reduce((a, x) => a + x, 0);
-    if (q.length) {
-        const w = el("div", null, "words");
-        for (const x of q) w.appendChild(el("span", x.h + (x.w === "saved" ? "・收藏" : x.w === "known" ? "・認識" : ""), x.w === "saved" ? "s" : ""));
-        sd.appendChild(w);
-    } else sd.appendChild(el("p", "還沒有選詞。", "lead"));
-    if (mins >= 1) sd.appendChild(el("p", "看影片字幕的時間：" + Math.round(mins) + " 分鐘", "lead"));
+    // (the buttons first, the words under them)
     if (q.length || mins >= 1) {
         const b = el("div", null, "btns");
         const send = el("button", "傳到 App", "act main");
@@ -221,5 +216,11 @@
         b.append(send, clr);
         sd.appendChild(b);
     }
+    if (mins >= 1) sd.appendChild(el("p", "看影片字幕的時間：" + Math.round(mins) + " 分鐘", "lead"));
+    if (q.length) {
+        const w = el("div", null, "words");
+        for (const x of q) w.appendChild(el("span", x.h + (x.w === "saved" ? "・收藏" : x.w === "known" ? "・認識" : ""), x.w === "saved" ? "s" : ""));
+        sd.appendChild(w);
+    } else sd.appendChild(el("p", "還沒有選詞。", "lead"));
     tip(sd, "warn", "Safari 會先問要不要打開方方詞卡：按「打開」。App 沒有打開的話再按一次。");
 })();

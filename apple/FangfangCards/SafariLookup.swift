@@ -50,14 +50,15 @@ enum SafariImport {
             if op.count >= 3 { store.addFoundSentence(k, op[2]) }
             if op[1] == "s" {
                 if !store.isSaved(k) { store.toggleSaved(k) }
-            } else if op[1] == "k" {
-                // (認識 on Safari 查詞's card: 熟悉 here)
-                if let c = store.card(for: k) { if store.status(c) != 1 { store.mark(c, known: true, undoable: false) } }
-                else { waiting.append(op) }
-            } else if let c = store.card(for: k) {
-                if store.status(c) != 2 { store.mark(c, known: false, undoable: false) }
             } else {
-                waiting.append(op)
+                // 認識 → 熟悉, 加到不熟 → 不熟. A word of the language open now that isn't one of the cards (四川話's
+                // own words, rare words) is kept by its key all the same; another language's word waits for it.
+                let want = op[1] == "k" ? 1 : 2
+                if store.card(for: k) != nil || Lang.kind(k) == store.lang {
+                    if store.wordStatus(k) != want { store.setWord(k, status: want) }
+                } else {
+                    waiting.append(op)
+                }
             }
         }
         UserDefaults.standard.set(waiting, forKey: pendingKey)
