@@ -2651,8 +2651,17 @@
             }
         });
         // (not the ones known, already in 不熟, or already chosen here)
-        const chosen = new Set(queue.filter(q => q.w === "unknown" || q.w === "known").map(q => q.h));
-        return [...words.values()].filter(o => !isKnownIn(o.w, SL) && !learnIn(o.w, SL) && !chosen.has(o.w) && !chosen.has(o.k.split("\t")[0]));
+        // (not the ones known; the ones already marked 不熟, in the app or here, in a section of their own)
+        const inQueue = w => new Set(queue.filter(q => q.w === w && keyLang(q.k) === SL).map(q => q.h));
+        const qKnown = inQueue("known"), qUnknown = inQueue("unknown");
+        const head = o => o.k.split("\t")[0];
+        const out = [];
+        for (const o of words.values()) {
+            if (isKnownIn(o.w, SL) || qKnown.has(o.w) || qKnown.has(head(o))) continue;
+            o.learn = learnIn(o.w, SL) || qUnknown.has(o.w) || qUnknown.has(head(o));
+            out.push(o);
+        }
+        return out;
     }
 
     async function subsWordList() {
@@ -2695,6 +2704,11 @@
 #ff-mine .t .ok { position: absolute; top: 9px; right: 10px; font-size: 12px; font-weight: 700; color: #0f2d16; background: #6fdc7f;
   border-radius: 8px; padding: 1px 8px; display: none; }
 #ff-mine .t.on .ok { display: block; } #ff-mine .t.on .n { display: none; }
+#ff-mine .sec { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; margin: 6px 2px -2px; font-size: 17px; font-weight: 700; }
+#ff-mine .sec small { font-size: 13px; font-weight: 400; color: #8b90a8; }
+#ff-mine .sec.learn { margin-top: 18px; padding-top: 16px; border-top: 1px solid #262833; color: #ffd166; }
+#ff-mine .t.learn { border-color: rgba(255,209,102,.35); }
+#ff-mine .t.learn.on { border-color: #6fdc7f; }
 #ff-mine .empty { grid-column: 1 / -1; padding: 60px 0; text-align: center; color: #9a9eb0; font-size: 16px; }
 #ff-mine .ft { flex: none; padding: 14px 26px 18px; border-top: 1px solid #262833; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 #ff-mine .ft .sp { flex: 1; }
@@ -2729,9 +2743,10 @@
         ft.append(allBtn, noneBtn, count, el("span", "sp"), close, go, rest);
         win.append(hd, grid, ft);
 
+        const fresh = () => list.filter(o => !o.learn);
         const paint = () => {
-            const k = known.size, r = list.length - k;
-            sub.textContent = list.length ? "點你已經認識的詞（綠色）。還沒在 App 標成熟悉、也還沒選過的詞都在這裡。" : "";
+            const k = known.size, r = fresh().filter(o => !known.has(o.w)).length;
+            sub.textContent = list.length ? "點你已經認識的詞（綠色）。上面是還沒標過的詞，下面是已經標成不熟的詞。" : "";
             count.textContent = list.length ? "認識 " + k + " 個・其他 " + r + " 個" : "";
             go.textContent = "確定（" + k + " 個認識）";
             rest.textContent = "確定，其他 " + r + " 個加到不熟";
@@ -2742,9 +2757,16 @@
         const draw = () => {
             grid.replaceChildren();
             if (!list.length) { grid.appendChild(el("div", "empty", "這部影片裡沒有還不認識的詞了。")); paint(); return; }
-            const items = [...list].sort(order === "n" ? (a, b) => b.n - a.n || a.at - b.at : (a, b) => a.at - b.at);
+            const sorted = [...list].sort(order === "n" ? (a, b) => b.n - a.n || a.at - b.at : (a, b) => a.at - b.at);
+            // (two sections: the words not marked yet, then the ones already in 不熟)
+            const groups = [[sorted.filter(o => !o.learn), "還沒標過的詞", "new"], [sorted.filter(o => o.learn), "已經標成不熟的詞", "learn"]];
+            for (const [items, title, cls] of groups) {
+            if (!items.length) continue;
+            const sec = el("div", "sec " + cls);
+            sec.append(el("span", null, title), el("small", null, items.length + " 個" + (cls === "learn" ? "・點認識的，其他的照舊留在不熟" : "")));
+            grid.appendChild(sec);
             for (const o of items) {
-                const t = el("div", "t" + (known.has(o.w) ? " on" : ""));
+                const t = el("div", "t" + (o.learn ? " learn" : "") + (known.has(o.w) ? " on" : ""));
                 let p = { h: [], r: [] };
                 try { p = subsParts(o.e, o.L, meta); } catch (err) {}
                 const rd = el("div", "rd");
@@ -2758,6 +2780,7 @@
                 t.addEventListener("click", () => { if (known.has(o.w)) known.delete(o.w); else known.add(o.w); t.classList.toggle("on", known.has(o.w)); paint(); });
                 grid.appendChild(t);
             }
+            }
             paint();
         };
         const shut = () => { box.remove(); document.removeEventListener("keydown", esc, true); };
@@ -2765,7 +2788,8 @@
         document.addEventListener("keydown", esc, true);
         box.addEventListener("click", e => { if (e.target === box) shut(); });
         close.addEventListener("click", shut);
-        allBtn.addEventListener("click", () => { list.forEach(o => known.add(o.w)); draw(); });
+        // (全部認識: the words not marked yet; the ones in 不熟 one by one)
+        allBtn.addEventListener("click", () => { fresh().forEach(o => known.add(o.w)); draw(); });
         noneBtn.addEventListener("click", () => { known.clear(); draw(); });
         const finish = restToo => {
             for (const o of list) {
@@ -2774,7 +2798,7 @@
                     queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
                     queue.push({ k: o.k, w: "known", h: han });
                     localAdd(o.w, o.L); localAdd(han, o.L);
-                } else if (restToo) {
+                } else if (restToo && !o.learn) {
                     queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
                     queue.push({ k: o.k, w: "unknown", h: han, x: subs.cues[o.li] ? subs.cues[o.li].t.replace(/\s+/g, " ").trim() : "" });
                 }
@@ -2782,7 +2806,7 @@
             saveQueue(); saveKnownLocal();
             pageMarks();
             if (subs && subs.key) subsColour(subs.key);
-            const k = known.size, r = restToo ? list.length - k : 0;
+            const k = known.size, r = restToo ? fresh().filter(o => !known.has(o.w)).length : 0;
             shut();
             toast("認識 " + k + " 個" + (r ? "・不熟 " + r + " 個" : "") + "（按「傳到 App」傳過去）", "#3fae66");
         };
