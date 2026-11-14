@@ -3,7 +3,7 @@
 // chosen to send to the app.
 const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
     yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
-    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false };
+    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFont: 1 };
 const store = browser.storage.local;
 
 function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -77,12 +77,13 @@ async function main() {
         select(g(), "聲調顏色", "colours", [[true, "開"], [false, "關"]]);
         select(g(), "英文解釋", "en", [[false, "不顯示"], [true, "顯示"]]);
         select(g(), "英文查中文", "en2zh", [[true, "開"], [false, "關"]]);
-        select(g(), "字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "最大"]]);
+        select(g(), "字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]]);
         select(g(), "位置", "pos", [["word", "詞的旁邊"], ["tl", "左上角"], ["tr", "右上角"], ["bl", "左下角"], ["br", "右下角"]]);
         select(g(), "網頁上收藏的詞", "ring", [[false, "不標"], [true, "彩虹框"]]);
         select(g(), "網頁上的聲調顏色", "tint", [[false, "不上色"], ["saved", "收藏的詞"], ["all", "全部（華語）"]]);
         select(g(), "影片字幕（YouTube、Viki）", "subs", [[true, "開"], [false, "關"]]);
         select(g(), "查字幕的詞時影片暫停", "subsPause", [[true, "開"], [false, "關"]]);
+        select(g(), "影片字幕的大小", "subsFont", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]]);
         select(g(), "影片字幕的位置", "subsFlow", [[false, "旁邊（往上捲）"], [true, "下面（往旁邊流）"]]);
         const reset = el("button", "大小還原");
         reset.addEventListener("click", () => { prefs.w = 0; prefs.h = 0; save(); });

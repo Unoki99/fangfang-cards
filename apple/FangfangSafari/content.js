@@ -26,7 +26,9 @@
         // the video itself hidden while the panel shows them
         subs: true, subsPause: true, subsHideVideo: true,
         // subsFlow: the subtitles in one row at the bottom, flowing sideways (always so when the video is full screen)
-        subsFlow: false };
+        subsFlow: false,
+        // subsFont: the subtitles' size (its own, apart from the card's; A− / A+ on the panel)
+        subsFont: 1 };
     let prefs = { ...DEFAULTS };
     let queue = [];               // [{k, w: "unknown" | "saved", h, x: the sentence}] waiting for 傳到 App
     let saved = [];               // [{h, c: [colours]}]: every word saved here (for the rainbow and the colours on the page)
@@ -44,6 +46,7 @@
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
             if (ch.ffSaved) saved = ch.ffSaved.newValue || [];
             if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on) hide(); pageMarks(); }
+            if (ch.ffPrefs && subs && subs.panel) { subsSize(); subsLayout(); }
         });
     }
     function fixPrefs(p) {
@@ -1310,7 +1313,7 @@
         row("英文查中文", "en2zh", yesNo);
         row("瑞典語：由英文推測中文", "svGuess", [[true, "顯示"], [false, "不顯示"]]);
         row("聲調顏色", "colours", [[true, "開"], [false, "關"]]);
-        row("字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "最大"]]);
+        row("字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]]);
         row("網頁上收藏的詞", "ring", [[false, "不標"], [true, "彩虹框"]]);
         row("網頁上的聲調顏色", "tint", [[false, "不上色"], ["saved", "收藏的詞"], ["all", "全部（華語）"]]);
         row("英文解釋", "en", [[false, "不顯示"], [true, "顯示"]]);
@@ -1661,17 +1664,23 @@
     // copy of that download is used)
     async function subsUseTrack(t) {
         subs.ytLang = t.lang;
-        subs.key = "";
+        subsOnly("yt:" + subs.vid + ":" + t.lang);
+        // (the player too, so what it downloads is the same language)
+        window.postMessage({ __ffSubsAsk: "use", lang: t.lang }, "*");
         if (!subs.tried.has(t.url)) {
             subs.tried.add(t.url);
             try {
                 const r = await fetch(t.url + (t.url.includes("fmt=") ? "" : "&fmt=json3"), { credentials: "include" });
                 const txt = r.ok ? await r.text() : "";
                 const cues = txt ? subsParse(txt) : [];
-                if (cues.length) { subsAdd("yt:" + subs.vid + ":" + t.lang, cues, true); return; }
+                if (cues.length && subs.ytLang === t.lang) subsAdd("yt:" + subs.vid + ":" + t.lang, cues, true);
             } catch (e) {}
         }
-        window.postMessage({ __ffSubsAsk: "use", lang: t.lang }, "*");
+    }
+    /// (YouTube) the other languages' lines gone: one language at a time
+    function subsOnly(key) {
+        for (const k of [...subs.files.keys()]) if (k.startsWith("yt:") && k !== key) subs.files.delete(k);
+        if (subs.key !== key) { subs.key = ""; subsShow((subs.files.get(key) || { cues: [] }).cues); subs.key = subs.files.has(key) ? key : ""; }
     }
 
     // a subtitle file the page downloaded
@@ -1683,10 +1692,18 @@
         try {
             const u = new URL(url, location.href);
             if (/timedtext/.test(u.pathname)) {
-                const v = u.searchParams.get("v") || subs.vid, l = u.searchParams.get("lang") || u.searchParams.get("tlang") || "";
+                const v = u.searchParams.get("v") || subs.vid;
                 if (v && subs.vid && v !== subs.vid) return;                // (another video's)
-                key = "yt:" + v + ":" + l;
-                if (subs.ytLang && l && l !== subs.ytLang && !u.searchParams.get("tlang")) return;
+                // the language the player shows now (chosen in the panel, or in the player's own menu; a
+                // translation, "lang>tlang", is a language of its own): that one only, never mixed with another
+                const l = u.searchParams.get("lang") || "", tl = u.searchParams.get("tlang") || "";
+                const id = tl ? l + ">" + tl : l;
+                key = "yt:" + v + ":" + id;
+                subs.ytLang = id;
+                subsOnly(key);
+                subsAdd(key, cues, true);
+                subsHeader();
+                return;
             } else {
                 // (a file in pieces, as streams send them: the pieces of one language go together)
                 key = "f:" + u.hostname + u.pathname.replace(/[^/]*$/, "").replace(/\d{2,}/g, "#") + (u.pathname.match(/[a-z]{2}(-[A-Za-z]{2,4})?(?=[._/-])/g) || []).slice(-1)[0];
@@ -1697,7 +1714,15 @@
 
     function subsAdd(key, cues, chosen) {
         const st = subs;
-        const old = st.files.get(key);
+        let old = st.files.get(key);
+        // (pieces of one file are added together; a file covering the same times with other words is another
+        // language: it takes the place of the old one instead)
+        if (old && old.cues.length && cues.length) {
+            const a = old.cues[0].s, b = old.cues[old.cues.length - 1].e;
+            const texts = new Set(old.cues.map(c => c.t));
+            const inside = cues.filter(c => c.s >= a && c.s <= b);
+            if (inside.length > cues.length * 0.5 && inside.filter(c => texts.has(c.t)).length < inside.length * 0.5) old = null;
+        }
         const map = new Map((old ? old.cues : []).map(c => [c.s.toFixed(2) + c.t, c]));
         for (const c of cues) map.set(c.s.toFixed(2) + c.t, c);
         const all = [...map.values()].sort((a, b) => a.s - b.s);
@@ -1797,7 +1822,10 @@
   padding: 0 10px 0 14px; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 13px; color: #a7abc0; }
 #ff-subs .top b { font-weight: 600; color: #e9eaf2; margin-right: auto; font-size: 13px; }
 #ff-subs select { all: revert; font: 12px -apple-system, system-ui; background: rgba(255,255,255,0.08); color: #e9eaf2;
-  border: 1px solid rgba(255,255,255,0.12); border-radius: 7px; padding: 2px 4px; max-width: 150px; }
+  border: 1px solid rgba(255,255,255,0.12); border-radius: 7px; padding: 2px 4px; max-width: 150px; min-width: 0; flex: 0 1 auto; }
+#ff-subs.narrow select, #ff-subs.flow select { max-width: 96px; }
+#ff-subs .top .btn { flex: none; }
+#ff-subs .top { overflow: hidden; }
 #ff-subs .btn { all: unset; cursor: pointer; padding: 3px 8px; border-radius: 7px; font-size: 12px; color: #c9cce0;
   background: rgba(255,255,255,0.08); }
 #ff-subs .view { position: absolute; left: 0; right: 0; top: 38px; bottom: 0; overflow: hidden; touch-action: none;
@@ -1910,6 +1938,8 @@
         st.panel.classList.toggle("wide", !flow && wide);
         st.panel.classList.toggle("narrow", !flow && !wide);
         st.panel.classList.toggle("mini", st.collapsed);
+        // (the row at the bottom: tall enough for the letters)
+        st.panel.style.height = flow && !st.collapsed ? Math.round(40 + Math.max(76, 18 * (prefs.subsFont || 1) * 3)) + "px" : "";
         const has = st.cues.length > 0 && prefs.subs && prefs.on;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
@@ -1947,7 +1977,28 @@
         lay.addEventListener("click", e => { e.stopPropagation(); prefs.subsFlow = !prefs.subsFlow; savePrefs(); subsLayout(); });
         const min = document.createElement("span"); min.className = "btn"; min.textContent = st.collapsed ? "展開" : "收起";
         min.addEventListener("click", e => { e.stopPropagation(); st.collapsed = !st.collapsed; subsHeader(); subsLayout(); subsTick(); });
-        st.top.append(eye, lay, min);
+        // the letters bigger or smaller
+        const SIZES = [0.85, 1, 1.15, 1.3, 1.5, 1.8, 2.2, 2.7];
+        const step = d => e => {
+            e.stopPropagation();
+            const i = SIZES.findIndex(x => x >= (prefs.subsFont || 1) - 0.001);
+            prefs.subsFont = SIZES[Math.max(0, Math.min(SIZES.length - 1, (i < 0 ? 1 : i) + d))];
+            savePrefs(); subsSize(); subsLayout();
+        };
+        const smaller = document.createElement("span"); smaller.className = "btn"; smaller.textContent = "A−";
+        smaller.title = "字小一點"; smaller.addEventListener("click", step(-1));
+        const bigger = document.createElement("span"); bigger.className = "btn"; bigger.textContent = "A+";
+        bigger.title = "字大一點"; bigger.addEventListener("click", step(1));
+        st.top.append(smaller, bigger, eye, lay, min);
+    }
+
+    // the subtitles' size (from 設定, or A− / A+ on the panel)
+    function subsSize() {
+        const st = subs;
+        if (!st || !st.rail) return;
+        st.rail.style.fontSize = Math.round(18 * (prefs.subsFont || 1)) + "px";
+        st.centers = [];
+        requestAnimationFrame(() => { subsMeasure(); subsPlace(false); });
     }
 
     // the lines of a new subtitle file
@@ -1974,7 +2025,7 @@
             return line;
         });
         st.rail.replaceChildren(frag);
-        st.rail.style.fontSize = Math.round(18 * (prefs.font || 1)) + "px";
+        subsSize();
         st.centers = [];
         subsLayout();
         subsColour(st.key);
