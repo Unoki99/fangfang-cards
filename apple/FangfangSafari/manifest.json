@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "方方詞卡 查詞",
     "description": "Hover over a word with the Apple Pencil (or a trackpad) to see it in the dictionaries of 方方詞卡, and send it to the app. On YouTube and Viki, the video's subtitles in a panel beside it.",
-    "version": "1.3",
+    "version": "1.4",
     "icons": {
         "48": "icon-48.png",
         "64": "icon-64.png",

@@ -73,20 +73,7 @@ struct ZhCharBody: View {
                     Spacer()
                 }
                 HStack(spacing: 8) {
-                    let st = store.cardStatus(key) ?? 0
-                    if st == 1 {
-                        Chip(text: tr("卡片：熟悉"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
-                    } else {
-                        Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
-                            Label(st == 2 ? trs("在「不熟」") : trs("加到「不熟」"), systemImage: st == 2 ? "star.fill" : "star")
-                                .ffFont(.subheadline, .semibold)
-                                .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(Capsule().fill(st == 2 ? T.rust : T.fn.opacity(0.8)))
-                                .overlay(Capsule().stroke(st == 2 ? T.rustEdge : T.fnEdge, lineWidth: 1.5))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    CardMarkButtons(key: key)
                     let known = store.zhCharSets().known.contains(char.h)
                     if known { Chip(text: tr("在熟悉的詞裡"), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                 }
@@ -176,22 +163,7 @@ struct ZhCharCardRow: View {
             let char = dict.chars[i]
             let key = Lang.charKey(ch)
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    let st = store.cardStatus(key) ?? 0
-                    if st == 1 {
-                        Chip(text: tr("漢字卡：熟悉"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
-                    } else {
-                        Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
-                            Label(st == 2 ? trs("漢字卡在「不熟」") : trs("漢字卡加到「不熟」"), systemImage: st == 2 ? "star.fill" : "star")
-                                .ffFont(.subheadline, .semibold)
-                                .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
-                                .padding(.horizontal, 12).padding(.vertical, 6)
-                                .background(Capsule().fill(st == 2 ? T.rust : T.fn.opacity(0.8)))
-                                .overlay(Capsule().stroke(st == 2 ? T.rustEdge : T.fnEdge, lineWidth: 1.5))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                CardMarkButtons(key: key, charCard: true, keys: false)
                 HStack(spacing: 6) {
                     if char.hsk > 0 { Chip(text: tr("漢字 ") + Lang.hskName(char.hsk), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }
                     if char.tocfl > 0 { Chip(text: tr("漢字 ") + UILang.label(Lang.levelName(1, char.tocfl)), fill: T.blue, edge: T.blueEdge, ink: T.blueInk) }

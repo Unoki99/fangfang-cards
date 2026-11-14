@@ -100,6 +100,30 @@
     reset.addEventListener("click", () => { prefs.w = 0; prefs.h = 0; ffSave(prefs); reset.textContent = "還原了"; });
     row(cd, "卡片大小", "拖拉卡片右下角可以改大小", reset);
 
+    // ── 鍵盤 ──
+    const kb = part("keys", "鍵盤", "#ffe066", "游標（觸控板、滑鼠或 Pencil）停在一個詞上，按一個鍵就標記它，不用打開卡片。網頁和影片字幕上都可以。");
+    const kSw = ffSwitch(prefs, "keys"); kSw.style.setProperty("--c", "#ffe066");
+    row(kb, "用鍵盤標記", null, kSw);
+    const keyBox = name => {
+        const i = el("input");
+        i.value = String(prefs[name] || "").toUpperCase();
+        i.maxLength = 1;
+        i.style.cssText = "width:56px;height:44px;text-align:center;font:700 20px -apple-system,sans-serif;border-radius:10px;" +
+            "background:#23242c;color:#fff;border:1px solid #ffe066";
+        i.addEventListener("input", () => {
+            const c = i.value.trim().slice(-1).toLowerCase();
+            if (!c) return;
+            const other = name === "keyKnown" ? "keyNew" : "keyKnown";
+            if (c === String(prefs[other]).toLowerCase()) { i.value = String(prefs[name]).toUpperCase(); return; }
+            prefs[name] = c; i.value = c.toUpperCase(); ffSave(prefs);
+        });
+        return i;
+    };
+    row(kb, "認識", "標成認識：馬上不上色（只替不認識的詞上色開著的話），傳到 App 時變成熟悉", keyBox("keyKnown"));
+    row(kb, "不熟＋收藏", "加到不熟，也收藏（連同那一句話）", keyBox("keyNew"));
+    tip(kb, "how", "游標停在詞上按鍵，旁邊會跳出一個小提示說標了什麼。標的是卡片上第一個語言的那個詞。按「傳到 App」的時候一起傳過去。");
+    tip(kb, "warn", "YouTube 自己用 K、J、L 和數字鍵控制影片，所以預設是 A 和 S。游標沒有停在詞上的時候，按鍵照網站原本的用法。");
+
     // ── 網頁 ──
     const webPart = part("web", "網頁", v("--web"), "網頁上的字本身（網頁查詞開著的時候）。");
     if (!prefs.on) webPart.classList.add("dim");
@@ -116,14 +140,17 @@
     row(subPart, "大小", "面板上的 A− A+ 也可以調", sc("subsFont", FF_SIZES), true);
     row(subPart, "查詞時影片暫停", "點字幕的詞時（卡片關掉後繼續）", sc("subsPause", [[true, "開"], [false, "關"]]));
     row(subPart, "影片上原本的字幕", "面板開著的時候", sc("subsHideVideo", [[true, "隱藏"], [false, "顯示"]]));
+    row(subPart, "不認識的詞：上面標讀音", "注音或拼音（照華語的設定），也有聲調顏色", sc("subsRd", [[true, "開"], [false, "關"]]));
+    row(subPart, "不認識的詞：下面標意思", prefs.en ? "現在是英文（語言裡的「英文」開著）" : "現在是中文（語言裡的「英文」打開就變英文）", sc("subsGl", [[true, "開"], [false, "關"]]));
     const tools = el("div", null, "tools");
     for (const [b, t] of [["上一句", "回到上一句"], ["重複", "一直重複這一句，練聽和跟讀"], ["慢速", "放慢到 0.75 倍"],
-        ["一句一停", "每一句說完就暫停，按播放再說下一句（跟讀用）"], ["下一句", "跳到下一句"], ["懂 87%", "你認識這部影片多少的詞（要先從 App 傳認識的詞過來）"]]) {
+        ["一句一停", "每一句說完就暫停，按播放再說下一句（跟讀用）"], ["下一句", "跳到下一句"], ["讀音", "不認識的詞上面標讀音"], ["意思", "不認識的詞下面標意思"], ["懂 87%", "你認識這部影片多少的詞（要先從 App 傳認識的詞過來）"]]) {
         const x = el("div", null, "tool"); x.append(el("b", b), el("span", t)); tools.appendChild(x);
     }
     const tr = el("div", null, "row stack"); const tw = el("div", null, "what"); tw.append(el("b", "面板上的學習工具"));
     tr.append(tw, tools); subPart.appendChild(tr);
     tip(subPart, "how", "點每一行前面的時間會跳到那裡。用手指拖（或捲動）可以往前往後看，幾秒後會自己跟回影片。");
+    tip(subPart, "how", "「不認識」是還沒在 App 裡標成熟悉的詞（用 A 標認識以後，讀音和意思就會拿掉）。還沒從 App 傳認識的詞過來時，每個詞都會標。");
     tip(subPart, "good", "在 YouTube 字幕語言可以選「自動翻譯」：影片沒有中文字幕時，會自己用自動翻譯成繁體中文。");
     tip(subPart, "warn", "iPhone 上影片全螢幕時看不到面板（全螢幕是 iOS 自己的播放器），要在網頁裡看。");
 

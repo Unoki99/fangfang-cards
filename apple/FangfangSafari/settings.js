@@ -2,7 +2,8 @@
 // defaults, saving them, and sending the chosen words (and the minutes watched) to the app.
 const FF_DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
     yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
-    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFont: 1, onlyNew: false };
+    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFont: 1, subsRd: true, subsGl: true, onlyNew: false,
+    keys: true, keyKnown: "a", keyNew: "s" };
 const FF_SIZES = [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]];
 const ffStore = browser.storage.local;
 

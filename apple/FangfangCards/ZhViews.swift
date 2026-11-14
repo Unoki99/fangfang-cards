@@ -624,22 +624,7 @@ struct ZhEntryBody: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder private var star: some View {
-        let st = store.cardStatus(entry.k) ?? 0
-        if st == 1 {
-            Chip(text: tr("卡片：熟悉"), fill: T.green, edge: T.greenEdge, ink: T.greenInk)
-        } else {
-            Button { withAnimation(.snappy) { store.toggleUnknown(entry.k) } } label: {
-                Label(st == 2 ? trs("在「不熟」") : trs("加到「不熟」"), systemImage: st == 2 ? "star.fill" : "star")
-                    .ffFont(.subheadline, .semibold)
-                    .foregroundStyle(st == 2 ? T.rustInk : T.glyph)
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .background(Capsule().fill(st == 2 ? T.rust : T.fn.opacity(0.8)))
-                    .overlay(Capsule().stroke(st == 2 ? T.rustEdge : T.fnEdge, lineWidth: 1.5))
-            }
-            .buttonStyle(.plain)
-        }
-    }
+    private var star: some View { CardMarkButtons(key: entry.k) }
 }
 
 /// an example sentence: 漢字 (tap a word to see it in the dictionary; the whole word is the button), reading, where it's from; ▶ reads it aloud
