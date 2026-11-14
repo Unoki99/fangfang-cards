@@ -57,14 +57,24 @@
     tip(sw, "how", "iPad 用 Apple Pencil 懸停在字上面（不要碰到螢幕），Mac 用觸控板或滑鼠的游標停在字上。沒有懸停的 iPad 和 iPhone：用手指選取一個詞。");
 
     // ── 語言 ──
-    const lg = part("languages", "語言", v("--tw"), "卡片上顯示哪些語言，和它們的讀音、拼寫。顏色和 App 裡每個語言的顏色一樣。");
+    const lg = part("languages", "語言", v("--tw"), "查詞用哪一個語言（一次一個：打開一個，其他的會自己關掉），和它們的讀音、拼寫。顏色和 App 裡每個語言的顏色一樣。");
     const langs = el("div", null, "langs");
     lg.appendChild(langs);
     const yesNo = [[true, "顯示"], [false, "不顯示"]];
+    // (one language at a time: turning one on turns the others off; the one on can't be turned off)
+    const langCards = [];
+    const paintLangs = () => {
+        for (const [c, sw, key] of langCards) {
+            sw.classList.toggle("on", !!prefs[key]); sw.setAttribute("aria-checked", prefs[key] ? "true" : "false");
+            c.querySelectorAll(".seg").forEach(x => x.classList.toggle("dim", !prefs[key]));
+            c.classList.toggle("off", !prefs[key]);
+        }
+    };
     const lang = (cls, name, key, opts) => {
         const c = el("div", null, "lang " + cls);
         const h = el("h3"); h.append(name);
-        const s = ffSwitch(prefs, key, () => c.querySelectorAll(".seg").forEach(x => x.classList.toggle("dim", !prefs[key])));
+        const s = ffSwitch(prefs, key, () => { ffOneLang(prefs, key); ffSave(prefs); paintLangs(); });
+        langCards.push([c, s, key]);
         s.style.setProperty("--c", getComputedStyle(c).getPropertyValue("--c") || v("--" + cls));
         h.appendChild(s);
         c.appendChild(h);
@@ -86,7 +96,8 @@
     lang("hak", "客語", "hak", [["腔", "hakAcc", ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"].map((n, i) => [i, n])],
         ["拼寫", "hakRom", [[0, "拼音"], [1, "注音"]]]]);
     lang("sv", "瑞典語", "sv", [["由英文推測中文", "svGuess", [[true, "開"], [false, "關"]]]]);
-    tip(lg, "good", "一個詞好幾個語言都有的話，卡片上會一個語言一塊，順序和顏色跟這裡一樣。");
+    paintLangs();
+    tip(lg, "how", "一次只開一個語言：卡片、網頁上的顏色、影片字幕（「自動」的時候）和按鍵標的詞都用這個語言。傳到 App 的詞也照它自己的語言放，不會混在一起。");
 
     // ── 卡片 ──
     const cd = part("card", "卡片", v("--card"), "跳出來的卡片長什麼樣子。");
@@ -141,7 +152,7 @@
     row(subPart, "查詞時影片暫停", "點字幕的詞時（卡片關掉後繼續）", sc("subsPause", [[true, "開"], [false, "關"]]));
     row(subPart, "影片上原本的字幕", "面板開著的時候", sc("subsHideVideo", [[true, "隱藏"], [false, "顯示"]]));
     row(subPart, "不認識的詞：上面標讀音", "注音或拼音（照華語的設定），也有聲調顏色", sc("subsRd", [[true, "開"], [false, "關"]]));
-    row(subPart, "字幕的語言", "讀音、意思、聲調顏色和生詞用哪個語言的詞典。自動：看字幕本身的語言（YouTube 的台語字幕就是台語）", sc("subsLang", [["auto", "自動"], ["zh", "華語"], ["tw", "台語"], ["yue", "粵語"], ["hak", "客語"]]));
+    row(subPart, "字幕的語言", "讀音、意思、聲調顏色和生詞用哪個語言的詞典。自動：跟著上面開著的那一個語言（瑞典語的話，看字幕本身的語言）", sc("subsLang", [["auto", "自動（跟查詞的語言）"], ["zh", "華語"], ["tw", "台語"], ["yue", "粵語"], ["hak", "客語"]]));
     row(subPart, "讀音的大小", "注音或拼音和字的大小比", sc("subsRdSize", [[0.45, "小"], [0.56, "中"], [0.7, "大"], [0.85, "更大"], [1, "和字一樣"]]));
     row(subPart, "不認識的詞：下面標意思", prefs.en ? "現在是英文（語言裡的「英文」開著）" : "現在是中文（語言裡的「英文」打開就變英文）", sc("subsGl", [[true, "開"], [false, "關"]]));
     const tools = el("div", null, "tools");

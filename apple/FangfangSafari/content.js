@@ -25,8 +25,8 @@
     // on: the pop-up on at all (its button in Safari's toolbar); font: the size of the letters (1 = normal);
     // yue / hak: 粵語 and 客語 (hakAcc: the accent, hakRom: 0 拼音 / 1 注音); ring: a rainbow around the words saved
     // here when they're on a page; tint: the characters of saved words in their tone colours on the page
-    const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
-        yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
+    const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
+        yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
         // 影片字幕 (YouTube, Viki): the panel on; the video stops while a word is looked up in it; the subtitles on
         // the video itself hidden while the panel shows them
         subs: true, subsPause: true, subsHideVideo: true,
@@ -54,9 +54,24 @@
     let knownSet = null, learnSet = new Set();
     let localKnown = new Set();   // 認識 on the card here (sent to the app with 傳到 App, too)
     let knownBy = {}, learnBy = {};   // the same, by language (tw, zh, yue, hak, …)
-    const isKnown = w => (knownSet && knownSet.has(w)) || localKnown.has(w);
+    // 認識 here is kept by language ("tw:食"): a word known in 華語 isn't known in 台語 (a word without "xx:", from
+    // before, counts for 華語 only)
+    const localHas = (w, l) => localKnown.has(l + ":" + w) || (l === "zh" && localKnown.has(w));
+    const localAdd = (w, l) => { localKnown.add(l + ":" + w); };
+    const localDel = (w, l) => { localKnown.delete(l + ":" + w); if (l === "zh") localKnown.delete(w); };
+    /// which language a key is of (as the app tells them): after the tab 粵 / 客 / 日 / 瑞, 注音 (華語), or letters (台語)
+    function keyLang(k) {
+        const t = (k || "").split("\t")[1] || "";
+        const c = t.charAt(0), cp = t.codePointAt(0) || 0;
+        if (c === "粵") return "yue";
+        if (c === "客") return "hak";
+        if (c === "日") return "ja";
+        if (c === "瑞") return "sv";
+        if ((cp >= 0x3100 && cp <= 0x312F) || (cp >= 0x31A0 && cp <= 0x31BF) || c === "˙" || c === "字") return "zh";
+        return "tw";
+    }
     // (a word of one language: known there; without the app's words by language, known in any)
-    const isKnownIn = (w, l) => localKnown.has(w) || (knownBy[l] ? knownBy[l].has(w) : !!(knownSet && knownSet.has(w)));
+    const isKnownIn = (w, l) => localHas(w, l) || (knownBy[l] ? knownBy[l].has(w) : !!(knownSet && knownSet.has(w)));
     const learnIn = (w, l) => learnBy[l] ? learnBy[l].has(w) : learnSet.has(w);
     let watchCache = {};          // {"2026-11-14": minutes watched with the subtitle panel}, sent with 傳到 App
     function setKnown(o) {
@@ -92,7 +107,7 @@
             if (ch.ffPrefs && subs && subs.panel) {
                 const o = ch.ffPrefs.oldValue || {}, n = ch.ffPrefs.newValue || {};
                 subsSize(); subsLayout();
-                if (["subsRd", "subsGl", "subsLang", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
+                if (["subsRd", "subsGl", "subsLang", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
             }
         });
     }
@@ -117,10 +132,16 @@
             } catch (e) {}
         })();
     }
+    const LANGS_ONE = ["zh", "tw", "yue", "hak", "sv"];
+    /// the one language on
+    const activeLang = () => LANGS_ONE.find(l => prefs[l]) || "zh";
     function fixPrefs(p) {
         const out = { ...DEFAULTS, ...(p || {}) };
         if (out.corner === true && (!p || !p.pos)) out.pos = "tl";      // (the older 左上角 setting)
         delete out.corner;
+        // one language at a time: the first one on (none: 華語)
+        const on = LANGS_ONE.find(l => p && p[l]) || LANGS_ONE.find(l => out[l]) || "zh";
+        for (const l of LANGS_ONE) out[l] = l === on;
         return out;
     }
     const savePrefs = () => store && store.set({ ffPrefs: prefs }).catch(() => {});
@@ -1065,7 +1086,7 @@
                     const w = chars.slice(i, i + L).join("");
                     if (sh[w]) { found = sh[w][0]; len = L; break; }
                 }
-                if (found && !(prefs.onlyNew && isKnown(chars.slice(i, i + len).join("")))) {
+                if (found && !(prefs.onlyNew && isKnownIn(chars.slice(i, i + len).join(""), "zh"))) {
                     const segsH = zhParts(found, meta).h || [];
                     const cols = segsH.flatMap(sg => [...sg.t].map(() => sg.c || null));
                     let p2 = pos;
@@ -1311,12 +1332,12 @@
             ev.preventDefault(); ev.stopPropagation();
             if (queued(key, w)) {
                 queue = queue.filter(q => !(q.k === key && q.w === w));
-                if (w === "known") { localKnown.delete(han); saveKnownLocal(); }
+                if (w === "known") { localDel(han, keyLang(key)); saveKnownLocal(); }
             } else {
                 // (認識 and 加到不熟 don't go together)
                 if (w === "known") queue = queue.filter(q => !(q.k === key && q.w === "unknown"));
-                if (w === "unknown") { queue = queue.filter(q => !(q.k === key && q.w === "known")); localKnown.delete(han); saveKnownLocal(); }
-                if (w === "known") { localKnown.add(han); saveKnownLocal(); }
+                if (w === "unknown") { queue = queue.filter(q => !(q.k === key && q.w === "known")); localDel(han, keyLang(key)); saveKnownLocal(); }
+                if (w === "known") { localAdd(han, keyLang(key)); saveKnownLocal(); }
                 queue.push({ k: key, w, h: han, x: lastSentence || "" });
                 // (remembered here too: the rainbow and the colours on pages)
                 if (w === "saved" && !saved.some(x => x.h === han)) {
@@ -1383,19 +1404,28 @@
             box.appendChild(l);
         };
         const yesNo = [[true, "顯示"], [false, "不顯示"]];
-        row("華語", "zh", yesNo);
+        // (one language at a time)
+        {
+            const l = el("label");
+            l.appendChild(el("span", null, "語言"));
+            const s = el("select");
+            for (const [v, t] of [["zh", "華語"], ["tw", "台語"], ["yue", "粵語"], ["hak", "客語"], ["sv", "瑞典語"]]) {
+                const o = el("option", null, t); o.value = v;
+                if (activeLang() === v) o.selected = true;
+                s.appendChild(o);
+            }
+            s.addEventListener("change", () => { for (const x of LANGS_ONE) prefs[x] = x === s.value; savePrefs(); });
+            l.appendChild(s);
+            box.appendChild(l);
+        }
         row("華語讀音", "zhPlace", [[0, "國語"], [1, "普通話"], [2, "四川話"]]);
         row("華語拼寫", "zhRom", [[1, "注音"], [0, "拼音"]]);
-        row("台語", "tw", yesNo);
         row("台語拼寫", "twRom", [[0, "皓羅"], [1, "台羅"], [2, "白話字"], [3, "方音"]]);
         const places = [[-1, "通行"]];
         (placeNames || []).forEach((p, i) => places.push([i, p.slice(0, 2)]));
         row("台語腔口", "twPlace", places);
-        row("粵語", "yue", yesNo);
-        row("客語", "hak", yesNo);
         row("客語腔", "hakAcc", ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"].map((n, i) => [i, n]));
         row("客語拼寫", "hakRom", [[0, "拼音"], [1, "注音"]]);
-        row("瑞典語", "sv", yesNo);
         row("英文查中文", "en2zh", yesNo);
         row("瑞典語：由英文推測中文", "svGuess", [[true, "顯示"], [false, "不顯示"]]);
         row("聲調顏色", "colours", [[true, "開"], [false, "關"]]);
@@ -1598,12 +1628,12 @@
         if (want === "known") {
             queue = queue.filter(q => !(q.k === key && (q.w === "unknown" || q.w === "known")));
             queue.push({ k: key, w: "known", h: han });
-            localKnown.add(han); saveKnownLocal();
+            localAdd(han, keyLang(key)); saveKnownLocal();
         } else {
             queue = queue.filter(q => !(q.k === key && (q.w === "known" || q.w === "unknown" || q.w === "saved")));
             queue.push({ k: key, w: "unknown", h: han, x: sentence });
             queue.push({ k: key, w: "saved", h: han, x: sentence });
-            localKnown.delete(han); saveKnownLocal();
+            localDel(han, keyLang(key)); saveKnownLocal();
             if (!saved.some(x => x.h === han)) { saved.push({ h: han, c: [] }); saveSaved(); }
         }
         saveQueue();
@@ -2298,7 +2328,10 @@
         return "zh";
     }
     function subsLangNow(meta) {
-        const want = prefs.subsLang && prefs.subsLang !== "auto" ? prefs.subsLang : subsLangOfTrack();
+        // (自動: the add-on's one language, when it's one the subtitles can be read in; else the subtitles' own)
+        const a = activeLang();
+        const auto = ["zh", "tw", "yue", "hak"].includes(a) ? a : subsLangOfTrack();
+        const want = prefs.subsLang && prefs.subsLang !== "auto" ? prefs.subsLang : auto;
         return subsHas(want, meta) ? want : "zh";
     }
     /// a word's characters (in the tone colours) and reading, in the subtitles' language
@@ -2740,7 +2773,7 @@
                 if (known.has(o.w)) {
                     queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
                     queue.push({ k: o.k, w: "known", h: han });
-                    localKnown.add(o.w); localKnown.add(han);
+                    localAdd(o.w, o.L); localAdd(han, o.L);
                 } else if (restToo) {
                     queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
                     queue.push({ k: o.k, w: "unknown", h: han, x: subs.cues[o.li] ? subs.cues[o.li].t.replace(/\s+/g, " ").trim() : "" });

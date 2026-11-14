@@ -1,7 +1,7 @@
 // 方方詞卡 查詞: what the settings page (options.html) and the toolbar window (popup.html) share: the settings'
 // defaults, saving them, and sending the chosen words (and the minutes watched) to the app.
-const FF_DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
-    yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
+const FF_DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
+    yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
     subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFont: 1, subsRd: true, subsGl: true, subsRdSize: 0.56, subsLang: "auto", onlyNew: false,
     keys: true, keyKnown: "a", keyNew: "s" };
 const FF_SIZES = [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]];
@@ -12,6 +12,7 @@ async function ffLoad() {
     const prefs = { ...FF_DEFAULTS, ...(r.ffPrefs || {}) };
     if (prefs.corner === true && !(r.ffPrefs || {}).pos) prefs.pos = "tl";
     delete prefs.corner;
+    ffOneLang(prefs, FF_LANGS.find(l => (r.ffPrefs || {})[l]));
     let places = [], ready = true;
     try { const p = await browser.runtime.sendMessage({ op: "places" }); if (p && p.ok) { places = p.places; ready = p.ready !== false; } } catch (e) {}
     return { prefs, queue: r.ffQueue || [], watch: r.ffWatch || {}, known: r.ffKnown || null, places, ready };
@@ -25,6 +26,13 @@ async function ffTakeKnown(b64) {
     o.at = Date.now();
     await ffStore.set({ ffKnown: o });
     return o;
+}
+/// one language at a time (華語, 台語, 粵語, 客語 or 瑞典語): the first one on, or 華語; `pick`: that one
+const FF_LANGS = ["zh", "tw", "yue", "hak", "sv"];
+function ffOneLang(prefs, pick) {
+    const on = pick || FF_LANGS.find(l => prefs[l]) || "zh";
+    for (const l of FF_LANGS) prefs[l] = l === on;
+    return on;
 }
 function ffSave(prefs) { return ffStore.set({ ffPrefs: prefs }).catch(() => {}); }
 
