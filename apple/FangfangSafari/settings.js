@@ -15,6 +15,16 @@ async function ffLoad() {
     try { const p = await browser.runtime.sendMessage({ op: "places" }); if (p && p.ok) { places = p.places; ready = p.ready !== false; } } catch (e) {}
     return { prefs, queue: r.ffQueue || [], watch: r.ffWatch || {}, known: r.ffKnown || null, places, ready };
 }
+/// the words you know, as the app packs them (base64url of raw-deflated JSON) → stored for the add-on
+async function ffTakeKnown(b64) {
+    const b = b64.trim().replace(/^fangfang-known[:=]/, "").replace(/-/g, "+").replace(/_/g, "/");
+    const bin = Uint8Array.from(atob(b + "===".slice((b.length + 3) % 4)), c => c.charCodeAt(0));
+    const txt = await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+    const o = JSON.parse(txt);
+    o.at = Date.now();
+    await ffStore.set({ ffKnown: o });
+    return o;
+}
 function ffSave(prefs) { return ffStore.set({ ffPrefs: prefs }).catch(() => {}); }
 
 /// the words chosen (加到不熟 / 收藏) and the minutes watched with the subtitle panel, to the app

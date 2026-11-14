@@ -77,7 +77,8 @@ enum SafariImport {
 @MainActor
 enum SafariKnownSync {
     /// the words: 認識 (status 1) and 不熟 (2), by language, as headwords
-    static func payload(_ store: Store) -> (url: URL, known: Int, unknown: Int)? {
+    /// (text: the same words to copy, for 貼上 on Safari 查詞's settings page when example.com doesn't work)
+    static func payload(_ store: Store) -> (url: URL, known: Int, unknown: Int, text: String)? {
         let names = ["tw", "zh", "yue", "hak", "ja", "sv"]
         var known: [String: Set<String>] = [:], unknown: [String: Set<String>] = [:]
         for (k, st) in store.progress.status where st == 1 || st == 2 {
@@ -92,6 +93,6 @@ enum SafariKnownSync {
         let b = packed.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         guard let url = URL(string: "https://example.com/#fangfang-known=" + b) else { return nil }
-        return (url, known.values.reduce(0) { $0 + $1.count }, unknown.values.reduce(0) { $0 + $1.count })
+        return (url, known.values.reduce(0) { $0 + $1.count }, unknown.values.reduce(0) { $0 + $1.count }, "fangfang-known:" + b)
     }
 }

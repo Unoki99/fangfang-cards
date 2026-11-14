@@ -53,7 +53,7 @@
     row(sw, "網頁查詞", "游標或 Apple Pencil 停在一個詞上，就跳出那個詞的卡片", webSw);
     const subSw = ffSwitch(prefs, "subs", () => subPart.classList.toggle("dim", !prefs.subs));
     subSw.style.setProperty("--c", v("--subs"));
-    row(sw, "影片字幕", "YouTube、Viki：影片的字幕在旁邊的面板捲動，點字幕裡的詞查詞", subSw);
+    row(sw, "影片字幕", "YouTube、Viki：影片的字幕在旁邊的面板捲動，點一下字幕裡的詞查詞（停在上面不會跳出來）", subSw);
     tip(sw, "how", "iPad 用 Apple Pencil 懸停在字上面（不要碰到螢幕），Mac 用觸控板或滑鼠的游標停在字上。沒有懸停的 iPad 和 iPhone：用手指選取一個詞。");
 
     // ── 語言 ──
@@ -114,7 +114,7 @@
     const sc = (k, o) => { const g = ffChoice(prefs, k, o); g.style.setProperty("--c", v("--subs")); return g; };
     row(subPart, "位置", "旁邊往上捲，或下面一行往旁邊流（全螢幕時一定在下面）", sc("subsFlow", [[false, "旁邊"], [true, "下面"]]));
     row(subPart, "大小", "面板上的 A− A+ 也可以調", sc("subsFont", FF_SIZES), true);
-    row(subPart, "查詞時影片暫停", "點字幕的詞或游標移到面板上時", sc("subsPause", [[true, "開"], [false, "關"]]));
+    row(subPart, "查詞時影片暫停", "點字幕的詞時（卡片關掉後繼續）", sc("subsPause", [[true, "開"], [false, "關"]]));
     row(subPart, "影片上原本的字幕", "面板開著的時候", sc("subsHideVideo", [[true, "隱藏"], [false, "顯示"]]));
     const tools = el("div", null, "tools");
     for (const [b, t] of [["上一句", "回到上一句"], ["重複", "一直重複這一句，練聽和跟讀"], ["慢速", "放慢到 0.75 倍"],
@@ -140,7 +140,32 @@
     const s3 = el("div"); s3.append(el("div", k && k.at ? new Date(k.at).toLocaleDateString() : "—", "big"), el("small", "上次傳過來"));
     st.append(s1, s2, s3);
     kn.appendChild(st);
-    tip(kn, "how", "在 App 的「設定 → Safari 查詞 → 把認識的詞傳到 Safari 查詞」。它會在 Safari 打開 example.com，詞放在網址的 # 後面，不會傳到網路上。");
+    // 貼上: the words copied in the app (設定 → Safari 查詞 → 複製認識的詞)
+    const pasteRow = el("div", null, "btns"); pasteRow.style.marginTop = "12px";
+    const paste = el("button", "貼上從 App 複製的詞", "act main"); paste.style.setProperty("--c", v("--known"));
+    const msg = el("p", null, "lead"); msg.style.margin = "8px 0 0";
+    const take = async text => {
+        try {
+            if (!/^fangfang-known[:=]/.test((text || "").trim())) throw new Error("x");
+            const o = await ffTakeKnown(text);
+            const n = Object.values(o.k || {}).reduce((a, x) => a + x.length, 0), u = Object.values(o.u || {}).reduce((a, x) => a + x.length, 0);
+            msg.textContent = "收到了：認識的詞 " + n + " 個、不熟的詞 " + u + " 個。";
+            setTimeout(() => location.reload(), 1200);
+        } catch (e) { msg.textContent = "剪貼簿裡不是從 App 複製的詞。先在 App 按「複製認識的詞」，再回來按「貼上」。"; }
+    };
+    paste.addEventListener("click", async () => {
+        try { await take(await navigator.clipboard.readText()); }
+        catch (e) {
+            // (no access to the clipboard: a box to paste into by hand)
+            const ta = el("textarea"); ta.placeholder = "長按這裡，貼上"; ta.style.cssText = "width:100%;height:70px;margin-top:8px;border-radius:10px;background:#23242c;color:#eef0f6;border:1px solid #2e3039;padding:8px";
+            ta.addEventListener("input", () => take(ta.value));
+            if (!kn.querySelector("textarea")) pasteRow.after(ta);
+            ta.focus();
+        }
+    });
+    pasteRow.appendChild(paste);
+    kn.append(pasteRow, msg);
+    tip(kn, "how", "在 App 的「設定 → Safari 查詞」按「複製認識的詞」，再回到這裡按「貼上從 App 複製的詞」。或者按「把認識的詞傳到 Safari 查詞」：它會在 Safari 打開 example.com，詞放在網址的 # 後面，不會傳到網路上（Safari 查詞要允許在 example.com 上，或允許所有網站）。");
     tip(kn, "good", "學了新詞以後再傳一次，懂的百分比就會更新。卡片上的「認識」按鈕也算：按了馬上不上色，傳到 App 的時候 App 也會把它標成熟悉。");
     tip(kn, "warn", "網頁上要上色，「網頁」的聲調顏色要選「全部（華語）」。"); 
     if (k) {

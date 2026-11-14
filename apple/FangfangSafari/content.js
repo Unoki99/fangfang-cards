@@ -1527,9 +1527,9 @@
     function hover(e) {
         // (網頁查詞 turned off in Safari's toolbar: only the subtitle panel's words are still looked up)
         if (!alive() || (!prefs.on && !(e.target && e.target.closest && e.target.closest("#ff-subs")))) return;
-        // (the subtitle panel: only its lines' words, not its buttons, menu or times)
+        // (the subtitle panel: nothing by hovering; its words open with a tap or a click)
         const inPanel = e.target && e.target.closest && e.target.closest("#ff-subs");
-        if (inPanel && !e.target.closest("#ff-subs .tx")) { clearTimeout(dwellTimer); return; }
+        if (inPanel) { clearTimeout(dwellTimer); return; }
         if (e.buttons !== 0) return;                              // writing / dragging, not hovering
         if (!metaP) getMeta();                                    // (the Pencil is near: the tables read already)
         if (inCard(e)) { clearTimeout(hideTimer); clearTimeout(dwellTimer); return; }
@@ -1990,7 +1990,8 @@
                 }
                 return;
             }
-            if (d.type !== "touch") return;          // (the Pencil and trackpad look words up by hovering)
+            // (a tap with a finger, the Pencil or a click: the subtitles' words open only this way, not by hovering)
+            if (d.type === "mouse" && e.button !== 0) return;
             const hit = charAt(e.clientX, e.clientY);
             if (!hit) return;
             const lat = !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
@@ -2005,16 +2006,6 @@
             }, 30);
         });
         // the Pencil or a trackpad over the subtitles: the video waits (and goes on when it leaves)
-        p.addEventListener("pointerenter", e => {
-            if (e.pointerType === "touch" || !prefs.subsPause) return;
-            const v = subsVideo();
-            if (v && !v.paused) { v.pause(); st.pausedBy = "hover"; }
-        });
-        p.addEventListener("pointerleave", e => {
-            if (st.pausedBy !== "hover") return;
-            st.pausedBy = "";
-            const v = subsVideo(); if (v && v.paused) v.play().catch(() => {});
-        });
         // looking back or ahead: drag (or scroll) the lines; they follow the video again a few seconds later
         let drag = null;
         const along = e => st.flow ? e.touches[0].clientX : e.touches[0].clientY;

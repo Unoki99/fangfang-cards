@@ -55,7 +55,7 @@ struct SettingsView: View {
             Topic(id: 4, title: tr("聲音"), icon: "speaker.wave.2", summary: tr("自動播放\(autoPlay ? trs("開") : trs("關"))・音量 \(Int((volume * 100).rounded()))%")),
             Topic(id: 5, title: tr("備份與同步"), icon: "arrow.triangle.2.circlepath", summary: store.backupFolderName ?? trs("還沒設定")),
             Topic(id: 8, title: tr("詞典資料"), icon: "arrow.down.circle", summary: tr("安裝、移除詞典")),
-            Topic(id: 6, title: tr("匯出與匯入"), icon: "square.and.arrow.up", summary: tr("CSV・備份檔")),
+            Topic(id: 6, title: tr("匯出與匯入"), icon: "square.and.arrow.up", summary: tr("CSV・備份檔・Anki・Safari 查詞")),
             Topic(id: 7, title: tr("關於與資料來源"), icon: "info.circle", summary: tr("資料、授權")),
         ]
     }
@@ -281,7 +281,6 @@ private struct LookSettings: View {
             } header: {
                 Text(tr("小工具背景"))
             }
-            SafariLookupSection()
             Section {
                 Toggle(tr("畫成圖再放大"), isOn: $swellOn)
             } header: {
@@ -617,6 +616,8 @@ private struct ExportSettings: View {
             } footer: {
                 Text(tr("跟方方網站的收藏格式一樣（分號分隔）。"))
             }
+            // Safari 查詞: the words you know, to it (and how to turn it on)
+            SafariLookupSection()
             Section {
                 Button(tr("匯出到 Anki（不熟＋熟悉）")) {
                     let r = UserDefaults.standard.integer(forKey: "rom"), pl = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
@@ -761,6 +762,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 private struct SafariLookupSection: View {
     @EnvironmentObject var store: Store
     @Environment(\.openURL) private var openURL
+    @State private var copiedKnown = 0
     var body: some View {
         Section {
             // the words you know, to Safari 查詞 (it marks the new ones in subtitles and shows 懂 %)
@@ -768,6 +770,13 @@ private struct SafariLookupSection: View {
                 if let p = SafariKnownSync.payload(store) { openURL(p.url) }
             } label: {
                 Label(tr("把認識的詞傳到 Safari 查詞"), systemImage: "arrow.up.forward.app")
+            }
+            // (when Safari 查詞 isn't allowed on example.com: copy, then 貼上 on its settings page)
+            Button {
+                if let p = SafariKnownSync.payload(store) { UIPasteboard.general.string = p.text; copiedKnown = p.known + p.unknown }
+            } label: {
+                Label(copiedKnown > 0 ? tr("複製了 \(copiedKnown) 個詞：到 Safari 查詞的「所有設定 → 認識的詞」按「貼上」") : tr("複製認識的詞（貼到 Safari 查詞的設定頁）"),
+                      systemImage: copiedKnown > 0 ? "checkmark" : "doc.on.doc")
             }
             Text(tr("在 Safari 用 Apple Pencil 停在一個中文字上面（不要碰到螢幕），就會跳出那個詞的華語和台語解釋。沒有懸停功能的 iPad 可以用手指選取一個詞，觸控板的游標也可以。卡片右上角的「設定」可以選拼寫、腔口、聲調顏色和要顯示的語言。按「加到不熟」或「收藏」選好詞以後，按「傳到 App」就會打開方方詞卡把詞加進來。"))
                 .ffFont(.footnote).foregroundStyle(T.muted)
