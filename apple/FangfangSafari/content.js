@@ -39,6 +39,8 @@
         subsRd: true, subsGl: true,
         // the reading's size, against the characters'
         subsRdSize: 0.56,
+        // 簡體 subtitles shown (and read) in 繁體
+        subsTrad: true,
         // the language the subtitles are read in: "auto" (from the subtitles' own language), or zh / tw / yue / hak
         subsLang: "auto",
         // keyKnown / keyNew: with the pointer on a word, the key that marks it 認識, and the one that marks it 不熟 and
@@ -107,7 +109,7 @@
             if (ch.ffPrefs && subs && subs.panel) {
                 const o = ch.ffPrefs.oldValue || {}, n = ch.ffPrefs.newValue || {};
                 subsSize(); subsLayout();
-                if (["subsRd", "subsGl", "subsLang", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
+                if (["subsRd", "subsGl", "subsLang", "subsTrad", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
             }
         });
     }
@@ -1786,6 +1788,8 @@
             if (d.kind === "hello") hello = true;
             else if (d.kind === "file") subsFile(d.url, d.text);
             else if (d.kind === "tracks") subsTracks(d.text);
+            else if (d.kind === "manifest") subsManifest(d.url, d.text);
+            else if (d.kind === "got" && pageAsks.has(d.id)) { pageAsks.get(d.id)(d.text || ""); pageAsks.delete(d.id); }
         });
         if (SUBS_SITE) setTimeout(() => {
             if (hello) return;
@@ -1828,13 +1832,21 @@
         const vid = ytVideoId() || (SUBS_SITE ? location.pathname : "");
         if (vid !== st.vid) {
             st.vid = vid; st.files.clear(); st.key = ""; st.ytTracks = []; st.ytTrans = []; st.cur = ""; st.tried.clear();
+            st.fullTracks = []; st.fullUrl = ""; st.fullFailed = new Set(); st.hlsSrc = "";
             subsShow([]);
             if (ytVideoId()) subsAskTracks(0);
         }
         // tracks the browser itself loads (<track>, Safari's own HLS subtitles): only the one the site is showing
         // (the language chosen in its player); other languages are never turned on. (Not on YouTube: its own way.)
         const v = subsVideo();
-        if (!ytVideoId() && v && v.textTracks && v.textTracks.length && Date.now() - st.textTracksAt > 2000) {
+        // (a stream Safari plays itself, .m3u8: its list of parts tells where each language's subtitles are)
+        const src = v && (v.currentSrc || v.src) || "";
+        if (!ytVideoId() && /\.m3u8\b/i.test(src) && st.hlsSrc !== src) {
+            st.hlsSrc = src;
+            pageGet(src).then(t => { if (t) subsManifest(src, t); });
+        }
+        subsFullPick();
+        if (!ytVideoId() && v && v.textTracks && v.textTracks.length && Date.now() - st.textTracksAt > 2000 && !String(st.key).startsWith("full:")) {
             st.textTracksAt = Date.now();
             const list = [...v.textTracks].filter(tt => /subtitles|captions/.test(tt.kind));
             let tt = list.find(x => x.mode === "showing");
@@ -1936,6 +1948,8 @@
     // a subtitle file the page downloaded
     function subsFile(url, text) {
         if (!prefs.subs || !text || !subsMine()) return;
+        // (the whole subtitles already loaded from the stream's list: the player's own pieces aren't needed)
+        if (String(subs.key).startsWith("full:") && !/timedtext/.test(url)) return;
         const cues = subsParse(text);
         if (!cues.length) return;
         let key;
@@ -1956,6 +1970,110 @@
             }
         } catch (e) { key = "f:" + url; }
         subsAdd(key, cues);
+    }
+
+    // ── whole subtitles of a stream (Viki and the like): the player loads them a line or two at a time, as the video
+    // plays; the stream's list of parts (manifest.mpd / .m3u8) says where all of them are, so they're loaded at once
+    const pageAsks = new Map();
+    /// a file loaded by the page itself (the stream's files are allowed to it)
+    function pageGet(url) {
+        return new Promise(res => {
+            const id = "g" + Math.random().toString(36).slice(2);
+            pageAsks.set(id, res);
+            window.postMessage({ __ffSubsAsk: "get", url, id }, "*");
+            setTimeout(() => { if (pageAsks.has(id)) { pageAsks.delete(id); res(""); } }, 20000);
+        });
+    }
+    /// a stream's list of parts: the subtitle languages in it, and where each one's file (or list of pieces) is
+    function subsManifest(url, text) {
+        const st = subs;
+        if (!st || !text || !subsMine()) return;
+        st.fullTracks = st.fullTracks || [];
+        const found = [];
+        try {
+            if (text.trim().startsWith("#EXTM3U")) {
+                for (const line of text.split(/\r?\n/)) {
+                    if (!/^#EXT-X-MEDIA:/.test(line) || !/TYPE=SUBTITLES/.test(line)) continue;
+                    const at = k => (line.match(new RegExp(k + '="([^"]*)"')) || [])[1] || "";
+                    const uri = at("URI");
+                    if (uri) found.push({ lang: at("LANGUAGE") || at("NAME"), name: at("NAME"), url: new URL(uri, url).href, kind: "hls" });
+                }
+            } else if (/<MPD[\s>]/.test(text)) {
+                const x = new DOMParser().parseFromString(text, "text/xml");
+                const base = (el, from) => { const b = [...el.children].find(c => c.localName === "BaseURL"); return b ? new URL(b.textContent.trim(), from).href : from; };
+                const root = base(x.documentElement, url);
+                for (const per of x.getElementsByTagName("Period")) {
+                    const pb = base(per, root);
+                    for (const as of per.getElementsByTagName("AdaptationSet")) {
+                        const reps = [...as.getElementsByTagName("Representation")];
+                        const mime = (as.getAttribute("mimeType") || "") + " " + reps.map(r => r.getAttribute("mimeType") || "").join(" ");
+                        if (as.getAttribute("contentType") !== "text" && !/text\/vtt|vtt|ttml|text\//.test(mime)) continue;
+                        if (/mp4/.test(mime)) continue;          // (pieces packed in video files: not read)
+                        const ab = base(as, pb);
+                        const r = reps[0];
+                        const href = r && [...r.children].some(c => c.localName === "BaseURL") ? base(r, ab) : (ab !== pb ? ab : "");
+                        if (!href) continue;
+                        const lab = [...as.children].find(c => c.localName === "Label");
+                        found.push({ lang: as.getAttribute("lang") || "", name: lab ? lab.textContent : "", url: href, kind: "file" });
+                    }
+                }
+            }
+        } catch (e) {}
+        for (const f of found) if (!st.fullTracks.some(t => t.url === f.url)) st.fullTracks.push(f);
+        if (found.length) subsFullPick();
+    }
+    /// which language's whole subtitles to load: the one the player shows; else the add-on's language
+    function subsFullPick() {
+        const st = subs;
+        if (!st || !st.fullTracks || !st.fullTracks.length || st.fullBusy) return;
+        const v = subsVideo();
+        const showing = v && v.textTracks ? [...v.textTracks].find(t => t.mode === "showing") : null;
+        const norm = l => String(l || "").toLowerCase();
+        const pref = { zh: ["zt", "zh-hant", "zh-tw", "zh-hk", "zh", "zh-hans", "zh-cn", "cmn"], tw: ["nan", "zh-min", "zt", "zh-hant", "zh-tw", "zh"],
+            yue: ["yue", "zh-hk", "zt", "zh-hant", "zh"], hak: ["hak", "zt", "zh-hant", "zh"], sv: ["sv"] }[activeLang()] || ["zh"];
+        const want = showing ? [norm(showing.language), norm(showing.label)] : [];
+        let tr = null;
+        for (const w of want) { if (!w) continue; tr = st.fullTracks.find(t => norm(t.lang) === w) || st.fullTracks.find(t => norm(t.lang).startsWith(w) || w.startsWith(norm(t.lang)) && norm(t.lang)); if (tr) break; }
+        if (!tr) for (const w of pref) { tr = st.fullTracks.find(t => norm(t.lang) === w); if (tr) break; }
+        if (!tr || tr.url === st.fullUrl || (st.fullFailed && st.fullFailed.has(tr.url))) return;
+        subsFullLoad(tr, showing);
+    }
+    async function subsFullLoad(tr, showing) {
+        const st = subs;
+        st.fullBusy = true;
+        const vid = st.vid;
+        let cues = [];
+        try {
+            if (tr.kind === "hls") {
+                const list = await pageGet(tr.url);
+                const parts = list.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#")).map(l => new URL(l, tr.url).href);
+                for (let i = 0; i < parts.length; i += 8) {
+                    const texts = await Promise.all(parts.slice(i, i + 8).map(pageGet));
+                    for (const t of texts) cues.push(...subsParse(t));
+                    if (st.vid !== vid) return;
+                }
+            } else {
+                cues = subsParse(await pageGet(tr.url));
+            }
+        } catch (e) { cues = []; }
+        finally { st.fullBusy = false; }
+        if (st.vid !== vid) return;
+        if (!cues.length) { (st.fullFailed = st.fullFailed || new Set()).add(tr.url); return; }
+        // (in order, each line once: pieces of a stream repeat the lines at their edges)
+        cues.sort((a, b) => a.s - b.s);
+        cues = cues.filter((c, i) => !i || !(Math.abs(c.s - cues[i - 1].s) < 0.05 && c.t === cues[i - 1].t));
+        // (the same times as the player's: a line it already has tells how far off the file's clock is)
+        if (showing && showing.cues && showing.cues.length) {
+            const norm = t => String(t || "").replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+            for (const c of showing.cues) {
+                const m = cues.find(x => norm(x.t) === norm(c.text));
+                if (m) { const d = c.startTime - m.s; if (Math.abs(d) > 0.2) cues.forEach(x => { x.s += d; x.e += d; }); break; }
+            }
+        }
+        st.fullUrl = tr.url;
+        st.cur = tr.lang;
+        subsAdd("full:" + tr.lang, cues);
+        subsHeader();
     }
 
     // the lines of a file: ONE language at a time. A file of another language than the one shown takes its place
@@ -2315,6 +2433,67 @@
     }
 
     // the 漢字 in their tone colours (華語's, as the page colours work), glowing a little; letters stay plain
+    // ── 簡體 subtitles → 繁體 (on by default): each word as the 華語 dictionary writes it (头发 → 頭髮, 后来 → 後來),
+    // the rest character by character (d-s2t.json: characters that are only ever 簡體). The words you know (繁體, from
+    // the app) are found that way too, and a word saved keeps its sentence in 繁體. The subtitles' own text is kept.
+    let s2tTable = null;
+    async function getS2T() {
+        if (s2tTable === null) { try { s2tTable = (await getFile("d-s2t.json")) || {}; } catch (e) { s2tTable = {}; } }
+        return s2tTable;
+    }
+    async function subsTrad(st, key, meta) {
+        if (prefs.subsTrad === false) {
+            // (turned off: the subtitles as they came)
+            for (const c of st.cues) { if (c.o != null) { c.t = c.o; delete c.o; } delete c.tc; }
+            st.simpKey = null; st.simp = null;
+            return;
+        }
+        const tb = await getS2T();
+        if (!tb || !Object.keys(tb).length) return;
+        // (簡體 or not: decided once a few characters only 簡體 has are seen, or enough lines without any)
+        if (st.simpKey !== key) { st.simpKey = key; st.simp = null; }
+        if (st.simp === null) {
+            let n = 0, han = 0;
+            for (const c of st.cues) for (const ch of c.o != null ? c.o : c.t) { if (tb[ch]) n++; if (isHan(ch.codePointAt(0))) han++; }
+            if (n >= 3) st.simp = true;
+            else if (han > 300) st.simp = false;
+            else return;
+        }
+        if (!st.simp) return;
+        // (the lines not changed yet: new ones come in as a stream plays)
+        const todo = st.cues.filter(c => !c.tc);
+        if (!todo.length) return;
+        const sh = meta.shards || 256, zf = new Map();
+        const cps = new Set();
+        for (const c of todo) for (const ch of c.t) { const cp = ch.codePointAt(0); if (isHan(cp)) cps.add(cp % sh); }
+        await Promise.all([...cps].map(async i => { const nm = `d-zh-${String(i).padStart(3, "0")}.json`; zf.set(nm, await getFile(nm)); }));
+        if (st.key !== key) return;
+        for (const c of todo) {
+            if (c.tc) continue;
+            const chars = [...c.t];
+            let out = "", i = 0;
+            while (i < chars.length) {
+                const cp = chars[i].codePointAt(0);
+                if (!isHan(cp)) { out += chars[i]; i++; continue; }
+                const f = zf.get(`d-zh-${String(cp % sh).padStart(3, "0")}.json`);
+                let done = false;
+                if (f) for (let L = Math.min(meta.max || 12, chars.length - i); L >= 2; L--) {
+                    const w = chars.slice(i, i + L).join("");
+                    const list = f[w];
+                    if (!list) continue;
+                    const hd = x => (x.k || "").split("\t")[0];
+                    const e = list.find(x => hd(x) === w) || list.find(x => x.k && [...hd(x)].length === L);
+                    if (!e) continue;
+                    out += hd(e); i += L; done = true;
+                    break;
+                }
+                if (!done) { out += tb[chars[i]] || chars[i]; i++; }
+            }
+            if (out !== c.t) { c.o = c.t; c.t = out; }
+            c.tc = true;
+        }
+    }
+
     // ── the subtitles' language: 華語, 台語, 粵語 or 客語 (its words, readings, colours and meanings) ──
     const SUBS_LANGS = [["zh", "華語"], ["tw", "台語"], ["yue", "粵語"], ["hak", "客語"]];
     const subsHas = (l, meta) => !!meta && (l === "zh" || (meta[l] !== undefined ? meta[l] > 0 : l === "tw"));
@@ -2349,6 +2528,8 @@
         const meta = await getMeta();
         const st = subs;
         if (!meta || st.key !== key) return;
+        await subsTrad(st, key, meta);
+        if (st.key !== key) return;
         const SL = subsLangNow(meta);
         st.lang = SL;
         const cps = new Set();
@@ -2399,7 +2580,9 @@
                 // (the word: 認識 → as it is; 不熟 → a line under it; never seen → a dotted line)
                 const word = chars.slice(wordStart, wordStart + len).join("");
                 let box = frag;
-                const known = isKnownIn(word, SL);
+                // (known as written, or as the dictionary writes it: 裡 / 裏, 台 / 臺…)
+                const head = entry && entry.k ? entry.k.split("\t")[0] : word;
+                const known = isKnownIn(word, SL) || (head !== word && isKnownIn(head, SL));
                 // (a word you don't know: its reading over it and its meaning under it)
                 if (annoOn) box = subsAnnotate(frag, entry && !known ? entry : null, meta, SL);
                 if (knownSet) {
@@ -2408,7 +2591,7 @@
                     if (k) knownN++;
                     else {
                         const u = document.createElement("span");
-                        u.className = learnIn(word, SL) ? "learn" : "new";
+                        u.className = learnIn(word, SL) || learnIn(head, SL) ? "learn" : "new";
                         box.appendChild(u);
                         box = u;
                     }
@@ -2622,6 +2805,7 @@
     async function subsWordListWords() {
         const st = subs, meta = await getMeta();
         if (!meta || !st.cues.length) return [];
+        await subsTrad(st, st.key, meta);
         const sh = meta.shards || 256;
         const SL = subsLangNow(meta);
         const files = st.dict && st.dictKey === st.key ? st.dict : new Map();
@@ -2657,8 +2841,8 @@
         const head = o => o.k.split("\t")[0];
         const out = [];
         for (const o of words.values()) {
-            if (isKnownIn(o.w, SL) || qKnown.has(o.w) || qKnown.has(head(o))) continue;
-            o.learn = learnIn(o.w, SL) || qUnknown.has(o.w) || qUnknown.has(head(o));
+            if (isKnownIn(o.w, SL) || isKnownIn(head(o), SL) || qKnown.has(o.w) || qKnown.has(head(o))) continue;
+            o.learn = learnIn(o.w, SL) || learnIn(head(o), SL) || qUnknown.has(o.w) || qUnknown.has(head(o));
             out.push(o);
         }
         return out;

@@ -88,6 +88,20 @@ def shard_of(lang, word):
     return ord(word[0]) % SHARDS
 
 
+# ── 簡體 → 繁體, character by character (for subtitles in 簡體): from the 華語 words' 正體 and 簡體 pairs, each 簡體
+# character's most common 正體 one. Only characters that are never 正體 themselves (发, 头, 们…): an ambiguous one like
+# 后 or 里, also written in 正體, is left to the words (后来 → 後來 by the dictionary's word)
+S2T = {}
+TRAD_CHARS = set()
+
+
+def s2t_pair(h, a):
+    TRAD_CHARS.update(h)
+    if not a or a == h or len(a) != len(h): return
+    for t, c in zip(h, a):
+        if t != c: S2T.setdefault(c, {}).setdefault(t, 0); S2T[c][t] += 1
+
+
 def add(lang, word, e, most=6):
     if not word or (len(word) > MAXLEN and lang != "sv"): return
     d = shards[lang][shard_of(lang, word)]
@@ -148,6 +162,7 @@ if zh:
     for e in zh.get("e", []):
         k, h, tw = e.get("k"), e.get("h"), e.get("s")
         if not (k and h and tw): continue
+        s2t_pair(h, e.get("a"))
         senses = [d[0] for d in e.get("d") or [] if d and d[0]]
         scr, kind = sc_read.get(k, (None, 0))
         if scr and len(scr.split(" ")) != len(tw.split(" ")): scr = None
@@ -464,6 +479,12 @@ for i, sh in enumerate(en_sh):
     if sh:
         with open(os.path.join(OUT, f"d-en-{i:03d}.json"), "w", encoding="utf-8") as f:
             json.dump(sh, f, ensure_ascii=False, separators=(",", ":"))
+# (簡體 → 繁體)
+s2t = {c: max(ts, key=ts.get) for c, ts in S2T.items() if c not in TRAD_CHARS}
+with open(os.path.join(OUT, "d-s2t.json"), "w", encoding="utf-8") as f:
+    json.dump(s2t, f, ensure_ascii=False, separators=(",", ":"))
+print(f"簡體 → 繁體: {len(s2t)} characters", file=sys.stderr)
+meta["s2t"] = len(s2t)
 meta["en"] = len(EN)
 meta["zh"] = zh_count
 meta["tw"] = tw_count

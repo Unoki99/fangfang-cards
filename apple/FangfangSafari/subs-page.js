@@ -8,8 +8,11 @@
     if (window.__ffSubsPage) return;
     window.__ffSubsPage = true;
 
-    const post = (kind, url, text) => { try { window.postMessage({ __ffSubs: 1, kind, url, text }, "*"); } catch (e) {} };
+    const post = (kind, url, text, id) => { try { window.postMessage({ __ffSubs: 1, kind, url, text, id }, "*"); } catch (e) {} };
     const looks = url => /timedtext|\.vtt\b|\.srt\b|subtitle|caption/i.test(url || "");
+    // (a stream's list of its parts, e.g. Viki's manifest.mpd or an .m3u8: where the whole subtitle file of each
+    // language is, when the player itself only loads it piece by piece)
+    const manifest = url => /\.m3u8\b|\.mpd\b/i.test(url || "");
 
     // a copy of each subtitle file the player downloads
     const fetch0 = window.fetch;
@@ -18,6 +21,7 @@
         try {
             const url = (a[0] && a[0].url) || String(a[0]);
             if (looks(url)) p.then(r => r.clone().text()).then(t => post("file", url, t)).catch(() => {});
+            else if (manifest(url)) p.then(r => r.clone().text()).then(t => post("manifest", url, t)).catch(() => {});
         } catch (e) {}
         return p;
     };
@@ -27,6 +31,12 @@
         return open0.call(this, m, url, ...rest);
     };
     XMLHttpRequest.prototype.send = function (...a) {
+        if (this.__ffUrl && manifest(this.__ffUrl) && !looks(this.__ffUrl)) this.addEventListener("load", () => {
+            try {
+                const t = this.responseType === "arraybuffer" ? new TextDecoder().decode(this.response) : (this.responseType === "" || this.responseType === "text" ? this.responseText : "");
+                if (t) post("manifest", this.__ffUrl, t);
+            } catch (e) {}
+        });
         if (this.__ffUrl && looks(this.__ffUrl)) this.addEventListener("load", () => {
             try {
                 if (this.responseType === "" || this.responseType === "text") post("file", this.__ffUrl, this.responseText);
@@ -77,6 +87,10 @@
         if (!d || e.source !== window) return;
         if (d.__ffSubsAsk === "tracks") tracks();
         else if (d.__ffSubsAsk === "use" && d.lang) use(d.lang, d.kind || "", d.tl || "", d.tlName || "");
+        // (a file the page may load, asked for by the extension: a stream's whole subtitles, its list of parts)
+        else if (d.__ffSubsAsk === "get" && d.url && d.id) {
+            fetch0.call(window, d.url).then(r => r.ok ? r.text() : "").then(t => post("got", d.url, t, d.id)).catch(() => post("got", d.url, "", d.id));
+        }
     });
     post("hello", location.href, "");
 })();
