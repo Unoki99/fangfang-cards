@@ -1,0 +1,11 @@
+客語 data (FangfangCards/hak.json)
+
+Built on your own computer by build-data.sh (tools/build_hakka.py); not included in this repository.
+
+- 教育部《臺灣客語辭典》 (Ministry of Education, Taiwan), the six accent files from
+  https://hakkadict.moe.edu.tw (客語資源 → 客語資源下載).
+  Licence: Creative Commons Attribution-NoDerivatives 3.0 Taiwan (CC BY-ND 3.0 TW).
+  Because changed versions may not be shared, the app's file is made on each person's own computer and is not
+  published here.
+- English meanings: CC-CEDICT (CC BY-SA 4.0), for words written the same way in Mandarin.
+- Word frequency: the dictionary's own example sentences; rime-essay (LGPL-3.0) as a tie-break.
