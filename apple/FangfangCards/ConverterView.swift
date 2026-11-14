@@ -2311,6 +2311,13 @@ struct DictRow: View {
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
     var body: some View {
+        // (how common it is: on the right, in the middle of the row)
+        HStack(alignment: .center, spacing: 10) {
+            rowText.frame(maxWidth: .infinity, alignment: .leading)
+            FrequencyBars(key: key)
+        }
+    }
+    private var rowText: some View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph)).scaledFont(20, weight: .semibold).toneGlow()

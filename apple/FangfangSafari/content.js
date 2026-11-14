@@ -2050,7 +2050,9 @@
   font-family: -apple-system, system-ui, "PingFang TC", sans-serif; }
 #ff-subs .rd { font-size: .56em; margin-bottom: 1px; }
 #ff-subs .gl { font-size: .5em; color: #b6bad0; max-width: 9em; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-#ff-subs.flow.anno { height: 158px; }
+#ff-subs.flow .view { top: 38px; }
+#ff-subs.flow .top b { margin-right: 2px; }
+#ff-subs.flow .top .study { position: static; flex: 1 1 auto; min-width: 0; height: 38px; border-bottom: none; padding: 0 4px; }
 #ff-subs .empty { display: block; padding: 18px; color: #8b90a8; font-size: 14px; }
 #ff-subs.flow { left: 12px; right: 12px; bottom: 12px; top: auto; width: auto; height: 116px; }
 #ff-subs.flow .view { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
@@ -2147,7 +2149,9 @@
         st.panel.classList.toggle("narrow", !flow && !wide);
         st.panel.classList.toggle("mini", st.collapsed);
         // (the row at the bottom: tall enough for the letters)
-        st.panel.style.height = flow && !st.collapsed ? Math.round(74 + Math.max(76, 18 * (prefs.subsFont || 1) * 3)) + "px" : "";
+        // (one line on top; the readings and meanings over and under the words need room too)
+        const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl;
+        st.panel.style.height = flow && !st.collapsed ? Math.round(38 + Math.max(76, fs * (anno ? 4.2 : 3))) + "px" : "";
         const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
@@ -2213,6 +2217,11 @@
         const bigger = document.createElement("span"); bigger.className = "btn"; bigger.textContent = "A+";
         bigger.title = "字大一點"; bigger.addEventListener("click", step(1));
         st.top.append(smaller, bigger, eye, lay, min);
+        // (the row at the bottom: one line on top, the study buttons and 懂 % in it, after 字幕; at the side: their own line)
+        if (st.study) {
+            if (st.flow) title.after(st.study);
+            else if (st.study.parentNode !== st.panel) st.panel.insertBefore(st.study, st.view);
+        }
         subsStudy();
     }
 

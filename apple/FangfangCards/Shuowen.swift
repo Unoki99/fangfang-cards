@@ -98,6 +98,30 @@ struct FoundSentences: View {
 
 
 /// 常用度: how common a word is (its place in the language's list of words, most common first), as five bars
+/// how common a word is, small: the bars alone (the rows of a list of words), in the language's colour
+struct FrequencyBars: View {
+    let key: String
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let r = store.rankOf(key)
+        if r != Int.max {
+            let n = FrequencyBadge.level(r)
+            let ink = T.langColors(Lang.kind(key)).ink
+            HStack(alignment: .bottom, spacing: 2) {
+                ForEach(1...5, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1.5)
+                        .fill(i <= n ? ink : T.fnEdge)
+                        .frame(width: 4, height: CGFloat(5 + i * 3))
+                        .shadow(color: i <= n ? ink.opacity(0.45) : .clear, radius: 2)
+                }
+            }
+            .fixedSize()
+            .accessibilityElement()
+            .accessibilityLabel(tr("常用度：第 \(r + 1) 個"))
+        }
+    }
+}
+
 struct FrequencyBadge: View {
     let key: String
     @EnvironmentObject var store: Store

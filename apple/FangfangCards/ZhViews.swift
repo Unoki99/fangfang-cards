@@ -255,6 +255,13 @@ struct ZhWordRow: View {
     /// 設定 → 主要解釋 for this dictionary's language
     private var mainEnglish: Bool { dict.isHak ? hakMainEnglish : zhMainEnglish }
     var body: some View {
+        // (how common it is: on the right, in the middle of the row)
+        HStack(alignment: .center, spacing: 10) {
+            rowText.frame(maxWidth: .infinity, alignment: .leading)
+            FrequencyBars(key: entry.k)
+        }
+    }
+    private var rowText: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(dict.hanText(entry.h, entry.syl(store.zhPlace), base: T.glyph)).scaledFont(20, weight: .semibold).toneGlow()
