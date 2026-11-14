@@ -26,7 +26,16 @@ mkdir -p "$HOME/Library/Logs"
 
 # copies of source files left by putting a new download over the old folder ("Store 2.swift"): the same code
 # twice, which the build can't tell apart
-find "$HERE/FangfangCards" "$HERE/FangfangWidget" -type f \( -name "* 2.swift" -o -name "* (1).swift" \) -print -delete 2>/dev/null | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
+# (every folder of the project, WidgetShared too, and copies numbered 2, 3, … or (1), (2), …)
+for D in "$HERE" "$DEST"; do
+  [ -d "$D" ] || continue
+  find "$D/FangfangCards" "$D/FangfangWidget" "$D/WidgetShared" "$D/FangfangSafari" -type f \
+       \( -name "* [0-9].swift" -o -name "* ([0-9]).swift" -o -name "* copy.swift" \) -print -delete 2>/dev/null \
+    | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
+  # (the widget's shared code belongs only in WidgetShared/: an older copy elsewhere is the same code twice)
+  find "$D/FangfangCards" "$D/FangfangWidget" -type f -name "WidgetShared*.swift" -print -delete 2>/dev/null \
+    | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
+done
 
 # 1. keep the project in a fixed place: ~/FangfangCards
 if [ "$HERE" != "$DEST" ]; then
