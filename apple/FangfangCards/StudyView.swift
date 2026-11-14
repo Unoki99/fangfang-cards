@@ -91,7 +91,7 @@ struct StudyView: View {
             guard opts.contains(c) else { continue }
             var ex: Example? = nil
             if let h = sq.ex {
-                ex = (kind == .fillBlank ? c.blankExamples : c.d.flatMap { $0.x }).first { $0.h == h }
+                ex = (kind == .fillBlank ? store.blanks(c) : c.d.flatMap { $0.x }).first { $0.h == h }
                 if ex == nil && kind == .fillBlank { continue }
             }
             if i < s.idx { at += 1 }
@@ -190,13 +190,13 @@ struct StudyView: View {
     /// 例句填空 only: one sentence per word, a second (different) sentence later in the round when there is one
     private func startBlanks() {
         let words = store.studyCards
-            .filter { !$0.blankExamples.isEmpty }
+            .filter { !store.blanks($0).isEmpty }
             .shuffled()
             .sorted { order($0) < order($1) }
             .prefix(max(1, sessionSize))
         var first: [Question] = [], second: [Question] = []
         for c in words {
-            let xs = c.blankExamples.shuffled()
+            let xs = store.blanks(c).shuffled()
             let opts = (store.distractors(for: c) + [c]).shuffled()
             first.append(Question(card: c, kind: .fillBlank, options: opts, example: xs[0]))
             if xs.count > 1 {
@@ -211,7 +211,7 @@ struct StudyView: View {
         QuizKind.allCases.filter {
             switch $0 {
             case .listen: return c.audio != nil
-            case .fillBlank: return !c.blankExamples.isEmpty
+            case .fillBlank: return !store.blanks(c).isEmpty
             case .write: return (practiceWrite || writeOnly) && Store.canWrite(c.h)
             default: return !c.d.isEmpty
             }
@@ -221,7 +221,7 @@ struct StudyView: View {
     private func make(_ c: Card, _ k: QuizKind) -> Question {
         Question(card: c, kind: k,
                  options: (store.distractors(for: c) + [c]).shuffled(),
-                 example: k == .fillBlank ? c.blankExamples.randomElement() : nil)
+                 example: k == .fillBlank ? store.blanks(c).randomElement() : nil)
     }
 
     // MARK: one question
@@ -294,7 +294,12 @@ struct StudyView: View {
                     if let x = q.example {
                         Text(x.bh ?? x.h).ffFont(.title3).foregroundStyle(T.blueInk)
                         if let br = store.blankRom(c, x, rom, place) { Text(br).latFont(17).foregroundStyle(T.greenInk) }
-                        Text(x.z).ffFont(.subheadline).foregroundStyle(T.muted)
+                        if x.z.isEmpty {
+                            // (a sentence you saved the word from yourself)
+                            Text(tr("你看到、聽到的句子")).ffFont(.caption).foregroundStyle(T.oliveInk)
+                        } else {
+                            Text(x.z).ffFont(.subheadline).foregroundStyle(T.muted)
+                        }
                         if !x.n.isEmpty {
                             HStack(spacing: 8) {
                                 PlayButton(path: Audio.examplePath(x.n), size: 28)

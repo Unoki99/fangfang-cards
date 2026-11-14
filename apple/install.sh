@@ -151,7 +151,7 @@ ensure_ios_platform() {
 # (defined before anything that builds, so every way of building can stop on an error)
 fail() {
   echo "✗ 建置失敗。把下面的錯誤訊息傳給 Claude："
-  grep -E "error:|error -|Signing|provision" "$LOG" | sort -u | head -25
+  grep -a -E "error:|error -|Signing|provision" "$LOG" | sort -u | head -25
   echo "（完整紀錄：${LOG}）"
   exit 1
 }
@@ -209,7 +209,7 @@ fi
 NOGROUP=()
 build_signed() {
   xcodebuild "$@" "${NOGROUP[@]}" build > "$LOG" 2>&1 < /dev/null && return 0
-  if [ ${#NOGROUP[@]} -eq 0 ] && grep -q "application-groups" "$LOG"; then
+  if [ ${#NOGROUP[@]} -eq 0 ] && grep -a -q "application-groups" "$LOG"; then
     echo "（你的 Apple ID 還沒註冊這個 App 的 App Group，先不用它建置：App 都正常，只是「分類詞卡」小工具會沒有詞。"
     echo "  想用小工具：在 Xcode 打開 ~/FangfangCards/FangfangCards.xcodeproj，上方選你的 iPhone 按 ▶ 一次，"
     echo "  Xcode 會自動註冊；之後再執行這個指令就好。）"

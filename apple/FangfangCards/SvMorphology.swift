@@ -903,10 +903,20 @@ struct SvConvertPane: View {
     }
 
     /// the text, each word in colour: tap a word to open it
+    /// (the 歌詞 page: the line the word is in, kept with it if it's saved or added to 不熟 from here)
+    private func remember(_ k: String, _ j: Int) {
+        guard lyrics else { return }
+        var a = j
+        while a > 0 && !words[a].newLine { a -= 1 }
+        var b = j + 1
+        while b < words.count && !words[b].newLine { b += 1 }
+        store.lyricContext = (k, words[a..<b].map { $0.lead + $0.core + $0.tail }.joined(separator: " "))
+    }
+
     private var coloured: some View {
         box(trs("瑞典文"), copy: 0) {
             SwellWords(pieces: words.map { (ink($0, hyphens: false) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3) { j in
-                if let k = words[j].key { focused = false; tapped = ZhKey(k: k) }
+                if let k = words[j].key { focused = false; remember(k, j); tapped = ZhKey(k: k) }
                 else if !words[j].parts.isEmpty { focused = false; compound = SvWordRef(id: words[j].core) }
             }
             .latFont(20)
@@ -920,7 +930,7 @@ struct SvConvertPane: View {
             if lyrics {
                 // (the 歌詞 window: these words swell and open too)
                 SwellWords(pieces: words.map { (ink($0, hyphens: true) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3) { j in
-                    if let k = words[j].key { tapped = ZhKey(k: k) }
+                    if let k = words[j].key { remember(k, j); tapped = ZhKey(k: k) }
                     else if !words[j].parts.isEmpty { compound = SvWordRef(id: words[j].core) }
                 }
                 .latFont(17)

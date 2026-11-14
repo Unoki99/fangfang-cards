@@ -12,6 +12,7 @@ struct UnknownView: View {
     @AppStorage("goal") private var goal = 3
     @State private var studying = false
     @State private var toning = false
+    @State private var toneGame = false
     @State private var particles = false
     @State private var scrambling = false
     @State private var readingOrder = false
@@ -49,7 +50,7 @@ struct UnknownView: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty || !due.isEmpty) { studying = true }
                     PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
-                                 enabled: (pool + due).contains { !$0.blankExamples.isEmpty }) { blanks = true }
+                                 enabled: (pool + due).contains { !store.blanks($0).isEmpty }) { blanks = true }
                     PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
                     PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty && !store.isSv) { readingOrder = true }
                     // (客語: no voice to listen to)
@@ -58,6 +59,8 @@ struct UnknownView: View {
                         PracticeTile(title: tr("助詞練習"), icon: "puzzlepiece", enabled: true) { particles = true }
                     } else {
                         PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak && !store.isSv) { toning = true }
+                        // (every syllable's tone, in its colour: a game)
+                        PracticeTile(title: tr("聲調色球"), icon: "circle.hexagongrid.fill", enabled: !store.isSv) { toneGame = true }
                     }
                     PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
                     PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: !store.isSv) { writing = true }
@@ -113,6 +116,7 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $reviewWriting) { StudyView(words: reviewWords, writeOnly: true, saveAs: "reviewWrite").environmentObject(store) }
         .fullScreenCover(isPresented: $blanks) { StudyView(blanksOnly: true).environmentObject(store) }
         .fullScreenCover(isPresented: $toning) { ToneView().environmentObject(store) }
+        .fullScreenCover(isPresented: $toneGame) { ToneGameView().environmentObject(store) }
         .fullScreenCover(isPresented: $particles) { JaParticleQuiz().environmentObject(store) }
         .fullScreenCover(isPresented: $scrambling) { ScrambleView().environmentObject(store) }
         .fullScreenCover(isPresented: $memory) { MemoryView().environmentObject(store) }
@@ -319,6 +323,7 @@ struct PracticeHelp: View {
             ("rectangle.3.group", trs("排句子"), trs("例句被打亂了，照華語的意思把詞排回去。")),
             ("character.book.closed", trs("看字排讀音"), trs("只看漢字，把讀音照順序排。")),
             ("waveform", trs("聲調練習"), trs("聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。")),
+            ("circle.hexagongrid.fill", trs("聲調色球"), trs("聽一個詞，照每個字的聲調點顏色球（顏色是設定裡選的聲調顏色）。每個字都算，全對有連對加分。")),
             ("square.grid.2x2", trs("翻牌配對"), trs("不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。")),
         ]
         do {

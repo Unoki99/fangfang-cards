@@ -163,6 +163,31 @@ struct ReviewStatsView: View {
                     }
                 }
 
+                // listening: radio and videos, and the words picked up
+                let lis = listenDays
+                let todayL = lis.last ?? (0, 0, 0)
+                section(tr("聽和看")) {
+                    HStack(spacing: 18) {
+                        stat(tr("電台（分鐘）"), Int(todayL.radio.rounded()), T.blueInk)
+                        stat(tr("影片（分鐘）"), Int(todayL.video.rounded()), T.oliveInk)
+                        stat(tr("今天存的詞"), todayL.words, T.greenInk)
+                    }
+                    bars(lis.map { ($0.radio, $0.video) }, labels: (0..<30).map { $0 % 7 == 2 ? dayLabel($0 - 29) : "" }, showNumbers: false,
+                         colors: (T.blueInk, T.oliveInk))
+                    HStack(spacing: 14) {
+                        legend(T.blueInk, tr("電台")); legend(T.oliveInk, tr("影片字幕"))
+                        Spacer()
+                        Text(tr("30 天共 \(Int(lis.reduce(0) { $0 + $1.radio + $1.video }.rounded())) 分鐘")).ffFont(.subheadline, .bold).foregroundStyle(T.glyph)
+                    }
+                    Text(tr("影片的時間在 Safari 查詞按「傳到 App」的時候一起傳過來。")).ffFont(.caption).foregroundStyle(T.muted)
+                }
+
+                // every day you did something, the last 20 weeks (all languages)
+                section(tr("學習日曆")) {
+                    Heatmap(days: activity)
+                    Text(tr("顏色越亮，那天做得越多：練習答題、聽電台、看影片字幕、存詞都算。")).ffFont(.caption).foregroundStyle(T.muted)
+                }
+
                 Text(tr("複習的間隔照 SM-2 的方法：學會以後 1 天、3 天，再來每次大約 2.5 倍；答錯就回到「不熟」重新學，以後的間隔也短一點。Algorithm SM-2, (C) Copyright SuperMemo World, 1991."))
                     .ffFont(.caption2).foregroundStyle(T.muted)
             }
@@ -172,6 +197,39 @@ struct ReviewStatsView: View {
         .navigationTitle(tr("練習統計"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { dismiss() } } }
+    }
+
+    private static func dayString(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// the last 30 days (oldest first): radio and video minutes, and the words added or saved
+    private var listenDays: [(radio: Double, video: Double, words: Int)] {
+        let cal = Calendar.current
+        let p = store.progress
+        var words: [String: Int] = [:]
+        for t in p.added.values { words[Self.dayString(Date(timeIntervalSince1970: t)), default: 0] += 1 }
+        for t in p.saved.values where t > 0 { words[Self.dayString(Date(timeIntervalSince1970: t)), default: 0] += 1 }
+        return (0..<30).reversed().map { back in
+            let d = Self.dayString(cal.date(byAdding: .day, value: -back, to: Date()) ?? Date())
+            let l = p.listen[d] ?? []
+            return (l.count > 0 ? l[0] : 0, l.count > 1 ? l[1] : 0, words[d] ?? 0)
+        }
+    }
+
+    /// how much was done each day ("2026-11-14" → a number): answers + minutes listened + words
+    private var activity: [String: Double] {
+        let p = store.progress
+        var a: [String: Double] = [:]
+        for (k, v) in p.log {
+            guard let day = k.split(separator: "|").last else { continue }
+            a[String(day), default: 0] += Double((v.first ?? 0) + (v.count > 1 ? v[1] : 0))
+        }
+        for (d, v) in p.listen { a[d, default: 0] += v.reduce(0, +) }
+        for t in p.added.values { a[Self.dayString(Date(timeIntervalSince1970: t)), default: 0] += 1 }
+        for t in p.saved.values where t > 0 { a[Self.dayString(Date(timeIntervalSince1970: t)), default: 0] += 1 }
+        return a
     }
 
     private func dayLabel(_ offset: Int) -> String {
@@ -214,15 +272,16 @@ struct ReviewStatsView: View {
     }
 
     /// a bar for each value (a: green / the language's colour, b: red on top of it)
-    private func bars(_ values: [(Double, Double)], labels: [String], showNumbers: Bool) -> some View {
+    /// (colors: the bottom part and the part on top; nil: answers, green and red)
+    private func bars(_ values: [(Double, Double)], labels: [String], showNumbers: Bool, colors: (Color, Color)? = nil) -> some View {
         let top = max(1, values.map { $0.0 + $0.1 }.max() ?? 1)
         return HStack(alignment: .bottom, spacing: values.count > 10 ? 3 : 8) {
             ForEach(Array(values.enumerated()), id: \.offset) { i, v in
                 VStack(spacing: 4) {
                     if showNumbers { Text(v.0 > 0 ? "\(Int(v.0))" : "").ffFont(.caption2, mono: true).foregroundStyle(T.muted) }
                     VStack(spacing: 0) {
-                        if v.1 > 0 { Rectangle().fill(T.rustInk).frame(height: 110 * v.1 / top) }
-                        Rectangle().fill(showNumbers ? T.btnInk : T.greenInk).frame(height: max(v.0 > 0 ? 2 : 0, 110 * v.0 / top))
+                        if v.1 > 0 { Rectangle().fill(colors?.1 ?? T.rustInk).frame(height: 110 * v.1 / top) }
+                        Rectangle().fill(colors?.0 ?? (showNumbers ? T.btnInk : T.greenInk)).frame(height: max(v.0 > 0 ? 2 : 0, 110 * v.0 / top))
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 3))
                     .frame(maxWidth: .infinity)
@@ -233,5 +292,41 @@ struct ReviewStatsView: View {
             }
         }
         .frame(height: showNumbers ? 150 : 135, alignment: .bottom)
+    }
+}
+
+/// 學習日曆: the last 20 weeks, a square a day (weeks across, Monday at the top), brighter for the days you did more
+struct Heatmap: View {
+    let days: [String: Double]
+    private let weeks = 20
+
+    var body: some View {
+        let cal = Calendar(identifier: .gregorian)
+        let today = cal.startOfDay(for: Date())
+        // (Monday of this week)
+        let wd = (cal.component(.weekday, from: today) + 5) % 7
+        let start = cal.date(byAdding: .day, value: -wd - 7 * (weeks - 1), to: today) ?? today
+        let top = max(1, days.values.max() ?? 1)
+        GeometryReader { g in
+            let size = min(18, (g.size.width - CGFloat(weeks - 1) * 3) / CGFloat(weeks))
+            HStack(alignment: .top, spacing: 3) {
+                ForEach(0..<weeks, id: \.self) { w in
+                    VStack(spacing: 3) {
+                        ForEach(0..<7, id: \.self) { d in
+                            let date = cal.date(byAdding: .day, value: w * 7 + d, to: start) ?? start
+                            let v = days[Self.key(date)] ?? 0
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(date > today ? Color.clear : (v <= 0 ? T.fn : T.greenInk.opacity(0.25 + 0.75 * min(1, sqrt(v / top)))))
+                                .frame(width: size, height: size)
+                        }
+                    }
+                }
+            }
+        }
+        .frame(height: 7 * 18 + 6 * 3)
+    }
+    private static func key(_ d: Date) -> String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 }

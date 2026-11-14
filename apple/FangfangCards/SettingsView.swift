@@ -618,6 +618,16 @@ private struct ExportSettings: View {
                 Text(tr("跟方方網站的收藏格式一樣（分號分隔）。"))
             }
             Section {
+                Button(tr("匯出到 Anki（不熟＋熟悉）")) {
+                    let r = UserDefaults.standard.integer(forKey: "rom"), pl = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
+                    share(Data(store.ankiTSV(store.unknownCards + store.knownCards, rom: r, place: pl).utf8), "方方-Anki-\(Lang.names[store.lang]).txt")
+                }
+            } header: {
+                Text(tr("Anki"))
+            } footer: {
+                Text(tr("在 Anki 選「檔案 → 匯入」，選這個檔案：正面是詞，背面是讀音、意思和一個例句（你自己存的句子優先）。會放進「方方詞卡::語言」牌組，標籤是「不熟」或「熟悉」。現在的語言的詞，拼寫和腔口照目前的設定。"))
+            }
+            Section {
                 Button(tr("備份檔分享／另存")) { share(store.backupData(), "方方詞卡備份.json") }
                 Button(tr("匯入備份／方方收藏")) { importing = true }
             } footer: {
@@ -749,8 +759,16 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 /// Safari 查詞: how to turn it on and use it (its own settings are in the card, under 設定)
 private struct SafariLookupSection: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.openURL) private var openURL
     var body: some View {
         Section {
+            // the words you know, to Safari 查詞 (it marks the new ones in subtitles and shows 懂 %)
+            Button {
+                if let p = SafariKnownSync.payload(store) { openURL(p.url) }
+            } label: {
+                Label(tr("把認識的詞傳到 Safari 查詞"), systemImage: "arrow.up.forward.app")
+            }
             Text(tr("在 Safari 用 Apple Pencil 停在一個中文字上面（不要碰到螢幕），就會跳出那個詞的華語和台語解釋。沒有懸停功能的 iPad 可以用手指選取一個詞，觸控板的游標也可以。卡片右上角的「設定」可以選拼寫、腔口、聲調顏色和要顯示的語言。按「加到不熟」或「收藏」選好詞以後，按「傳到 App」就會打開方方詞卡把詞加進來。"))
                 .ffFont(.footnote).foregroundStyle(T.muted)
             if SafariImport.waitingCount > 0 {
@@ -760,7 +778,7 @@ private struct SafariLookupSection: View {
         } header: {
             Text(tr("Safari 查詞"))
         } footer: {
-            Text(tr("開啟：設定 → App → Safari → 延伸功能 → 方方詞卡 查詞，打開並允許「所有網站」。查詞的資料在安裝的時候放進延伸功能裡，所以重新執行安裝以後才會有新的詞。"))
+Text(tr("開啟：設定 → App → Safari → 延伸功能 → 方方詞卡 查詞，打開並允許「所有網站」。查詞的資料在安裝的時候放進延伸功能裡，所以重新執行安裝以後才會有新的詞。「把認識的詞傳到 Safari 查詞」會在 Safari 打開 example.com，詞放在網址的 # 後面，不會傳到網路上；之後影片字幕裡沒學過的詞會有底線，面板上會顯示你懂多少。學了新詞以後可以再傳一次。"))
         }
     }
 }

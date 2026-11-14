@@ -149,6 +149,11 @@ struct Progress: Codable {
     var log: [String: [Int]] = [:]
     /// Safari 查詞: the sentences a word was saved from (key → sentences, the newest last)
     var found: [String: [String]] = [:]
+    /// a found sentence's sound, from the radio (sentence → "clip:<file>")
+    var clips: [String: String] = [:]
+    /// 練習統計: minutes listened to the radio and watched with the subtitle panel, per day
+    /// ("2026-11-14" → [radio minutes, video minutes])
+    var listen: [String: [Double]] = [:]
 
     init() {}
     init(from decoder: Decoder) throws {
@@ -164,6 +169,8 @@ struct Progress: Codable {
         srs = try c.decodeIfPresent([String: [Double]].self, forKey: .srs) ?? [:]
         log = try c.decodeIfPresent([String: [Int]].self, forKey: .log) ?? [:]
         found = try c.decodeIfPresent([String: [String]].self, forKey: .found) ?? [:]
+        clips = try c.decodeIfPresent([String: String].self, forKey: .clips) ?? [:]
+        listen = try c.decodeIfPresent([String: [Double]].self, forKey: .listen) ?? [:]
     }
 }
 
@@ -171,7 +178,7 @@ enum Audio {
     static let defaultBase = "https://unoki99.github.io/fangfang/"
     static func wordPath(_ id: Int) -> String { "audio/\(id / 1000)/\(id)(1).mp3" }
     static func examplePath(_ name: String) -> String {
-        if name.hasPrefix("tts:") || name.isEmpty { return name }      // 華語: read by the device (客語: nothing)
+        if name.hasPrefix("tts:") || name.hasPrefix("clip:") || name.isEmpty { return name }      // 華語: read by the device (客語: nothing); a radio clip
         let id = Int(name.split(separator: "-").first ?? "0") ?? 0
         return "leku/\(id / 1000)/\(name).mp3"
     }

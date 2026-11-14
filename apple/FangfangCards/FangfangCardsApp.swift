@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 import UIKit
 import CoreText
 import AVFoundation
@@ -10,6 +11,8 @@ struct FangfangCardsApp: App {
     @AppStorage(AppTheme.key) private var theme = AppTheme.night.rawValue
 
     init() {
+        // (電台鬧鐘: its notification, tapped while the app was closed, starts the radio)
+        UNUserNotificationCenter.current().delegate = RadioAlarmDelegate.shared
         // 日語 is read in kana until rōmaji is chosen
         UserDefaults.standard.register(defaults: [Lang.jaRomKey: 1])
         // 皓羅 font (DejaVu Sans subset) so tone marks sit right

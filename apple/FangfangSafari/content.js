@@ -30,6 +30,9 @@
         // 影片字幕 (YouTube, Viki): the panel on; the video stops while a word is looked up in it; the subtitles on
         // the video itself hidden while the panel shows them
         subs: true, subsPause: true, subsHideVideo: true,
+        // onlyNew: the tone colours (on pages and in subtitles) only on words you don't know yet (known: from the app,
+        // and the ones marked 認識 on the card here)
+        onlyNew: false,
         // subsFlow: the subtitles in one row at the bottom, flowing sideways (always so when the video is full screen)
         subsFlow: false,
         // subsFont: the subtitles' size (its own, apart from the card's; A− / A+ on the panel)
@@ -37,12 +40,26 @@
     let prefs = { ...DEFAULTS };
     let queue = [];               // [{k, w: "unknown" | "saved", h, x: the sentence}] waiting for 傳到 App
     let saved = [];               // [{h, c: [colours]}]: every word saved here (for the rainbow and the colours on the page)
+    // the words you know (認識) and are learning (不熟) in the app, sent with its 把認識的詞傳到 Safari 查詞: the
+    // subtitle panel marks the others and tells how much of a video you know
+    let knownSet = null, learnSet = new Set();
+    let localKnown = new Set();   // 認識 on the card here (sent to the app with 傳到 App, too)
+    const isKnown = w => (knownSet && knownSet.has(w)) || localKnown.has(w);
+    let watchCache = {};          // {"2026-11-14": minutes watched with the subtitle panel}, sent with 傳到 App
+    function setKnown(o) {
+        if (!o || !o.k) { knownSet = null; learnSet = new Set(); return; }
+        knownSet = new Set(Object.values(o.k).flat());
+        learnSet = new Set(Object.values(o.u || {}).flat());
+    }
     const store = browser.storage && browser.storage.local;
     if (store) {
-        store.get(["ffPrefs", "ffQueue", "ffSaved"]).then(r => {
+        store.get(["ffPrefs", "ffQueue", "ffSaved", "ffKnown", "ffWatch", "ffKnownLocal"]).then(r => {
+            localKnown = new Set(r.ffKnownLocal || []);
+            watchCache = r.ffWatch || {};
             prefs = fixPrefs(r.ffPrefs);
             queue = r.ffQueue || [];
             saved = r.ffSaved || [];
+            setKnown(r.ffKnown);
             pageMarks();
         }).catch(() => {});
         // (changed in the extension's own window, from its button in Safari's toolbar, or on another page)
@@ -50,9 +67,33 @@
             if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (isOpen() && last && !card.querySelector(".set")) redraw(); }
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
             if (ch.ffSaved) saved = ch.ffSaved.newValue || [];
-            if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on) hide(); pageMarks(); }
+            if (ch.ffWatch) watchCache = ch.ffWatch.newValue || {};
+            if (ch.ffKnownLocal) { localKnown = new Set(ch.ffKnownLocal.newValue || []); pageMarks(); if (subs && subs.key) subsColour(subs.key); }
+            if (ch.ffKnown) { setKnown(ch.ffKnown.newValue); if (subs && subs.key) subsColour(subs.key); }
+            if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on && !(subs && subs.pausedBy)) hide(); pageMarks(); }
             if (ch.ffPrefs && subs && subs.panel) { subsSize(); subsLayout(); }
         });
+    }
+    // the app's 把認識的詞傳到 Safari 查詞 opens example.com#fangfang-known=<the words, packed>: kept here
+    if (store && location.hostname === "example.com" && location.hash.startsWith("#fangfang-known=")) {
+        (async () => {
+            try {
+                const b = location.hash.slice("#fangfang-known=".length).replace(/-/g, "+").replace(/_/g, "/");
+                const bin = Uint8Array.from(atob(b + "===".slice((b.length + 3) % 4)), c => c.charCodeAt(0));
+                const txt = await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+                const o = JSON.parse(txt);
+                o.at = Date.now();
+                await store.set({ ffKnown: o });
+                const n = Object.values(o.k || {}).reduce((a, x) => a + x.length, 0);
+                const u = Object.values(o.u || {}).reduce((a, x) => a + x.length, 0);
+                history.replaceState(null, "", location.pathname);
+                const box = document.createElement("div");
+                box.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#16171d;color:#eef;" +
+                    "font:20px/1.6 -apple-system,'PingFang TC',sans-serif;z-index:2147483647;text-align:center;padding:24px";
+                box.textContent = "方方詞卡 查詞 收到了：認識的詞 " + n + " 個、不熟的詞 " + u + " 個。影片字幕裡沒學過的詞會有底線，面板上會顯示你懂多少。這一頁可以關掉了。";
+                document.documentElement.appendChild(box);
+            } catch (e) {}
+        })();
     }
     function fixPrefs(p) {
         const out = { ...DEFAULTS, ...(p || {}) };
@@ -63,6 +104,7 @@
     const savePrefs = () => store && store.set({ ffPrefs: prefs }).catch(() => {});
     const saveQueue = () => store && store.set({ ffQueue: queue }).catch(() => {});
     const saveSaved = () => store && store.set({ ffSaved: saved }).catch(() => {});
+    const saveKnownLocal = () => store && store.set({ ffKnownLocal: [...localKnown].slice(-20000) }).catch(() => {});
 
     let host = null, root = null, card = null, body = null, grip = null;
     let dwellTimer = null, hideTimer = null, lastSpot = "", shownSpot = "", busy = 0;
@@ -998,7 +1040,7 @@
                     const w = chars.slice(i, i + L).join("");
                     if (sh[w]) { found = sh[w][0]; len = L; break; }
                 }
-                if (found) {
+                if (found && !(prefs.onlyNew && isKnown(chars.slice(i, i + len).join("")))) {
                     const segsH = zhParts(found, meta).h || [];
                     const cols = segsH.flatMap(sg => [...sg.t].map(() => sg.c || null));
                     let p2 = pos;
@@ -1089,6 +1131,7 @@
         button.small { font-size: 12px; padding: 2px 8px; }
         button.on.u { background: #5b4136; border-color: #8b4a2d; color: #f3c9b2; }
         button.on.s { background: #5a5238; border-color: #8c7a38; color: #f1e3ae; }
+        button.on.k { background: #2f5a3d; border-color: #3fae66; color: #c8f2d4; }
         button.send { background: #44503a; border-color: #4f6c32; color: #d4efc0; }
         .msg { font-size: 14px; color: #f2f2f2; }
         .set { font-size: 13px; }
@@ -1228,9 +1271,11 @@
     function queued(k, w) { return queue.some(q => q.k === k && q.w === w); }
     function buttons(key, han, hanSegsList) {
         const row = el("div", "btns");
-        const u = el("button", "u"), sv = el("button", "s");
+        const u = el("button", "u"), sv = el("button", "s"), kn = el("button", "k");
         const paint = () => {
-            const qu = queued(key, "unknown"), qs = queued(key, "saved");
+            const qu = queued(key, "unknown"), qs = queued(key, "saved"), qk = queued(key, "known");
+            kn.textContent = qk ? "已選：認識" : "認識";
+            kn.classList.toggle("on", qk);
             u.textContent = qu ? "已選：加到不熟" : "加到不熟";
             u.classList.toggle("on", qu);
             sv.textContent = qs ? "已選：收藏" : "收藏";
@@ -1239,8 +1284,14 @@
         paint();
         const go = w => ev => {
             ev.preventDefault(); ev.stopPropagation();
-            if (queued(key, w)) queue = queue.filter(q => !(q.k === key && q.w === w));
-            else {
+            if (queued(key, w)) {
+                queue = queue.filter(q => !(q.k === key && q.w === w));
+                if (w === "known") { localKnown.delete(han); saveKnownLocal(); }
+            } else {
+                // (認識 and 加到不熟 don't go together)
+                if (w === "known") queue = queue.filter(q => !(q.k === key && q.w === "unknown"));
+                if (w === "unknown") { queue = queue.filter(q => !(q.k === key && q.w === "known")); localKnown.delete(han); saveKnownLocal(); }
+                if (w === "known") { localKnown.add(han); saveKnownLocal(); }
                 queue.push({ k: key, w, h: han, x: lastSentence || "" });
                 // (remembered here too: the rainbow and the colours on pages)
                 if (w === "saved" && !saved.some(x => x.h === han)) {
@@ -1256,18 +1307,23 @@
         };
         u.addEventListener("click", go("unknown"));
         sv.addEventListener("click", go("saved"));
-        row.append(u, sv);
+        kn.addEventListener("click", go("known"));
+        row.append(u, sv, kn);
         return row;
     }
 
     // opens the app with the words (Safari asks first whether to open it)
     function sendToApp() {
         if (!queue.length) return;
-        const ops = queue.map(q => q.x ? [q.k, q.w === "saved" ? "s" : "u", q.x] : [q.k, q.w === "saved" ? "s" : "u"]);
-        const json = JSON.stringify(ops);
-        const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        const op = w => w === "saved" ? "s" : (w === "known" ? "k" : "u");
+        const ops = queue.map(q => q.x ? [q.k, op(q.w), q.x] : [q.k, op(q.w)]);
+        const pack = o => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        // (and the minutes watched with the subtitle panel, for 練習統計)
+        // (kept in memory too, so the app opens straight from the tap: Safari only opens it from a tap)
+        let w = "";
+        if (Object.keys(watchCache).length) { w = "&w=" + pack(watchCache); watchCache = {}; if (store) store.set({ ffWatch: {} }).catch(() => {}); }
         const a = document.createElement("a");
-        a.href = "fangfangcards://safari?ops=" + b64;
+        a.href = "fangfangcards://safari?ops=" + pack(ops) + w;
         a.style.display = "none";
         (document.body || document.documentElement).appendChild(a);
         a.click();
@@ -1469,7 +1525,8 @@
     }, { capture: true, passive: true });
 
     function hover(e) {
-        if (!prefs.on || !alive()) return;                                    // (turned off with its button in Safari's toolbar)
+        // (網頁查詞 turned off in Safari's toolbar: only the subtitle panel's words are still looked up)
+        if (!alive() || (!prefs.on && !(e.target && e.target.closest && e.target.closest("#ff-subs")))) return;
         if (e.buttons !== 0) return;                              // writing / dragging, not hovering
         if (!metaP) getMeta();                                    // (the Pencil is near: the tables read already)
         if (inCard(e)) { clearTimeout(hideTimer); clearTimeout(dwellTimer); return; }
@@ -1573,6 +1630,7 @@
             ytTracks: [], ytTrans: [], cur: "",
             panel: null, rail: null, view: null, lines: [], cues: [], now: -2,
             manual: 0, manualUntil: 0, collapsed: false, pausedBy: "", tried: new Set(), textTracksAt: 0,
+            loop: -1, slow: false, pauseEach: false, stopped: -1, known: null,
         };
         subs = st;
         // the page's own part (sees the player's downloads): in the page's world. Safari runs it from the manifest;
@@ -1864,7 +1922,14 @@
 #ff-subs .top { overflow: hidden; }
 #ff-subs .btn { all: unset; cursor: pointer; padding: 3px 8px; border-radius: 7px; font-size: 12px; color: #c9cce0;
   background: rgba(255,255,255,0.08); }
-#ff-subs .view { position: absolute; left: 0; right: 0; top: 38px; bottom: 0; overflow: hidden; touch-action: none;
+#ff-subs .study { position: absolute; left: 0; right: 0; top: 38px; height: 34px; display: flex; align-items: center; gap: 6px;
+  padding: 0 10px; box-sizing: border-box; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.07); scrollbar-width: none; }
+#ff-subs .study::-webkit-scrollbar { display: none; }
+#ff-subs .study .btn { flex: none; }
+#ff-subs .study .btn.on { background: rgba(120,200,255,0.25); color: #e9f6ff; box-shadow: inset 0 0 0 1px rgba(150,215,255,0.55); }
+#ff-subs .study .meter { flex: none; margin-left: auto; font-size: 12px; color: #a7abc0; padding-left: 6px; }
+#ff-subs.mini .study { display: none; }
+#ff-subs .view { position: absolute; left: 0; right: 0; top: 72px; bottom: 0; overflow: hidden; touch-action: none;
   -webkit-mask-image: linear-gradient(transparent 0, #000 14%, #000 84%, transparent 100%);
   mask-image: linear-gradient(transparent 0, #000 14%, #000 84%, transparent 100%); }
 #ff-subs .rail { position: absolute; left: 0; right: 0; top: 0; padding: 0 12px; will-change: transform;
@@ -1876,6 +1941,8 @@
 #ff-subs .tm { display: inline-block; font: 11px ui-monospace, Menlo, monospace; color: #8b90a8; margin-right: 8px;
   cursor: pointer; vertical-align: 2px; user-select: none; -webkit-user-select: none; }
 #ff-subs .tx { display: inline; }
+#ff-subs .new { text-decoration: underline dotted rgba(255,255,255,0.55); text-underline-offset: 5px; text-decoration-thickness: 2px; }
+#ff-subs .learn { text-decoration: underline solid rgba(255,214,102,0.85); text-underline-offset: 5px; text-decoration-thickness: 2px; }
 #ff-subs .h { text-shadow: 0 0 7px currentColor; }
 #ff-subs .empty { display: block; padding: 18px; color: #8b90a8; font-size: 14px; }
 #ff-subs.flow { left: 12px; right: 12px; bottom: 12px; top: auto; width: auto; height: 116px; }
@@ -1897,7 +1964,10 @@
         const view = document.createElement("div"); view.className = "view";
         const rail = document.createElement("div"); rail.className = "rail";
         view.appendChild(rail);
-        p.append(top, view);
+        // the study row: the line before / after, this line again and again, slower, a stop after each line
+        const study = document.createElement("div"); study.className = "study";
+        p.append(top, study, view);
+        st.study = study;
         document.documentElement.appendChild(p);
         st.panel = p; st.rail = rail; st.view = view; st.top = top;
 
@@ -1910,7 +1980,11 @@
             const tm = e.target.closest && e.target.closest(".tm");
             if (tm) {
                 const v = subsVideo(); const i = +tm.dataset.i;
-                if (v && st.cues[i]) { v.currentTime = st.cues[i].s + 0.01; st.manual = 0; st.manualUntil = 0; }
+                if (v && st.cues[i]) {
+                    v.currentTime = st.cues[i].s + 0.01; st.manual = 0; st.manualUntil = 0;
+                    if (st.loop >= 0) { st.loop = i; subsStudy(); }        // (repeating: now this line)
+                    st.stopped = -1;
+                }
                 return;
             }
             if (d.type !== "touch") return;          // (the Pencil and trackpad look words up by hovering)
@@ -1975,8 +2049,8 @@
         st.panel.classList.toggle("narrow", !flow && !wide);
         st.panel.classList.toggle("mini", st.collapsed);
         // (the row at the bottom: tall enough for the letters)
-        st.panel.style.height = flow && !st.collapsed ? Math.round(40 + Math.max(76, 18 * (prefs.subsFont || 1) * 3)) + "px" : "";
-        const has = st.cues.length > 0 && prefs.subs && prefs.on;
+        st.panel.style.height = flow && !st.collapsed ? Math.round(74 + Math.max(76, 18 * (prefs.subsFont || 1) * 3)) + "px" : "";
+        const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
         subsMeasure();
@@ -2041,6 +2115,7 @@
         const bigger = document.createElement("span"); bigger.className = "btn"; bigger.textContent = "A+";
         bigger.title = "字大一點"; bigger.addEventListener("click", step(1));
         st.top.append(smaller, bigger, eye, lay, min);
+        subsStudy();
     }
 
     // the subtitles' size (from 設定, or A− / A+ on the panel)
@@ -2085,7 +2160,7 @@
 
     // the 漢字 in their tone colours (華語's, as the page colours work), glowing a little; letters stay plain
     async function subsColour(key) {
-        if (!prefs.colours) return;
+        if (!prefs.colours && !knownSet && !localKnown.size) return;
         const meta = await getMeta();
         const st = subs;
         if (!meta || st.key !== key) return;
@@ -2097,6 +2172,7 @@
             files.set(nm, await getFile(nm));
         }));
         if (st.key !== key) return;
+        let total = 0, knownN = 0;
         st.lines.forEach((line, li) => {
             const tx = line.querySelector(".tx");
             const chars = [...st.cues[li].t];
@@ -2107,6 +2183,7 @@
             while (i < chars.length) {
                 const cp = chars[i].codePointAt(0);
                 if (!isHan(cp)) { plain += chars[i]; i++; continue; }
+                const wordStart = i;
                 const sh = files.get(`d-zh-${String(cp % (meta.shards || 256)).padStart(3, "0")}.json`);
                 let cols = [], len = 1;
                 if (sh) for (let L = Math.min(meta.max || 12, chars.length - i); L >= 1; L--) {
@@ -2118,18 +2195,37 @@
                     }
                 }
                 flush();
+                // (the word: 認識 → as it is; 不熟 → a line under it; never seen → a dotted line)
+                const word = chars.slice(wordStart, wordStart + len).join("");
+                let box = frag;
+                const known = isKnown(word);
+                if (knownSet) {
+                    total++;
+                    const k = known;
+                    if (k) knownN++;
+                    else {
+                        box = document.createElement("span");
+                        box.className = learnSet.has(word) ? "learn" : "new";
+                        frag.appendChild(box);
+                    }
+                }
                 for (let j = 0; j < len; j++) {
                     const sp = document.createElement("span");
                     sp.className = "h";
-                    if (cols[j]) sp.style.color = "#" + cols[j];
+                    // (只替不認識的詞上色: a word you know stays plain, without its glow)
+                    if (cols[j] && prefs.colours && !(prefs.onlyNew && known)) sp.style.color = "#" + cols[j];
+                    else if (prefs.onlyNew && known) sp.className = "";
                     sp.textContent = chars[i + j];
-                    frag.appendChild(sp);
+                    box.appendChild(sp);
                 }
                 i += len;
             }
             flush();
             tx.replaceChildren(frag);
         });
+        // 懂 %: the words of the video you know
+        st.known = knownSet && total ? Math.round(100 * knownN / total) : null;
+        subsStudy();
         subsMeasure();
         subsPlace(false);
     }
@@ -2143,13 +2239,24 @@
         if (!st.panel || st.collapsed) return;
         const v = subsVideo();
         if (!v) return;
+        subsClock(v);
         const t = v.currentTime;
         // (the last line that has started)
         let lo = 0, hi = st.cues.length - 1, at = -1;
         while (lo <= hi) { const m = (lo + hi) >> 1; if (st.cues[m].s <= t + 0.05) { at = m; lo = m + 1; } else hi = m - 1; }
         if (st.manualUntil && Date.now() > st.manualUntil) { st.manualUntil = 0; st.manual = 0; subsPlace(true); }
+        if (st.slow && v.playbackRate !== 0.75) v.playbackRate = 0.75;
         // (the row at the bottom: moving all the time, at the pace of the lines)
         if (st.flow && !st.manualUntil) subsFlowAt(t, at);
+        // 重複: back to the line's start when it's over
+        if (st.loop >= 0 && st.cues[st.loop]) {
+            const c = st.cues[st.loop], end = subsEnd(st.loop);
+            if (t >= end + 0.12 || t < c.s - 1.5) { v.currentTime = c.s + 0.01; return; }
+        }
+        // 一句一停: the video waits at the end of each line (play goes on to the next)
+        else if (st.pauseEach && at >= 0 && st.stopped !== at && !v.paused && t >= subsEnd(at) - 0.08) {
+            st.stopped = at; v.pause();
+        }
         if (at === st.now) return;
         const prev = st.now;
         st.now = at;
@@ -2160,6 +2267,59 @@
         else for (let i = from; i <= to; i++) if (st.lines[i]) st.lines[i].classList.toggle("past", i < at);
         if (at >= 0 && st.lines[at]) st.lines[at].classList.add("now");
         if (!st.manualUntil) subsPlace(true);
+    }
+
+    // 練習統計 in the app: the time watched with the subtitle panel (playing, the panel open), kept by day and sent
+    // with 傳到 App
+    let watchSince = 0, watchSecs = 0;
+    function subsClock(v) {
+        const now = Date.now();
+        if (!v.paused && !v.ended && document.visibilityState === "visible") {
+            if (watchSince) watchSecs += Math.min(1, (now - watchSince) / 1000);
+            watchSince = now;
+        } else watchSince = 0;
+        if (watchSecs >= 30 && store) {
+            const add = watchSecs; watchSecs = 0;
+            const d = new Date(), day = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+            watchCache[day] = (watchCache[day] || 0) + add / 60;
+            store.set({ ffWatch: watchCache }).catch(() => {});
+        }
+    }
+
+    /// where a line ends: its own end, or the next line's start when that comes first
+    function subsEnd(i) {
+        const st = subs, c = st.cues[i], n = st.cues[i + 1];
+        return n ? Math.min(c.e, n.s) : c.e;
+    }
+    // the study row's buttons
+    function subsStudy() {
+        const st = subs;
+        if (!st.study) return;
+        st.study.replaceChildren();
+        const b = (text, on, title, f) => {
+            const x = document.createElement("span");
+            x.className = "btn" + (on ? " on" : ""); x.textContent = text; x.title = title;
+            x.addEventListener("click", e => { e.stopPropagation(); f(); subsStudy(); });
+            st.study.appendChild(x);
+        };
+        const v = () => subsVideo();
+        const go = d => {
+            const vv = v(); if (!vv || !st.cues.length) return;
+            const i = Math.max(0, Math.min(st.cues.length - 1, (st.now < 0 ? 0 : st.now) + d));
+            vv.currentTime = st.cues[i].s + 0.01; st.stopped = -1; st.manual = 0; st.manualUntil = 0;
+            if (st.loop >= 0) st.loop = i;
+            if (vv.paused) vv.play().catch(() => {});
+        };
+        b("上一句", false, "回到上一句", () => go(-1));
+        b("重複", st.loop >= 0, "一直重複這一句", () => { st.loop = st.loop >= 0 ? -1 : Math.max(0, st.now); });
+        b("慢速", !!st.slow, "放慢到 0.75 倍", () => { st.slow = !st.slow; const vv = v(); if (vv) vv.playbackRate = st.slow ? 0.75 : 1; });
+        b("一句一停", !!st.pauseEach, "每一句說完影片就暫停，按播放再說下一句", () => { st.pauseEach = !st.pauseEach; st.stopped = Math.max(-1, st.now - 1); });
+        b("下一句", false, "跳到下一句", () => go(1));
+        // (how much of the video's words you know: 懂 87%)
+        const m = document.createElement("span"); m.className = "meter";
+        m.textContent = st.known != null ? "懂 " + st.known + "%" : "";
+        m.title = "這部影片的字幕裡，你認識的詞佔多少";
+        st.study.appendChild(m);
     }
 
     // where each line's middle is (the row at the bottom), measured once its words are drawn

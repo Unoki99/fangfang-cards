@@ -508,6 +508,7 @@ struct ZhEntryBody: View {
             if dict.isJa { JaWordExtras(dict: dict, entry: entry) }
             // 瑞典語: the word's parts (tap one), its Chinese meanings, its forms
             if dict.isSv { SvWordExtras(dict: dict, entry: entry) }
+            FrequencyBadge(key: entry.k)
             FoundSentences(key: entry.k)
             // a single character: 說文解字 (when installed)
             if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }
@@ -823,6 +824,12 @@ struct ZhConvertPane: View {
             VStack(alignment: .leading, spacing: 12) {
                 if lyrics {
                     if !pieces.isEmpty {
+                        // how much of the song you know: 認識 of the words the dictionary has
+                        let ks = words.compactMap(\.key).compactMap { store.cardStatus($0) }
+                        if !ks.isEmpty {
+                            let n = Int((100 * Double(ks.filter { $0 == 1 }.count) / Double(ks.count)).rounded())
+                            Text(tr("懂 \(n)%（虛線：還沒學的詞，黃線：不熟）")).ffFont(.footnote).foregroundStyle(T.muted)
+                        }
                         LyricsColumns {
                             panel(0, trs("漢字"), dict.sentenceHan(pieces, store.zhPlace, base: T.glyph))
                             panel(romIndex + 1, trs(Lang.romNames[romIndex]), dict.sentence(pieces, romIndex, store.zhPlace))
@@ -911,15 +918,24 @@ struct ZhConvertPane: View {
                 // the 漢字: each word can be tapped to see it (it swells when pressed or under the pointer;
                 // hold and slide to swell the word under the finger, let go to open it)
                 let w = words
-                SwellWords(pieces: w.map { (dict.sentenceHan([$0.piece], store.zhPlace, base: T.glyph), $0.key != nil, $0.newLine, 0) }, vPad: 3) { j in
-                    if let k = w[j].key { focused = false; tapped = ZhKey(k: k) }
+                SwellWords(pieces: w.map { x in
+                    var a = dict.sentenceHan([x.piece], store.zhPlace, base: T.glyph)
+                    // (the 歌詞 page: a word you don't know yet underlined; 不熟 in yellow)
+                    if lyrics, let k = x.key, let st = store.cardStatus(k), st != 1 {
+                        let line: Text.LineStyle = st == 2 ? Text.LineStyle(pattern: .solid, color: T.oliveInk)
+                            : Text.LineStyle(pattern: .dot, color: Color.white.opacity(0.5))
+                        a.underlineStyle = line
+                    }
+                    return (a, x.key != nil, x.newLine, 0)
+                }, vPad: 3) { j in
+                    if let k = w[j].key { focused = false; remember(k, j, w); tapped = ZhKey(k: k) }
                 }
                 .ffFont(.title3)
             } else if lyrics {
                 // (the 歌詞 window: the reading's words swell and open too, like the 漢字)
                 let w = words
                 SwellWords(pieces: romPieces(w, i - 1), vPad: 3) { j in
-                    if let k = w[j].key { tapped = ZhKey(k: k) }
+                    if let k = w[j].key { remember(k, j, w); tapped = ZhKey(k: k) }
                 }
                 .environment(\.noToneGlow, true)      // (letters: no glow here, it got slow)
                 .ffFont(.body)
@@ -954,6 +970,17 @@ struct ZhConvertPane: View {
             out.append((a, x.key != nil, x.newLine, 0))
         }
         return out
+    }
+
+    /// (the 歌詞 page: the line the word is in, kept with it if it's saved or added to 不熟 from here)
+    private func remember(_ k: String, _ j: Int, _ w: [(piece: ZhPiece, key: String?, newLine: Bool)]) {
+        guard lyrics else { return }
+        var a = j
+        while a > 0 && !w[a].newLine { a -= 1 }
+        var b = j + 1
+        while b < w.count && !w[b].newLine { b += 1 }
+        let line = w[a..<b].map { $0.piece.text.joined() }.joined().trimmingCharacters(in: .whitespaces)
+        store.lyricContext = (k, line)
     }
 
     /// the converted text's words (line breaks start a new line), with the entry each one opens

@@ -79,14 +79,58 @@ struct FoundSentences: View {
         let list = store.foundSentences(key)
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Text(tr("在網頁上看到的句子")).ffFont(.caption, .bold).foregroundStyle(T.muted)
+                Text(tr("你看到、聽到的句子")).ffFont(.caption, .bold).foregroundStyle(T.muted)
                 ForEach(list.reversed(), id: \.self) { s in
-                    Text(s).ffFont(.subheadline).foregroundStyle(T.glyph).textSelection(.enabled)
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        // (saved from the 歌詞 page while the radio played: the radio's own sound)
+                        if let c = store.clip(s) { PlayButton(path: c, size: 26) }
+                        Text(s).ffFont(.subheadline).foregroundStyle(T.glyph).textSelection(.enabled)
+                    }
                 }
+                Text(tr("「例句填空」也會用這些句子出題。")).ffFont(.caption2).foregroundStyle(T.muted)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.55)))
+        }
+    }
+}
+
+
+/// 常用度: how common a word is (its place in the language's list of words, most common first), as five bars
+struct FrequencyBadge: View {
+    let key: String
+    @EnvironmentObject var store: Store
+    /// the bars a place gets: the first 1000 words 5, then 3000, 8000, 20000
+    static func level(_ rank: Int) -> Int {
+        switch rank {
+        case ..<1000: return 5
+        case ..<3000: return 4
+        case ..<8000: return 3
+        case ..<20000: return 2
+        default: return 1
+        }
+    }
+    var body: some View {
+        let r = store.rankOf(key)
+        if r != Int.max {
+            let n = Self.level(r)
+            HStack(spacing: 10) {
+                HStack(alignment: .bottom, spacing: 3) {
+                    ForEach(1...5, id: \.self) { i in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(i <= n ? T.greenInk : T.fnEdge)
+                            .frame(width: 6, height: CGFloat(6 + i * 3))
+                    }
+                }
+                Text(tr("常用度：第 \(r + 1) 個")).ffFont(.footnote).foregroundStyle(T.glyph)
+                Text([trs("少見"), trs("不常用"), trs("一般"), trs("常用"), trs("很常用")][n - 1]).ffFont(.footnote, .bold)
+                    .foregroundStyle(n >= 4 ? T.greenInk : T.muted)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.55)))
+            .accessibilityElement(children: .combine)
         }
     }
 }

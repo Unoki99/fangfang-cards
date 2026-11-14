@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>方方詞卡 查詞 設定</title>
+<style>
+    :root {
+        color-scheme: dark;
+        --bg: #121318; --panel: #1c1d24; --panel2: #23242c; --edge: #2e3039; --ink: #eef0f6; --muted: #9a9eb0;
+        --zh: #4f7dff; --zh-ink: #9ad0ff; --tw: #3fae66; --tw-ink: #b6f0c8; --yue: #c9a227; --yue-ink: #ffe58a;
+        --hak: #d8434f; --hak-ink: #ffb3b8; --sv: #3fc9bd; --sv-ink: #9cf0e6;
+        --web: #6eaaff; --subs: #c39bff; --card: #ffa94d; --known: #6fdc7f; --send: #ff8cc6;
+        --tip: #6eaaff; --good: #6fdc7f; --warn: #ffd166;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink);
+        font: 16px/1.5 -apple-system, "PingFang TC", "Heiti TC", sans-serif; -webkit-text-size-adjust: none; }
+    /* (the whole screen: on an iPad or a wide window the parts sit side by side) */
+    html, body { min-height: 100%; }
+    .wrap { max-width: none; min-height: 100vh; margin: 0; padding: 24px clamp(16px, 3vw, 40px) 60px; display: grid; grid-template-columns: 1fr; gap: 20px; }
+    @media (min-width: 860px) { .wrap { grid-template-columns: 220px 1fr; align-items: start; } }
+
+    header { grid-column: 1 / -1; display: flex; align-items: center; gap: 14px; }
+    .logo { flex: none; width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font-size: 28px; font-weight: 700;
+        background: linear-gradient(135deg, #3fae66, #4f7dff); box-shadow: 0 6px 20px rgba(79,125,255,.35); }
+    header h1 { margin: 0; font-size: 24px; }
+    header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+
+    nav { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+    nav::-webkit-scrollbar { display: none; }
+    @media (min-width: 860px) { nav { position: sticky; top: 20px; flex-direction: column; overflow: visible; } }
+    nav a { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px; color: var(--ink);
+        text-decoration: none; background: var(--panel); border: 1px solid var(--edge); font-size: 15px; }
+    nav a:hover { background: var(--panel2); }
+    nav a .dot { width: 10px; height: 10px; border-radius: 5px; background: var(--c); box-shadow: 0 0 8px var(--c); }
+
+    main { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+    @media (min-width: 1180px) {
+        main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+        #switches, #languages, #subs { grid-column: 1 / -1; }
+    }
+    section.part { background: var(--panel); border: 1px solid var(--edge); border-radius: 18px; padding: 18px 18px 16px;
+        border-top: 4px solid var(--c); scroll-margin-top: 16px; }
+    section.part > h2 { margin: 0 0 4px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+    section.part > h2 .dot { width: 12px; height: 12px; border-radius: 6px; background: var(--c); box-shadow: 0 0 10px var(--c); }
+    section.part > .lead { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--edge); }
+    .row:first-of-type { border-top: none; }
+    .row .what { min-width: 0; }
+    .row .what b { display: block; font-weight: 600; }
+    .row .what small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .row.stack { flex-direction: column; align-items: stretch; }
+    .dim { opacity: .45; pointer-events: none; }
+
+    .switch { flex: none; position: relative; width: 54px; height: 32px; border-radius: 16px; background: #3a3b42; border: 1px solid #4a4b53; cursor: pointer; padding: 0; }
+    .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 12px; background: #f2f2f2; transition: left .18s; }
+    .switch.on { background: var(--c, #3fae66); border-color: var(--c, #3fae66); }
+    .switch.on::after { left: 25px; }
+
+    .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+    .seg button { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 10px; background: var(--panel2); color: var(--ink);
+        border: 1px solid var(--edge); cursor: pointer; }
+    .seg button.on { background: color-mix(in srgb, var(--c) 28%, transparent); border-color: var(--c); color: #fff; }
+
+    .langs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+    .lang { --c: var(--zh); border-radius: 14px; padding: 12px 14px; background: color-mix(in srgb, var(--c) 10%, var(--panel2));
+        border: 1px solid color-mix(in srgb, var(--c) 40%, var(--edge)); border-top: 4px solid var(--c); }
+    .lang h3 { margin: 0 0 6px; font-size: 17px; color: var(--ink2); display: flex; justify-content: space-between; align-items: center; }
+    .lang label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+    .lang.zh { --c: var(--zh); --ink2: var(--zh-ink); } .lang.tw { --c: var(--tw); --ink2: var(--tw-ink); }
+    .lang.yue { --c: var(--yue); --ink2: var(--yue-ink); } .lang.hak { --c: var(--hak); --ink2: var(--hak-ink); }
+    .lang.sv { --c: var(--sv); --ink2: var(--sv-ink); }
+
+    .tip { margin-top: 12px; padding: 10px 12px 10px 14px; border-radius: 12px; font-size: 14px; color: #dfe3ee;
+        background: color-mix(in srgb, var(--t) 10%, transparent); border-left: 4px solid var(--t); }
+    .tip b { color: var(--t); margin-right: 6px; }
+    .tip.how { --t: var(--tip); } .tip.good { --t: var(--good); } .tip.warn { --t: var(--warn); }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 12px; height: 12px; border-radius: 3px; background: var(--t); display: inline-block; }
+
+    .tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; margin-top: 6px; }
+    .tool { background: var(--panel2); border: 1px solid var(--edge); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+    .tool b { display: inline-block; padding: 1px 8px; border-radius: 7px; background: rgba(120,200,255,.18); color: #e9f6ff;
+        border: 1px solid rgba(150,215,255,.45); margin-bottom: 4px; font-size: 13px; }
+    .tool span { display: block; color: var(--muted); }
+
+    .big { font-size: 28px; font-weight: 700; }
+    .stats { display: flex; gap: 22px; flex-wrap: wrap; }
+    .stats div small { display: block; color: var(--muted); font-size: 13px; }
+    .words { margin: 8px 0 12px; font-size: 15px; line-height: 1.8; }
+    .words span { display: inline-block; padding: 1px 9px; margin: 2px 4px 2px 0; border-radius: 8px; background: var(--panel2); border: 1px solid var(--edge); }
+    .words span.s { border-color: var(--yue); }
+    button.act { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 11px; background: var(--panel2); color: var(--ink);
+        border: 1px solid var(--edge); cursor: pointer; }
+    button.act.main { background: color-mix(in srgb, var(--c) 30%, transparent); border-color: var(--c); color: #fff; }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+    .off { padding: 12px 14px; border-radius: 12px; background: rgba(255,209,102,.1); border-left: 4px solid var(--warn); }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <div class="logo">方</div>
+        <div><h1>方方詞卡 查詞 設定</h1><p>Safari 裡查詞、看影片字幕，再把詞傳到方方詞卡。改了馬上生效，不用按儲存。</p></div>
+    </header>
+    <nav id="nav"></nav>
+    <main id="main"></main>
+</div>
+<script src="settings.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

@@ -863,6 +863,7 @@ struct DictEntryBody: View {
                 }
             }
             ForEach(dict.senses(key), id: \.n) { s in sense(s) }
+            FrequencyBadge(key: key)
             FoundSentences(key: key)
             // a single character: 說文解字 (when installed)
             if han.count == 1 { ShuowenBlock(ch: han) }

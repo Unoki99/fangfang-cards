@@ -55,6 +55,8 @@ final class Player: ObservableObject {
     }
 
     private func load(_ path: String) async throws -> Data {
+        // (a sentence's sound kept from the radio)
+        if path.hasPrefix("clip:") { return try Data(contentsOf: RadioClip.url(path)) }
         // a whole web address (粵語 recordings on Wikimedia Commons) or a file of the 台語 recordings
         let web = path.hasPrefix("https://")
         let name = web ? "web-" + String(path.split(separator: "/").last ?? "") : path.replacingOccurrences(of: "/", with: "_")

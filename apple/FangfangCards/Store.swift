@@ -342,6 +342,42 @@ final class Store: ObservableObject {
         progress.found[key] = Array(list.suffix(5))
     }
     func foundSentences(_ key: String) -> [String] { progress.found[key] ?? [] }
+    /// 例句填空: the dictionary's example sentences with the word blanked out, and first the sentences you saved the
+    /// word from yourself (from Safari, subtitles, lyrics: with the radio's sound when it was kept)
+    func blanks(_ c: Card) -> [Example] {
+        let mine = foundSentences(c.k).filter { !c.h.isEmpty && $0.contains(c.h) }.map { s in
+            Example(h: s, r: [s, s, s], z: "", n: clip(s) ?? "", bh: s.replacingOccurrences(of: c.h, with: "＿＿"), br: nil)
+        }
+        return mine + c.blankExamples
+    }
+    /// a found sentence's sound (from the radio), when it has one
+    func clip(_ sentence: String) -> String? { progress.clips[sentence] }
+
+    /// the 歌詞 page: the line a word was tapped in. When that word is then saved or added to 不熟, the line is kept
+    /// with it (and, while the radio plays, the last seconds of the radio as its sound)
+    var lyricContext: (key: String, sentence: String)?
+    func attachContext(_ key: String) {
+        guard let c = lyricContext, c.key == key else { return }
+        lyricContext = nil
+        addFoundSentence(key, c.sentence)
+        if RadioPlayer.shared.isOn, let clip = RadioClip.shared.save() { progress.clips[c.sentence] = clip }
+    }
+
+    /// 練習統計: listening time (radio = 0, video = 1), added to today
+    func addListening(_ minutes: Double, kind: Int, on date: Date = Date()) {
+        guard minutes > 0 else { return }
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        addListening(day: String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0), minutes, kind: kind)
+    }
+    /// (a day as "2026-11-14": the video minutes Safari 查詞 sends)
+    func addListening(day: String, _ minutes: Double, kind: Int) {
+        guard minutes > 0, kind >= 0, kind < 2 else { return }
+        var v = progress.listen[day] ?? [0, 0]
+        while v.count < 2 { v.append(0) }
+        v[kind] += minutes
+        progress.listen[day] = v
+        save()
+    }
 
     /// a dictionary was installed or removed (設定 → 詞典資料): read again if it's the one in use
     func dictionaryChanged(_ kind: Int) {
@@ -771,6 +807,7 @@ final class Store: ObservableObject {
         if known { p.streak[c.k] = nil } else if p.streak[c.k] == nil { p.streak[c.k] = 0 }
         if known { knowChars(of: c.k, in: &p) }
         progress = p
+        if !known { attachContext(c.k) }
         save(syncChars: false)
     }
 
@@ -1100,7 +1137,9 @@ final class Store: ObservableObject {
 
     func toggleSaved(_ key: String) {
         let now = Date().timeIntervalSince1970
-        progress.saved[key] = isSaved(key) ? -now : now
+        let on = !isSaved(key)
+        progress.saved[key] = on ? now : -now
+        if on { attachContext(key) }
         save()
     }
 
@@ -1271,6 +1310,30 @@ final class Store: ObservableObject {
     // MARK: export / import
 
     /// nine columns, semicolon separated, one row per meaning (same as the website's 收藏 CSV)
+    /// Anki: a file to import (File → Import): front = the word, back = its reading, meanings and a sentence (the one
+    /// you saved the word from first), tagged 不熟 / 熟悉 and the language; into the deck 方方詞卡::<language>
+    func ankiTSV(_ list: [Card], rom: Int, place: Int) -> String {
+        func html(_ s: String) -> String {
+            s.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+                .replacingOccurrences(of: ">", with: "&gt;").replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: "<br>")
+        }
+        let langName = Lang.names[lang]
+        var rows = ["#separator:tab", "#html:true", "#notetype:Basic", "#deck:方方詞卡::" + langName, "#tags column:3"]
+        for c in list {
+            let reading = String(cardRom(c, rom, place).characters)
+            let means = c.d.prefix(3).map { ($0.p.isEmpty ? "" : "(" + $0.p + ") ") + $0.t }
+            var back = "<div style=\"font-size:1.2em\">" + html(reading) + "</div><div>" + means.map(html).joined(separator: "<br>") + "</div>"
+            if let s = foundSentences(c.k).last {
+                back += "<br><div style=\"color:#888\">" + html(s) + "</div>"
+            } else if let x = c.d.flatMap(\.x).first {
+                back += "<br><div style=\"color:#888\">" + html(x.h) + (x.z.isEmpty ? "" : "<br>" + html(x.z)) + "</div>"
+            }
+            let st = progress.status[c.k] == 1 ? "熟悉" : "不熟"
+            rows.append([html(c.h), back, "方方 " + st + " " + langName].joined(separator: "\t"))
+        }
+        return rows.joined(separator: "\n") + "\n"
+    }
+
     func csv(_ list: [Card]) -> String {
         func q(_ s: String) -> String {
             s.contains(where: { $0 == ";" || $0 == "\"" || $0 == "\n" })
