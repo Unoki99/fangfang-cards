@@ -1527,6 +1527,9 @@
     function hover(e) {
         // (網頁查詞 turned off in Safari's toolbar: only the subtitle panel's words are still looked up)
         if (!alive() || (!prefs.on && !(e.target && e.target.closest && e.target.closest("#ff-subs")))) return;
+        // (the subtitle panel: only its lines' words, not its buttons, menu or times)
+        const inPanel = e.target && e.target.closest && e.target.closest("#ff-subs");
+        if (inPanel && !e.target.closest("#ff-subs .tx")) { clearTimeout(dwellTimer); return; }
         if (e.buttons !== 0) return;                              // writing / dragging, not hovering
         if (!metaP) getMeta();                                    // (the Pencil is near: the tables read already)
         if (inCard(e)) { clearTimeout(hideTimer); clearTimeout(dwellTimer); return; }
