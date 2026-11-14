@@ -1,6 +1,0 @@
-台語 words' English (FangfangCards/tw_en.json)
-
-Built on your own computer by build-data.sh (tools/build_tw_english.py); not included in this repository.
-- Wiktionary (via kaikki.org wiktextract), CC BY-SA 4.0: the English meanings of pages with the same characters and
-  the same Hokkien reading as a word of 教育部《臺灣台語常用詞辭典》. Kept in a file of its own; the dictionary's data
-  isn't changed.
