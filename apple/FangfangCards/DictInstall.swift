@@ -258,6 +258,21 @@ struct DictPack: Identifiable {
         from: "Folkets lexikon（KTH，CC BY-SA 2.5）、FrequencyWords 詞頻（CC BY-SA 4.0）、維基詞典的中文解釋（kaikki.org，CC BY-SA）、CC-CEDICT（由英文推測的中文解釋，CC BY-SA）；詞素依規則推算",
         download: "約 95 MB（中文解釋佔大部分）")
 
+    // MARK: where the files come from first
+
+    /// the copies of the original files in the fangfang-sources folder of this project's GitHub repository (unchanged,
+    /// one folder per dictionary: tw, zh, yue, hak, ja, sv, sw, and common for files more than one uses). A file is downloaded from
+    /// here first, and from where it's published (Source.url) when it isn't here or can't be reached.
+    static let mirror = "https://raw.githubusercontent.com/unoki99/fangfang-cards/main/fangfang-sources/"
+    /// (files that can't be shared, and a second place for a file the copy has under its first name)
+    static let notMirrored: Set<String> = ["tocfl.csv", "tbcl-chars.csv", "folkets_kth.xml"]
+    static let sharedFiles: Set<String> = ["essay.txt", "cedict_ts.u8"]
+    func mirrorURL(_ s: Source) -> String? {
+        guard !Self.notMirrored.contains(s.file),
+              let name = s.file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+        return Self.mirror + (Self.sharedFiles.contains(s.file) ? "common" : id) + "/" + name
+    }
+
     /// every dictionary the app can install
     static let all: [DictPack] = [taigi, mandarin, cantonese, hakka, japanese, swedish, shuowen]
     static func of(lang: Int) -> DictPack? { all.first { $0.lang == lang } }
@@ -331,7 +346,10 @@ final class DictInstaller: ObservableObject {
                     }
                     states[p.id] = .working(0.3 * Double(i) / Double(max(p.sources.count, 1)), tr("下載 \(s.file)…"))
                     do {
-                        try await Self.download(s.url, to: dest)
+                        // (the copy on GitHub first; where it's published when the copy isn't there)
+                        var got = false
+                        if let m = p.mirrorURL(s) { got = (try? await Self.download(m, to: dest)) != nil }
+                        if !got { try await Self.download(s.url, to: dest) }
                         have[s.file] = dest.path
                     } catch {
                         if !s.optional { throw InstallError.download(s.file, error.localizedDescription) }
