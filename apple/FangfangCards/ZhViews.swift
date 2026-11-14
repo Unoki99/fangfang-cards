@@ -395,6 +395,7 @@ struct ZhEntryBody: View {
                             .textSelection(.enabled)
                         PlayButton(path: entry.audio ?? "tts:" + entry.h)
                         Spacer()
+                        FrequencyBadge(key: entry.k)
                     }
                     let r = dict.reading(syl, store.zhRom)
                     if !r.characters.isEmpty {
@@ -416,6 +417,7 @@ struct ZhEntryBody: View {
                     Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                     PlayButton(path: entry.audio ?? "tts:" + entry.h)
                     Spacer()
+                    FrequencyBadge(key: entry.k)
                 }
                 }
                 HStack(spacing: 8) {
@@ -508,7 +510,6 @@ struct ZhEntryBody: View {
             if dict.isJa { JaWordExtras(dict: dict, entry: entry) }
             // 瑞典語: the word's parts (tap one), its Chinese meanings, its forms
             if dict.isSv { SvWordExtras(dict: dict, entry: entry) }
-            FrequencyBadge(key: entry.k)
             FoundSentences(key: entry.k)
             // a single character: 說文解字 (when installed)
             if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }

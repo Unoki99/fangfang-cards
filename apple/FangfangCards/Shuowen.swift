@@ -115,22 +115,24 @@ struct FrequencyBadge: View {
         let r = store.rankOf(key)
         if r != Int.max {
             let n = Self.level(r)
-            HStack(spacing: 10) {
+            // (the language's own colour: 華語 blue, 台語 green, 粵語 yellow, 客語 red, 日語 pink, 瑞典語 teal)
+            let ink = T.langColors(Lang.kind(key)).ink
+            VStack(alignment: .trailing, spacing: 3) {
                 HStack(alignment: .bottom, spacing: 3) {
                     ForEach(1...5, id: \.self) { i in
                         RoundedRectangle(cornerRadius: 2)
-                            .fill(i <= n ? T.greenInk : T.fnEdge)
+                            .fill(i <= n ? ink : T.fnEdge)
                             .frame(width: 6, height: CGFloat(6 + i * 3))
+                            .shadow(color: i <= n ? ink.opacity(0.5) : .clear, radius: 3)
                     }
                 }
-                Text(tr("常用度：第 \(r + 1) 個")).ffFont(.footnote).foregroundStyle(T.glyph)
-                Text([trs("少見"), trs("不常用"), trs("一般"), trs("常用"), trs("很常用")][n - 1]).ffFont(.footnote, .bold)
-                    .foregroundStyle(n >= 4 ? T.greenInk : T.muted)
-                Spacer(minLength: 0)
+                Text([trs("少見"), trs("不常用"), trs("一般"), trs("常用"), trs("很常用")][n - 1]).ffFont(.caption, .bold)
+                    .foregroundStyle(n >= 3 ? ink : T.muted)
+                Text(tr("第 \(r + 1) 個")).ffFont(.caption2).foregroundStyle(T.muted)
             }
-            .padding(.horizontal, 12).padding(.vertical, 8)
-            .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.55)))
+            .fixedSize()
             .accessibilityElement(children: .combine)
+            .accessibilityLabel(tr("常用度：第 \(r + 1) 個"))
         }
     }
 }

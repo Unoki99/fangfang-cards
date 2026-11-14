@@ -863,7 +863,6 @@ struct DictEntryBody: View {
                 }
             }
             ForEach(dict.senses(key), id: \.n) { s in sense(s) }
-            FrequencyBadge(key: key)
             FoundSentences(key: key)
             // a single character: 說文解字 (when installed)
             if han.count == 1 { ShuowenBlock(ch: han) }
@@ -898,6 +897,7 @@ struct DictEntryBody: View {
                 Text(dict.wordText(key, rom, place)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                 if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
                 Spacer()
+                FrequencyBadge(key: key)
             }
             HStack(spacing: 8) {
                 saveButton

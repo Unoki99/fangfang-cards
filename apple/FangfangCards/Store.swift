@@ -1125,6 +1125,28 @@ final class Store: ObservableObject {
         return progress.status[key] ?? 0
     }
 
+    /// a dictionary word's place (0 新詞, 1 熟悉, 2 不熟), also when it isn't one of the cards: kept by its key, so
+    /// it counts when it becomes a card and goes to Safari 查詞 with the words you know
+    func setWord(_ key: String, status: Int) {
+        if let c = card(for: key) {
+            switch status {
+            case 1: mark(c, known: true, undoable: false)
+            case 2: mark(c, known: false, undoable: false)
+            default: forget(c)
+            }
+            return
+        }
+        var p = progress
+        p.status[key] = status
+        p.added[key] = Date().timeIntervalSince1970
+        if status == 2 { if p.streak[key] == nil { p.streak[key] = 0 } } else { p.streak[key] = nil }
+        if status == 0 { p.srs[key] = nil }
+        progress = p
+        if status == 2 { attachContext(key) }
+        save()
+    }
+    func wordStatus(_ key: String) -> Int { progress.status[key] ?? 0 }
+
     /// ☆ in 轉換: add to 不熟, or tap again to take it back out to 新詞
     func toggleUnknown(_ key: String) {
         guard let c = card(for: key) else { return }

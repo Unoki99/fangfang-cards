@@ -4,19 +4,15 @@ import SwiftUI
 // A = 認識 and S = 不熟 + 收藏, the same keys as in Safari 查詞. (Typing in a text field the keys stay letters.)
 
 extension Store {
-    /// 認識: the word's card to 熟悉, or tap again to take it back out to 新詞
-    func toggleKnown(_ key: String) {
-        guard let c = card(for: key) else { return }
-        if progress.status[key] == 1 { forget(c) } else { mark(c, known: true, undoable: false) }
-    }
+    /// 認識: the word to 熟悉, or tap again to take it back out to 新詞
+    func toggleKnown(_ key: String) { setWord(key, status: wordStatus(key) == 1 ? 0 : 1) }
+    /// 加到「不熟」: or tap again to take it back out to 新詞
+    func toggleUnknownWord(_ key: String) { setWord(key, status: wordStatus(key) == 2 ? 0 : 2) }
     /// A: 熟悉 (as it is when it already is)
-    func keyKnown(_ key: String) {
-        guard let c = card(for: key), progress.status[key] != 1 else { return }
-        mark(c, known: true, undoable: false)
-    }
+    func keyKnown(_ key: String) { if wordStatus(key) != 1 { setWord(key, status: 1) } }
     /// S: 不熟, and 收藏 too
     func keyUnknown(_ key: String) {
-        if let c = card(for: key), progress.status[key] != 2 { mark(c, known: false, undoable: false) }
+        if wordStatus(key) != 2 { setWord(key, status: 2) }
         if !isSaved(key) { toggleSaved(key) }
     }
 }
@@ -31,11 +27,11 @@ struct CardMarkButtons: View {
     @EnvironmentObject var store: Store
 
     var body: some View {
-        let st = store.cardStatus(key)
+        let st = store.wordStatus(key)
         HStack(spacing: 8) {
-            if let st {
+            Group {
                 // 不熟
-                Button { withAnimation(.snappy) { store.toggleUnknown(key) } } label: {
+                Button { withAnimation(.snappy) { store.toggleUnknownWord(key) } } label: {
                     Label(st == 2 ? (charCard ? trs("漢字卡在「不熟」") : trs("在「不熟」"))
                                   : (charCard ? trs("漢字卡加到「不熟」") : trs("加到「不熟」")),
                           systemImage: st == 2 ? "star.fill" : "star")
@@ -53,7 +49,7 @@ struct CardMarkButtons: View {
             }
         }
         .background {
-            if keys && st != nil {
+            if keys {
                 // (the keys: buttons that can't be seen)
                 ZStack {
                     Button { withAnimation(.snappy) { store.keyKnown(key) } } label: { Color.clear }
