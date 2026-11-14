@@ -21,7 +21,12 @@
     // yue / hak: 粵語 and 客語 (hakAcc: the accent, hakRom: 0 拼音 / 1 注音); ring: a rainbow around the words saved
     // here when they're on a page; tint: the characters of saved words in their tone colours on the page
     const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
-        yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0 };
+        yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
+        // 影片字幕 (YouTube, Viki): the panel on; the video stops while a word is looked up in it; the subtitles on
+        // the video itself hidden while the panel shows them
+        subs: true, subsPause: true, subsHideVideo: true,
+        // subsFlow: the subtitles in one row at the bottom, flowing sideways (always so when the video is full screen)
+        subsFlow: false };
     let prefs = { ...DEFAULTS };
     let queue = [];               // [{k, w: "unknown" | "saved", h, x: the sentence}] waiting for 傳到 App
     let saved = [];               // [{h, c: [colours]}]: every word saved here (for the rainbow and the colours on the page)
@@ -1329,6 +1334,9 @@
     function isOpen() { return !!card && card.style.display !== "none" && !closing; }
     function show(rect, spot, content) {
         ensureHost();
+        // (a video full screen: the card goes inside it, or it couldn't be seen)
+        const fsT = fsTarget();
+        if (host.parentNode !== fsT) fsT.appendChild(host);
         clearTimeout(hideTimer);
         // (already showing: only its words change, no animation)
         const opening = !isOpen();
@@ -1423,6 +1431,7 @@
     }
     function hide() {
         clearTimeout(hideTimer);
+        subsCardHidden();
         unmark();
         shownSpot = "";
         if (!isOpen()) return;
@@ -1508,4 +1517,595 @@
             lookup(s, rect, spot, null, sv);
         }, 600);
     });
+
+    // ── 影片字幕: the video's subtitles in a panel beside it (under it on a phone) ─────────────
+    // The lines before and after the one being said are there too; the panel glides up as the video plays. Words
+    // in it are looked up like anywhere else (Pencil / trackpad hover, or a tap with a finger), and when one is
+    // saved, its line is kept with it as its sentence. The subtitles are the ones the site itself has: on YouTube
+    // the video's own (or YouTube's automatic ones), on Viki the ones its player loads, and on any site whose
+    // player has subtitle tracks Safari can read.
+    const SUBS_SITE = /(^|\.)youtube\.com$|(^|\.)viki\.com$/.test(location.hostname);
+    let subs = null;                // the panel's state, once a video with subtitles is there
+    // (the card closed after a tap on a word in the panel: the video goes on, unless another word is tapped at once)
+    function subsCardHidden() {
+        if (!subs || subs.pausedBy !== "tap") return;
+        clearTimeout(subs.resumeTimer);
+        subs.resumeTimer = setTimeout(() => {
+            if (subs.pausedBy !== "tap" || isOpen()) return;
+            subs.pausedBy = "";
+            const v = subsVideo(); if (v && v.paused) v.play().catch(() => {});
+        }, 350);
+    }
+    // YouTube and Viki: from the start; other sites: once a video is there (its subtitle tracks, when Safari has them)
+    if (SUBS_SITE) subsStart();
+    else {
+        const look = setInterval(() => {
+            if (!document.querySelector("video")) return;
+            clearInterval(look);
+            subsStart();
+        }, 3000);
+    }
+
+    function subsStart() {
+        const st = {
+            files: new Map(),       // key → { cues: [{s, e, t}], han: the share of 漢字, at: when it came }
+            key: "",                // the file shown
+            vid: "",                // (YouTube) the video the subtitles are for
+            ytTracks: [], ytLang: "",
+            panel: null, rail: null, view: null, lines: [], cues: [], now: -2,
+            manual: 0, manualUntil: 0, collapsed: false, pausedBy: "", tried: new Set(), textTracksAt: 0,
+        };
+        subs = st;
+        // the page's own part (sees the player's downloads): in the page's world. Safari runs it from the manifest;
+        // when it didn't say hello, it's put in the page here
+        let hello = false;
+        window.addEventListener("message", e => {
+            const d = e.data;
+            if (!d || !d.__ffSubs || e.source !== window) return;
+            if (d.kind === "hello") hello = true;
+            else if (d.kind === "file") subsFile(d.url, d.text);
+            else if (d.kind === "tracks") subsTracks(d.text);
+        });
+        if (SUBS_SITE) setTimeout(() => {
+            if (hello) return;
+            try {
+                const sc = document.createElement("script");
+                sc.src = browser.runtime.getURL("subs-page.js");
+                sc.onload = () => sc.remove();
+                (document.head || document.documentElement).appendChild(sc);
+            } catch (e) {}
+        }, 1500);
+        // (another video on the same page, as YouTube does; subtitle tracks Safari reads itself)
+        setInterval(subsTick, 1000);
+    }
+
+    /// where the panel and the card go: inside the element shown full screen (not a bare <video>: iOS's own player)
+    function fsTarget() {
+        const fs = document.fullscreenElement || document.webkitFullscreenElement;
+        return fs && fs.tagName !== "VIDEO" ? fs : document.documentElement;
+    }
+
+    function subsVideo() {
+        let best = null, area = 0;
+        for (const v of document.querySelectorAll("video")) {
+            const r = v.getBoundingClientRect(), a = r.width * r.height;
+            if (a > area) { area = a; best = v; }
+        }
+        return best;
+    }
+    function ytVideoId() {
+        if (!/youtube\.com$/.test(location.hostname)) return "";
+        const u = new URL(location.href);
+        return u.searchParams.get("v") || (u.pathname.match(/\/(shorts|live|embed)\/([\w-]{6,})/) || [])[2] || "";
+    }
+
+    // every second: a new video? subtitle tracks Safari has (sites without a file to see)?
+    function subsTick() {
+        const st = subs;
+        if (!prefs.subs) { if (st.panel) st.panel.style.display = "none"; return; }
+        const vid = ytVideoId() || (SUBS_SITE ? location.pathname : "");
+        if (vid !== st.vid) {
+            st.vid = vid; st.files.clear(); st.key = ""; st.ytTracks = []; st.ytLang = ""; st.tried.clear();
+            subsShow([]);
+            if (ytVideoId()) subsAskTracks(0);
+        }
+        // tracks the browser itself loads (<track>, Safari's own HLS subtitles)
+        const v = subsVideo();
+        if (v && v.textTracks && v.textTracks.length && Date.now() - st.textTracksAt > 1500) {
+            st.textTracksAt = Date.now();
+            for (const tt of v.textTracks) {
+                if (!/subtitles|captions/.test(tt.kind)) continue;
+                if (tt.mode === "disabled") { try { tt.mode = "hidden"; } catch (e) {} }
+                if (!tt.cues || !tt.cues.length) continue;
+                const cues = [];
+                for (const c of tt.cues) {
+                    const t = String(c.text || "").replace(/<[^>]+>/g, "").replace(/\s*\n\s*/g, " ").trim();
+                    if (t) cues.push({ s: c.startTime, e: c.endTime, t });
+                }
+                subsAdd("track:" + (tt.language || tt.label || tt.id), cues, false);
+            }
+        }
+        // the subtitles on the video itself, hidden while the panel shows them (YouTube; players using video.js)
+        let hid = document.getElementById("ff-subs-hide");
+        const want = st.panel && st.panel.style.display !== "none" && !st.collapsed && prefs.subsHideVideo;
+        if (want && !hid) {
+            hid = document.createElement("style"); hid.id = "ff-subs-hide";
+            hid.textContent = ".ytp-caption-window-container, .caption-window, .vjs-text-track-display, video::cue { opacity: 0 !important; }";
+            (document.head || document.documentElement).appendChild(hid);
+        } else if (!want && hid) hid.remove();
+    }
+
+    // YouTube: the video's subtitle languages (asked of the page; the player takes a moment to have them)
+    function subsAskTracks(n) {
+        window.postMessage({ __ffSubsAsk: "tracks" }, "*");
+        if (n < 8) setTimeout(() => { if (!subs.ytTracks.length && subs.vid === ytVideoId()) subsAskTracks(n + 1); }, 1500);
+    }
+    // the language wanted: 台語, then 繁體, 粵語, 簡體, 日語, 瑞典語; written ones before automatic ones
+    const SUBS_ORDER = ["nan", "zh-TW", "zh-Hant", "zh-HK", "yue", "zh", "zh-Hans", "zh-CN", "zh-SG", "ja", "sv"];
+    function subsRank(t) {
+        let i = SUBS_ORDER.findIndex(l => t.lang === l || t.lang.toLowerCase() === l.toLowerCase());
+        if (i < 0) i = /^zh/i.test(t.lang) ? 8 : 99;
+        return i * 2 + (t.kind === "asr" ? 1 : 0);
+    }
+    async function subsTracks(text) {
+        let j = null;
+        try { j = JSON.parse(text); } catch (e) { return; }
+        if (!j || !j.tracks || !j.tracks.length) return;
+        if (j.vid && j.vid !== ytVideoId()) return;
+        subs.ytTracks = j.tracks;
+        const pick = subs.ytLang ? j.tracks.find(t => t.lang === subs.ytLang) : [...j.tracks].sort((a, b) => subsRank(a) - subsRank(b))[0];
+        if (pick) subsUseTrack(pick);
+        subsHeader();
+    }
+    // a YouTube track: read straight away if YouTube allows it, or else the player is asked to load it (and the
+    // copy of that download is used)
+    async function subsUseTrack(t) {
+        subs.ytLang = t.lang;
+        subs.key = "";
+        if (!subs.tried.has(t.url)) {
+            subs.tried.add(t.url);
+            try {
+                const r = await fetch(t.url + (t.url.includes("fmt=") ? "" : "&fmt=json3"), { credentials: "include" });
+                const txt = r.ok ? await r.text() : "";
+                const cues = txt ? subsParse(txt) : [];
+                if (cues.length) { subsAdd("yt:" + subs.vid + ":" + t.lang, cues, true); return; }
+            } catch (e) {}
+        }
+        window.postMessage({ __ffSubsAsk: "use", lang: t.lang }, "*");
+    }
+
+    // a subtitle file the page downloaded
+    function subsFile(url, text) {
+        if (!prefs.subs || !text) return;
+        const cues = subsParse(text);
+        if (!cues.length) return;
+        let key;
+        try {
+            const u = new URL(url, location.href);
+            if (/timedtext/.test(u.pathname)) {
+                const v = u.searchParams.get("v") || subs.vid, l = u.searchParams.get("lang") || u.searchParams.get("tlang") || "";
+                if (v && subs.vid && v !== subs.vid) return;                // (another video's)
+                key = "yt:" + v + ":" + l;
+                if (subs.ytLang && l && l !== subs.ytLang && !u.searchParams.get("tlang")) return;
+            } else {
+                // (a file in pieces, as streams send them: the pieces of one language go together)
+                key = "f:" + u.hostname + u.pathname.replace(/[^/]*$/, "").replace(/\d{2,}/g, "#") + (u.pathname.match(/[a-z]{2}(-[A-Za-z]{2,4})?(?=[._/-])/g) || []).slice(-1)[0];
+            }
+        } catch (e) { key = "f:" + url; }
+        subsAdd(key, cues, false);
+    }
+
+    function subsAdd(key, cues, chosen) {
+        const st = subs;
+        const old = st.files.get(key);
+        const map = new Map((old ? old.cues : []).map(c => [c.s.toFixed(2) + c.t, c]));
+        for (const c of cues) map.set(c.s.toFixed(2) + c.t, c);
+        const all = [...map.values()].sort((a, b) => a.s - b.s);
+        const text = all.map(c => c.t).join("");
+        const han = [...text].filter(ch => isHan(ch.codePointAt(0))).length / Math.max(1, [...text].length);
+        st.files.set(key, { cues: all, han, at: Date.now() });
+        // the file shown: the one chosen, or the one with the most 漢字 (Chinese subtitles over English ones)
+        let best = chosen ? key : st.key;
+        if (!chosen) {
+            let score = -1;
+            for (const [k, f] of st.files) {
+                if (st.ytLang && k.startsWith("yt:") && !k.endsWith(":" + st.ytLang)) continue;
+                const sc = f.han + (k === st.key ? 0.05 : 0);
+                if (sc > score) { score = sc; best = k; }
+            }
+        }
+        if (best !== st.key || (best === key && (!old || old.cues.length !== all.length))) {
+            st.key = best;
+            subsShow(st.files.get(best).cues);
+        }
+    }
+
+    // ── reading subtitle files: YouTube's (json3, xml), WebVTT, SRT ──
+    function subsParse(text) {
+        text = String(text).replace(/^﻿/, "").trim();
+        try {
+            if (text.startsWith("{")) {
+                const j = JSON.parse(text);
+                if (!j.events) return [];
+                return subsClean(j.events.filter(e => e.segs && !e.aAppend).map(e => ({
+                    s: (e.tStartMs || 0) / 1000, e: ((e.tStartMs || 0) + (e.dDurationMs || 0)) / 1000,
+                    t: e.segs.map(g => g.utf8 || "").join("") })));
+            }
+            if (text.startsWith("<")) {
+                const x = new DOMParser().parseFromString(text, "text/xml");
+                const out = [];
+                for (const n of x.querySelectorAll("text")) {
+                    const s = parseFloat(n.getAttribute("start")) || 0;
+                    out.push({ s, e: s + (parseFloat(n.getAttribute("dur")) || 0), t: n.textContent });
+                }
+                for (const n of x.querySelectorAll("p")) {
+                    const s = (parseFloat(n.getAttribute("t")) || 0) / 1000;
+                    out.push({ s, e: s + (parseFloat(n.getAttribute("d")) || 0) / 1000, t: n.textContent });
+                }
+                return subsClean(out);
+            }
+            if (text.includes("-->")) {
+                const time = str => {
+                    const m = str.trim().replace(",", ".").match(/(?:(\d+):)?(\d+):(\d+(?:\.\d+)?)/);
+                    return m ? (parseInt(m[1] || "0") * 3600 + parseInt(m[2]) * 60 + parseFloat(m[3])) : NaN;
+                };
+                const out = [];
+                for (const block of text.split(/\r?\n\s*\r?\n/)) {
+                    const ls = block.split(/\r?\n/);
+                    const k = ls.findIndex(l => l.includes("-->"));
+                    if (k < 0) continue;
+                    const [a, b] = ls[k].split("-->");
+                    const s = time(a), e = time((b || "").split(/\s+/).filter(Boolean)[0] || "");
+                    if (isNaN(s)) continue;
+                    out.push({ s, e: isNaN(e) ? s + 2 : e, t: ls.slice(k + 1).join(" ") });
+                }
+                return subsClean(out);
+            }
+        } catch (e) {}
+        return [];
+    }
+    function subsClean(cues) {
+        const ta = document.createElement("textarea");
+        const out = [];
+        for (const c of cues) {
+            ta.innerHTML = String(c.t).replace(/<[^>]+>/g, "").replace(/\{\\[^}]*\}/g, "");
+            const t = ta.value.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim();
+            if (!t) continue;
+            const prev = out[out.length - 1];
+            // (the same words again straight after: one line)
+            if (prev && prev.t === t && c.s - prev.e < 0.6) { prev.e = Math.max(prev.e, c.e); continue; }
+            out.push({ s: c.s, e: c.e, t });
+        }
+        return out.sort((a, b) => a.s - b.s);
+    }
+
+    // ── the panel ──
+    function subsPanel() {
+        const st = subs;
+        if (st.panel) return st.panel;
+        const css = document.createElement("style");
+        css.textContent = `
+#ff-subs { all: initial; position: fixed; z-index: 2147483640; box-sizing: border-box; display: block;
+  background: rgba(16, 18, 28, 0.9); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  color: #e9eaf2; font: 18px/1.55 -apple-system, "PingFang TC", "Heiti TC", system-ui, sans-serif; overflow: hidden;
+  transition: opacity .3s ease, transform .35s cubic-bezier(.2,.9,.3,1); }
+#ff-subs.wide { top: 72px; right: 12px; bottom: 12px; width: min(380px, 34vw); }
+#ff-subs.narrow { left: 8px; right: 8px; bottom: 8px; height: 40vh; }
+#ff-subs.hidden { opacity: 0; transform: translateY(12px); pointer-events: none; }
+#ff-subs .top { position: absolute; left: 0; right: 0; top: 0; height: 38px; display: flex; align-items: center; gap: 8px;
+  padding: 0 10px 0 14px; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 13px; color: #a7abc0; }
+#ff-subs .top b { font-weight: 600; color: #e9eaf2; margin-right: auto; font-size: 13px; }
+#ff-subs select { all: revert; font: 12px -apple-system, system-ui; background: rgba(255,255,255,0.08); color: #e9eaf2;
+  border: 1px solid rgba(255,255,255,0.12); border-radius: 7px; padding: 2px 4px; max-width: 150px; }
+#ff-subs .btn { all: unset; cursor: pointer; padding: 3px 8px; border-radius: 7px; font-size: 12px; color: #c9cce0;
+  background: rgba(255,255,255,0.08); }
+#ff-subs .view { position: absolute; left: 0; right: 0; top: 38px; bottom: 0; overflow: hidden; touch-action: none;
+  -webkit-mask-image: linear-gradient(transparent 0, #000 14%, #000 84%, transparent 100%);
+  mask-image: linear-gradient(transparent 0, #000 14%, #000 84%, transparent 100%); }
+#ff-subs .rail { position: absolute; left: 0; right: 0; top: 0; padding: 0 12px; will-change: transform;
+  transition: transform .7s cubic-bezier(.22,.8,.25,1); }
+#ff-subs .line { display: block; padding: 7px 10px; margin: 2px 0; border-radius: 10px; opacity: .62;
+  transition: opacity .45s ease, background-color .45s ease; }
+#ff-subs .line.past { opacity: .34; }
+#ff-subs .line.now { opacity: 1; background: rgba(255,255,255,0.07); }
+#ff-subs .tm { display: inline-block; font: 11px ui-monospace, Menlo, monospace; color: #8b90a8; margin-right: 8px;
+  cursor: pointer; vertical-align: 2px; user-select: none; -webkit-user-select: none; }
+#ff-subs .tx { display: inline; }
+#ff-subs .h { text-shadow: 0 0 7px currentColor; }
+#ff-subs .empty { display: block; padding: 18px; color: #8b90a8; font-size: 14px; }
+#ff-subs.flow { left: 12px; right: 12px; bottom: 12px; top: auto; width: auto; height: 116px; }
+#ff-subs.flow .view { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%); }
+#ff-subs.flow .rail { display: flex; flex-wrap: nowrap; align-items: center; height: 100%; padding: 0; gap: 4px;
+  white-space: nowrap; transition: none; }
+#ff-subs.flow .line { flex: none; margin: 0; padding: 8px 14px; }
+#ff-subs.mini { height: 38px !important; }
+#ff-subs.wide.mini { bottom: auto; }
+#ff-subs.mini .view { display: none; }
+#ff-subs.mini .top { border-bottom: none; }
+@media (prefers-reduced-motion: reduce) { #ff-subs .rail { transition: none; } }`;
+        (document.head || document.documentElement).appendChild(css);
+        const p = document.createElement("div");
+        p.id = "ff-subs";
+        p.className = "hidden";
+        const top = document.createElement("div"); top.className = "top";
+        const view = document.createElement("div"); view.className = "view";
+        const rail = document.createElement("div"); rail.className = "rail";
+        view.appendChild(rail);
+        p.append(top, view);
+        document.documentElement.appendChild(p);
+        st.panel = p; st.rail = rail; st.view = view; st.top = top;
+
+        // a word: looked up with a tap (a finger); the time: the video goes there
+        let down = null;
+        view.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY, t: Date.now(), type: e.pointerType }; }, true);
+        view.addEventListener("pointerup", e => {
+            const d = down; down = null;
+            if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 8) return;
+            const tm = e.target.closest && e.target.closest(".tm");
+            if (tm) {
+                const v = subsVideo(); const i = +tm.dataset.i;
+                if (v && st.cues[i]) { v.currentTime = st.cues[i].s + 0.01; st.manual = 0; st.manualUntil = 0; }
+                return;
+            }
+            if (d.type !== "touch") return;          // (the Pencil and trackpad look words up by hovering)
+            const hit = charAt(e.clientX, e.clientY);
+            if (!hit) return;
+            const lat = !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
+            if (!isHan(hit.cp) && !lat) return;
+            const v = subsVideo();
+            clearTimeout(st.resumeTimer);
+            if (prefs.subsPause && v && !v.paused) { v.pause(); st.pausedBy = "tap"; }
+            const spot = "subs:" + hit.off + "@" + Math.round(hit.rect.left) + "," + Math.round(hit.rect.top);
+            setTimeout(() => {
+                if (lat) lookup(lat.text, hit.rect, spot, { node: hit.node, off: lat.start }, true);
+                else { const t = textFrom(hit.node, hit.off); if (t) lookup(t, hit.rect, spot, { node: hit.node, off: hit.off }); }
+            }, 30);
+        });
+        // the Pencil or a trackpad over the subtitles: the video waits (and goes on when it leaves)
+        p.addEventListener("pointerenter", e => {
+            if (e.pointerType === "touch" || !prefs.subsPause) return;
+            const v = subsVideo();
+            if (v && !v.paused) { v.pause(); st.pausedBy = "hover"; }
+        });
+        p.addEventListener("pointerleave", e => {
+            if (st.pausedBy !== "hover") return;
+            st.pausedBy = "";
+            const v = subsVideo(); if (v && v.paused) v.play().catch(() => {});
+        });
+        // looking back or ahead: drag (or scroll) the lines; they follow the video again a few seconds later
+        let drag = null;
+        const along = e => st.flow ? e.touches[0].clientX : e.touches[0].clientY;
+        view.addEventListener("touchstart", e => { drag = along(e); }, { passive: true });
+        view.addEventListener("touchmove", e => {
+            if (drag == null) return;
+            const y = along(e);
+            st.manual += y - drag; drag = y; st.manualUntil = Date.now() + 4000;
+            subsPlace(false);
+            e.preventDefault();
+        }, { passive: false });
+        view.addEventListener("touchend", () => { drag = null; }, { passive: true });
+        view.addEventListener("wheel", e => {
+            st.manual -= st.flow ? (e.deltaX || e.deltaY) : e.deltaY; st.manualUntil = Date.now() + 4000; subsPlace(false);
+            e.preventDefault(); e.stopPropagation();
+        }, { passive: false });
+        window.addEventListener("resize", () => subsLayout(), { passive: true });
+        // a video full screen (Mac, iPad): the panel goes inside it, as a row at the bottom
+        for (const ev of ["fullscreenchange", "webkitfullscreenchange"]) document.addEventListener(ev, () => setTimeout(subsLayout, 50));
+        subsLayout();
+        return p;
+    }
+
+    function subsLayout() {
+        const st = subs;
+        if (!st.panel) return;
+        const fsT = fsTarget();
+        if (st.panel.parentNode !== fsT) fsT.appendChild(st.panel);
+        const flow = !!prefs.subsFlow || fsT !== document.documentElement;
+        const wide = window.innerWidth >= 900 && window.innerWidth > window.innerHeight;
+        const changed = flow !== st.flow;
+        st.flow = flow;
+        st.panel.classList.toggle("flow", flow);
+        st.panel.classList.toggle("wide", !flow && wide);
+        st.panel.classList.toggle("narrow", !flow && !wide);
+        st.panel.classList.toggle("mini", st.collapsed);
+        const has = st.cues.length > 0 && prefs.subs && prefs.on;
+        st.panel.classList.toggle("hidden", !has);
+        if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
+        subsMeasure();
+        subsPlace(false);
+    }
+
+    function subsHeader() {
+        const st = subs;
+        if (!st.top) return;
+        st.top.replaceChildren();
+        const title = document.createElement("b"); title.textContent = "字幕";
+        st.top.appendChild(title);
+        // (YouTube: the video's languages)
+        if (st.ytTracks.length > 1) {
+            const sel = document.createElement("select");
+            for (const t of st.ytTracks) {
+                const o = document.createElement("option");
+                o.value = t.lang; o.textContent = t.name + (t.kind === "asr" ? "（自動）" : "");
+                if (t.lang === st.ytLang) o.selected = true;
+                sel.appendChild(o);
+            }
+            sel.addEventListener("change", () => { const t = st.ytTracks.find(x => x.lang === sel.value); if (t) subsUseTrack(t); });
+            st.top.appendChild(sel);
+        }
+        const eye = document.createElement("span"); eye.className = "btn";
+        eye.textContent = prefs.subsHideVideo ? "影片上：關" : "影片上：開";
+        eye.title = "影片上的字幕";
+        eye.addEventListener("click", e => { e.stopPropagation(); prefs.subsHideVideo = !prefs.subsHideVideo; savePrefs(); subsHeader(); subsTick(); });
+        // (full screen: always the row at the bottom)
+        const lay = document.createElement("span"); lay.className = "btn";
+        lay.textContent = st.flow ? "直排" : "橫排";
+        lay.title = st.flow ? "字幕在旁邊，往上捲" : "字幕在下面，往旁邊流";
+        if (fsTarget() !== document.documentElement) lay.style.display = "none";
+        lay.addEventListener("click", e => { e.stopPropagation(); prefs.subsFlow = !prefs.subsFlow; savePrefs(); subsLayout(); });
+        const min = document.createElement("span"); min.className = "btn"; min.textContent = st.collapsed ? "展開" : "收起";
+        min.addEventListener("click", e => { e.stopPropagation(); st.collapsed = !st.collapsed; subsHeader(); subsLayout(); subsTick(); });
+        st.top.append(eye, lay, min);
+    }
+
+    // the lines of a new subtitle file
+    function subsShow(cues) {
+        const st = subs;
+        st.cues = cues;
+        st.now = -2; st.manual = 0;
+        if (!cues.length && !st.panel) return;
+        subsPanel();
+        subsHeader();
+        const frag = document.createDocumentFragment();
+        st.lines = cues.map((c, i) => {
+            const line = document.createElement("div");
+            line.className = "line";
+            const tm = document.createElement("span");
+            tm.className = "tm"; tm.dataset.i = i;
+            const sec = Math.floor(c.s);
+            tm.textContent = Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+            // (its own block: the sentence kept with a saved word is this line, without the time)
+            const tx = document.createElement("div");
+            tx.className = "tx"; tx.textContent = c.t;
+            line.append(tm, tx);
+            frag.appendChild(line);
+            return line;
+        });
+        st.rail.replaceChildren(frag);
+        st.rail.style.fontSize = Math.round(18 * (prefs.font || 1)) + "px";
+        st.centers = [];
+        subsLayout();
+        subsColour(st.key);
+        if (cues.length && !st.running) { st.running = true; requestAnimationFrame(subsFrame); }
+    }
+
+    // the 漢字 in their tone colours (華語's, as the page colours work), glowing a little; letters stay plain
+    async function subsColour(key) {
+        if (!prefs.colours) return;
+        const meta = await getMeta();
+        const st = subs;
+        if (!meta || st.key !== key) return;
+        const cps = new Set();
+        for (const c of st.cues) for (const ch of c.t) { const cp = ch.codePointAt(0); if (isHan(cp)) cps.add(cp % (meta.shards || 256)); }
+        const files = new Map();
+        await Promise.all([...cps].map(async i => {
+            const nm = `d-zh-${String(i).padStart(3, "0")}.json`;
+            files.set(nm, await getFile(nm));
+        }));
+        if (st.key !== key) return;
+        st.lines.forEach((line, li) => {
+            const tx = line.querySelector(".tx");
+            const chars = [...st.cues[li].t];
+            const frag = document.createDocumentFragment();
+            let plain = "";
+            const flush = () => { if (plain) { frag.appendChild(document.createTextNode(plain)); plain = ""; } };
+            let i = 0;
+            while (i < chars.length) {
+                const cp = chars[i].codePointAt(0);
+                if (!isHan(cp)) { plain += chars[i]; i++; continue; }
+                const sh = files.get(`d-zh-${String(cp % (meta.shards || 256)).padStart(3, "0")}.json`);
+                let cols = [], len = 1;
+                if (sh) for (let L = Math.min(meta.max || 12, chars.length - i); L >= 1; L--) {
+                    const w = chars.slice(i, i + L).join("");
+                    if (sh[w]) {
+                        len = L;
+                        cols = (zhParts(sh[w][0], meta).h || []).flatMap(sg => [...sg.t].map(() => sg.c || null));
+                        break;
+                    }
+                }
+                flush();
+                for (let j = 0; j < len; j++) {
+                    const sp = document.createElement("span");
+                    sp.className = "h";
+                    if (cols[j]) sp.style.color = "#" + cols[j];
+                    sp.textContent = chars[i + j];
+                    frag.appendChild(sp);
+                }
+                i += len;
+            }
+            flush();
+            tx.replaceChildren(frag);
+        });
+        subsMeasure();
+        subsPlace(false);
+    }
+
+    // the line being said: lit, and moved to a third of the way down; the earlier ones above it, the next below
+    function subsFrame() {
+        const st = subs;
+        // (only while there are subtitles: then it stops)
+        if (!st || !st.cues.length) { if (st) st.running = false; return; }
+        requestAnimationFrame(subsFrame);
+        if (!st.panel || st.collapsed) return;
+        const v = subsVideo();
+        if (!v) return;
+        const t = v.currentTime;
+        // (the last line that has started)
+        let lo = 0, hi = st.cues.length - 1, at = -1;
+        while (lo <= hi) { const m = (lo + hi) >> 1; if (st.cues[m].s <= t + 0.05) { at = m; lo = m + 1; } else hi = m - 1; }
+        if (st.manualUntil && Date.now() > st.manualUntil) { st.manualUntil = 0; st.manual = 0; subsPlace(true); }
+        // (the row at the bottom: moving all the time, at the pace of the lines)
+        if (st.flow && !st.manualUntil) subsFlowAt(t, at);
+        if (at === st.now) return;
+        const prev = st.now;
+        st.now = at;
+        if (prev >= 0 && st.lines[prev]) st.lines[prev].classList.remove("now");
+        // (the lines already said: dimmer; going back in the video lights them again)
+        const from = Math.max(0, Math.min(prev, at)), to = Math.max(prev, at);
+        if (prev < 0 || Math.abs(at - prev) > 1) st.lines.forEach((l, i) => l.classList.toggle("past", i < at));
+        else for (let i = from; i <= to; i++) if (st.lines[i]) st.lines[i].classList.toggle("past", i < at);
+        if (at >= 0 && st.lines[at]) st.lines[at].classList.add("now");
+        if (!st.manualUntil) subsPlace(true);
+    }
+
+    // where each line's middle is (the row at the bottom), measured once its words are drawn
+    function subsMeasure() {
+        const st = subs;
+        st.centers = st.flow ? st.lines.map(l => l.offsetLeft + l.offsetWidth / 2) : [];
+    }
+    // the row at the bottom: the line being said reaches the middle as it starts, and moves on steadily until
+    // the next one does (so the row flows evenly at the speed of the talking)
+    function subsFlowAt(t, at) {
+        const st = subs;
+        if (!st.centers.length) subsMeasure();
+        const c = st.centers;
+        if (!c.length) return;
+        let x;
+        if (at < 0) {
+            const first = st.cues[0];
+            x = c[0] - Math.max(0, first.s - t) * 60;
+        } else if (at >= c.length - 1) {
+            x = c[c.length - 1];
+        } else {
+            const a = st.cues[at], b = st.cues[at + 1];
+            const f = Math.min(1, Math.max(0, (t - a.s) / Math.max(0.3, b.s - a.s)));
+            x = c[at] + (c[at + 1] - c[at]) * f;
+        }
+        const y = st.view.clientWidth / 2 - x + st.manual;
+        st.rail.style.transform = `translateX(${y.toFixed(1)}px)`;
+    }
+
+    function subsPlace(glide) {
+        const st = subs;
+        if (!st.panel || !st.view || !st.lines.length) return;
+        if (st.flow) {
+            const v = subsVideo();
+            if (st.manualUntil) {
+                const c = st.centers.length ? st.centers : (subsMeasure(), st.centers);
+                const i = Math.max(0, st.now);
+                if (c[i] != null) st.rail.style.transform = `translateX(${(st.view.clientWidth / 2 - c[i] + st.manual).toFixed(1)}px)`;
+            } else if (v) subsFlowAt(v.currentTime, st.now);
+            return;
+        }
+        const h = st.view.clientHeight;
+        const i = Math.max(0, st.now);
+        const line = st.lines[i];
+        if (!line) return;
+        const y = h * 0.34 - (line.offsetTop + line.offsetHeight / 2) + st.manual;
+        st.rail.style.transition = glide ? "" : "none";
+        st.rail.style.transform = `translateY(${Math.round(y)}px)`;
+        if (!glide) { void st.rail.offsetHeight; st.rail.style.transition = ""; }
+    }
 })();

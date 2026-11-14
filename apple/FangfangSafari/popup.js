@@ -2,7 +2,8 @@
 // when it's on, its settings (the same as the card's 設定: one column per language, then the rest) and the words
 // chosen to send to the app.
 const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: true,
-    yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0 };
+    yue: true, hak: true, hakAcc: 0, hakRom: 0, sv: true, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
+    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false };
 const store = browser.storage.local;
 
 function el(tag, text, cls) { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; }
@@ -80,6 +81,9 @@ async function main() {
         select(g(), "位置", "pos", [["word", "詞的旁邊"], ["tl", "左上角"], ["tr", "右上角"], ["bl", "左下角"], ["br", "右下角"]]);
         select(g(), "網頁上收藏的詞", "ring", [[false, "不標"], [true, "彩虹框"]]);
         select(g(), "網頁上的聲調顏色", "tint", [[false, "不上色"], ["saved", "收藏的詞"], ["all", "全部（華語）"]]);
+        select(g(), "影片字幕（YouTube、Viki）", "subs", [[true, "開"], [false, "關"]]);
+        select(g(), "查字幕的詞時影片暫停", "subsPause", [[true, "開"], [false, "關"]]);
+        select(g(), "影片字幕的位置", "subsFlow", [[false, "旁邊（往上捲）"], [true, "下面（往旁邊流）"]]);
         const reset = el("button", "大小還原");
         reset.addEventListener("click", () => { prefs.w = 0; prefs.h = 0; save(); });
         const rd = g(); rd.appendChild(el("label", "卡片大小（拖拉角落）")); rd.appendChild(reset);
