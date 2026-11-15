@@ -1,6 +1,7 @@
-﻿# 方方詞卡 on Windows: makes the Android app (an APK on the Desktop; onto the phone if it's plugged in).
-#   Double-click install.bat, or in PowerShell:
-#   powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\fangfang-cards-main\install.ps1"
+﻿# 方方詞卡 on Windows: makes the Android app (an APK on the Desktop; onto the phone if it's plugged in), or with
+# "windows" the Windows program (installed for this user, with a shortcut in the Start menu and on the Desktop).
+#   Double-click install.bat (Android) or install-windows.bat (Windows), or in PowerShell:
+#   powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\fangfang-cards-main\install.ps1" [windows]
 # (The iPhone / iPad / Mac version can only be built on a Mac: use install.sh there.)
 param([string]$What = "android")
 
@@ -10,22 +11,23 @@ try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Here = $PSScriptRoot
-if ($What -ne "android") {
-    Write-Host "iPhone／iPad／Mac 版只能在 Mac 上建置（在 Mac 的終端機執行 install.sh）。在 Windows 上可以做 Android 版。"
+if ($What -notin @("android", "windows")) {
+    Write-Host "iPhone／iPad／Mac 版只能在 Mac 上建置（在 Mac 的終端機執行 install.sh）。在 Windows 上可以做 Android 版和 Windows 版。"
     exit 1
 }
+$Win = ($What -eq "windows")
 $A = Join-Path $Here "android"
 $LogDir = Join-Path $env:LOCALAPPDATA "FangfangCards"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
-$Log = Join-Path $LogDir "android-build.log"
+$Log = Join-Path $LogDir $(if ($Win) { "windows-build.log" } else { "android-build.log" })
 
 function Fail($msg) { Write-Host "✗ $msg"; exit 1 }
 
-# ---- the Android SDK (comes with Android Studio) ----
+# ---- the Android SDK (comes with Android Studio; not needed for the Windows program) ----
 $Sdk = $env:ANDROID_HOME
 if (-not $Sdk) { $Sdk = $env:ANDROID_SDK_ROOT }
 if (-not $Sdk) { $Sdk = Join-Path $env:LOCALAPPDATA "Android\Sdk" }
-if (-not (Test-Path $Sdk)) {
+if (-not $Win -and -not (Test-Path $Sdk)) {
     Fail "找不到 Android SDK。請先安裝 Android Studio（https://developer.android.com/studio），打開一次，讓它下載 SDK（照它的說明按下一步），再執行一次。"
 }
 
@@ -79,7 +81,8 @@ foreach ($c in ($candidates | Select-Object -Unique)) {
     if ($c -and (Test-Path (Join-Path $c "bin\java.exe"))) {
         $m = Get-JavaMajor $c
         $seen += "  $c（Java $m）"
-        if ($m -ge 17 -and $m -le 23) { $Java = $c; break }
+        # (the Windows program takes a copy of Java along, made from its "jmods": Android Studio's has none)
+        if ($m -ge 17 -and $m -le 23 -and (-not $Win -or (Test-Path (Join-Path $c "jmods")))) { $Java = $c; break }
     }
 }
 # none (new Android Studio comes with Java 25, too new for the build tools): a Java 21 of our own, downloaded once
@@ -88,7 +91,7 @@ if (-not $Java) {
     $Own = Join-Path $LogDir "jdk21"
     $have = Get-ChildItem -Path $Own -Directory -ErrorAction SilentlyContinue | Where-Object { Test-Path (Join-Path $_.FullName "bin\java.exe") } | Select-Object -First 1
     if (-not $have) {
-        Write-Host "Android Studio 的 Java 太新了（建置工具要 17–23 版），下載一個 Java 21 給方方詞卡用（只有第一次，大概 200 MB）…"
+        Write-Host "下載一個 Java 21 給方方詞卡用（建置工具要 17–23 版；只有第一次，大概 200 MB）…"
         $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "aarch64" } else { "x64" }
         $zip = Join-Path $env:TEMP "fangfang-jdk21.zip"
         try {
@@ -110,10 +113,12 @@ if (-not $Java) {
     exit 1
 }
 $env:JAVA_HOME = $Java
-$env:ANDROID_HOME = $Sdk
 Write-Host "（用的 Java：$Java）"
-# (forward slashes: Gradle reads them fine, and no escaping is needed)
-[IO.File]::WriteAllText((Join-Path $A "local.properties"), "sdk.dir=" + ($Sdk -replace '\\', '/') + "`n")
+if (-not $Win) {
+    $env:ANDROID_HOME = $Sdk
+    # (forward slashes: Gradle reads them fine, and no escaping is needed)
+    [IO.File]::WriteAllText((Join-Path $A "local.properties"), "sdk.dir=" + ($Sdk -replace '\\', '/') + "`n")
+}
 
 # ---- the word data, made on this computer from the dictionaries' own files ----
 # (their licences don't allow sharing the made files; the Apple and Android versions use the same files)
@@ -405,7 +410,65 @@ foreach ($f in @("zh_sc.json", "sv.json")) {
 Get-ChildItem -Path (Join-Path $A "app\src") -Recurse -File -Include "* 2.kt", "* - Copy.kt", "* (1).kt", "* - Kopia.kt" -ErrorAction SilentlyContinue |
     ForEach-Object { Write-Host "（刪掉多出來的複本：$($_.Name)）"; Remove-Item $_.FullName -Force }
 
-# ---- build ----
+# ---- build: the Windows program ----
+if ($Win) {
+    # (the dictionaries it reads: %LOCALAPPDATA%\FangfangCards\data, made above; ja.json there is the whole one)
+    foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json", "shuowen.json")) {
+        $src = Join-Path $Assets $f
+        if ((Test-Path $src) -and -not (Test-Path (Join-Path $Keep $f))) { Copy-Item $src (Join-Path $Keep $f) -Force }
+    }
+    $WinDir = Join-Path $Here "windows"
+    if (-not (Test-Path (Join-Path $WinDir "build.gradle.kts"))) { Fail "找不到 windows 資料夾。請用完整的 fangfang-cards-main 資料夾。" }
+    Get-ChildItem -Path $WinDir -Recurse -File -Include "* 2.kt", "* - Copy.kt", "* (1).kt", "* - Kopia.kt" -ErrorAction SilentlyContinue |
+        ForEach-Object { Write-Host "（刪掉多出來的複本：$($_.Name)）"; Remove-Item $_.FullName -Force }
+    Write-Host "建置 Windows 版…（第一次要下載不少東西，可能 5–10 分鐘）"
+    Push-Location $A
+    # (through cmd: PowerShell's own redirect cuts long lines at the window's width, and the errors with them)
+    cmd /c "gradlew.bat -p `"$WinDir`" createDistributable --console=plain > `"$Log`" 2>&1"
+    Pop-Location
+    $Built = Join-Path $WinDir "build\compose\binaries\main\app\FangfangCards"
+    $ok = (Test-Path (Join-Path $Built "FangfangCards.exe")) -and (Select-String -Path $Log -Pattern "BUILD SUCCESSFUL" -Quiet)
+    if (-not $ok) {
+        Write-Host "✗ 建置失敗。把下面的錯誤訊息傳給 Claude（或直接傳這個檔案：$Log）："
+        # (each error on one line, without the long folder names, so more of them fit)
+        $errs = Select-String -Path $Log -Pattern "^e: " | ForEach-Object { ($_.Line -replace '^e: file:///.*?/fangfang-cards-main/', '') -replace '/app/src/main/java/com/unoki99/fangfang/', '/…/' } |
+            Select-Object -Unique -First 80
+        if ($errs) { $errs | ForEach-Object { Write-Host $_ } }
+        else { Select-String -Path $Log -Pattern "What went wrong|error:|Could not" -Context 0, 6 | Select-Object -First 20 | ForEach-Object { $_.ToString() } }
+        exit 1
+    }
+    # installed for this user: %LOCALAPPDATA%\Programs\FangfangCards (closed first, when it's open)
+    Get-Process -Name "FangfangCards" -ErrorAction SilentlyContinue | ForEach-Object { try { $_.CloseMainWindow() | Out-Null; Start-Sleep -Seconds 2; if (-not $_.HasExited) { $_.Kill() } } catch {} }
+    $Prog = Join-Path $env:LOCALAPPDATA "Programs\FangfangCards"
+    Remove-Item -Recurse -Force $Prog -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force -Path $Prog | Out-Null
+    Copy-Item -Path (Join-Path $Built "*") -Destination $Prog -Recurse -Force
+    $Exe = Join-Path $Prog "FangfangCards.exe"
+    # shortcuts: the Start menu and the Desktop
+    $Sh = New-Object -ComObject WScript.Shell
+    $Desk = [Environment]::GetFolderPath("Desktop")
+    if (-not $Desk) { $Desk = Join-Path $HOME "Desktop" }
+    $Menu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+    foreach ($dir in @($Menu, $Desk)) {
+        try {
+            $lnk = $Sh.CreateShortcut((Join-Path $dir "方方詞卡.lnk"))
+            $lnk.TargetPath = $Exe; $lnk.WorkingDirectory = $Prog; $lnk.IconLocation = "$Exe,0"; $lnk.Description = "方方詞卡"
+            $lnk.Save()
+        } catch { Write-Host "（沒辦法建立捷徑：$dir）" }
+    }
+    # fangfangcards:// links (the Firefox add-on's 傳到 App) open this program
+    $Cls = "HKCU:\Software\Classes\fangfangcards"
+    New-Item -Path "$Cls\shell\open\command" -Force | Out-Null
+    Set-ItemProperty -Path $Cls -Name "(default)" -Value "URL:方方詞卡"
+    Set-ItemProperty -Path $Cls -Name "URL Protocol" -Value ""
+    Set-ItemProperty -Path "$Cls\shell\open\command" -Name "(default)" -Value "`"$Exe`" `"%1`""
+    Write-Host "✓ 方方詞卡 Windows 版裝好了：開始功能表和桌面上的「方方詞卡」。"
+    Write-Host "  （程式在 $Prog；進度和設定在 $(Join-Path $LogDir "app")）"
+    Start-Process -FilePath $Exe
+    exit 0
+}
+
+# ---- build: the Android app ----
 Write-Host "建置 Android 版…（第一次要下載不少東西，可能 5–10 分鐘）"
 Push-Location $A
 & .\gradlew.bat assembleDebug --console=plain *> $Log

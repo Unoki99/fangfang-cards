@@ -1,9 +1,10 @@
 # 方方詞卡（Fangfang Cards）
 
-台語和華語的詞卡、詞典和練習。這個資料夾裡有兩個版本：
+台語和華語的詞卡、詞典和練習。這個資料夾裡有三個版本：
 
 - **apple/**：iPhone、iPad 和 Mac 版（Xcode 專案）
 - **android/**：Android 版（Android Studio 專案）
+- **windows/**：Windows 版（用的是 Android 版同一份程式碼，在 Windows 上當成一般的程式執行）
 
 ## 安裝
 
@@ -30,13 +31,27 @@ iPhone／iPad 要用 USB 接上 Mac（第一次要在手機上按「信任」）
 
 **詞典資料**：教育部和中華文化總會的詞典授權不允許散布整理過的資料檔，所以這裡沒有那些檔案。`fangfang-sources` 資料夾裡是詞典**原始檔案未經修改的副本**（App 和安裝程式先從這裡下載，下載不到才去原本的網站），每個檔案依照它自己的授權（見 `fangfang-sources/README.md`），**不在本專案的 MIT 授權範圍內**。第一次安裝的時候，`install.sh` 會在你自己的電腦上從原始的詞典檔案產生（要網路，幾分鐘；需要 Mac 內建的 Python 3）。Apple 版和 Android 版用同一份資料。Android 版的詞典（台語、華語、粵語、客語、日語、說文解字）都在電腦上做好、放進 App 裡（在手機上做大的詞典會記憶體不足）；日語和說文解字用 Node.js 做，沒有的話安裝程式會自己下載一個（只有第一次）。資料來源和授權見 `apple/README.md` 的「資料來源與授權」。
 
-## Windows（只有 Android 版）
+## Windows
 
-iPhone／iPad／Mac 版只能在 Mac 上建置。在 Windows 上可以做 Android 版：
+在 Windows 上可以做 **Windows 版**（裝在這台電腦上的程式）和 **Android 版**。iPhone／iPad／Mac 版只能在 Mac 上建置。
+
+第一次的話，先安裝 Python 3（https://www.python.org/downloads/ ，安裝時勾選「Add python.exe to PATH」）：要用它從詞典的原始檔案產生詞典資料（只有第一次；之後留在 `%LOCALAPPDATA%\FangfangCards\data`）。
+
+### Windows 版
+
+在資料夾裡**雙擊 `install-windows.bat`**（不需要 Android Studio）。它會：
+
+1. 在這台電腦上做好詞典資料（第一次要幾分鐘），
+2. 建置 Windows 版（第一次要下載不少東西，5–10 分鐘；找不到合適的 Java 的話會自己下載一個 Java 21），
+3. 裝到 `%LOCALAPPDATA%\Programs\FangfangCards`，開始功能表和桌面上會有「方方詞卡」，
+4. 讓 Firefox 查詞的「傳到 App」可以打開它（`fangfangcards://` 連結）。
+
+Windows 版和 Android 版用同一份程式碼（`android/app/src/main/java`），畫面、詞典、練習都一樣；`windows/` 裡只有 Windows 自己的部分（視窗、聲音、電台的播放、備份資料夾、檔案對話框）。Esc 鍵（或滑鼠的「上一頁」鍵）就是 Android 的「返回」。進度和設定在 `%LOCALAPPDATA%\FangfangCards\app`；要在手機和電腦之間帶進度，用備份檔（設定 → 匯出與匯入），或兩邊選同一個備份資料夾（例如 Google 雲端硬碟、OneDrive）。
+
+### Android 版
 
 1. 安裝 Android Studio（https://developer.android.com/studio），打開一次讓它下載 SDK。
-2. 第一次的話，安裝 Python 3（https://www.python.org/downloads/ ，安裝時勾選「Add python.exe to PATH」）：要用它從詞典的原始檔案產生詞典資料。（資料夾裡已經有詞典資料的話不需要。）
-3. 在資料夾裡**雙擊 `install.bat`**。也可以在 PowerShell 輸入：
+2. 在資料夾裡**雙擊 `install.bat`**。也可以在 PowerShell 輸入：
 
        powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\fangfang-cards-main\install.ps1"
 
