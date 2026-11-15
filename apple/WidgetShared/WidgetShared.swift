@@ -1,5 +1,8 @@
 import Foundation
 import AppIntents
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
 #if !WIDGET_EXT
 import AVFoundation
 #endif
@@ -261,3 +264,91 @@ struct NextWidgetWordIntent: AppIntent {
         return .result()
     }
 }
+
+// MARK: - 動態島 (iPhone): a 不熟 word while you're away from the app
+
+// Leaving the app starts it: the word on the left, its reading over its meaning on the right (small, to fit).
+// Pressed and held, it opens: the word bigger, 下一個 / 熟悉, and a button for each language chosen in
+// 設定 → 詞典資料 → 動態島, which opens that language's dictionary in the app. Coming back to the app ends it.
+#if canImport(ActivityKit)
+struct IslandAttributes: ActivityAttributes {
+    public struct ContentState: Codable, Hashable {
+        var key: String
+        var word: [WSeg]
+        var reading: [WSeg]
+        var meaning: String
+        /// whose word (0 台語, 1 華語…), and the languages to show buttons for
+        var kind: Int
+        var langs: [Int]
+        /// the app's theme: background, panel, panel edge, text, muted text, accent ("rrggbb")
+        var colors: [String]
+    }
+}
+
+enum IslandWords {
+    // The words come from the app itself, not the App Group (an app installed without one has the island too):
+    // leaving the app, it keeps a handful of its 不熟 words, ready written out, in its own settings; the island's
+    // buttons run in the app, so they find them there. 熟悉 pressed on the island waits there too, for the app.
+    static let poolKey = "islandPool"
+    static let knownKey = "islandKnown"
+
+    static var pool: [IslandAttributes.ContentState] {
+        guard let d = UserDefaults.standard.data(forKey: poolKey) else { return [] }
+        return (try? JSONDecoder().decode([IslandAttributes.ContentState].self, from: d)) ?? []
+    }
+    static func keep(_ states: [IslandAttributes.ContentState]) {
+        UserDefaults.standard.set(try? JSONEncoder().encode(states), forKey: poolKey)
+    }
+    static var knownOnIsland: [String] { UserDefaults.standard.stringArray(forKey: knownKey) ?? [] }
+
+    /// another word (not the one on show, not one marked 熟悉 on the island)
+    static func next(after s: IslandAttributes.ContentState) -> IslandAttributes.ContentState? {
+        let known = Set(knownOnIsland)
+        let p = pool.filter { $0.key != s.key && !known.contains($0.key) }
+        guard var n = p.randomElement() else { return nil }
+        n.langs = s.langs; n.colors = s.colors
+        return n
+    }
+    /// 熟悉 on the island: for the app, the next time it's opened
+    static func markKnown(_ key: String) {
+        var k = knownOnIsland
+        if !k.contains(key) { k.append(key) }
+        UserDefaults.standard.set(k, forKey: knownKey)
+    }
+    static func state(_ w: WidgetWord, kind: Int, langs: [Int], colors: [String], rom: Int = 0) -> IslandAttributes.ContentState {
+        let i = min(max(rom, 0), max(w.r.count - 1, 0))
+        let reading = w.rc.flatMap { $0.isEmpty ? nil : $0[min(i, $0.count - 1)] } ?? [WSeg(t: w.r.isEmpty ? w.z : w.r[i], c: nil)]
+        return .init(key: w.k, word: w.hc ?? [WSeg(t: w.h, c: nil)], reading: reading, meaning: w.m,
+                     kind: kind, langs: langs, colors: colors)
+    }
+}
+
+/// 下一個 on the island: another 不熟 word
+struct NextIslandWordIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "下一個不熟的詞"
+    static let isDiscoverable = false
+    init() {}
+    func perform() async throws -> some IntentResult {
+        for a in Activity<IslandAttributes>.activities {
+            if let n = IslandWords.next(after: a.content.state) { await a.update(ActivityContent(state: n, staleDate: nil)) }
+        }
+        return .result()
+    }
+}
+
+/// 熟悉 on the island: the word to 熟悉 (the app takes it over when it's opened), and the next one
+struct KnownIslandWordIntent: LiveActivityIntent {
+    static let title: LocalizedStringResource = "標成熟悉"
+    static let isDiscoverable = false
+    @Parameter(title: "詞") var key: String
+    init() {}
+    init(key: String) { self.key = key }
+    func perform() async throws -> some IntentResult {
+        IslandWords.markKnown(key)
+        for a in Activity<IslandAttributes>.activities {
+            if let n = IslandWords.next(after: a.content.state) { await a.update(ActivityContent(state: n, staleDate: nil)) }
+        }
+        return .result()
+    }
+}
+#endif

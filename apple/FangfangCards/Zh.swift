@@ -685,10 +685,13 @@ final class ZhDict: @unchecked Sendable {
                 chunk.append(data[l])
             }
             chunk.append(UInt8(ascii: "]"))
-            guard let es = (try? JSONSerialization.jsonObject(with: chunk)) as? [[String: Any]] else {
-                lock.lock(); failed = true; lock.unlock(); return
+            // (in a pool of its own: the parsed JSON of each part is let go as soon as its entries are made, instead of
+            // all the parts' at the end, which made the memory peak high enough for iOS to close the app)
+            let made: [ZhEntry]? = autoreleasepool {
+                guard let es = (try? JSONSerialization.jsonObject(with: chunk)) as? [[String: Any]] else { return nil }
+                return es.compactMap { makeEntry($0, accent: accent) }
             }
-            let made = es.compactMap { makeEntry($0, accent: accent) }
+            guard let made else { lock.lock(); failed = true; lock.unlock(); return }
             lock.lock(); results[p] = made; lock.unlock()
         }
         if failed { throw CocoaError(.fileReadCorruptFile) }

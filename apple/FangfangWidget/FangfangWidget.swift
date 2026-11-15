@@ -7,7 +7,10 @@ import AppIntents
 
 @main
 struct FangfangWidgets: WidgetBundle {
-    var body: some Widget { FangfangWordWidget() }
+    var body: some Widget {
+        FangfangWordWidget()
+        IslandLiveActivity()
+    }
 }
 
 struct FangfangWordWidget: Widget {

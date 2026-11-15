@@ -327,6 +327,7 @@ fun ToneMenu() {
 fun BarButtons(settings: Boolean = true) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         RomButton(); PlaceMenu(); ToneMenu()
+        if (settings) RadioBarButton()
         if (settings) IconButton(onClick = { UI.settingsOpen = true }) { Icon(Icons.Filled.Settings, tr("設定"), tint = T.glyph) }
     }
 }

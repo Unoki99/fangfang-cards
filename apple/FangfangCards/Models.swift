@@ -154,6 +154,12 @@ struct Progress: Codable {
     /// 練習統計: minutes listened to the radio and watched with the subtitle panel, per day
     /// ("2026-11-14" → [radio minutes, video minutes])
     var listen: [String: [Double]] = [:]
+    /// 影片詞組: the words chosen from one video / episode in Safari 查詞, kept together. A group's id (the video's
+    /// address, e.g. "yt:abc123") → when it was made (negative = deleted, so synced devices delete it too);
+    /// its name and address; and its words ("id\u{1}key" → when added, negative = taken out)
+    var groupTime: [String: Double] = [:]
+    var groupInfo: [String: [String]] = [:]
+    var groupWords: [String: Double] = [:]
 
     init() {}
     init(from decoder: Decoder) throws {
@@ -171,6 +177,9 @@ struct Progress: Codable {
         found = try c.decodeIfPresent([String: [String]].self, forKey: .found) ?? [:]
         clips = try c.decodeIfPresent([String: String].self, forKey: .clips) ?? [:]
         listen = try c.decodeIfPresent([String: [Double]].self, forKey: .listen) ?? [:]
+        groupTime = try c.decodeIfPresent([String: Double].self, forKey: .groupTime) ?? [:]
+        groupInfo = try c.decodeIfPresent([String: [String]].self, forKey: .groupInfo) ?? [:]
+        groupWords = try c.decodeIfPresent([String: Double].self, forKey: .groupWords) ?? [:]
     }
 }
 

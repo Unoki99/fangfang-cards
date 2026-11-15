@@ -809,3 +809,12 @@ extension View {
         modifier(ClearButton(text: text, editor: editor))
     }
 }
+
+extension T {
+    /// the theme for the 動態島 (an island can't see the app's colours): background, panel, panel edge, text, muted
+    /// text, accent, as "rrggbb"
+    static var islandColors: [String] {
+        let p = P.now
+        return [p.bg, p.fn, p.fnEdge, p.glyph, p.muted, p.blueInk].map { String(format: "%06x", $0) }
+    }
+}

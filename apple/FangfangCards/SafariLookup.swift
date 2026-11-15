@@ -6,8 +6,11 @@ import SwiftUI
 // however the app was installed, also with Sideloadly.
 // The words chosen there (加到不熟 / 收藏) come here when its 傳到 App button opens
 //   fangfangcards://safari?ops=<base64url of [[key, "u" | "s" | "k", the sentence on the page (optional)], …]>
-//     ("u" 加到不熟, "s" 收藏, "k" 認識 → 熟悉)
+//     ("u" 加到不熟, "s" 收藏, "k" 認識 → 熟悉, "g" only into its 影片詞組: a word chosen before there were groups,
+//      found again in its video's subtitles)
+//     (a fourth: the 影片詞組 the word was chosen in, its id in gr)
 //     &w=<base64url of {"2026-11-14": minutes watched with the subtitle panel, …}> (optional)
+//     &gr=<base64url of {"yt:abc123": [the video's name, its address], …}> (optional: 影片詞組)
 // A word of a language the app can't open right now (a 華語 word while 台語 is on show) waits until it can.
 
 @MainActor
@@ -31,6 +34,14 @@ enum SafariImport {
         }
         guard let q = items.first(where: { $0.name == "ops" })?.value, let data = unpack(q),
               let ops = try? JSONSerialization.jsonObject(with: data) as? [[String]] else { return 0 }
+        // 影片詞組: the words chosen from one video go into its group (by their keys: a word waiting for its language
+        // is in the group already). Not the ones marked 認識.
+        let groups = items.first(where: { $0.name == "gr" })?.value.flatMap(unpack)
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String]] } ?? [:]
+        for op in ops where op.count >= 4 && op[1] != "k" && !op[3].isEmpty {
+            let g = groups[op[3]] ?? []
+            store.addToGroup(op[3], name: g.first ?? op[3], url: g.count > 1 ? g[1] : "", key: op[0])
+        }
         var pending = UserDefaults.standard.array(forKey: pendingKey) as? [[String]] ?? []
         pending += ops.filter { $0.count >= 2 }
         UserDefaults.standard.set(pending, forKey: pendingKey)
@@ -46,8 +57,9 @@ enum SafariImport {
         var waiting: [[String]] = []
         for op in pending where op.count >= 2 {
             let k = op[0]
+            if op[1] == "g" { continue }          // (only its group: done when it came)
             // (the sentence on the page the word was saved from)
-            if op.count >= 3 { store.addFoundSentence(k, op[2]) }
+            if op.count >= 3 && !op[2].isEmpty { store.addFoundSentence(k, op[2]) }
             if op[1] == "s" {
                 if !store.isSaved(k) { store.toggleSaved(k) }
             } else {
@@ -88,7 +100,17 @@ enum SafariKnownSync {
             let l = names[min(max(Lang.kind(k), 0), names.count - 1)]
             if st == 1 { known[l, default: []].insert(head) } else { unknown[l, default: []].insert(head) }
         }
-        let obj: [String: Any] = ["v": 1, "k": known.mapValues { Array($0) }, "u": unknown.mapValues { Array($0) }]
+        // (the sentences 不熟 and 收藏 words were chosen from, of the words not in a 影片詞組 yet: Safari 查詞 finds them
+        // again in a video's subtitles and puts those words in that video's group)
+        var inGroup = Set<String>()
+        for (wk, t) in store.progress.groupWords where t > 0 {
+            if let r = wk.range(of: "\u{1}") { inGroup.insert(String(wk[r.upperBound...])) }
+        }
+        var found: [[String]] = []
+        for (k, ss) in store.progress.found where !inGroup.contains(k) && (store.progress.status[k] == 2 || store.isSaved(k)) {
+            for s in ss.suffix(3) where !s.isEmpty { found.append([k, s]) }
+        }
+        let obj: [String: Any] = ["v": 1, "k": known.mapValues { Array($0) }, "u": unknown.mapValues { Array($0) }, "f": found]
         guard let json = try? JSONSerialization.data(withJSONObject: obj),
               let packed = try? (json as NSData).compressed(using: .zlib) as Data else { return nil }
         let b = packed.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")

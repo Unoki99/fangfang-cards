@@ -585,6 +585,8 @@ struct DictDataSettings: View {
                 }
                 .padding(.vertical, 4)
             }
+            // 動態島 (iPhone)
+            IslandSettingsSection()
             Section {
                 ForEach(DictPack.all) { p in row(p) }
             } footer: {

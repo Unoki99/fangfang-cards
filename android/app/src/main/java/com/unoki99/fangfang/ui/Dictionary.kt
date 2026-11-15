@@ -44,7 +44,7 @@ fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.tone
 
 @Composable
 fun EntryPage(d: Dict, key: String, onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().entryKeys(key)) {
         TopBar(Dict.hanOf(key), onBack, settings = false)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             DictEntryBody(d, key)
@@ -56,7 +56,7 @@ fun EntryPage(d: Dict, key: String, onBack: () -> Unit) {
 /** a dictionary entry in the sheet from the bottom */
 @Composable
 fun EntrySheetRoot(d: Dict, key: String) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().entryKeys(key)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f))
@@ -91,10 +91,7 @@ fun DictEntryBody(d: Dict, key: String) {
                 val on = Store.isSaved(key)
                 CapsuleButton(if (on) tr("已收藏") else tr("收藏"), if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, on,
                     T.olive, T.oliveEdge, T.oliveInk) { Store.toggleSaved(key) }
-                val st = Store.cardStatus(key)
-                if (st == 1) Chip(tr("卡片：熟悉"), T.green, T.greenEdge, T.greenInk)
-                else if (st != null) CapsuleButton(if (st == 2) tr("在「不熟」") else tr("加到「不熟」"), if (st == 2) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    st == 2, T.rust, T.rustEdge, T.rustInk) { Store.toggleUnknown(key) }
+                MarkButtons(key)
             }
             val r = remember(key, tk) { d.wordText(key, rom, place).annotated() }
             Txt(r, lat(22f), T.greenInk)
@@ -499,6 +496,7 @@ fun DictRow(d: Dict, key: String, modifier: Modifier = Modifier, englishQuery: S
                 1 -> Icon(Icons.Filled.CheckCircle, null, tint = T.greenInk, modifier = Modifier.size(14.dp))
                 else -> {}
             }
+            FrequencyBars(key)
         }
         // found by its English (Wiktionary): that English (the meanings with the word first) above the 華語 meaning
         if (englishQuery != null) {
@@ -546,13 +544,14 @@ fun LazyListScope.keyItems(d: Dict, title: String, keys: List<String>, englishQu
     if (title.isNotEmpty()) item { SectionTitle(title) }
     items(keys, key = { "k|$title|$it" }) { k ->
         val nav = LocalNav.current
+        val pick = LocalSplitPick.current
         Store.rev
         Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
             SwipeRow(
                 start = if (Store.cardStatus(k) == 0) Pair(tr("加到不熟"), T.rustEdge) else null,
                 end = Pair(if (Store.isSaved(k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                 onStart = { Store.toggleUnknown(k) }, onEnd = { Store.toggleSaved(k) },
-                onClick = { nav.push(Route.Entry(k)) },
+                onClick = { pick?.invoke(k) ?: nav.push(Route.Entry(k)) },
             ) { DictRow(d, k, englishQuery = englishQuery) }
         }
     }
@@ -766,6 +765,33 @@ fun <V> Segmented(options: List<Pair<V, String>>, selected: V, onSelect: (V) -> 
 
 @Composable
 private fun LookupPane(d: Dict) {
+    // a tablet (or a big phone on its side): the list on the left, the word tapped on the right
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (!splitWide(maxWidth, maxHeight)) LookupList(d)
+        else {
+            var picked by remember { mutableStateOf<String?>(null) }
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(0.42f).fillMaxHeight()) {
+                    CompositionLocalProvider(LocalSplitPick provides { k: String -> picked = k }) { LookupList(d) }
+                }
+                VerticalDivider(color = T.fnEdge)
+                Box(Modifier.weight(0.58f).fillMaxHeight()) {
+                    val k = picked
+                    if (k == null) Txt(tr("點左邊的詞，詞條會在這裡打開。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center).padding(24.dp))
+                    else key(k) {
+                        Column(Modifier.fillMaxSize().entryKeys(k).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                            DictEntryBody(d, k)
+                            Spacer(Modifier.height(40.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LookupList(d: Dict) {
     val nav = LocalNav.current
     var query by Prefs.lookupQuery
     val place = Prefs.place.value
@@ -786,12 +812,17 @@ private fun LookupPane(d: Dict) {
         item {
             SearchField(query, { query = it }, tr("華語、台語漢字、羅馬字或方音"))
             Spacer(Modifier.height(8.dp))
-            TileGrid(4) { i, m ->
-                when (i) {
-                    0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.WordClasses) }
-                    1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.Compare) }
-                    2 -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(false)) }
-                    else -> TileButton(Icons.Filled.Translate, tr("日語借詞"), m) { nav.push(Route.Japanese) }
+            // the order of every language: 部首查字, 依詞類列出, 單詞比較, the language's own (日語借詞), 依常用度列出
+            // (a 腔口 chosen: its own words too)
+            val hasPlace = place >= 0 && place < d.raw.places.size
+            TileGrid(if (hasPlace) 6 else 5) { i, m ->
+                when (if (!hasPlace && i >= 4) i + 1 else i) {
+                    0 -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(false)) }
+                    1 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.WordClasses) }
+                    2 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.Compare) }
+                    3 -> TileButton(Icons.Filled.Translate, tr("日語借詞"), m) { nav.push(Route.Japanese) }
+                    4 -> TileButton(Icons.Filled.Place, PlaceWords.title(d, place), m) { nav.push(Route.PlaceWords(place)) }
+                    else -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m) { nav.push(Route.FreqBands(false)) }
                 }
             }
         }

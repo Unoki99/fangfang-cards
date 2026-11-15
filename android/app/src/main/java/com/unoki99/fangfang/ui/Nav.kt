@@ -14,6 +14,14 @@ sealed class Route {
     data class Places(val groups: List<PlaceGroup>) : Route()
     data class WordClass(val cls: String) : Route()
     object Compare : Route()
+    /** 依常用度列出 (zh: the 華語-like dictionary shown; else 台語's), and one of its steps */
+    data class FreqBands(val zh: Boolean) : Route()
+    data class FreqBand(val zh: Boolean, val level: Int) : Route()
+    /** 影片詞組, and 創作範圍 / 編輯 one (name: the scope being changed) */
+    object VideoGroups : Route()
+    /** 台語: a 腔口's own words */
+    data class PlaceWords(val place: Int) : Route()
+    data class ScopeEditor(val name: String?) : Route()
     object WordClasses : Route()
     /** 華語 */
     data class ZhEntry(val key: String) : Route()
@@ -54,13 +62,16 @@ sealed class Sheet {
     data class CharWords(val ch: String) : Sheet()
 }
 
-enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE, JA_PARTICLES, FALLING }
+enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE, JA_PARTICLES, FALLING, SWIPE, TONE_GAME, FREE_WRITING }
 
 /** the app's screens that open over everything */
 object UI {
     /** the app opens on 詞典 */
     var tab by mutableIntStateOf(4)
     var settingsOpen by mutableStateOf(false)
+    /** 電台, and its 歌詞 */
+    var radioOpen by mutableStateOf(false)
+    var lyricsOpen by mutableStateOf(false)
     /** 新詞 on a phone on its side: no tab bar (only the cards) */
     var hideTabs by mutableStateOf(false)
     var practice by mutableStateOf<Practice?>(null)

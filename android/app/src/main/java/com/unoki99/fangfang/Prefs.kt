@@ -113,6 +113,10 @@ object Prefs : KeyValue {
     // 練習範圍 (-1 = all of 不熟), for 台語 and 華語
     val practiceTw = Pref("practiceTopic.tw", -1)
     val practiceZh = Pref("practiceTopic.zh", -1)
+    /** 練習範圍 for each language on its own ("0:5;1:3"; empty: from practiceTw / practiceZh above), and the 影片詞組
+     *  or own scope chosen instead ({"1": "yt:abc"} / {"1": "folder:name"}), the same as the iPhone app */
+    val practiceByLang = Pref("practiceTopicByLang", "")
+    val practiceGroups = Pref("practiceGroups", "")
     // 華語: the main explanation on cards and lists (false 華語, true English)
     val zhEnglish = Pref("zhMainEnglish", false)
     /** the cards don't show the reading until you tap them */
@@ -127,9 +131,20 @@ object Prefs : KeyValue {
     val zhCopySep = Pref("zh.senseCopySep", com.unoki99.fangfang.engine.SenseCopy.zhPresets[0].sep)
     // 手寫練習
     val handTrace = Pref("handwritingTrace", false)
-    val handList = Pref("handwritingList", "unknown")
+    val handList = Pref("handwritingList", "scope")
     val handShuffle = Pref("handwritingShuffle", false)
     val handOwn = Pref("handwritingOwn", "")
+    /** 自由寫字: the squares' size (dp) and the sentence typed */
+    val freeCell = Pref("freeWritingCell", 90f)
+    /** 鎖定畫面的詞: on / off, and which words ("" the 練習範圍, "unknown" all of 不熟) */
+    val lockWord = Pref("lockWordOn", false)
+    /** 電台: 我的電台 (JSON), and whether the starter stations were put in once */
+    val radioStations = Pref("radioStations", "")
+    val radioStarted = Pref("radioStarted", false)
+    /** 歌詞: each line's reading under it, on or off (off: lighter on memory) */
+    val lyricsReadings = Pref("lyricsReadings", true)
+    val lockSource = Pref("lockWordSource", "")
+    val freeText = Pref("freeWritingText", "")
     /** how big the writing square is (dp); 格子大小 changes it, the shadow follows */
     val handPad = Pref("handwritingPadSize", 380f)
     /** how much a stylus's pressure changes the thickness (0 = not at all, 1.5 = a lot) */
@@ -191,8 +206,8 @@ object Prefs : KeyValue {
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
-        copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, zhEnglish, hideReading, practiceWrite, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
+        copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion,
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return

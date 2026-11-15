@@ -367,7 +367,7 @@ struct NewDeckView: View {
             }
             if queue.isEmpty {
                 Spacer()
-                Text(topic < 0 ? trs("全部的詞都看過了！") : trs("這個主題的詞都看過了！")).ffFont(.title3).foregroundStyle(T.muted)
+                Text(FreqLevels.level(ofTopic: topic) != nil ? trs("這一級的詞都看過了！") : topic < 0 ? trs("全部的詞都看過了！") : trs("這個主題的詞都看過了！")).ffFont(.title3).foregroundStyle(T.muted)
                 Spacer()
             } else {
                 HStack(alignment: .top, spacing: smallSides ? 14 : 24) {
@@ -425,7 +425,6 @@ struct NewDeckView: View {
         .animation(.snappy, value: sideways)
         .appBackground()
         .rootPage(tr("新詞")) {
-            if !store.topics.isEmpty {
             Menu {
                 if store.lang == 1 {
                     Picker(tr("詞表"), selection: $store.zhList) {
@@ -448,6 +447,15 @@ struct NewDeckView: View {
                         .pickerStyle(.inline)
                     }
                 }
+                // 常用度: the whole dictionary's new words, in the five steps of the bars beside each word
+                Menu(tr("常用度（整本詞典）")) {
+                    Picker(tr("常用度"), selection: topicBinding) {
+                        ForEach([5, 4, 3, 2, 1], id: \.self) { l in
+                            Text("\(FreqLevels.name(l))（\(trs(FreqLevels.ranges[l] ?? ""))）").tag(FreqLevels.topic(l))
+                        }
+                    }
+                    .pickerStyle(.inline)
+                }
                 Picker(store.lang >= 2 ? trs("常用詞") : (store.isZh ? trs("等級") : trs("主題")), selection: topicBinding) {
                     Text(store.lang == 1 ? trs("全部（從第一級開始）") : trs("全部（最常用的先）")).tag(-1)
                     ForEach(store.topics.filter { !store.isZh || $0.id < Lang.charTopicBase }) { t in Text(tr("\(t.name)（\(t.count)）")).tag(t.id) }
@@ -466,7 +474,6 @@ struct NewDeckView: View {
                     .lineLimit(1)
                     .frame(maxWidth: 130)        // (a long group name doesn't push the other buttons away)
             }
-            }
         }
         .onChange(of: queue.first?.k) { _, _ in
             if autoPlay, let a = queue.first?.audio { Player.shared.play(a) }
@@ -476,7 +483,8 @@ struct NewDeckView: View {
 
 extension NewDeckView {
     var topicName: String {
-        (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.lang == 1 ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
+        if let l = FreqLevels.level(ofTopic: topic) { return FreqLevels.name(l) }
+        return (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.lang == 1 ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
     }
 }
 

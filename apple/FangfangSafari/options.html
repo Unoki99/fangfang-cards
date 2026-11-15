@@ -38,7 +38,7 @@
     main { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
     @media (min-width: 1180px) {
         main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
-        #switches, #languages, #subs { grid-column: 1 / -1; }
+        #switches, #dicts, #languages, #subs { grid-column: 1 / -1; }
     }
     section.part { background: var(--panel); border: 1px solid var(--edge); border-radius: 18px; padding: 18px 18px 16px;
         border-top: 4px solid var(--c); scroll-margin-top: 16px; }
@@ -53,6 +53,7 @@
     .row .what small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
     .row.stack { flex-direction: column; align-items: stretch; }
     .dim { opacity: .45; pointer-events: none; }
+    section.part > h3.sub { margin: 18px 0 2px; padding-top: 14px; border-top: 2px solid color-mix(in srgb, var(--c) 35%, var(--edge)); font-size: 16px; color: var(--c); }
 
     .switch { flex: none; position: relative; width: 54px; height: 32px; border-radius: 16px; background: #3a3b42; border: 1px solid #4a4b53; cursor: pointer; padding: 0; }
     .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 12px; background: #f2f2f2; transition: left .18s; }
@@ -63,6 +64,12 @@
     .seg button { font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 10px; background: var(--panel2); color: var(--ink);
         border: 1px solid var(--edge); cursor: pointer; }
     .seg button.on { background: color-mix(in srgb, var(--c) 28%, transparent); border-color: var(--c); color: #fff; }
+    .seg.bars button { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 120px; padding: 8px 12px; }
+    .seg.bars .sig { display: flex; align-items: flex-end; gap: 2px; height: 20px; }
+    .seg.bars .sig i { display: block; width: 5px; border-radius: 1.5px; background: #3a3d48; }
+    .seg.bars .sig i.f { background: var(--c); }
+    .seg.bars .nm { font-weight: 600; }
+    .seg.bars .rg { font-size: 12px; opacity: .7; }
 
     .langs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
     .lang { --c: var(--zh); border-radius: 14px; padding: 12px 14px; background: color-mix(in srgb, var(--c) 10%, var(--panel2));
@@ -88,6 +95,16 @@
         border: 1px solid rgba(150,215,255,.45); margin-bottom: 4px; font-size: 13px; }
     .tool span { display: block; color: var(--muted); }
 
+    .dicts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .dict .st { font-size: 13px; color: var(--muted); margin: 2px 0 8px; }
+    .dict .st.ok { color: var(--ink2); }
+    .dict .btns button { padding: 6px 14px; font-size: 14px; }
+    .dict .bar { height: 6px; border-radius: 3px; background: var(--edge); overflow: hidden; margin: 10px 0 4px; }
+    .dict .bar i { display: block; height: 100%; width: 0; background: var(--c); transition: width .2s; }
+    .dict .doing { font-size: 12px; color: var(--muted); min-height: 1.4em; }
+    .dict .err { font-size: 13px; color: #ffb3b8; margin-top: 6px; }
+    .dict ul { margin: 10px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+    .dict ul a { color: inherit; }
     .big { font-size: 28px; font-weight: 700; }
     .stats { display: flex; gap: 22px; flex-wrap: wrap; }
     .stats div small { display: block; color: var(--muted); font-size: 13px; }
@@ -110,6 +127,10 @@
     <nav id="nav"></nav>
     <main id="main"></main>
 </div>
+<script src="ui-en.js"></script>
+<script src="datastore.js"></script>
+<script src="shards.js"></script>
+<script src="dicts.js"></script>
 <script src="settings.js"></script>
 <script src="options.js"></script>
 </body>

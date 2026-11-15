@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
         if (before !is CrashNote) Thread.setDefaultUncaughtExceptionHandler(CrashNote(crashFile, before))
         Prefs.init(applicationContext)
         Store.init(applicationContext)
+        Radio.init(applicationContext)
         if (crashFile.exists()) {
             val t = try { crashFile.readText().take(1500) } catch (_: Exception) { "" }
             crashFile.delete()
@@ -48,6 +49,51 @@ class MainActivity : ComponentActivity() {
         }
         enableEdgeToEdge()
         setContent { App() }
+        takeLink(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        takeLink(intent)
+    }
+
+    /** the browser add-on's 傳到 App (fangfangcards://safari?…): its words */
+    private fun takeLink(i: android.content.Intent?) {
+        // text selected in another app → 方方查詞: looked up in 詞典 (several words at once too)
+        if (i?.action == android.content.Intent.ACTION_PROCESS_TEXT) {
+            val t = i.getCharSequenceExtra(android.content.Intent.EXTRA_PROCESS_TEXT)?.toString()?.trim().orEmpty()
+            if (t.isNotEmpty()) {
+                Prefs.lookupQuery.value = t.take(60)
+                UI.settingsOpen = false; UI.radioOpen = false; UI.practice = null
+                UI.tabs[4].stack.clear()
+                UI.tab = 4
+            }
+            return
+        }
+        val u = i?.data ?: return
+        // 鎖定畫面的詞 tapped: the word's entry (in its language)
+        if (u.scheme == "fangfangcards" && u.host == "dict") {
+            val l = u.getQueryParameter("lang")?.toIntOrNull()
+            if (l != null && l != Store.lang && Store.loaded) Store.setLanguage(l)
+            val w = u.getQueryParameter("word")
+            if (!w.isNullOrEmpty()) UI.open(if (com.unoki99.fangfang.engine.Lang.kind(w) == 0) Sheet.Word(w) else Sheet.ZhWord(w))
+            return
+        }
+        if (u.scheme == "fangfangcards") {
+            val n = BrowserImport.handle(u)
+            if (n > 0) android.widget.Toast.makeText(this, tr("從瀏覽器查詞收到 {0} 個詞", n), android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        LockWord.end(this)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // (leaving the app: a word on the lock screen, when that's on)
+        if (!isChangingConfigurations) LockWord.start(this)
     }
 
     override fun onPause() {
@@ -127,6 +173,7 @@ private fun Root() {
             confirmButton = { TextButton(onClick = { Store.speechHint = null }) { Text(tr("好"), color = T.btnInk) } })
     }
     UI.practice?.let { PracticeHost(it) }
+    if (UI.radioOpen) RadioScreen()
     if (UI.settingsOpen) SettingsScreen()
     Sheets()
     // the very first time: which language to learn (later: 設定 → 語言). Not asked of someone who used the app

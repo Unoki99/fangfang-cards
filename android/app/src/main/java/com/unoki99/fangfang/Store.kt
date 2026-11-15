@@ -137,6 +137,7 @@ object Store {
                 progress = prog
                 changed()
                 loaded = true
+                BrowserImport.apply()
                 migrateSenses()
                 makeFreqTopics()
                 // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
@@ -230,6 +231,8 @@ object Store {
         EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.ja = l == 4; EngineSettings.zhShown = l != 0
         undoStack.clear(); canUndo = false
         changed()
+        // (words from the browser add-on waiting for this language)
+        if (loaded) BrowserImport.apply()
     }
 
     /** 0 台語, 1 華語, 2 粵語, 3 客語 */
@@ -654,14 +657,59 @@ object Store {
 
     // MARK: 練習範圍
 
-    /** -1 = all of 不熟; 華語: a level (words) or 100 + level (characters); 台語: a 常用詞 / 常用字 group */
+    /** -1 = all of 不熟; 華語: a level (words) or 100 + level (characters); 台語: a 常用詞 / 常用字 group.
+     *  Kept for each language on its own (粵語's choice doesn't undo 華語's), and after the app is closed. */
     var practiceTopic: Int
-        get() = if (isZh) Prefs.practiceZh.value else Prefs.practiceTw.value
-        set(v) { if (isZh) Prefs.practiceZh.value = v else Prefs.practiceTw.value = v }
+        get() = practiceTopicMap()[lang] ?: -1
+        set(v) {
+            val m = practiceTopicMap().toMutableMap()
+            m[lang] = v
+            Prefs.practiceByLang.value = m.entries.joinToString(";") { "${it.key}:${it.value}" }
+            if (v >= 0) practiceGroup = null        // (a level chosen: not a 影片詞組 any more)
+        }
+    private fun practiceTopicMap(): Map<Int, Int> {
+        val s = Prefs.practiceByLang.value
+        if (s.isEmpty()) {
+            // (from before: one for 台語, one shared by the others)
+            val out = HashMap<Int, Int>()
+            out[0] = Prefs.practiceTw.value
+            for (l in 1 until Lang.count) out[l] = Prefs.practiceZh.value
+            return out
+        }
+        return s.split(";").mapNotNull { p ->
+            val a = p.split(":"); if (a.size != 2) null else a[0].toIntOrNull()?.let { l -> a[1].toIntOrNull()?.let { l to it } }
+        }.toMap()
+    }
+    /** the 影片詞組 (or "folder:<name>", an own scope) chosen as 練習範圍 for the language shown (null: none) */
+    var practiceGroup: String?
+        get() = practiceGroupMap()[lang.toString()]
+        set(v) {
+            val m = practiceGroupMap().toMutableMap()
+            if (v == null) m.remove(lang.toString()) else m[lang.toString()] = v
+            Prefs.practiceGroups.value = if (m.isEmpty()) "" else JWriter.any(m)
+            if (v != null) {
+                val t = practiceTopicMap().toMutableMap(); t[lang] = -1
+                Prefs.practiceByLang.value = t.entries.joinToString(";") { "${it.key}:${it.value}" }
+            }
+        }
+    @Suppress("UNCHECKED_CAST")
+    private fun practiceGroupMap(): Map<String, String> {
+        val s = Prefs.practiceGroups.value
+        if (s.isEmpty()) return emptyMap()
+        return try { (JReader(s).any() as? Map<String, Any?>)?.mapNotNull { (k, v) -> (v as? String)?.let { k to it } }?.toMap() ?: emptyMap() }
+        catch (_: Exception) { emptyMap() }
+    }
     val practiceTopics: List<Topic> get() = if (isZh) topics else freqTopics
     /** the 不熟 words to practise (練習範圍) */
     val practiceCards: List<Card> get() {
         val u = unknownCards
+        // (an 影片詞組 or an own scope chosen: its 不熟 words)
+        practiceGroup?.let { g ->
+            if (isGroup(g) || isFolderRef(g)) {
+                val ks = (if (g.startsWith("folder:")) folderGroups(g.removePrefix("folder:")).flatMap { groupKeys(it) } else groupKeys(g)).toHashSet()
+                return u.filter { it.k in ks }
+            }
+        }
         val t = practiceTopic
         if (t < 0 || practiceTopics.none { it.id == t }) return u
         val key = listKey("p$t")
@@ -670,7 +718,94 @@ object Store {
         listCache[key] = out
         return out
     }
-    val practiceName: String get() = practiceTopics.firstOrNull { it.id == practiceTopic }?.name ?: tr("全部不熟的詞")
+    val practiceName: String get() {
+        practiceGroup?.let { g ->
+            if (g.startsWith("folder:") && isFolderRef(g)) return g.removePrefix("folder:")
+            if (isGroup(g)) return groupName(g)
+        }
+        return practiceTopics.firstOrNull { it.id == practiceTopic }?.name ?: tr("全部不熟的詞")
+    }
+
+    // MARK: 影片詞組 (the same as the iPhone app's: made by the browser add-on, or read from a backup file)
+
+    fun isGroup(id: String): Boolean { rev; return (progress.groupTime[id] ?: -1.0) > 0 }
+    fun groupName(id: String): String = progress.groupInfo[id]?.firstOrNull() ?: id
+    fun groupURL(id: String): String? = progress.groupInfo[id]?.getOrNull(1)?.takeIf { it.isNotEmpty() }
+    fun groupDate(id: String): Double = Math.abs(progress.groupTime[id] ?: 0.0)
+    /** a group's words, in the order they were chosen */
+    fun groupKeys(id: String): List<String> {
+        rev
+        val p = id + "\u0001"
+        return progress.groupWords.filter { it.key.startsWith(p) && it.value > 0 }.entries.sortedBy { it.value }.map { it.key.substring(p.length) }
+    }
+    /** the groups of the language shown, the newest first */
+    val groupIds: List<String> get() {
+        rev
+        return progress.groupTime.filter { it.value > 0 }.keys
+            .filter { id -> groupKeys(id).any { Lang.kind(it) == lang } }
+            .sortedByDescending { groupDate(it) }
+    }
+    /** a word into a group (the group made when it's new) */
+    fun addToGroup(id: String, name: String, url: String, key: String) {
+        val t = now
+        if ((progress.groupTime[id] ?: -1.0) <= 0) progress.groupTime[id] = t
+        val old = progress.groupInfo[id] ?: mutableListOf()
+        progress.groupInfo[id] = mutableListOf(old.getOrNull(0) ?: name, url, old.getOrNull(2) ?: "")
+        val wk = id + "\u0001" + key
+        if ((progress.groupWords[wk] ?: -1.0) <= 0) progress.groupWords[wk] = t + (progress.groupWords.size % 1000) / 1e6
+        changed(); save()
+    }
+    /** every word's place (新詞 0, 熟悉 1, 不熟 2), for handing to the browser add-on */
+    fun progressStatus(): Map<String, Int> = progress.status
+    fun removeFromGroup(id: String, key: String) { progress.groupWords[id + "\u0001" + key] = -now; changed(); save() }
+    fun deleteGroup(id: String) {
+        progress.groupTime[id] = -now
+        if (practiceGroup == id) practiceGroup = null
+        changed(); save()
+    }
+    fun renameGroup(id: String, name: String) {
+        val info = progress.groupInfo[id] ?: mutableListOf()
+        progress.groupInfo[id] = mutableListOf(name, info.getOrNull(1) ?: "", info.getOrNull(2) ?: "")
+        progress.groupTime[id] = now
+        changed(); save()
+    }
+
+    // 自己的範圍: a name and the 影片詞組 chosen for it (創作範圍), kept in the third of each group's groupInfo, one
+    // name a line (the same as the iPhone app's); practising "folder:<name>" is all its groups' words
+    fun groupFolderList(id: String): List<String> =
+        progress.groupInfo[id]?.getOrNull(2)?.split("\n")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+    private fun putFolders(id: String, list: List<String>) {
+        val info = progress.groupInfo[id] ?: mutableListOf(id, "")
+        val clean = list.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        progress.groupInfo[id] = mutableListOf(info.getOrNull(0) ?: id, info.getOrNull(1) ?: "", clean.joinToString("\n"))
+        // (the change wins when another device's backup is read, without the group moving to the top of the list)
+        val t = Math.abs(progress.groupTime[id] ?: 0.0)
+        progress.groupTime[id] = (if (t > 0) t else now) + 0.001
+    }
+    /** a 範圍 made or changed: its name and its groups (old: the name it had, when it's renamed) */
+    fun saveFolder(old: String?, name: String, groups: Set<String>) {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        for (g in groupIds) {
+            val list = groupFolderList(g)
+            val out = list.filter { it != n && it != old }.toMutableList()
+            if (g in groups) out.add(n)
+            if (out != list) putFolders(g, out)
+        }
+        changed(); save()
+        if (old != null && old != n && practiceGroup == "folder:$old") practiceGroup = "folder:$n"
+    }
+    /** a 範圍 gone (its groups stay) */
+    fun deleteFolder(f: String) {
+        for (g in groupIds) if (f in groupFolderList(g)) putFolders(g, groupFolderList(g).filter { it != f })
+        changed(); save()
+        if (practiceGroup == "folder:$f") practiceGroup = null
+    }
+    /** the 範圍 of the language shown */
+    val groupFolders: List<String> get() = groupIds.flatMap { groupFolderList(it) }.distinct().sorted()
+    /** a 範圍's groups, the newest first */
+    fun folderGroups(f: String): List<String> = groupIds.filter { f in groupFolderList(it) }
+    fun isFolderRef(g: String): Boolean = g.startsWith("folder:") && folderGroups(g.removePrefix("folder:")).isNotEmpty()
 
     /** many words at once to 熟悉 (or back to 新詞) */
     fun markAll(list: List<Card>, known: Boolean) {
@@ -710,6 +845,34 @@ object Store {
     fun newQueue(n: Int, topic: Int = -1): List<Card> {
         rev
         if (topic != queueTopic) { queueTopic = topic; newStart = 0 }
+        // 新詞 → 常用度 (很常用 … 少見, topics -105 … -101): the whole dictionary's new words of that step, the most
+        // common first
+        if (topic in -105..-101) {
+            val level = -100 - topic
+            val lo = when (level) { 5 -> 0; 4 -> 1000; 3 -> 3000; 2 -> 8000; else -> 20000 }
+            val hi = when (level) { 5 -> 1000; 4 -> 3000; 3 -> 8000; 2 -> 20000; else -> Int.MAX_VALUE }
+            val out = ArrayList<Card>()
+            var first: Int? = null
+            var i = maxOf(newStart, lo)
+            val z = zh
+            if (isZh && z != null && z.lang == lang) {
+                val end = minOf(hi, z.entries.size)
+                while (i < end && out.size < n) {
+                    val k = z.entries[i].k
+                    if ((progress.status[k] ?: 0) == 0) cardFor(k)?.let { if (first == null) first = i; out.add(it) }
+                    i++
+                }
+                newStart = first ?: end
+            } else {
+                val end = minOf(hi, cards.size)
+                while (i < end && out.size < n) {
+                    if ((progress.status[cards[i].k] ?: 0) == 0) { if (first == null) first = i; out.add(cards[i]) }
+                    i++
+                }
+                newStart = first ?: end
+            }
+            return out
+        }
         val out = ArrayList<Card>()
         var i = newStart
         var first: Int? = null
@@ -758,6 +921,29 @@ object Store {
         if (u.added != null) progress.added[u.key] = u.added else progress.added.remove(u.key)
         if (u.streak != null) progress.streak[u.key] = u.streak else progress.streak.remove(u.key)
         canUndo = undoStack.isNotEmpty()
+        changed(); save()
+    }
+
+    /** a dictionary word's place (新詞 0, 熟悉 1, 不熟 2), also for a word that isn't one of the cards */
+    fun wordStatus(key: String): Int { rev; return progress.status[key] ?: 0 }
+    /** 認識: the word to 熟悉, or tap again to take it back out to 新詞 */
+    fun toggleKnown(key: String) = setWord(key, if (wordStatus(key) == 1) 0 else 1)
+    /** a keyboard's A: 熟悉 (as it is when it already is) */
+    fun keyKnown(key: String) { if (wordStatus(key) != 1) setWord(key, 1) }
+    /** a keyboard's S: 不熟, and 收藏 too (the same keys as the browser add-on's) */
+    fun keyUnknown(key: String) { if (wordStatus(key) != 2) setWord(key, 2); if (!isSaved(key)) toggleSaved(key) }
+    /** 加到「不熟」: or tap again to take it back out to 新詞 */
+    fun toggleUnknownWord(key: String) = setWord(key, if (wordStatus(key) == 2) 0 else 2)
+    fun setWord(key: String, status: Int) {
+        val c = cardFor(key)
+        if (c != null) {
+            when (status) { 1 -> mark(c, true, false); 2 -> mark(c, false, false); else -> forget(c) }
+            return
+        }
+        progress.status[key] = status
+        progress.added[key] = now
+        if (status == 2) { if (progress.streak[key] == null) progress.streak[key] = 0 } else progress.streak.remove(key)
+        if (status == 0) progress.srs.remove(key)
         changed(); save()
     }
 
@@ -1013,6 +1199,16 @@ object Store {
 
     fun rankOf(key: String): Int = rank[key] ?: Int.MAX_VALUE
 
+    /** how common a word is, for the bars beside it (0 = the most common; MAX_VALUE: not known): its place in the
+     *  dictionary for 華語 / 粵語 / 客語 / 日語 (their files are in that order), in the cards for 台語 */
+    fun freqRank(key: String): Int {
+        val kind = Lang.kind(key)
+        val z = zh
+        if (z != null && kind == zhKind) return z.index[key] ?: Int.MAX_VALUE
+        if (kind == 0) return (if (lang == 0) rank[key] else other?.rank?.get(key)) ?: Int.MAX_VALUE
+        return Int.MAX_VALUE
+    }
+
     fun addUnknown(keys: List<String>) {
         var n = 0
         val t = now
@@ -1200,6 +1396,19 @@ object Store {
             if ((t > 0) != ((progress.senses[k] ?: -1.0) > 0)) n++
             progress.senses[k] = t
         }
+        // 影片詞組: the one made / deleted last wins; its words likewise, one by one
+        if (from == 0) {
+            val gi = (obj["groupInfo"] as? Map<String, Any?>)?.mapNotNull { (k, v) ->
+                (v as? List<Any?>)?.let { l -> k to l.map { (it as? String) ?: "" }.toMutableList() }
+            }?.toMap() ?: emptyMap()
+            for ((k, t) in dmap("groupTime")) if (Math.abs(t) > Math.abs(progress.groupTime[k] ?: 0.0)) {
+                if ((t > 0) != ((progress.groupTime[k] ?: -1.0) > 0)) n++
+                progress.groupTime[k] = t
+                gi[k]?.let { progress.groupInfo[k] = it }
+            }
+            for ((k, i) in gi) if (progress.groupInfo[k] == null) progress.groupInfo[k] = i
+            for ((k, t) in dmap("groupWords")) if (Math.abs(t) > Math.abs(progress.groupWords[k] ?: 0.0)) progress.groupWords[k] = t
+        }
         if (from == 0) for ((k, t) in dmap("own")) if (Math.abs(t) > Math.abs(progress.own[k] ?: 0.0)) {
             if ((t > 0) != isOwn(k)) { n++; ownChangedInMerge = true }
             progress.own[k] = t
@@ -1265,7 +1474,8 @@ object Store {
         return JWriter.any(mapOf("app" to "fangfang-cards", "version" to 1, "exported" to exported,
             "status" to progress.status, "added" to progress.added, "streak" to progress.streak,
             "saved" to progress.saved, "own" to progress.own, "senses" to progress.senses,
-            "week" to progress.week, "weekStart" to progress.weekStart, "srs" to progress.srs, "log" to progress.log), pretty = true)
+            "week" to progress.week, "weekStart" to progress.weekStart, "srs" to progress.srs, "log" to progress.log,
+            "groupTime" to progress.groupTime, "groupInfo" to progress.groupInfo, "groupWords" to progress.groupWords), pretty = true)
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -39,7 +39,7 @@ struct FangfangCardsApp: App {
                 .tint(AppTint.accent)
                 .macTextSize()
                 // Safari 查詞's 傳到 App: the words chosen there
-                .onOpenURL { url in SafariImport.handle(url, store) }
+                .onOpenURL { url in if !IslandLive.open(url, store) { SafariImport.handle(url, store) } }
                 .onChange(of: store.loaded) { SafariImport.apply(store) }
                 // (a word of the other language: once its dictionary is open)
                 .onChange(of: store.cards.count) { SafariImport.apply(store) }
@@ -47,7 +47,9 @@ struct FangfangCardsApp: App {
         .commands { TextSizeCommands() }
         .onChange(of: scenePhase) { _, phase in
             // pull changes from the other device when the app opens, back up when it closes
-            if phase == .active { store.syncNow(); WidgetBridge.appOpened(store); SafariImport.apply(store) }
+            if phase == .active { store.syncNow(); WidgetBridge.appOpened(store); SafariImport.apply(store); IslandLive.end(); IslandLive.takeKnown(store) }
+            // (動態島: started while the app is still on screen, as it's leaving: iOS starts one only from the front)
+            else if phase == .inactive { IslandLive.start(store) }
             else if phase == .background { store.saveNow(); store.syncNow(); WidgetBridge.flush(store) }
         }
     }
@@ -136,6 +138,8 @@ struct RootView: View {
                 .padding(.top, 64)
             }
         }
+        // (the Dynamic Island tapped: the word on it)
+        .sheet(item: $router.islandEntry) { e in IslandEntrySheet(key: e.key).environmentObject(store) }
         .overlay {
             // loading the 華語 dictionary (the first time 華語 is chosen)
             if store.switching {

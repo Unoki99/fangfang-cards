@@ -41,6 +41,9 @@
 			</array>
 		</dict>
 	</array>
+	<!-- 動態島: a 不熟 word in the Dynamic Island while you're away from the app (iPhone) -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<!-- the App Group shared with the 分類詞卡 widget -->
 	<key>FFAppGroup</key>
 	<string>$(APP_GROUP)</string>

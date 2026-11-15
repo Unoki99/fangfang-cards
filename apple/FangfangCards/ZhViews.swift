@@ -92,6 +92,41 @@ struct ZhLookupPane: View {
     @State private var searched = ""
     @State private var task: Task<Void, Never>?
 
+    /// 部首查字 (not 日語 / 瑞典語: the radicals are the 華語 data's), 依詞類列出, 單詞比較, the language's own (華語:
+    /// 國語用詞 / 普通話用詞 / 四川話的詞; 日語: 助詞, 實驗室), 依常用度列出
+    private var tiles: [AnyView] {
+        var t: [AnyView] = []
+        if !dict.isJa && !dict.isSv {
+            t.append(AnyView(NavigationLink {
+                RadicalPage(isChar: { dict.byHan[$0] != nil }) { query += $0 }
+            } label: { TileLabel(icon: "square.grid.3x3", title: trs("部首查字")) }.buttonStyle(.plain)))
+        }
+        t.append(AnyView(NavigationLink(value: ZhClassRef()) { TileLabel(icon: "list.bullet.indent", title: trs("依詞類列出")) }.buttonStyle(.plain)))
+        t.append(AnyView(NavigationLink(value: ZhCompareRef()) { TileLabel(icon: "rectangle.split.2x1", title: trs("單詞比較")) }.buttonStyle(.plain)))
+        if dict.isJa {
+            t.append(AnyView(NavigationLink { JaParticlesPage() } label: { TileLabel(icon: "point.3.connected.trianglepath.dotted", title: trs("助詞")) }.buttonStyle(.plain)))
+            t.append(AnyView(NavigationLink { JaLabPage(dict: dict, start: nil) } label: { TileLabel(icon: "slider.horizontal.3", title: trs("實驗室")) }.buttonStyle(.plain)))
+        }
+        // 華語: the words of the 讀音 chosen: 國語用詞 (only 臺灣 uses them), 普通話用詞 (only 大陸), 四川話的詞
+        let spec = [1, 2, ZhDict.sichuanSpec][min(max(store.zhPlace, 0), 2)]
+        if dict.lang == 1, !dict.specWords(spec).isEmpty {
+            t.append(AnyView(NavigationLink(value: ZhSpecRef(spec: spec)) {
+                TileLabel(icon: spec == ZhDict.sichuanSpec ? "mountain.2" : "character.book.closed",
+                          title: spec == 1 ? trs("國語用詞") : spec == 2 ? trs("普通話用詞") : trs("四川話的詞"),
+                          count: dict.specWords(spec).count, cap: 1_000_000)
+            }.buttonStyle(.plain)))
+        }
+        // 依常用度列出: the words by how common they are (the dictionary's order)
+        t.append(AnyView(NavigationLink {
+            FreqBandsPage(keys: dict.entries.map(\.k)) { k in
+                AnyView(Group {
+                    if let e = dict.entry(k) { NavigationLink(value: ZhKey(k: k)) { ZhWordRow(dict: dict, entry: e) } }
+                })
+            }
+        } label: { TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出")) }.buttonStyle(.plain)))
+        return t
+    }
+
     var body: some View {
         List {
             Section {
@@ -103,46 +138,10 @@ struct ZhLookupPane: View {
                     .clearButton($query)
             }
             .listRowBackground(T.fn.opacity(0.7))
-            // 單詞比較, as in the 台語 dictionary (a header: a row's rounded corners would cut the tile off)
+            // the tiles, as in the 台語 dictionary (a header: a row's rounded corners would cut them off)
             Section {
             } header: {
-                VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        NavigationLink(value: ZhClassRef()) { TileLabel(icon: "list.bullet.indent", title: trs("依詞類列出")) }
-                            .buttonStyle(.plain)
-                        NavigationLink(value: ZhCompareRef()) { TileLabel(icon: "rectangle.split.2x1", title: trs("單詞比較")) }
-                            .buttonStyle(.plain)
-                    }
-                    // 日語: 助詞 and 實驗室 (no 部首查字: the radicals are the 華語 data's)
-                    if dict.isJa {
-                        HStack(spacing: 10) {
-                            NavigationLink { JaParticlesPage() } label: { TileLabel(icon: "point.3.connected.trianglepath.dotted", title: trs("助詞")) }
-                                .buttonStyle(.plain)
-                            NavigationLink { JaLabPage(dict: dict, start: nil) } label: { TileLabel(icon: "slider.horizontal.3", title: trs("實驗室")) }
-                                .buttonStyle(.plain)
-                        }
-                    } else if !dict.isSv {
-                    HStack(spacing: 10) {
-                        NavigationLink {
-                            RadicalPage(isChar: { dict.byHan[$0] != nil }) { query += $0 }
-                        } label: { TileLabel(icon: "square.grid.3x3", title: trs("部首查字")) }
-                            .buttonStyle(.plain)
-                        // 華語: the words of the 讀音 chosen, like 日語借詞 in the 台語 dictionary: 國語用詞 (only 臺灣
-                        // uses them), 普通話用詞 (only 大陸), 四川話的詞 (四川話's own)
-                        let spec = [1, 2, ZhDict.sichuanSpec][min(max(store.zhPlace, 0), 2)]
-                        if dict.lang == 1, !dict.specWords(spec).isEmpty {
-                            NavigationLink(value: ZhSpecRef(spec: spec)) {
-                                TileLabel(icon: spec == ZhDict.sichuanSpec ? "mountain.2" : "character.book.closed",
-                                          title: spec == 1 ? trs("國語用詞") : spec == 2 ? trs("普通話用詞") : trs("四川話的詞"),
-                                          count: dict.specWords(spec).count, cap: 1_000_000)
-                            }
-                                .buttonStyle(.plain)
-                        } else {
-                            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                        }
-                    }
-                    }
-                }
+                TileGrid(tiles: tiles)
                 .padding(.vertical, 4)
                 .textCase(nil)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -795,6 +794,8 @@ struct ZhConvertPane: View {
     /// the 歌詞 window: no typing, only the 漢字 (left) and the chosen reading (right)
     let lyrics: Bool
     @EnvironmentObject var store: Store
+    /// (歌詞: the readings side can be turned off; it takes memory and slows a long song down)
+    @AppStorage(LyricsBridge.readingsKey) private var lyricsReadings = true
     @AppStorage private var text: String
     @State private var pieces: [ZhPiece] = []
     @State private var copied: Int?
@@ -825,7 +826,9 @@ struct ZhConvertPane: View {
                         }
                         LyricsColumns {
                             panel(0, trs("漢字"), dict.sentenceHan(pieces, store.zhPlace, base: T.glyph))
-                            panel(romIndex + 1, trs(Lang.romNames[romIndex]), dict.sentence(pieces, romIndex, store.zhPlace))
+                            if lyricsReadings {
+                                panel(romIndex + 1, trs(Lang.romNames[romIndex]), dict.sentence(pieces, romIndex, store.zhPlace))
+                            }
                         }
                     }
                 } else {

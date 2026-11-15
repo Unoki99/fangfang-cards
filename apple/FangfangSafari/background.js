@@ -1,5 +1,5 @@
-// 方方詞卡 查詞: looks words up in the files inside the extension (d-*.json, made on the Mac by install.sh from the
-// app's data). The page's script asks with the text from the character under the Pencil on; the answer is the longest
+// 方方詞卡 查詞: looks words up in the lookup files (d-*.json): the ones installed in the browser (設定 → 詞典,
+// kept by datastore.js), else the ones inside the extension (made on the Mac by install.sh from the app's data). The page's script asks with the text from the character under the Pencil on; the answer is the longest
 // 華語 word and the longest 台語 word it starts with, and the spelling tables for their readings.
 // (Everything is inside the extension: no shared folder with the app is needed, so it also works when the app was
 // installed with Sideloadly.)
@@ -8,10 +8,13 @@ const cache = new Map();
 async function file(name) {
     if (cache.has(name)) return cache.get(name);
     let j = null;
-    try {
-        const r = await fetch(browser.runtime.getURL(name));
-        if (r.ok) j = await r.json();
-    } catch (e) { j = null; }
+    try { j = await ffDB.get(name); } catch (e) { j = null; }
+    if (j === null) {
+        try {
+            const r = await fetch(browser.runtime.getURL(name));
+            if (r.ok) j = await r.json();
+        } catch (e) { j = null; }
+    }
     cache.set(name, j);
     if (cache.size > 16) {
         for (const k of cache.keys()) { if (k !== "d-meta.json") { cache.delete(k); break; } }
@@ -53,10 +56,23 @@ async function lookup(text, show) {
     return out;
 }
 
+// (a dictionary installed or taken away in 設定 → 詞典: read the files again)
 browser.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.op === "dataChanged") { cache.clear(); return Promise.resolve({ ok: true }); }
+    if (msg && msg.op === "options") {
+        return browser.tabs.create({ url: browser.runtime.getURL("options.html#dicts") })
+            .catch(() => browser.runtime.openOptionsPage()).then(() => ({ ok: true }), () => ({ ok: false }));
+    }
     // a whole file, for the page's script to keep (it then looks words up by itself, at once)
     if (msg && msg.op === "file" && /^d-[a-z0-9-]+\.json$/.test(msg.name || "")) return file(msg.name).then(data => ({ ok: !!data, data }));
     if (msg && msg.op === "lookup") return lookup(msg.text || "", msg.show).catch(e => ({ ok: false, error: String(e) }));
     if (msg && msg.op === "places") return file("d-meta.json").then(m => ({ ok: true, places: (m && m.places) || [], ready: !!m }));
     return Promise.resolve({ ok: false });
+});
+
+// (just installed, and no dictionary yet: the settings page, where they're installed)
+if (browser.runtime.onInstalled) browser.runtime.onInstalled.addListener(async d => {
+    if (!d || d.reason !== "install") return;
+    if (await file("d-meta.json")) return;
+    try { await browser.tabs.create({ url: browser.runtime.getURL("options.html#dicts") }); } catch (e) {}
 });

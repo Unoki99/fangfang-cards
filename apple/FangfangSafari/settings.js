@@ -2,10 +2,13 @@
 // defaults, saving them, and sending the chosen words (and the minutes watched) to the app.
 const FF_DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
     yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
-    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFont: 1, subsRd: true, subsGl: true, subsRdSize: 0.56, subsLang: "auto", subsTrad: true, onlyNew: false,
-    keys: true, keyKnown: "a", keyNew: "s" };
+    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFont: 1, subsRd: true, subsGl: true, subsRdSize: 0.56, subsGlSize: 0.5, subsEnZh: true, subsLang: "auto", subsTrad: true, subsDefs: false, subsBg: "dark", subsMark: "new", subsRare: 3000, onlyNew: false,
+    keys: true, keyKnown: "a", keyNew: "s", uiLang: "zh" };
 const FF_SIZES = [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]];
 const ffStore = browser.storage.local;
+/// 介面語言: the add-on's own words in 中文 or English (ui-en.js); set from the settings when they're loaded
+let ffUILang = "zh";
+function ffT(s) { return ffUILang === "en" && typeof FF_EN === "object" && Object.prototype.hasOwnProperty.call(FF_EN, s) ? FF_EN[s] : s; }
 
 async function ffLoad() {
     const r = await ffStore.get(["ffPrefs", "ffQueue", "ffWatch", "ffKnown"]).catch(() => ({}));
@@ -13,6 +16,8 @@ async function ffLoad() {
     if (prefs.corner === true && !(r.ffPrefs || {}).pos) prefs.pos = "tl";
     delete prefs.corner;
     ffOneLang(prefs, FF_LANGS.find(l => (r.ffPrefs || {})[l]));
+    ffUILang = prefs.uiLang === "en" ? "en" : "zh";
+    document.documentElement.lang = ffUILang === "en" ? "en" : "zh-Hant";
     let places = [], ready = true;
     try { const p = await browser.runtime.sendMessage({ op: "places" }); if (p && p.ok) { places = p.places; ready = p.ready !== false; } } catch (e) {}
     return { prefs, queue: r.ffQueue || [], watch: r.ffWatch || {}, known: r.ffKnown || null, places, ready };
@@ -39,11 +44,24 @@ function ffSave(prefs) { return ffStore.set({ ffPrefs: prefs }).catch(() => {});
 /// the words chosen (加到不熟 / 收藏) and the minutes watched with the subtitle panel, to the app
 async function ffSend(queue, watch) {
     const pack = o => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-    const op = w => w === "saved" ? "s" : (w === "known" ? "k" : "u");
-    const ops = queue.map(x => x.x ? [x.k, op(x.w), x.x] : [x.k, op(x.w)]);
-    const url = "fangfangcards://safari?ops=" + pack(ops) + (Object.keys(watch || {}).length ? "&w=" + pack(watch) : "");
+    const op = w => w === "saved" ? "s" : (w === "known" ? "k" : (w === "group" ? "g" : "u"));
+    // (影片詞組: each word's group as a fourth, the groups' names and addresses in gr)
+    const groups = {};
+    for (const x of queue) if (x.g) groups[x.g] = [x.gn || x.g, x.gu || ""];
+    const ops = queue.map(x => x.g ? [x.k, op(x.w), x.x || "", x.g] : (x.x ? [x.k, op(x.w), x.x] : [x.k, op(x.w)]));
+    const url = ffAppURL("ops=" + pack(ops) + (Object.keys(watch || {}).length ? "&w=" + pack(watch) : "") +
+        (Object.keys(groups).length ? "&gr=" + pack(groups) : ""));
     try { await browser.tabs.update({ url }); } catch (e) { window.open(url); }
     await ffStore.set({ ffQueue: [], ffWatch: {} }).catch(() => {});
+    return url;
+}
+
+/// the app's link: fangfangcards://safari?… (iPhone, iPad, Mac); on Android (Firefox) the same as an intent:// link,
+/// the way Android browsers hand a link to an app
+function ffAppURL(query) {
+    return /Android/i.test(navigator.userAgent)
+        ? "intent://safari?" + query + "#Intent;scheme=fangfangcards;end"
+        : "fangfangcards://safari?" + query;
 }
 
 function ffEl(tag, text, cls) {
@@ -69,7 +87,7 @@ function ffChoice(prefs, key, options, onChange) {
     const draw = () => {
         g.replaceChildren();
         for (const [v, t] of options) {
-            const b = ffEl("button", t, String(prefs[key]) === String(v) ? "on" : "");
+            const b = ffEl("button", ffT(t), String(prefs[key]) === String(v) ? "on" : "");
             b.addEventListener("click", () => { prefs[key] = v; ffSave(prefs); draw(); if (onChange) onChange(); });
             g.appendChild(b);
         }

@@ -223,13 +223,22 @@ class Progress(
     val srs: HashMap<String, MutableList<Double>> = HashMap(),
     /** 練習統計: "台語|2026-11-08" -> [right, wrong, learned] */
     val log: HashMap<String, MutableList<Int>> = HashMap(),
+    /** 影片詞組 (the same as the iPhone app's): the words chosen from one video / episode in the browser add-on. A
+     *  group's id (the video's address, e.g. "yt:abc123") -> when it was made (negative = deleted, so synced devices
+     *  delete it too); its [name, address, its own scopes (one a line)]; its words ("id\u0001key" -> when added,
+     *  negative = taken out) */
+    val groupTime: HashMap<String, Double> = HashMap(),
+    val groupInfo: HashMap<String, MutableList<String>> = HashMap(),
+    val groupWords: HashMap<String, Double> = HashMap(),
 ) {
     fun copy() = Progress(HashMap(status), HashMap(added), HashMap(streak), HashMap(saved), HashMap(own),
         HashMap(senses), HashMap(week), HashMap(weekStart),
-        HashMap(srs.mapValues { it.value.toMutableList() }), HashMap(log.mapValues { it.value.toMutableList() }))
+        HashMap(srs.mapValues { it.value.toMutableList() }), HashMap(log.mapValues { it.value.toMutableList() }),
+        HashMap(groupTime), HashMap(groupInfo.mapValues { it.value.toMutableList() }), HashMap(groupWords))
 
     fun toJson(): String = JWriter.any(mapOf("status" to status, "added" to added, "streak" to streak, "saved" to saved, "own" to own,
-        "senses" to senses, "week" to week, "weekStart" to weekStart, "srs" to srs, "log" to log))
+        "senses" to senses, "week" to week, "weekStart" to weekStart, "srs" to srs, "log" to log,
+        "groupTime" to groupTime, "groupInfo" to groupInfo, "groupWords" to groupWords))
 
     companion object {
         fun parse(text: String): Progress {
@@ -247,6 +256,9 @@ class Progress(
                     "weekStart" -> j.obj { w -> p.weekStart[w] = j.nextDouble() }
                     "srs" -> j.obj { w -> val l = ArrayList<Double>(); j.arr { l.add(j.nextDouble()) }; p.srs[w] = l }
                     "log" -> j.obj { w -> val l = ArrayList<Int>(); j.arr { l.add(j.nextInt()) }; p.log[w] = l }
+                    "groupTime" -> j.obj { w -> p.groupTime[w] = j.nextDouble() }
+                    "groupInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.groupInfo[w] = l }
+                    "groupWords" -> j.obj { w -> p.groupWords[w] = j.nextDouble() }
                     else -> j.skip()
                 }
             }

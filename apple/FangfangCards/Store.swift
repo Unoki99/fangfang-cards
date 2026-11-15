@@ -733,6 +733,30 @@ final class Store: ObservableObject {
     /// next unseen words, most common first; topic = a 分類 index or -1 for everything
     func newQueue(_ n: Int, topic: Int = -1) -> [Card] {
         if topic != queueTopic { queueTopic = topic; newStart = 0 }
+        // 新詞 → 常用度 (很常用 … 少見): the whole dictionary's new words of that step, the most common first
+        if let l = FreqLevels.level(ofTopic: topic) {
+            let (lo, hi) = FreqLevels.bounds(l)
+            var out: [Card] = []
+            var first: Int?
+            var i = max(newStart, lo)
+            if isZh, let d = zh, d.lang == lang {
+                let end = min(hi, d.entries.count)
+                while i < end && out.count < n {
+                    let k = d.entries[i].k
+                    if (progress.status[k] ?? 0) == 0, let c = card(for: k) { if first == nil { first = i }; out.append(c) }
+                    i += 1
+                }
+                newStart = first ?? end
+            } else {
+                let end = min(hi, cards.count)
+                while i < end && out.count < n {
+                    if (progress.status[cards[i].k] ?? 0) == 0 { if first == nil { first = i }; out.append(cards[i]) }
+                    i += 1
+                }
+                newStart = first ?? end
+            }
+            return out
+        }
         var out: [Card] = []
         var i = newStart
         var first: Int?
@@ -763,21 +787,38 @@ final class Store: ObservableObject {
 
     /// 不熟 → 練習範圍: practise only the 不熟 words of one level / group (-1 = all of 不熟).
     /// 華語: an HSK / TOCFL level (words) or 100 + level (characters); 台語: a 常用詞 / 常用字 group.
-    @Published var practiceTopicZh = UserDefaults.standard.object(forKey: "practiceTopic.zh") as? Int ?? -1 {
-        didSet { UserDefaults.standard.set(practiceTopicZh, forKey: "practiceTopic.zh") }
+    /// (kept for each language on its own, so 粵語's choice doesn't undo 華語's; remembered when the app is opened again)
+    @Published var practiceTopicByLang: [Int: Int] = Store.loadPracticeTopics() {
+        didSet { UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: practiceTopicByLang.map { (String($0.key), $0.value) }), forKey: "practiceTopicByLang") }
     }
-    @Published var practiceTopicTw = UserDefaults.standard.object(forKey: "practiceTopic.tw") as? Int ?? -1 {
-        didSet { UserDefaults.standard.set(practiceTopicTw, forKey: "practiceTopic.tw") }
+    private static func loadPracticeTopics() -> [Int: Int] {
+        let d = UserDefaults.standard
+        if let m = d.dictionary(forKey: "practiceTopicByLang") as? [String: Int] {
+            return m.reduce(into: [:]) { if let k = Int($1.key) { $0[k] = $1.value } }
+        }
+        // (from before: one for 台語, one shared by the others)
+        var out: [Int: Int] = [:]
+        if let t = d.object(forKey: "practiceTopic.tw") as? Int { out[0] = t }
+        if let z = d.object(forKey: "practiceTopic.zh") as? Int { for l in 1..<Lang.names.count { out[l] = z } }
+        return out
     }
     var practiceTopic: Int {
-        get { isZh ? practiceTopicZh : practiceTopicTw }
-        set { if isZh { practiceTopicZh = newValue } else { practiceTopicTw = newValue } }
+        get { practiceTopicByLang[lang] ?? -1 }
+        set {
+            practiceTopicByLang[lang] = newValue
+            if newValue >= 0 { practiceGroups[lang] = nil }       // (a level chosen: not a 影片詞組 any more)
+        }
     }
     /// the practice topics there are now (the levels / groups that have words)
     var practiceTopics: [Topic] { isZh ? topics : freqTopics }
     /// the 不熟 words to practise (練習範圍)
     var practiceCards: [Card] {
         let u = unknownCards
+        // (an 影片詞組 chosen: its 不熟 words)
+        if let g = practiceGroup, isGroup(g) || isFolderRef(g) {
+            let ks = Set(isFolderRef(g) ? folderGroups(String(g.dropFirst(7))).flatMap { groupKeys($0) } : groupKeys(g))
+            return u.filter { ks.contains($0.k) }
+        }
         let t = practiceTopic
         guard t >= 0, practiceTopics.contains(where: { $0.id == t }) else { return u }
         let key = "p\(t)"
@@ -787,8 +828,119 @@ final class Store: ObservableObject {
         return out
     }
     var practiceName: String {
-        practiceTopics.first(where: { $0.id == practiceTopic })?.name ?? trs("全部不熟的詞")
+        if let g = practiceGroup, isGroup(g) { return groupName(g) }
+        if let g = practiceGroup, isFolderRef(g) { return String(g.dropFirst(7)) }
+        return practiceTopics.first(where: { $0.id == practiceTopic })?.name ?? trs("全部不熟的詞")
     }
+
+    // MARK: 影片詞組
+
+    /// the 影片詞組 chosen as 練習範圍 (nil: none), one for each language
+    @Published var practiceGroups: [Int: String] = (UserDefaults.standard.dictionary(forKey: "practiceGroups") as? [String: String] ?? [:])
+        .reduce(into: [:]) { if let k = Int($1.key) { $0[k] = $1.value } } {
+        didSet { UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: practiceGroups.map { (String($0.key), $0.value) }), forKey: "practiceGroups") }
+    }
+    var practiceGroup: String? {
+        get { practiceGroups[lang] }
+        set { practiceGroups[lang] = newValue; if newValue != nil { practiceTopic = -1 } }
+    }
+    func isGroup(_ id: String) -> Bool { (progress.groupTime[id] ?? -1) > 0 }
+    func groupName(_ id: String) -> String { progress.groupInfo[id]?.first ?? id }
+    func groupURL(_ id: String) -> URL? { (progress.groupInfo[id]?.dropFirst().first).flatMap { URL(string: $0) } }
+    func groupDate(_ id: String) -> Date { Date(timeIntervalSince1970: abs(progress.groupTime[id] ?? 0)) }
+    /// a group's words, in the order they were chosen
+    func groupKeys(_ id: String) -> [String] {
+        let p = id + "\u{1}"
+        return progress.groupWords.filter { $0.key.hasPrefix(p) && $0.value > 0 }
+            .sorted { $0.value < $1.value }.map { String($0.key.dropFirst(p.count)) }
+    }
+    /// the groups of the language open now, the newest first
+    var groupIds: [String] {
+        progress.groupTime.filter { $0.value > 0 }.map(\.key)
+            .filter { id in groupKeys(id).contains { Lang.kind($0) == lang } }
+            .sorted { groupDate($0) > groupDate($1) }
+    }
+    /// a word into a group (the group made when it's new)
+    func addToGroup(_ id: String, name: String, url: String, key: String) {
+        let now = Date().timeIntervalSince1970
+        var p = progress
+        if (p.groupTime[id] ?? -1) <= 0 { p.groupTime[id] = now }
+        // (its name and folder as they are when it's renamed or put in a folder here)
+        let old = p.groupInfo[id] ?? []
+        p.groupInfo[id] = [old.first ?? name, url, old.count > 2 ? old[2] : ""]
+        let wk = id + "\u{1}" + key
+        if (p.groupWords[wk] ?? -1) <= 0 { p.groupWords[wk] = now + Double(p.groupWords.count % 1000) / 1e6 }
+        progress = p
+    }
+    func removeFromGroup(_ id: String, key: String) {
+        var p = progress
+        p.groupWords[id + "\u{1}" + key] = -Date().timeIntervalSince1970
+        progress = p
+        save()
+    }
+    func deleteGroup(_ id: String) {
+        var p = progress
+        let now = Date().timeIntervalSince1970
+        p.groupTime[id] = -now
+        if practiceGroup == id { practiceGroup = nil }
+        progress = p
+        save()
+    }
+    func renameGroup(_ id: String, _ name: String) {
+        var p = progress
+        let info = p.groupInfo[id] ?? []
+        p.groupInfo[id] = [name, info.count > 1 ? info[1] : "", info.count > 2 ? info[2] : ""]
+        p.groupTime[id] = Date().timeIntervalSince1970
+        progress = p
+        save()
+    }
+
+    // 自己的範圍 (資料夾): a name and the 影片詞組 chosen for it (創作範圍 in 練習範圍), e.g. all of one show's episodes.
+    // A group can be in more than one. They're kept in the third of each group's groupInfo, one name a line ("" none);
+    // practising "folder:<name>" is all its groups' words.
+    func groupFolderList(_ id: String) -> [String] {
+        guard let info = progress.groupInfo[id], info.count > 2 else { return [] }
+        return info[2].split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+    /// a group's first 範圍 ("" none)
+    func groupFolder(_ id: String) -> String { groupFolderList(id).first ?? "" }
+    private func putFolders(_ id: String, _ list: [String], in p: inout Progress) {
+        let info = p.groupInfo[id] ?? [id, ""]
+        var seen = Set<String>()
+        let clean = list.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && seen.insert($0).inserted }
+        p.groupInfo[id] = [info.first ?? id, info.count > 1 ? info[1] : "", clean.joined(separator: "\n")]
+        // (the change wins on the other devices, without the group moving to the top of the list)
+        let t = abs(p.groupTime[id] ?? 0)
+        p.groupTime[id] = (t > 0 ? t : Date().timeIntervalSince1970) + 0.001
+    }
+    /// a 範圍 made or changed: its name and its groups (`old`: the name it had, when it's renamed)
+    func saveFolder(old: String?, name: String, groups: Set<String>) {
+        let n = name.trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return }
+        var p = progress
+        for g in groupIds {
+            let list = groupFolderList(g)
+            var out = list.filter { $0 != n && $0 != old }
+            if groups.contains(g) { out.append(n) }
+            if out != list { putFolders(g, out, in: &p) }
+        }
+        progress = p
+        save()
+        if let old, old != n, practiceGroup == "folder:" + old { practiceGroup = "folder:" + n }
+    }
+    /// a 範圍 gone (its groups stay)
+    func deleteFolder(_ f: String) {
+        var p = progress
+        for g in groupIds where groupFolderList(g).contains(f) { putFolders(g, groupFolderList(g).filter { $0 != f }, in: &p) }
+        progress = p
+        save()
+        if practiceGroup == "folder:" + f { practiceGroup = nil }
+    }
+    /// the 範圍 of the language open now
+    var groupFolders: [String] { Array(Set(groupIds.flatMap(groupFolderList))).sorted() }
+    /// a 範圍's groups, the newest first
+    func folderGroups(_ folder: String) -> [String] { groupIds.filter { groupFolderList($0).contains(folder) } }
+    func isFolderRef(_ g: String) -> Bool { g.hasPrefix("folder:") && !folderGroups(String(g.dropFirst(7))).isEmpty }
     var knownCards: [Card] { list(1) }
 
     // MARK: changes
@@ -1185,7 +1337,13 @@ final class Store: ObservableObject {
     func applyOwn() { dict?.setUserWords(Set(ownKeys)) }
 
     /// how common a word is (its place in the card order)
-    func rankOf(_ key: String) -> Int { rank[key] ?? Int.max }
+    /// how common a word is (0 = the most): 華語 / 粵語 / 客語 / 日語 / 瑞典語 its place in the dictionary (which is in
+    /// that order), 台語 its place among the cards. The same as Safari 查詞 uses (its "f"), so the bars and the
+    /// subtitles' 不常用的詞 agree.
+    func rankOf(_ key: String) -> Int {
+        if let d = zh, Lang.kind(key) == d.lang, let i = d.index[key] { return i }
+        return Lang.kind(key) == 0 ? (rank[key] ?? Int.max) : Int.max
+    }
 
     /// words not yet seen go to 不熟 (words already in 不熟 / 熟悉 stay where they are)
     func addUnknown(_ keys: [String]) {
@@ -1412,6 +1570,17 @@ final class Store: ObservableObject {
                 if (t > 0) != ((p.senses[k] ?? -1) > 0) { n += 1 }
                 p.senses[k] = t
             }
+            // 影片詞組: the one made / deleted last wins; its words likewise, one by one
+            let gi = obj["groupInfo"] as? [String: [String]] ?? [:]
+            for (k, t) in obj["groupTime"] as? [String: Double] ?? [:] where abs(t) > abs(p.groupTime[k] ?? 0) {
+                if (t > 0) != ((p.groupTime[k] ?? -1) > 0) { n += 1 }
+                p.groupTime[k] = t
+                if let i = gi[k] { p.groupInfo[k] = i }
+            }
+            for (k, i) in gi where p.groupInfo[k] == nil { p.groupInfo[k] = i }
+            for (k, t) in obj["groupWords"] as? [String: Double] ?? [:] where abs(t) > abs(p.groupWords[k] ?? 0) {
+                p.groupWords[k] = t
+            }
             for (k, t) in obj["own"] as? [String: Double] ?? [:] where abs(t) > abs(p.own[k] ?? 0) {
                 if (t > 0) != ((p.own[k] ?? -1) > 0) { n += 1; ownChanged = true }
                 p.own[k] = t
@@ -1481,6 +1650,7 @@ final class Store: ObservableObject {
             "saved": progress.saved, "own": progress.own, "senses": progress.senses,
             "week": progress.week, "weekStart": progress.weekStart,
             "srs": progress.srs, "log": progress.log,
+            "groupTime": progress.groupTime, "groupInfo": progress.groupInfo, "groupWords": progress.groupWords,
         ]
         return (try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])) ?? Data()
     }

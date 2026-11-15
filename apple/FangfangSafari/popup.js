@@ -5,23 +5,28 @@
     const { prefs } = d;
     const main = document.getElementById("main");
     const el = ffEl;
-    if (!d.ready) main.appendChild(el("div", "查詞的資料不在延伸功能裡：在 Mac 上執行一次 install.sh（不要加 nosafari），再安裝一次 App。", "off"));
+    if (!d.ready) main.appendChild(el("div", ffT("還沒有安裝詞典：按下面的「所有設定」，在「詞典」選一個語言安裝。"), "off"));
 
     // 1. 傳到 App first (no scrolling past the words to reach it)
     const q = d.queue, mins = Object.values(d.watch).reduce((a, x) => a + x, 0);
     let words = null;
     if (q.length || mins >= 1) {
         const s = el("div", null, "card");
-        s.appendChild(el("div", (q.length ? "選好 " + q.length + " 個詞" : "") + (q.length && mins >= 1 ? "・" : "") +
-            (mins >= 1 ? "看影片字幕 " + Math.round(mins) + " 分鐘" : ""), "note"));
+        s.appendChild(el("div", (q.length ? ffT("選好 ") + q.length + ffT(" 個詞") : "") + (q.length && mins >= 1 ? ffT("・") : "") +
+            (mins >= 1 ? ffT("看影片字幕 ") + Math.round(mins) + ffT(" 分鐘") : ""), "note"));
         const b = el("div", null, "btns");
-        const send = el("button", "傳到 App", "act main");
+        const send = el("button", ffT("傳到 App"), "act main");
         send.addEventListener("click", async () => {
-            await ffSend(q, d.watch);
-            s.replaceChildren(el("div", "已經傳到方方詞卡。如果 App 沒有打開，請再按一次。", "note"));
+            const url = await ffSend(q, d.watch);
+            s.replaceChildren(el("div", ffT("已經傳到方方詞卡。"), "note"));
+            // (the words are kept in this link: if the app didn't open, tapping it opens it)
+            const a = el("a", ffT("App 沒有打開？點這裡"), "act main");
+            a.href = url;
+            a.style.cssText = "display:block;text-align:center;text-decoration:none;margin-top:8px";
+            s.appendChild(a);
             if (words) words.remove();
         });
-        const clr = el("button", "清掉", "act");
+        const clr = el("button", ffT("清掉"), "act");
         clr.addEventListener("click", async () => { await ffStore.set({ ffQueue: [] }).catch(() => {}); s.remove(); if (words) words.remove(); });
         b.append(send, clr);
         s.appendChild(b);
@@ -38,12 +43,23 @@
         r.append(w, sw);
         box.appendChild(r);
     };
-    row("網頁查詞", "停在詞上跳出卡片", "on", "#6eaaff");
-    row("影片字幕", "YouTube、Viki 的字幕面板", "subs", "#c39bff");
+    row(ffT("網頁查詞"), ffT("停在詞上跳出卡片"), "on", "#6eaaff");
+    row(ffT("影片字幕"), ffT("YouTube、Viki 的字幕面板"), "subs", "#c39bff");
+    {   // (介面語言)
+        const r = el("div", null, "row");
+        const w = el("div"); w.append(el("b", ffT("介面語言")), el("small", "中文 / English"));
+        const g = el("div"); g.style.cssText = "display:flex;gap:4px";
+        for (const [val, t] of [["zh", "中文"], ["en", "EN"]]) {
+            const b = el("button", t, "act"); if ((prefs.uiLang || "zh") === val) b.style.borderColor = "#6eaaff";
+            b.addEventListener("click", async () => { prefs.uiLang = val; await ffSave(prefs); location.reload(); });
+            g.appendChild(b);
+        }
+        r.append(w, g); box.appendChild(r);
+    }
     main.appendChild(box);
 
     // 3. the whole settings page
-    const all = el("button", "所有設定", "act wide");
+    const all = el("button", ffT("所有設定"), "act wide");
     all.addEventListener("click", async () => {
         // (a tab of its own: the whole screen, also on an iPad, where the extension's own settings would be a small sheet)
         try { await browser.tabs.create({ url: browser.runtime.getURL("options.html") }); }
@@ -51,12 +67,17 @@
         window.close();
     });
     main.appendChild(all);
-    main.appendChild(el("div", "語言、拼寫、卡片、字幕和認識的詞，都在「所有設定」。", "note"));
+    main.appendChild(el("div", ffT("語言、拼寫、卡片、字幕和認識的詞，都在「所有設定」。"), "note"));
 
     // 4. the words chosen, last (a long list doesn't push the buttons away)
     if (q.length) {
         words = el("div", null, "card");
-        words.appendChild(el("div", "選好的詞（" + q.length + "）：" + q.map(x => x.h + (x.w === "saved" ? "（收藏）" : x.w === "known" ? "（認識）" : "")).join("、"), "words"));
+        // (by 影片詞組: the words of one video together, as the app will keep them)
+        const by = new Map();
+        for (const x of q) { const g = x.gn || ""; if (!by.has(g)) by.set(g, []); by.get(g).push(x); }
+        for (const [g, xs] of by) {
+            words.appendChild(el("div", (g ? ffT("影片：") + g : ffT("其他")) + ffT("（") + xs.length + ffT("）：") + xs.map(x => x.h + (x.w === "saved" ? ffT("（收藏）") : x.w === "known" ? ffT("（認識）") : x.w === "group" ? ffT("（之前選的）") : "")).join(ffT("、")), "words"));
+        }
         main.appendChild(words);
     }
 })();

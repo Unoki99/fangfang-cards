@@ -72,7 +72,7 @@ fun SettingsScreen() {
         if (uri != null) message = Backup.setFolder(uri)
     }
 
-    val titles = listOf("顏色與外觀", "語言與讀音", "卡片與練習", "詞典", "聲音", "備份與同步", "匯出與匯入", "關於與資料來源", "詞典資料").map { tr(it) }
+    val titles = listOf("顏色與外觀", "語言與讀音", "卡片與練習", "詞典", "聲音", "備份與同步", "匯出與匯入", "用法及資料來源", "詞典資料").map { tr(it) }
     // (pages under a page: 9 複製意思的格式, 10 選聲調顏色, 11 日語的顏色)
     AppBackground(Modifier.background(T.bg)) {
         Column(Modifier.fillMaxSize().navigationBarsPadding().imePadding()) {
@@ -203,6 +203,28 @@ fun SettingsScreen() {
                         }
                         Txt(tr("CSV 跟方方網站的收藏格式一樣（分號分隔，九欄）。用備份可以把進度搬到另一台裝置。匯入方方網站或 Safari 擴充功能的備份，收藏的詞會加到「不熟」。"),
                             ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
+                        // 瀏覽器查詞 (the add-on in Firefox): the words you know, so its subtitle panel marks the new ones
+                        Spacer(Modifier.height(14.dp))
+                        SectionTitle(tr("瀏覽器查詞（Firefox）"))
+                        val ctx = androidx.compose.ui.platform.LocalContext.current
+                        Group {
+                            ActionRow(tr("把認識的詞傳到瀏覽器查詞")) {
+                                val pl = BrowserKnown.payload()
+                                if (pl != null) { BrowserKnown.open(ctx, pl.url); message = tr("傳了認識的詞 {0} 個、不熟的詞 {1} 個。", pl.known, pl.unknown) }
+                            }
+                            RowDivider(); ActionRow(tr("複製認識的詞（貼到瀏覽器查詞的設定頁）")) {
+                                val pl = BrowserKnown.payload()
+                                if (pl != null) {
+                                    val cm = ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    cm.setPrimaryClip(android.content.ClipData.newPlainText("fangfang-known", pl.text))
+                                    message = tr("複製了。在瀏覽器查詞的設定頁「認識的詞」貼上。")
+                                }
+                            }
+                            val w = remember { BrowserImport.waitingCount }
+                            if (w > 0) { RowDivider(); InfoRow(tr("等其他語言的詞"), "$w") }
+                        }
+                        Txt(tr("在 Firefox 裝了方方詞卡 查詞以後：這裡把認識和不熟的詞傳過去，影片字幕裡沒學過的詞就會標出來；在 Firefox 按「傳到 App」，選的詞會照語言放進 App（影片的詞放進那部影片的詞組）。只有傳過去的詞會在兩邊，沒有其他同步。"),
+                            ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
                     }
                     7 -> AboutPage()
                     8 -> DictDataPage()
@@ -257,7 +279,7 @@ private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
         tr("自動播放{0}・音量 {1}%", if (Prefs.autoPlay.value) tr("開") else tr("關"), Math.round(Prefs.volume.value * 100)),
         Backup.folderName ?: tr("還沒設定"),
         tr("CSV・備份檔"),
-        tr("資料、授權"),
+        tr("每個部分能做什麼・資料、授權"),
         tr("安裝、移除詞典"),
     )
     val icons = listOf(Icons.Filled.Palette, Icons.Filled.Translate, Icons.Filled.Layers, Icons.Filled.MenuBook,
@@ -266,7 +288,7 @@ private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
     val order = listOf(0, 1, 2, 3, 4, 5, 8, 6, 7)
     TileGrid(order.size, spacing = 12.dp) { n, m ->
         val i = order[n]
-        // colours on: 詞典資料 yellow, 匯出與匯入 pink, 關於與資料來源 grey, the others the tone colours in turn
+        // colours on: 詞典資料 yellow, 匯出與匯入 pink, 用法及資料來源 grey, the others the tone colours in turn
         val c = if (ts == 0) null else when (i) {
             8 -> Color(0xFFFFE066); 6 -> Color(0xFFFF8CC6); 7 -> Color(0xFFA3A3A8)
             else -> ToneColors.color(listOf(1, 2, 3, 4, 5, 6, 7, 8)[i % 8], 7)?.let { Color(it) }
@@ -436,6 +458,9 @@ private fun LanguagePage() {
 
 @Composable
 private fun AboutPage() {
+    // what each part of the app can do (Usage.kt), then where the data comes from
+    UsageSections()
+    SectionTitle(tr("資料來源"))
     Group {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Credit(tr("詞條、讀音、釋義、例句、音檔、近反義詞、異用字、腔口差異、各地講法、分類、華語對照詞"), "教育部《臺灣台語常用詞辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。釋義、例句原文照錄，音檔未經修改；讀音依規則由台羅轉成皓羅、方音、白話字。")

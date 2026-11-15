@@ -198,7 +198,7 @@ enum WidgetBridge {
     }
 
     /// one card as a widget word: the meaning that has an example sentence (so they match), in all spellings
-    private static func word(_ store: Store, _ c: Card, _ place: Int) -> WidgetWord {
+    static func word(_ store: Store, _ c: Card, _ place: Int) -> WidgetWord {
         let def = c.d.first(where: { !$0.x.isEmpty }) ?? c.d.first
         let x = def?.x.first
         let plain: (AttributedString) -> String = { String($0.characters) }

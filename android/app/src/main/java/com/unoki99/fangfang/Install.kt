@@ -13,6 +13,7 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
@@ -79,6 +80,9 @@ class DictPack(
 ) {
     class Source(val file: String, val url: String, val optional: Boolean = false, val arg: String? = null)
 
+    fun mirrorURL(s: Source): String? =
+        if (s.file in notMirrored) null else MIRROR + (if (s.file in sharedFiles) "common" else id) + "/" + s.file
+
     companion object {
         private const val G = "https://raw.githubusercontent.com/"
         private val essay = Source("essay.txt", G + "rime/rime-essay/master/essay.txt", optional = true)
@@ -139,6 +143,14 @@ class DictPack(
             "shuowen", "buildShuowen", "段玉裁《說文解字注》（cjkvi-dict，GPLv2）：單字詞條下面顯示說文的解釋、段注和六書", "約 6 MB")
 
         val all = listOf(taigi, mandarin, cantonese, hakka, japanese, shuowen)
+
+        /** the copies of the original files in the fangfang-sources folder of this project's GitHub repository
+         *  (unchanged, one folder per dictionary, and common for files more than one uses), the same as the iPhone
+         *  app's: a file is downloaded from there first, and from where it's published when it isn't there */
+        const val MIRROR = "https://raw.githubusercontent.com/unoki99/fangfang-cards/main/fangfang-sources/"
+        /** (files that can't be shared) */
+        private val notMirrored = setOf("tocfl.csv", "tbcl-chars.csv", "folkets_kth.xml")
+        private val sharedFiles = setOf("essay.txt", "cedict_ts.u8")
         fun of(lang: Int): DictPack? = all.firstOrNull { it.lang == lang }
 
         /** "cedict_ts.u8" → "cedict", "essay.txt" → "essay" (a converter's argument); an accent's file keeps its name */
@@ -173,7 +185,30 @@ object DictInstaller {
     fun install(p: DictPack) {
         if (state(p) is InstallState.Working) return
         states[p.id] = InstallState.Working(0.0, tr("下載中…"))
+        scope.launch { runInstall(p) }
+    }
+
+    /** 安裝全部: the dictionaries not installed yet, one after another (n of total while it runs, else null) */
+    var allRunning by mutableStateOf<Pair<Int, Int>?>(null); private set
+    fun missing(): List<DictPack> = DictPack.all.filter { p -> !isInstalled(p) && !p.outputs.take(1).all { DataFiles.isBuiltIn(it) } }
+    fun isInstalled(p: DictPack): Boolean = p.outputs.take(1).all { DataFiles.isInstalled(it) }
+    fun installAll() {
+        if (allRunning != null || busy) return
+        val todo = missing()
+        if (todo.isEmpty()) return
+        allRunning = 0 to todo.size
         scope.launch {
+            for ((i, p) in todo.withIndex()) {
+                allRunning = (i + 1) to todo.size
+                states[p.id] = InstallState.Working(0.0, tr("下載中…"))
+                runInstall(p)
+            }
+            allRunning = null
+        }
+    }
+
+    private suspend fun runInstall(p: DictPack) {
+        run {
             val work = File(Store.app.cacheDir, "install-" + p.id)
             try {
                 withContext(Dispatchers.IO) { work.deleteRecursively(); work.mkdirs() }
@@ -183,7 +218,12 @@ object DictInstaller {
                     states[p.id] = InstallState.Working(0.3 * i / maxOf(p.sources.size, 1), tr("下載 {0}…", s.file))
                     try {
                         val dest = File(work, s.file)
-                        withContext(Dispatchers.IO) { download(s.url, dest) }
+                        // (the copy on GitHub (fangfang-sources) first; where it's published when the copy isn't there)
+                        withContext(Dispatchers.IO) {
+                            val m = p.mirrorURL(s)
+                            val got = m != null && try { download(m, dest); true } catch (_: Exception) { false }
+                            if (!got) download(s.url, dest)
+                        }
                         have[s.file] = dest.path
                     } catch (e: Exception) {
                         if (!s.optional) throw InstallException(tr("下載不到 {0}：{1}", s.file, e.message ?: e.javaClass.simpleName))

@@ -74,7 +74,8 @@ fun NewDeckTab() {
             Box {
                 TextButton(onClick = { menu = true }) {
                     Icon(Icons.Filled.Layers, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
-                    Text((Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
+                    Text((if (topic in -105..-101) FreqLevels.name(-100 - topic) else null)
+                        ?: (Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
                         ?: (if (Store.lang == 1) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
                         color = T.btnInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
                 }
@@ -88,7 +89,7 @@ fun NewDeckTab() {
                         HorizontalDivider(color = T.fnEdge)
                         Txt(tr("等級"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                     }
-                    DropdownMenuItem(text = { Text(if (Store.lang == 1) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic < 0) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
+                    DropdownMenuItem(text = { Text(if (Store.lang == 1) tr("全部（從第一級開始）") else tr("全部（最常用的先）"), color = if (topic == -1) T.greenInk else T.glyph) }, onClick = { topic = -1; menu = false })
                     for (t in Store.topics) {
                         if (zh && t.id == Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id) {
                             HorizontalDivider(color = T.fnEdge)
@@ -97,6 +98,16 @@ fun NewDeckTab() {
                         DropdownMenuItem(text = { Text(tr("{0}（{1}）", t.name, t.count), color = if (topic == t.id) T.greenInk else T.glyph) },
                             onClick = { topic = t.id; menu = false })
                     }
+                    // 常用度: the whole dictionary's new words, in the five steps of the bars beside each word
+                    HorizontalDivider(color = T.fnEdge)
+                    Txt(tr("常用度（整本詞典）"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    for (l in listOf(5, 4, 3, 2, 1)) DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                FreqLevelBars(l, Store.lang)
+                                Text(tr("{0}（{1}）", FreqLevels.name(l), tr(FreqLevels.ranges[l] ?: "")), color = if (topic == -100 - l) T.greenInk else T.glyph)
+                            }
+                        }, onClick = { topic = -100 - l; menu = false })
                     // 台語: the most common words / characters, 500 at a time
                     if (!zh) for (t in Store.freqTopics) {
                         if (t.id == Lang.freqWordBase || t.id == Lang.freqCharBase) {
@@ -137,7 +148,7 @@ fun NewDeckTab() {
                     }
                     if (queue.isEmpty()) {
                         Spacer(Modifier.weight(1f))
-                        Txt(if (topic < 0) tr("全部的詞都看過了！") else if (zh) tr("這個等級的詞都看過了！") else tr("這個主題的詞都看過了！"), ff(FF.Title3), T.muted)
+                        Txt(if (topic in -105..-101) tr("這一級的詞都看過了！") else if (topic < 0) tr("全部的詞都看過了！") else if (zh) tr("這個等級的詞都看過了！") else tr("這個主題的詞都看過了！"), ff(FF.Title3), T.muted)
                         Spacer(Modifier.weight(1f))
                     } else Box(Modifier.weight(1f).fillMaxWidth()) {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -482,14 +493,18 @@ fun UnknownTab() {
                     ReviewBar(due.size) { UI.practice = Practice.STATS }
                     val tiles = listOfNotNull(
                         PT(tr("開始練習"), Icons.Filled.School, all.isNotEmpty() || due.isNotEmpty(), Practice.STUDY),
+                        PT(tr("滑卡練習"), Icons.Filled.Swipe, all.isNotEmpty() || due.isNotEmpty(), Practice.SWIPE),
                         PT(tr("例句填空"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
                         PT(tr("排句子"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
                         PT(tr("看字排讀音"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
                         // (客語: no voice to listen to; 日語: no tones, 助詞練習 instead)
                         if (Store.isJa) PT(tr("助詞練習"), Icons.Filled.Extension, true, Practice.JA_PARTICLES)
                         else PT(tr("聲調練習"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),
+                        // (every syllable's tone, in its colour: a game)
+                        if (Store.isJa) null else PT(tr("聲調色球"), Icons.Filled.BubbleChart, true, Practice.TONE_GAME),
                         PT(tr("翻牌配對"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
+                        PT(tr("自由寫字"), Icons.Filled.GridOn, true, Practice.FREE_WRITING),
                         PT(tr("遊戲"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
                     )
                     // the last tile: 怎麼練習, what each way of practising does
@@ -598,12 +613,15 @@ private fun PracticeHelp(goal: Int, close: () -> Unit) {
     val items = buildList {
         add(tr("本週學習") to tr("從不熟的詞選這個星期要學的（或點詞旁邊的月曆），一週後做期末測驗；答錯的詞可以留到下一週。"))
         add(tr("開始練習") to tr("各種題目混在一起練。連續答對 {0} 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。", goal))
+        add(tr("滑卡練習") to tr("像「新詞」一樣滑卡片：往右是會、往左是不會。不會直接放到「熟悉」，而是和其他練習一樣算答對／答錯；連續答對 {0} 次才到「熟悉」，過幾天再出來複習。", goal))
         add(tr("例句填空") to tr("只做例句填空題。"))
         add(tr("寫字題") to tr("開始練習和本週學習裡也有寫字題：看意思和讀音，一個字一個字把整個詞寫出來，按「對答案」以後自己說寫對了沒有。可以在「設定 → 卡片與練習」關掉。"))
         add(tr("排句子") to tr("例句被打亂了，照華語的意思把詞排回去。"))
         add(tr("看字排讀音") to tr("只看漢字，把讀音照順序排。"))
         add(tr("聲調練習") to tr("聽發音，選出聲調正確的拼法（先用不熟的詞，再用常用詞）。"))
         add(tr("翻牌配對") to tr("不熟的詞做成牌，一半是漢字，一半是讀音；一次翻兩張，把漢字和它的讀音配起來。"))
+        add(tr("聲調色球") to tr("聽一個詞，照每個字的聲調點顏色球（顏色是設定裡選的聲調顏色）。每個字都算，全對有連對加分。"))
+        add(tr("自由寫字") to tr("打一句話，字會出現在格子裡，可以照著寫；格子的大小用上面的滑桿調。"))
         add(tr("手寫練習") to (if (Store.isZh) tr("選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），") else tr("選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），")) + tr("看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
         add(tr("練習範圍") to tr("只練一個等級（或一組）的不熟的詞或字。"))
     }

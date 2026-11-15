@@ -259,7 +259,11 @@ private fun HandwritingSetup(start: (List<String>) -> Unit) {
     var own by Prefs.handOwn
     val off = remember { mutableStateListOf<String>() }
     class Source(val id: String, val name: String, val chars: List<String>)
-    val sources = if (!Store.isZh) {
+    // 練習範圍 (不熟 → 練習範圍): the characters of its words, the same words the other games use (first, and what it
+    // starts with)
+    val scope = Source("scope", tr("練習範圍：{0}", Store.practiceName),
+        Store.practiceCards.flatMap { c -> c.h.cps().filter { Zhuyin.isHan(it.firstCp()) } }.distinct())
+    val sources = listOf(scope) + if (!Store.isZh) {
         // 台語: the characters of your 不熟 / 熟悉 words
         val tw = twCharSets()
         listOf(Source("unknown", tr("不熟的詞的字"), tw.first), Source("known", tr("熟悉的詞的字"), tw.second),
@@ -1026,6 +1030,100 @@ fun WordWriteScreen(card: Card, onClose: () -> Unit) {
                 WordWriteArea(card.h.codePoints().toArray().map { String(Character.toChars(it)) }, false, Modifier.weight(1f), practiceOnly = true) { done ->
                     if (done) onClose() else round++
                 }
+            }
+        }
+    }
+}
+
+
+// MARK: - 自由寫字: type a sentence, and write it in a grid of squares (米字格, no space between them), the characters
+// faint in them to trace (描字); the squares' size with the slider; more pages when the sentence doesn't fit
+
+@Composable
+fun FreeWritingScreen(onClose: () -> Unit) {
+    var cell by Prefs.freeCell
+    var text by Prefs.freeText
+    var trace by Prefs.handTrace
+    val strokes = remember { mutableStateListOf<InkStroke>() }
+    var page by remember { mutableIntStateOf(0) }
+    val chars = text.cps().filter { it.isNotBlank() }
+    val rainbow = Prefs.handRainbow.value
+    val sensitivity = Prefs.handPressure.value
+    val ink = HandInk.solid
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val penWidth = with(density) { Prefs.handWidth.value.dp.toPx() }
+    val period = with(density) { 420.dp.toPx() }
+    val edge = T.fnEdge
+    Column(Modifier.fillMaxSize()) {
+        TopBar(tr("自由寫字"), onClose, close = true, settings = false) {
+            IconButton(onClick = { if (strokes.isNotEmpty()) strokes.removeAt(strokes.lastIndex) }, enabled = strokes.isNotEmpty()) {
+                Icon(Icons.Filled.Undo, tr("上一筆"), tint = if (strokes.isNotEmpty()) T.glyph else T.muted)
+            }
+            IconButton(onClick = { strokes.clear() }, enabled = strokes.isNotEmpty()) {
+                Icon(Icons.Filled.CleaningServices, tr("清掉"), tint = if (strokes.isNotEmpty()) T.glyph else T.muted)
+            }
+            IconButton(onClick = { trace = !trace }) {
+                Icon(Icons.Filled.TextFields, tr("描字"), tint = if (trace) T.btnInk else T.muted)
+            }
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Filled.GridOn, null, tint = T.muted, modifier = Modifier.size(18.dp))
+            Slider(cell, { cell = (it / 2f).toInt() * 2f }, valueRange = 28f..200f, modifier = Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge, inactiveTrackColor = T.fnEdge))
+            Txt("${cell.toInt()}", ff(FF.Footnote), T.muted)
+        }
+        OutlinedTextField(text, { text = it; page = 0 }, Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            placeholder = { Text(tr("打一句話，字會出現在格子裡（可以照著寫）"), color = T.muted) }, singleLine = true,
+            trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { text = "" }) { Icon(Icons.Filled.Close, null, tint = T.muted) } })
+        Spacer(Modifier.height(10.dp))
+        BoxWithConstraints(Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, bottom = 28.dp).noStarBursts()) {
+            val s = cell.dp
+            val cols = maxOf(1, (maxWidth / s).toInt()); val rows = maxOf(1, (maxHeight / s).toInt())
+            val perPage = cols * rows
+            val pages = maxOf(1, (chars.size + perPage - 1) / perPage)
+            val pg = page.coerceAtMost(pages - 1)
+            Box(Modifier.size(s * cols, s * rows).align(Alignment.TopCenter).background(T.fn.copy(alpha = 0.75f))) {
+                // the sentence's characters, faint, one per square
+                if (trace) for (i in 0 until minOf(perPage, maxOf(0, chars.size - pg * perPage))) {
+                    KaiGhost(chars[pg * perPage + i], 0.25f, Modifier.size(s).offset(s * (i % cols), s * (i / cols)))
+                }
+                Canvas(Modifier.fillMaxSize().pointerInput(sensitivity, penWidth) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val stylus = down.type == PointerType.Stylus
+                        down.consume()
+                        strokes.add(InkStroke(listOf(down.position), listOf(HandInk.width(penWidth, down.pressure, stylus, sensitivity))))
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            val c = e.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!c.pressed) break
+                            c.consume()
+                            if (strokes.isNotEmpty()) strokes[strokes.size - 1] = strokes.last().add(c.position, HandInk.width(penWidth, c.pressure, stylus, sensitivity), c.uptimeMillis)
+                        }
+                    }
+                }) {
+                    val px = s.toPx()
+                    val dash = PathEffect.dashPathEffect(floatArrayOf(4 * density.density, 4 * density.density))
+                    for (r in 0 until rows) for (c in 0 until cols) {
+                        val x = c * px; val y = r * px
+                        drawLine(edge.copy(alpha = 0.6f), Offset(x + px / 2, y), Offset(x + px / 2, y + px), 0.8f * density.density, pathEffect = dash)
+                        drawLine(edge.copy(alpha = 0.6f), Offset(x, y + px / 2), Offset(x + px, y + px / 2), 0.8f * density.density, pathEffect = dash)
+                        if (cell >= 60f) {
+                            drawLine(edge.copy(alpha = 0.6f), Offset(x, y), Offset(x + px, y + px), 0.8f * density.density, pathEffect = dash)
+                            drawLine(edge.copy(alpha = 0.6f), Offset(x + px, y), Offset(x, y + px), 0.8f * density.density, pathEffect = dash)
+                        }
+                    }
+                    for (c in 0..cols) drawLine(edge, Offset(c * px, 0f), Offset(c * px, rows * px), 1.2f * density.density)
+                    for (r in 0..rows) drawLine(edge, Offset(0f, r * px), Offset(cols * px, r * px), 1.2f * density.density)
+                    // (the writing, at its own size: drawInk scales by the width, so the whole area's width)
+                    drawInk(strokes.toList(), size.width, period, rainbow, ink)
+                }
+            }
+            if (pages > 1) Row(Modifier.align(Alignment.BottomCenter).offset(y = 20.dp).clip(CircleShape).background(T.fn.copy(alpha = 0.95f))
+                .padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { page = maxOf(0, pg - 1); strokes.clear() }, enabled = pg > 0) { Icon(Icons.Filled.ChevronLeft, null, tint = T.glyph) }
+                Txt("${pg + 1}／$pages", lat(14f), T.glyph)
+                IconButton(onClick = { page = minOf(pages - 1, pg + 1); strokes.clear() }, enabled = pg < pages - 1) { Icon(Icons.Filled.ChevronRight, null, tint = T.glyph) }
             }
         }
     }

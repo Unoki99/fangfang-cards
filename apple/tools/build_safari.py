@@ -89,17 +89,37 @@ def shard_of(lang, word):
 
 
 # ── 簡體 → 繁體, character by character (for subtitles in 簡體): from the 華語 words' 正體 and 簡體 pairs, each 簡體
-# character's most common 正體 one. Only characters that are never 正體 themselves (发, 头, 们…): an ambiguous one like
-# 后 or 里, also written in 正體, is left to the words (后来 → 後來 by the dictionary's word)
+# character's most common 正體 one. Characters never 正體 themselves (发, 头, 们…), and ones far more often 簡體 than
+# 正體 (与 → 與, 宁 → 寧, 后 → 後: the dictionary's 正體 words have them only rarely), and the ones the dictionary
+# calls 簡化字. (台 stays 台, as Taiwan writes it; the words fix the rest: 后来 → 後來, 皇后 stays.)
+# ── 異體字: a word written with a variant (菸囪 for 煙囪, 裏 for 裡) is found as the dictionary's word
 S2T = {}
-TRAD_CHARS = set()
+TRAD_CHARS = {}
+SIMP_OF = {}       # 简化字 the dictionary names: 与 → 與
+VARIANT = {}       # variant → the standard one: 菸 → 煙
+S2T_KEEP = set("台干")
+VAR_LATER = []     # (the 華語 words, for their 異體字 spellings once all the variants are known)
 
 
 def s2t_pair(h, a):
-    TRAD_CHARS.update(h)
+    for c in h: TRAD_CHARS[c] = TRAD_CHARS.get(c, 0) + 1
     if not a or a == h or len(a) != len(h): return
     for t, c in zip(h, a):
         if t != c: S2T.setdefault(c, {}).setdefault(t, 0); S2T[c][t] += 1
+
+
+def variant_of(h, senses, en):
+    if len(h) != 1: return
+    for t in senses:
+        for m in re.finditer(r"「(.)」的異體字", t):
+            if m.group(1) != h: VARIANT.setdefault(h, m.group(1))
+        for m in re.finditer(r"「(.)」的簡化字", t):
+            if m.group(1) != h: SIMP_OF.setdefault(h, m.group(1))
+        m = re.match(r"^(?:〈[^〉]*〉)?同「(.)」。?$", t)
+        if m and m.group(1) != h: VARIANT.setdefault(h, m.group(1))
+    # (CC-CEDICT's English: "variant of 煙|烟[yan1]")
+    for m in re.finditer(r"variant of (.)(?:\|.)?\[", en):
+        if m.group(1) != h: VARIANT.setdefault(h, m.group(1))
 
 
 def add(lang, word, e, most=6):
@@ -144,9 +164,11 @@ if zh:
         for k, v in (sc.get(name) or {}).items(): sc_read[k] = (v, kind)
     eqs = sc.get("q") or {}
 
-    def zh_add(k, h, alt, tw, lu, scr, kind, spec, m, en, eq=None):
+    # (f: how common the word is, its place in zh.json, the most common first; the subtitles mark the rarer ones)
+    def zh_add(k, h, alt, tw, lu, scr, kind, spec, m, en, eq=None, f=None):
         global zh_count
         e = {"k": k, "t": tw}
+        if f is not None: e["f"] = f
         if lu: e["l"] = lu
         if scr: e["s"] = scr; e["q"] = kind
         if spec: e["p"] = spec
@@ -157,18 +179,33 @@ if zh:
             if s and s not in ("-", "_") and s not in zy_py: zy_py[s] = pinyin(s)
         add("zh", h, e, 4)
         if alt and alt != h: add("zh", alt, e, 4)
+        VAR_LATER.append((h, e))
         zh_count += 1
 
-    for e in zh.get("e", []):
+    for zi, e in enumerate(zh.get("e", [])):
         k, h, tw = e.get("k"), e.get("h"), e.get("s")
         if not (k and h and tw): continue
         s2t_pair(h, e.get("a"))
+        variant_of(h, [d[0] for d in e.get("d") or [] if d and d[0]], e.get("n") or "")
         senses = [d[0] for d in e.get("d") or [] if d and d[0]]
         scr, kind = sc_read.get(k, (None, 0))
         if scr and len(scr.split(" ")) != len(tw.split(" ")): scr = None
         en = "; ".join([x.strip() for x in (e.get("n") or "").split(";") if x.strip()][:3])
-        zh_add(k, h, e.get("a"), tw, e.get("l"), scr, kind, e.get("p") or 0, short("　".join(senses[:2])), en, eqs.get(h))
+        zh_add(k, h, e.get("a"), tw, e.get("l"), scr, kind, e.get("p") or 0, short("　".join(senses[:2])), en, eqs.get(h), zi)
         en_add("zh", h, e.get("n"))
+    # 異體字: each word also under its spelling with a variant character (菸囪 → 煙囪's entry), when that spelling
+    # isn't a word of its own
+    std2var = {}
+    for v, s0 in VARIANT.items(): std2var.setdefault(s0, []).append(v)
+    heads = {e.get("h") for e in zh.get("e", []) if e.get("h")}
+    nvar = 0
+    for (vh, ve) in VAR_LATER:
+        for c in set(vh):
+            for v in std2var.get(c, [])[:3]:
+                w = vh.replace(c, v)
+                if w not in heads:
+                    add("zh", w, ve, 4); nvar += 1
+    print(f"華語 異體字 spellings: {nvar}", file=sys.stderr)
     # 四川話's own words (from Wiktionary)
     for w in sc.get("w") or []:
         h, s, z = w.get("h"), w.get("s"), w.get("z")
@@ -190,6 +227,8 @@ if d:
     dm, dt = defs.get("m") or {}, defs.get("t") or []
     dia = d.get("dia") or {}
     tok = d.get("tok") or {}            # (a word's tokens: "--" before a light tone, "_" between its parts)
+    cards = load("cards.json") or {}
+    rank = {c["k"]: i for i, c in enumerate(cards.get("cards", []))}
 
     def tw_entry(k, via=None):
         codes = k.split("\t", 1)[1]
@@ -201,6 +240,7 @@ if d:
         en = tw_en.get(k)
         if en: e["e"] = "; ".join(en.lstrip("*").split("; ")[:3])
         if via: e["v"] = via
+        if k in rank: e["f"] = rank[k]          # (how common: its place among the cards)
         return e
 
     keys = []
@@ -212,8 +252,6 @@ if d:
     # (華語 → 台語: the 台語 words for a 華語 word, the more common first (cards.json's order); for a word 台語
     # writes the same way too (its own entry first), one or two more words with that meaning)
     heads = {k.split("\t", 1)[0] for k in keys}        # (the words that have an entry of their own)
-    cards = load("cards.json") or {}
-    rank = {c["k"]: i for i, c in enumerate(cards.get("cards", []))}
     by_term = {}
     for k in keys:
         for t in gl.get(k, []):
@@ -232,11 +270,11 @@ def zh_like(name, lang):
     d = load(name)
     if not d: return 0, d
     n = 0
-    for e in d.get("e", []):
+    for i, e in enumerate(d.get("e", [])):
         k, h, s = e.get("k"), e.get("h"), e.get("s")
         if not (k and h and s): continue
         senses = [x[0] for x in e.get("d") or [] if x and x[0]]
-        o = {"k": k, "s": s}
+        o = {"k": k, "s": s, "f": i}
         if e.get("v"): o["a"] = e["v"]          # (客語: each accent's reading)
         m = short("　".join(senses[:2]))
         if m: o["m"] = m
@@ -425,10 +463,11 @@ if sv:
         if guessed(e): return "≈" + guessed(e)[0]
         return short((e.get("n") or "").split(";")[0].strip(), 30)
 
-    for e in es:
+    for i, e in enumerate(es):
         k, h = e.get("k"), e.get("h")
         if not (k and h): continue
-        o = {"k": k, "s": e.get("s") or ""}
+        # (f: how common, its place in sv.json, the same as the bars in the app)
+        o = {"k": k, "s": e.get("s") or "", "f": i}
         if e.get("w"): o["w"] = e["w"][0]
         # (華語 guessed from the English: kept apart, the pop-up shows it when its 設定 says)
         if real(e): o["m"] = "、".join(real(e)[:4])
@@ -479,10 +518,16 @@ for i, sh in enumerate(en_sh):
     if sh:
         with open(os.path.join(OUT, f"d-en-{i:03d}.json"), "w", encoding="utf-8") as f:
             json.dump(sh, f, ensure_ascii=False, separators=(",", ":"))
-# (簡體 → 繁體)
-s2t = {c: max(ts, key=ts.get) for c, ts in S2T.items() if c not in TRAD_CHARS}
+# (簡體 → 繁體: m the characters to change, s the ones that are only ever 簡體: they tell 簡體 subtitles from 繁體 ones)
+strict = [c for c in S2T if not TRAD_CHARS.get(c)]
+s2t = {}
+for c, ts in S2T.items():
+    n, t = sum(ts.values()), TRAD_CHARS.get(c, 0)
+    if c not in S2T_KEEP and (t == 0 or (n >= 2 and n >= 4 * t)): s2t[c] = max(ts, key=ts.get)
+for c, t in SIMP_OF.items():
+    if c not in S2T_KEEP: s2t.setdefault(c, t)
 with open(os.path.join(OUT, "d-s2t.json"), "w", encoding="utf-8") as f:
-    json.dump(s2t, f, ensure_ascii=False, separators=(",", ":"))
+    json.dump({"m": s2t, "s": "".join(strict)}, f, ensure_ascii=False, separators=(",", ":"))
 print(f"簡體 → 繁體: {len(s2t)} characters", file=sys.stderr)
 meta["s2t"] = len(s2t)
 meta["en"] = len(EN)

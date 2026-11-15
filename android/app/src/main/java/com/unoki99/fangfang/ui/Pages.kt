@@ -72,6 +72,10 @@ fun RoutePage(r: Route, onBack: () -> Unit) {
     when (r) {
         is Route.ZhEntry -> { ZhGate { z -> EntryFont { ZhEntryPage(z, r.key, onBack) } }; return }
         is Route.ZhLevel -> { LevelWordsPage(r.level, onBack); return }
+        is Route.VideoGroups -> { VideoGroupsPage(onBack); return }
+        is Route.ScopeEditor -> { ScopeEditorPage(r.name, onBack); return }
+        is Route.FreqBands -> { if (r.zh) ZhGate { FreqBandsPage(true, onBack) } else DictGate { FreqBandsPage(false, onBack) }; return }
+        is Route.FreqBand -> { if (r.zh) ZhGate { FreqBandPage(true, r.level, onBack) } else DictGate { FreqBandPage(false, r.level, onBack) }; return }
         is Route.ZhProgress -> { ZhProgressPage(onBack); return }
         is Route.SenseCopySettings -> { SenseCopySettingsPage(onBack); return }
         is Route.Radicals -> { RadicalPage(r.zh, onBack); return }
@@ -96,6 +100,7 @@ fun RoutePage(r: Route, onBack: () -> Unit) {
             is Route.Category -> CategoryWordsPage(d, r.i, onBack)
             is Route.WordClasses -> WordClassesPage(d, onBack)
             is Route.Japanese -> JapanesePage(d, onBack)
+            is Route.PlaceWords -> PlaceWordsPage(d, r.place, onBack)
             else -> {}
         }
     }

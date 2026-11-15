@@ -83,6 +83,33 @@ fun ZhDictionaryTab() {
 
 @Composable
 private fun ZhLookupPane(z: ZhDict) {
+    // a tablet (or a big phone on its side): the list on the left, the word tapped on the right
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (!splitWide(maxWidth, maxHeight)) ZhLookupList(z)
+        else {
+            var picked by remember(z) { mutableStateOf<String?>(null) }
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(0.42f).fillMaxHeight()) {
+                    CompositionLocalProvider(LocalSplitPick provides { k: String -> picked = k }) { ZhLookupList(z) }
+                }
+                VerticalDivider(color = T.fnEdge)
+                Box(Modifier.weight(0.58f).fillMaxHeight()) {
+                    val e = picked?.let { z.entry(it) }
+                    if (e == null) Txt(tr("點左邊的詞，詞條會在這裡打開。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center).padding(24.dp))
+                    else key(e.k) {
+                        Column(Modifier.fillMaxSize().entryKeys(e.k).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                            ZhEntryBody(z, e)
+                            Spacer(Modifier.height(40.dp))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZhLookupList(z: ZhDict) {
     // (the same search text as the 台語 dictionary's: a word looked up stays when the language is switched)
     var query by Prefs.lookupQuery
     val place = Prefs.zhPlace.value
@@ -105,20 +132,19 @@ private fun ZhLookupPane(z: ZhDict) {
             SearchField(query, { query = it }, if (z.isJa) tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") else if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
             // 日語: 助詞 and 實驗室 (no 部首查字: the radicals are the 華語 data's)
-            if (z.isJa) TileGrid(4) { i, m ->
-                when (i) {
-                    0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) }
-                    1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) }
-                    2 -> TileButton(Icons.Filled.Hub, tr("助詞"), m) { nav.push(Route.JaParticles) }
-                    else -> TileButton(Icons.Filled.Tune, tr("實驗室"), m) { nav.push(Route.JaLab(null)) }
+            // the order of every language: 部首查字, 依詞類列出, 單詞比較, the language's own, 依常用度列出
+            // (日語: no 部首查字, the radicals are the 華語 data's)
+            val tiles = buildList<@Composable (Modifier) -> Unit> {
+                if (!z.isJa) add { m -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(true)) } }
+                add { m -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) } }
+                add { m -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) } }
+                if (z.isJa) {
+                    add { m -> TileButton(Icons.Filled.Hub, tr("助詞"), m) { nav.push(Route.JaParticles) } }
+                    add { m -> TileButton(Icons.Filled.Tune, tr("實驗室"), m) { nav.push(Route.JaLab(null)) } }
                 }
-            } else TileGrid(3) { i, m ->
-                when (i) {
-                    0 -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) }
-                    1 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) }
-                    else -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(true)) }
-                }
+                add { m -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m) { nav.push(Route.FreqBands(true)) } }
             }
+            TileGrid(tiles.size) { i, m -> tiles[i](m) }
         }
         if (query.isEmpty()) item {
             if (z.isJa) Txt(tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。"),
@@ -144,11 +170,12 @@ private fun ZhLookupPane(z: ZhDict) {
 }
 
 /** 華語 words in a list (swipe right = 加到不熟, left = 收藏) */
-private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, english: Boolean = false, query: String? = null) {
+internal fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, english: Boolean = false, query: String? = null, limit: Int = 0) {
     if (list.isEmpty()) return
     item { SectionTitle(title) }
-    items(list.take(if (english) 250 else 500).filter { it < z.entries.size }, key = { "z|$title|$it" }) { i ->
+    items(list.take(if (limit > 0) limit else if (english) 250 else 500).filter { it < z.entries.size }, key = { "z|$title|$it" }) { i ->
         val nav = LocalNav.current
+        val pick = LocalSplitPick.current
         val e = z.entries[i]
         Store.rev
         Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
@@ -156,7 +183,7 @@ private fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, eng
                 start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) tr("移回新詞") else tr("加到不熟"), T.rustEdge) else null,
                 end = Pair(if (Store.isSaved(e.k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
                 onStart = { Store.toggleUnknown(e.k) }, onEnd = { Store.toggleSaved(e.k) },
-                onClick = { nav.push(Route.ZhEntry(e.k)) },
+                onClick = { pick?.invoke(e.k) ?: nav.push(Route.ZhEntry(e.k)) },
             ) { ZhWordRow(z, e, english, query = query) }
         }
     }
@@ -176,7 +203,12 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             if (e.level(list) > 0) Txt(UILang.label(Lang.levelName(list, e.level(list))), ff(FF.Caption2, FontWeight.Bold), T.greenInk)
             Spacer(Modifier.weight(0.01f))
             if (Store.isSaved(e.k)) Icon(Icons.Filled.Bookmark, null, tint = T.oliveInk, modifier = Modifier.size(14.dp))
-            if (Store.cardStatus(e.k) == 2) Icon(Icons.Filled.Star, null, tint = T.rustInk, modifier = Modifier.size(14.dp))
+            when (Store.wordStatus(e.k)) {
+                2 -> Icon(Icons.Filled.Star, null, tint = T.rustInk, modifier = Modifier.size(14.dp))
+                1 -> Icon(Icons.Filled.CheckCircle, null, tint = T.greenInk, modifier = Modifier.size(14.dp))
+                else -> {}
+            }
+            FrequencyBars(e.k)
         }
         // found by its English meaning, or 設定 → 主要解釋: English
         val en = if (e.en != null) e.enList.take(3).joinToString("; ") else null
@@ -208,7 +240,7 @@ fun ZhSpecChip(spec: Int) = Chip(if (spec == 1) tr("臺灣用語") else tr("大�
 
 @Composable
 fun ZhEntryPage(z: ZhDict, key: String, onBack: () -> Unit) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().entryKeys(key)) {
         TopBar(z.entry(key)?.h ?: "", onBack, settings = false)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
             val e = z.entry(key)
@@ -221,7 +253,7 @@ fun ZhEntryPage(z: ZhDict, key: String, onBack: () -> Unit) {
 /** a 華語 entry in the sheet from the bottom */
 @Composable
 fun ZhEntrySheetRoot(z: ZhDict, key: String) {
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().entryKeys(key)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f))
@@ -271,10 +303,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 val on = Store.isSaved(e.k)
                 CapsuleButton(if (on) tr("已收藏") else tr("收藏"), if (on) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, on,
                     T.olive, T.oliveEdge, T.oliveInk) { Store.toggleSaved(e.k) }
-                val st = Store.cardStatus(e.k) ?: 0
-                if (st == 1) Chip(tr("卡片：熟悉"), T.green, T.greenEdge, T.greenInk)
-                else CapsuleButton(if (st == 2) tr("在「不熟」") else tr("加到「不熟」"), if (st == 2) Icons.Filled.Star else Icons.Filled.StarBorder,
-                    st == 2, T.rust, T.rustEdge, T.rustInk) { Store.toggleUnknown(e.k) }
+                MarkButtons(e.k)
             }
             Txt(remember(e.k, zk) { z.reading(syl, rom).annotated() }, lat(22f), T.greenInk)
             // the other reading system, small

@@ -100,6 +100,8 @@ final class LyricsBridge: ObservableObject {
     static let shared = LyricsBridge()
     /// 換歌的時候自己找歌詞: on by default
     static let autoKey = "lyricsAuto"
+    /// 歌詞: the readings beside (or under) the 漢字, on or off (off: only the 漢字, lighter on memory)
+    static let readingsKey = "lyricsReadings"
     /// the lyrics shown in the 歌詞 window (its own text: 轉換's is left alone)
     static let textKey = "lyricsText"
     /// a new song's lyrics (台語's 轉換 keeps its text itself, so it's told)
@@ -200,6 +202,7 @@ struct LyricsWindow: View {
     @ObservedObject private var radio = RadioPlayer.shared
     @EnvironmentObject var store: Store
     @State private var picking = false
+    @AppStorage(LyricsBridge.readingsKey) private var readings = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -248,6 +251,12 @@ struct LyricsWindow: View {
                     .softButton()
                     .accessibilityLabel(tr("簡體或繁體"))
             }
+            // (the readings side: off makes a long song lighter on memory)
+            Button { readings.toggle() } label: {
+                Text(tr("讀音")).ffFont(.subheadline, .semibold).opacity(readings ? 1 : 0.4)
+            }
+            .softButton()
+            .accessibilityLabel(readings ? tr("關掉讀音那一邊") : tr("打開讀音那一邊"))
             SaveSongButton(size: 18, song: h)
                 .padding(.horizontal, 4)
             Button { picking = true } label: { Image(systemName: "magnifyingglass") }

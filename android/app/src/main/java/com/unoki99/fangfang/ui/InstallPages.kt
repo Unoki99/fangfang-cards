@@ -32,13 +32,33 @@ fun langColors(l: Int): Triple<Color, Color, Color> = when (l) {
 fun DictDataPage() {
     val v = DictInstaller.version     // (redrawn after installing or removing)
     var confirmRemove by remember { mutableStateOf<DictPack?>(null) }
+    // 安裝全部: every dictionary not installed yet, one after another
+    ListCard {
+        val missing = remember(v, DictInstaller.busy) { DictInstaller.missing() }
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val r = DictInstaller.allRunning
+            if (r != null) {
+                Txt(tr("全部安裝：第 {0} / {1} 個", r.first, r.second), ff(FF.Subheadline), T.glyph)
+                LinearProgressIndicator(progress = { (r.first - 1).toFloat() / maxOf(r.second, 1) }, Modifier.fillMaxWidth(), color = T.btnEdge, trackColor = T.fnEdge)
+            } else {
+                ProminentButton(onClick = { DictInstaller.installAll() }, tint = T.btnEdge, modifier = Modifier.fillMaxWidth(),
+                    enabled = missing.isNotEmpty() && !DictInstaller.busy) {
+                    Text(if (missing.isEmpty()) tr("全部詞典都安裝好了") else tr("安裝全部詞典（還有 {0} 個）", missing.size))
+                }
+            }
+            Txt(tr("一個接一個下載和整理，全部要幾分鐘。整理的時候讓 App 開著。"), ff(FF.Caption), T.muted)
+        }
+    }
+    Spacer(Modifier.height(10.dp))
+    LockWordSettings()
+    Spacer(Modifier.height(10.dp))
     ListCard {
         DictPack.all.forEachIndexed { i, p ->
             if (i > 0) RowDivider()
             key(p.id, v) { PackRow(p) { confirmRemove = p } }
         }
     }
-    Txt(tr("詞典的授權不允許分享改過的版本，所以 App 從原本發布的地方下載檔案，在這台裝置上自己整理（要網路，大概一兩分鐘）。不熟、熟悉和收藏的詞不會因為移除詞典而不見。"),
+    Txt(tr("詞典的授權不允許分享改過的版本，所以 App 下載原本的檔案（先從方方詞卡的 GitHub 儲存庫裡的 fangfang-sources，那裡沒有才從原本發布的地方），在這台裝置上自己整理（要網路，大概一兩分鐘）。不熟、熟悉和收藏的詞不會因為移除詞典而不見。"),
         ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
     Spacer(Modifier.height(6.dp))
     Txt(tr("App 裡面沒有內建任何詞典：第一次選語言的時候會自動下載安裝，之後在這裡安裝其他語言的。維基詞典的資料（粵語的例句和錄音、台語詞的英文、華語的四川話讀音）檔案太大（2.5 GB），不在手機上整理。"),
@@ -137,3 +157,30 @@ fun TaigiMissingOverlay() {
 /** (a line of text centred, for the install panels) */
 @Composable
 private fun Centered(text: String) = Text(text, textAlign = TextAlign.Center)
+
+
+/** 設定 → 詞典資料 → 鎖定畫面的詞 (the iPhone's 動態島): on / off, and which words */
+@Composable
+fun LockWordSettings() {
+    var on by Prefs.lockWord
+    var src by Prefs.lockSource
+    val ask = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { ok ->
+        on = ok
+    }
+    SectionTitle(tr("鎖定畫面的詞"))
+    ListCard {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Txt(tr("離開 App 的時候顯示"), ff(FF.Body), T.glyph, Modifier.weight(1f))
+            Switch(on, { v ->
+                if (v && android.os.Build.VERSION.SDK_INT >= 33) ask.launch(android.Manifest.permission.POST_NOTIFICATIONS) else on = v
+            }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge))
+        }
+        RowDivider()
+        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Txt(tr("顯示哪些詞"), ff(FF.Subheadline), T.glyph)
+            Segmented(listOf("" to tr("跟練習範圍一樣（{0}）", Store.practiceName), "unknown" to tr("全部不熟的詞")), src, { src = it })
+        }
+    }
+    Txt(tr("離開 App 的時候，通知（也在鎖定畫面）顯示一個不熟的詞和它的讀音，平常是「不熟」的練習範圍裡的詞。拉開看得到意思，可以換下一個詞；點一下就打開那個詞的詞條。回到 App 的時候就收起來。"),
+        ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
+}

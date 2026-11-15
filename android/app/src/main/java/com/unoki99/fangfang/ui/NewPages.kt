@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -484,34 +485,91 @@ fun ZhCharListPage(onBack: () -> Unit) {
 @Composable
 fun PracticeScopeMenu() {
     val ts = Store.practiceTopics
-    if (ts.isEmpty()) return
+    val groups = Store.groupIds
+    if (ts.isEmpty() && groups.isEmpty()) return
+    val nav = LocalNav.current
     var open by remember { mutableStateOf(false) }
+    val unknown = remember(Store.rev) { Store.unknownCards.map { it.k }.toHashSet() }
+    val pg = Store.practiceGroup
     val all = Store.allTopicProgress()
     val zh = Store.isZh
     Box {
         Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f))
             .border(1.dp, T.fnEdge, RoundedCornerShape(12.dp)).clickable { open = true }.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Filled.Tune, null, tint = T.greenInk, modifier = Modifier.size(20.dp))
+            Icon(if (pg?.startsWith("folder:") == true) Icons.Filled.Layers else if (pg != null) Icons.Filled.Movie else Icons.Filled.Tune, null, tint = T.greenInk, modifier = Modifier.size(20.dp))
             Txt(tr("練習範圍"), ff(FF.Subheadline), T.muted)
             Txt(Store.practiceName, ff(FF.Subheadline), T.glyph, Modifier.weight(1f), maxLines = 1)
             Txt("${Store.practiceCards.size}", ff(FF.Footnote), T.muted)
             Icon(Icons.Filled.UnfoldMore, null, tint = T.muted, modifier = Modifier.size(18.dp))
         }
-        DropdownMenu(open, { open = false }, containerColor = T.fn) {
-            DropdownMenuItem(text = { Text(tr("全部不熟的詞（{0}）", Store.unknownCount), color = if (Store.practiceTopic < 0) T.greenInk else T.glyph) },
-                onClick = { Store.practiceTopic = -1; open = false })
-            var lastHeader = ""
-            for (t in ts) {
-                val isChar = if (zh) t.id > Lang.charTopicBase else t.id >= Lang.freqCharBase
-                val header = if (zh) (if (isChar) tr("漢字（等級）") else tr("詞（等級）")) else (if (isChar) tr("常用字") else tr("常用詞"))
-                if (header != lastHeader) {
-                    lastHeader = header
-                    HorizontalDivider(color = T.fnEdge)
-                    Txt(header, ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        // (folders, like the iPhone's submenus: the menu shows one folder's choices, with 返回 at the top)
+        var folder by remember { mutableStateOf<String?>(null) }
+        val words = ts.filter { if (zh) it.id < Lang.charTopicBase else it.id < Lang.freqCharBase }
+        val chars = ts.filter { if (zh) it.id > Lang.charTopicBase else it.id >= Lang.freqCharBase }
+        val wordsName = if (zh) tr("詞（等級）") else tr("常用詞")
+        val charsName = if (zh) tr("漢字（等級）") else tr("常用字")
+        @Composable fun FolderItem(id: String, name: String, on: Boolean) = DropdownMenuItem(
+            text = { Text(name, color = if (on) T.greenInk else T.glyph) },
+            leadingIcon = { Icon(Icons.Filled.Folder, null, tint = if (on) T.greenInk else T.muted, modifier = Modifier.size(18.dp)) },
+            trailingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted) },
+            onClick = { folder = id })
+        @Composable fun TopicItem(t: com.unoki99.fangfang.engine.Topic) = DropdownMenuItem(
+            text = { Text(tr("{0}（不熟 {1}）", t.name, all[t.id]?.unknown ?: 0), color = if (pg == null && Store.practiceTopic == t.id) T.greenInk else T.glyph) },
+            onClick = { Store.practiceTopic = t.id; open = false; folder = null })
+        DropdownMenu(open, { open = false; folder = null }, containerColor = T.fn) {
+            val f = folder
+            if (f != null) {
+                DropdownMenuItem(text = { Text(tr("返回"), color = T.btnInk) },
+                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, null, tint = T.btnInk) }, onClick = { folder = null })
+                HorizontalDivider(color = T.fnEdge)
+                when (f) {
+                    "words" -> for (t in words) TopicItem(t)
+                    "chars" -> for (t in chars) TopicItem(t)
+                    "groups" -> {
+                        for (g in groups) {
+                            val n = Store.groupKeys(g).count { it in unknown }
+                            DropdownMenuItem(text = { Text(tr("{0}（不熟 {1}）", Store.groupName(g), n), color = if (pg == g) T.greenInk else T.glyph, maxLines = 2) },
+                                leadingIcon = { Icon(Icons.Filled.Movie, null, tint = T.muted, modifier = Modifier.size(18.dp)) },
+                                onClick = { Store.practiceGroup = g; open = false; folder = null })
+                        }
+                        HorizontalDivider(color = T.fnEdge)
+                        DropdownMenuItem(text = { Text(tr("看全部影片詞組"), color = T.btnInk) },
+                            leadingIcon = { Icon(Icons.Filled.ViewList, null, tint = T.btnInk, modifier = Modifier.size(18.dp)) },
+                            onClick = { open = false; folder = null; nav.push(Route.VideoGroups) })
+                    }
                 }
-                DropdownMenuItem(text = { Text(tr("{0}（不熟 {1}）", t.name, all[t.id]?.unknown ?: 0), color = if (Store.practiceTopic == t.id) T.greenInk else T.glyph) },
-                    onClick = { Store.practiceTopic = t.id; open = false })
+            } else {
+                DropdownMenuItem(text = { Text(tr("全部不熟的詞（{0}）", Store.unknownCount), color = if (Store.practiceTopic < 0 && pg == null) T.greenInk else T.glyph) },
+                    onClick = { Store.practiceGroup = null; Store.practiceTopic = -1; open = false })
+                // 自己的範圍 (made with 創作範圍: some 影片詞組 together)
+                val scopes = Store.groupFolders
+                if (scopes.isNotEmpty()) {
+                    HorizontalDivider(color = T.fnEdge)
+                    Txt(tr("自己的範圍"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+                    for (s in scopes) {
+                        val n = Store.folderGroups(s).flatMap { Store.groupKeys(it) }.distinct().count { it in unknown }
+                        DropdownMenuItem(text = { Text(tr("{0}（不熟 {1}）", s, n), color = if (pg == "folder:$s") T.greenInk else T.glyph) },
+                            leadingIcon = { Icon(Icons.Filled.Layers, null, tint = T.muted, modifier = Modifier.size(18.dp)) },
+                            onClick = { Store.practiceGroup = "folder:$s"; open = false })
+                    }
+                }
+                HorizontalDivider(color = T.fnEdge)
+                // the folders: 影片詞組, the word levels, the character levels
+                if (groups.isNotEmpty()) FolderItem("groups", tr("影片詞組"), pg != null && !pg.startsWith("folder:"))
+                if (words.isNotEmpty()) FolderItem("words", wordsName, pg == null && words.any { it.id == Store.practiceTopic })
+                if (chars.isNotEmpty()) FolderItem("chars", charsName, pg == null && chars.any { it.id == Store.practiceTopic })
+                // 創作範圍: a name and some 影片詞組; 編輯 the one chosen
+                if (groups.isNotEmpty()) {
+                    HorizontalDivider(color = T.fnEdge)
+                    DropdownMenuItem(text = { Text(tr("創作範圍"), color = T.btnInk) },
+                        leadingIcon = { Icon(Icons.Filled.Add, null, tint = T.btnInk, modifier = Modifier.size(18.dp)) },
+                        onClick = { open = false; nav.push(Route.ScopeEditor(null)) })
+                    if (pg != null && pg.startsWith("folder:") && Store.isFolderRef(pg)) DropdownMenuItem(
+                        text = { Text(tr("編輯「{0}」", pg.removePrefix("folder:")), color = T.btnInk) },
+                        leadingIcon = { Icon(Icons.Filled.Edit, null, tint = T.btnInk, modifier = Modifier.size(18.dp)) },
+                        onClick = { open = false; nav.push(Route.ScopeEditor(pg.removePrefix("folder:"))) })
+                }
             }
         }
     }

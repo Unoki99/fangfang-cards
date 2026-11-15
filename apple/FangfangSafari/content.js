@@ -33,22 +33,38 @@
         // onlyNew: the tone colours (on pages and in subtitles) only on words you don't know yet (known: from the app,
         // and the ones marked 認識 on the card here)
         onlyNew: false,
+        // the subtitles' words marked (reading, meaning, colour): "new" the ones you don't know, "rare" the less
+        // common ones (not among the subsRare most common words), "both" the ones that are both
+        subsMark: "new", subsRare: 3000,
         // subsFlow: the subtitles in one row at the bottom, flowing sideways (always so when the video is full screen)
         subsFlow: false,
         // over / under the words you don't know in the subtitles: their reading, and their meaning (English or 中文, as 英文 is set)
         subsRd: true, subsGl: true,
         // the reading's size, against the characters'
         subsRdSize: 0.56,
+        // subsGlSize: the meaning under a word, against the word's size
+        subsGlSize: 0.5,
+        // subsEnZh: English subtitles: the Chinese word for each English one under it (the language on)
+        subsEnZh: true,
         // 簡體 subtitles shown (and read) in 繁體
         subsTrad: true,
+        // the row at the bottom: a row of the same size at the top with the cards of the line's words you don't know
+        subsDefs: false,
+        // the panels' background: "tint" the colour of what's under them (the video, the page), kept dark enough to
+        // read; "dark" always dark; "clear" none: only the subtitle lines (and buttons, cards) in boxes of their own
+        subsBg: "dark",
         // the language the subtitles are read in: "auto" (from the subtitles' own language), or zh / tw / yue / hak
         subsLang: "auto",
         // keyKnown / keyNew: with the pointer on a word, the key that marks it 認識, and the one that marks it 不熟 and
         // saves it (with its sentence); keys: on or off
         keys: true, keyKnown: "a", keyNew: "s",
         // subsFont: the subtitles' size (its own, apart from the card's; A− / A+ on the panel)
-        subsFont: 1 };
+        subsFont: 1,
+        // uiLang: the add-on's own words in 中文 ("zh") or English ("en")
+        uiLang: "zh" };
     let prefs = { ...DEFAULTS };
+    /// the add-on's own words in English (介面語言 English; ui-en.js), else as they are
+    const ffT = s => prefs.uiLang === "en" && typeof FF_EN === "object" && Object.prototype.hasOwnProperty.call(FF_EN, s) ? FF_EN[s] : s;
     let queue = [];               // [{k, w: "unknown" | "saved", h, x: the sentence}] waiting for 傳到 App
     let saved = [];               // [{h, c: [colours]}]: every word saved here (for the rainbow and the colours on the page)
     // the words you know (認識) and are learning (不熟) in the app, sent with its 把認識的詞傳到 Safari 查詞: the
@@ -76,7 +92,18 @@
     const isKnownIn = (w, l) => localHas(w, l) || (knownBy[l] ? knownBy[l].has(w) : !!(knownSet && knownSet.has(w)));
     const learnIn = (w, l) => learnBy[l] ? learnBy[l].has(w) : learnSet.has(w);
     let watchCache = {};          // {"2026-11-14": minutes watched with the subtitle panel}, sent with 傳到 App
+    // (the sentences the app's 不熟 / 收藏 words were chosen from, of the words in no 影片詞組 yet: normalized
+    // sentence → their keys. Found again in a video's subtitles, those words go into that video's group)
+    let foundBy = new Map(), grouped = new Set();
+    const sentNorm = t => String(t || "").replace(/\s+/g, "");
     function setKnown(o) {
+        foundBy = new Map();
+        for (const [k, x] of (o && o.f) || []) {
+            const n = sentNorm(x);
+            if (!n) continue;
+            if (!foundBy.has(n)) foundBy.set(n, []);
+            if (!foundBy.get(n).includes(k)) foundBy.get(n).push(k);
+        }
         if (!o || !o.k) { knownSet = null; learnSet = new Set(); knownBy = {}; learnBy = {}; return; }
         knownSet = new Set(Object.values(o.k).flat());
         learnSet = new Set(Object.values(o.u || {}).flat());
@@ -88,8 +115,9 @@
     }
     const store = browser.storage && browser.storage.local;
     if (store) {
-        store.get(["ffPrefs", "ffQueue", "ffSaved", "ffKnown", "ffWatch", "ffKnownLocal"]).then(r => {
+        store.get(["ffPrefs", "ffQueue", "ffSaved", "ffKnown", "ffWatch", "ffKnownLocal", "ffGrouped"]).then(r => {
             localKnown = new Set(r.ffKnownLocal || []);
+            grouped = new Set(r.ffGrouped || []);
             watchCache = r.ffWatch || {};
             prefs = fixPrefs(r.ffPrefs);
             queue = r.ffQueue || [];
@@ -100,6 +128,8 @@
         // (changed in the extension's own window, from its button in Safari's toolbar, or on another page)
         if (browser.storage.onChanged) browser.storage.onChanged.addListener((ch, area) => {
             if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (isOpen() && last && !card.querySelector(".set")) redraw(); }
+            // (a dictionary installed or taken away in 設定 → 詞典: its files read again)
+            if (ch.ffData) { metaP = null; shardP.clear(); }
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
             if (ch.ffSaved) saved = ch.ffSaved.newValue || [];
             if (ch.ffWatch) watchCache = ch.ffWatch.newValue || {};
@@ -109,7 +139,9 @@
             if (ch.ffPrefs && subs && subs.panel) {
                 const o = ch.ffPrefs.oldValue || {}, n = ch.ffPrefs.newValue || {};
                 subsSize(); subsLayout();
-                if (["subsRd", "subsGl", "subsLang", "subsTrad", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
+                subsTint();
+                if (o.uiLang !== n.uiLang) { subsHeader(); subsStudy(); }
+                if (["subsRd", "subsGl", "subsLang", "subsTrad", "subsMark", "subsRare", "subsEnZh", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
             }
         });
     }
@@ -129,7 +161,7 @@
                 const box = document.createElement("div");
                 box.style.cssText = "position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#16171d;color:#eef;" +
                     "font:20px/1.6 -apple-system,'PingFang TC',sans-serif;z-index:2147483647;text-align:center;padding:24px";
-                box.textContent = "方方詞卡 查詞 收到了：認識的詞 " + n + " 個、不熟的詞 " + u + " 個。影片字幕裡沒學過的詞會有底線，面板上會顯示你懂多少。這一頁可以關掉了。";
+                box.textContent = ffT("方方詞卡 查詞 收到了：認識的詞 ") + n + ffT(" 個、不熟的詞 ") + u + ffT(" 個。影片字幕裡沒學過的詞會有底線，面板上會顯示你懂多少。這一頁可以關掉了。");
                 document.documentElement.appendChild(box);
             } catch (e) {}
         })();
@@ -525,8 +557,17 @@
         const n = ++busy;
         const res = sv ? await findLatin(text) : await find(text);
         if (n !== busy) return;                       // (a newer one was asked meanwhile)
-        if (!res || !res.ok) { show(rect, spot, message("查詞沒有回應。請在 Safari 的延伸功能設定裡允許「方方詞卡 查詞」。")); return; }
-        if (!res.ready) { show(rect, spot, message("查詞的資料不在延伸功能裡：請在 Mac 上重新執行一次安裝。")); return; }
+        if (!res || !res.ok) { show(rect, spot, message(ffT("查詞沒有回應。請在 Safari 的延伸功能設定裡允許「方方詞卡 查詞」。"))); return; }
+        if (!res.ready) {
+            // (no dictionary yet: installed in the settings, 設定 → 詞典)
+            const box = message(ffT("還沒有安裝詞典。在查詞的設定裡選一個語言安裝（詞典的原始檔案會下載到這個瀏覽器裡整理）。"));
+            const go = el("button", "small", ffT("打開設定"));
+            go.style.marginTop = "8px";
+            go.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); ask({ op: "options" }); });
+            box.appendChild(el("div", null, "")).appendChild(go);
+            show(rect, spot, box);
+            return;
+        }
         if (!res.zh && !res.tw && !res.yue && !res.hak && !res.sv) { hide(); return; }
         last = { res, rect, spot };
         show(rect, spot, render(res));
@@ -1232,11 +1273,11 @@
     function topBar(onSettings) {
         const top = el("div", "top");
         if (queue.length) {
-            const send = el("button", "small send", "傳到 App（" + queue.length + "）");
+            const send = el("button", "small send", ffT("傳到 App（") + queue.length + ffT("）"));
             send.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); sendToApp(); });
             top.appendChild(send);
         }
-        const gear = el("button", "small", onSettings ? "完成" : "設定");
+        const gear = el("button", "small", onSettings ? ffT("完成") : ffT("設定"));
         gear.addEventListener("click", ev => {
             ev.preventDefault(); ev.stopPropagation();
             if (onSettings) { if (last) redraw(); else hide(); } else { body.replaceChildren(settings()); }
@@ -1252,17 +1293,17 @@
         // (at a corner of the screen: the languages side by side; next to the word: one under the other)
         const holder = (prefs.pos || "word") !== "word" ? el("div", "cols") : box;
         if (holder !== box) box.appendChild(holder);
-        const NAMES = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語", sv: "瑞典語" };
+        const NAMES = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語"), sv: ffT("瑞典語") };
         for (const lang of ["zh", "tw", "yue", "hak", "sv"]) {
             const part = res[lang];
             if (!part) continue;
             const sec = el("div", "sec " + lang);
-            sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? "・" + tab.hacc[prefs.hakAcc] : "") + (part.en ? "・英文「" + part.w + "」" : "")));
+            sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? ffT("・") + tab.hacc[prefs.hakAcc] : "") + (part.en ? ffT("・英文「") + part.w + ffT("」") : "")));
             for (const e of part.list) {
                 if (lang === "zh" && e.p === 3 && prefs.zhPlace !== 2) continue;     // (四川話's own words: with 四川話 only)
                 const p = lang === "sv" ? svParts(e, part.form) : lang === "zh" ? zhParts(e, tab) : (lang === "tw" ? twParts(e, tab) : (lang === "yue" ? yueParts(e) : hakParts(e, tab)));
                 const d = el("div", "e");
-                if (e.v) d.appendChild(el("div", "via", "華語「" + e.v + "」的台語講法"));
+                if (e.v) d.appendChild(el("div", "via", ffT("華語「") + e.v + ffT("」的台語講法")));
                 const head = el("div", "head");
                 head.appendChild(segs("han", p.h));
                 head.appendChild(segs("r", p.r));
@@ -1270,19 +1311,19 @@
                 d.appendChild(head);
                 const chips = [];
                 if (lang === "zh") {
-                    if (e.p === 1) chips.push(["臺灣用語", ""]);
-                    else if (e.p === 2) chips.push(["大陸用語", ""]);
-                    else if (e.p === 3) chips.push(["四川話", "sc"]);
+                    if (e.p === 1) chips.push([ffT("臺灣用語"), ""]);
+                    else if (e.p === 2) chips.push([ffT("大陸用語"), ""]);
+                    else if (e.p === 3) chips.push([ffT("四川話"), "sc"]);
                     if (prefs.zhPlace === 2) {
-                        if (!e.s) chips.push(["普通話讀音", "p0"]);
-                        else if (e.q === 1) chips.push(["推算", "p1"]);
-                        else if (e.q === 2) chips.push(["預測", "p2"]);
+                        if (!e.s) chips.push([ffT("普通話讀音"), "p0"]);
+                        else if (e.q === 1) chips.push([ffT("推算"), "p1"]);
+                        else if (e.q === 2) chips.push([ffT("預測"), "p2"]);
                     }
                 }
-                if (lang === "hak" && p.guess) chips.push(["這個腔沒有收", "p0"]);
+                if (lang === "hak" && p.guess) chips.push([ffT("這個腔沒有收"), "p0"]);
                 if (lang === "sv" && e.w) chips.push([e.w, "sv"]);
-                if (lang === "sv" && e.est && !e.inDict) chips.push(["詞典裡沒有：照詞和構詞規則推算，可能有誤", "p0"]);
-                if (lang === "sv" && part.form && !e.est && part.form.toLowerCase() !== e.k.split("\t")[0].toLowerCase()) chips.push(["「" + e.k.split("\t")[0] + "」的變化", "sv"]);
+                if (lang === "sv" && e.est && !e.inDict) chips.push([ffT("詞典裡沒有：照詞和構詞規則推算，可能有誤"), "p0"]);
+                if (lang === "sv" && part.form && !e.est && part.form.toLowerCase() !== e.k.split("\t")[0].toLowerCase()) chips.push([ffT("「") + e.k.split("\t")[0] + ffT("」的變化"), "sv"]);
                 if (chips.length) {
                     const c = el("div", "chips");
                     for (const [t, k] of chips) c.appendChild(el("span", "chip " + k, t));
@@ -1304,8 +1345,8 @@
                     d.appendChild(box);
                 }
                 if (e.m) d.appendChild(el("div", "m", e.m));
-                else if (lang === "sv" && e.q && prefs.svGuess) d.appendChild(el("div", "m", "≈ " + e.q + "（由英文推測）"));
-                if (e.eq && e.eq.length && lang === "zh" && prefs.zhPlace === 2) d.appendChild(el("div", "en", "華語：" + e.eq.join("、")));
+                else if (lang === "sv" && e.q && prefs.svGuess) d.appendChild(el("div", "m", "≈ " + e.q + ffT("（由英文推測）")));
+                if (e.eq && e.eq.length && lang === "zh" && prefs.zhPlace === 2) d.appendChild(el("div", "en", ffT("華語：") + e.eq.join("、")));
                 if ((prefs.en || (lang === "sv" && !e.m)) && e.e) d.appendChild(el("div", "en", e.e));
                 if (e.k) d.appendChild(buttons(e.k, e.k.split("\t")[0], p.h));
                 sec.appendChild(d);
@@ -1322,11 +1363,11 @@
         const u = el("button", "u"), sv = el("button", "s"), kn = el("button", "k");
         const paint = () => {
             const qu = queued(key, "unknown"), qs = queued(key, "saved"), qk = queued(key, "known");
-            kn.textContent = qk ? "已選：認識" : "認識";
+            kn.textContent = qk ? ffT("已選：認識") : ffT("認識");
             kn.classList.toggle("on", qk);
-            u.textContent = qu ? "已選：加到不熟" : "加到不熟";
+            u.textContent = qu ? ffT("已選：加到不熟") : ffT("加到不熟");
             u.classList.toggle("on", qu);
-            sv.textContent = qs ? "已選：收藏" : "收藏";
+            sv.textContent = qs ? ffT("已選：收藏") : ffT("收藏");
             sv.classList.toggle("on", qs);
         };
         paint();
@@ -1340,7 +1381,7 @@
                 if (w === "known") queue = queue.filter(q => !(q.k === key && q.w === "unknown"));
                 if (w === "unknown") { queue = queue.filter(q => !(q.k === key && q.w === "known")); localDel(han, keyLang(key)); saveKnownLocal(); }
                 if (w === "known") { localAdd(han, keyLang(key)); saveKnownLocal(); }
-                queue.push({ k: key, w, h: han, x: lastSentence || "" });
+                queue.push(withGroup({ k: key, w, h: han, x: lastSentence || "" }));
                 // (remembered here too: the rainbow and the colours on pages)
                 if (w === "saved" && !saved.some(x => x.h === han)) {
                     saved.push({ h: han, c: (hanSegsList || []).flatMap(sg => [...sg.t].map(() => sg.c || null)) });
@@ -1371,7 +1412,9 @@
         let w = "";
         if (Object.keys(watchCache).length) { w = "&w=" + pack(watchCache); watchCache = {}; if (store) store.set({ ffWatch: {} }).catch(() => {}); }
         const a = document.createElement("a");
-        a.href = "fangfangcards://safari?ops=" + pack(ops) + w;
+        // (on Android, Firefox hands an intent:// link to the app)
+        a.href = /Android/i.test(navigator.userAgent) ? "intent://safari?ops=" + pack(ops) + w + "#Intent;scheme=fangfangcards;end"
+            : "fangfangcards://safari?ops=" + pack(ops) + w;
         a.style.display = "none";
         (document.body || document.documentElement).appendChild(a);
         a.click();
@@ -1379,7 +1422,7 @@
         const n = queue.length;
         queue = [];
         saveQueue();
-        body.replaceChildren(topBar(false), message("已經把 " + n + " 個詞傳到方方詞卡。如果 App 沒有打開，請再試一次。"));
+        body.replaceChildren(topBar(false), message(ffT("已經把 ") + n + ffT(" 個詞傳到方方詞卡。如果 App 沒有打開，請再試一次。")));
     }
 
     // the card's own settings
@@ -1405,13 +1448,13 @@
             l.appendChild(s);
             box.appendChild(l);
         };
-        const yesNo = [[true, "顯示"], [false, "不顯示"]];
+        const yesNo = [[true, ffT("顯示")], [false, ffT("不顯示")]];
         // (one language at a time)
         {
             const l = el("label");
-            l.appendChild(el("span", null, "語言"));
+            l.appendChild(el("span", null, ffT("語言")));
             const s = el("select");
-            for (const [v, t] of [["zh", "華語"], ["tw", "台語"], ["yue", "粵語"], ["hak", "客語"], ["sv", "瑞典語"]]) {
+            for (const [v, t] of [["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["sv", ffT("瑞典語")]]) {
                 const o = el("option", null, t); o.value = v;
                 if (activeLang() === v) o.selected = true;
                 s.appendChild(o);
@@ -1420,26 +1463,26 @@
             l.appendChild(s);
             box.appendChild(l);
         }
-        row("華語讀音", "zhPlace", [[0, "國語"], [1, "普通話"], [2, "四川話"]]);
-        row("華語拼寫", "zhRom", [[1, "注音"], [0, "拼音"]]);
-        row("台語拼寫", "twRom", [[0, "皓羅"], [1, "台羅"], [2, "白話字"], [3, "方音"]]);
-        const places = [[-1, "通行"]];
+        row(ffT("華語讀音"), "zhPlace", [[0, ffT("國語")], [1, ffT("普通話")], [2, ffT("四川話")]]);
+        row(ffT("華語拼寫"), "zhRom", [[1, ffT("注音")], [0, ffT("拼音")]]);
+        row(ffT("台語拼寫"), "twRom", [[0, ffT("皓羅")], [1, ffT("台羅")], [2, ffT("白話字")], [3, ffT("方音")]]);
+        const places = [[-1, ffT("通行")]];
         (placeNames || []).forEach((p, i) => places.push([i, p.slice(0, 2)]));
-        row("台語腔口", "twPlace", places);
-        row("客語腔", "hakAcc", ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"].map((n, i) => [i, n]));
-        row("客語拼寫", "hakRom", [[0, "拼音"], [1, "注音"]]);
-        row("英文查中文", "en2zh", yesNo);
-        row("瑞典語：由英文推測中文", "svGuess", [[true, "顯示"], [false, "不顯示"]]);
-        row("聲調顏色", "colours", [[true, "開"], [false, "關"]]);
-        row("字的大小", "font", [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]]);
-        row("網頁上收藏的詞", "ring", [[false, "不標"], [true, "彩虹框"]]);
-        row("網頁上的聲調顏色", "tint", [[false, "不上色"], ["saved", "收藏的詞"], ["all", "全部（華語）"]]);
-        row("英文解釋", "en", [[false, "不顯示"], [true, "顯示"]]);
-        row("位置", "pos", POSITIONS);
-        const size = el("button", "small", "大小還原");
+        row(ffT("台語腔口"), "twPlace", places);
+        row(ffT("客語腔"), "hakAcc", [ffT("四縣"), ffT("海陸"), ffT("大埔"), ffT("饒平"), ffT("詔安"), ffT("南四縣")].map((n, i) => [i, n]));
+        row(ffT("客語拼寫"), "hakRom", [[0, ffT("拼音")], [1, ffT("注音")]]);
+        row(ffT("英文查中文"), "en2zh", yesNo);
+        row(ffT("瑞典語：由英文推測中文"), "svGuess", [[true, ffT("顯示")], [false, ffT("不顯示")]]);
+        row(ffT("聲調顏色"), "colours", [[true, ffT("開")], [false, ffT("關")]]);
+        row(ffT("字的大小"), "font", [[0.85, ffT("小")], [1, ffT("中")], [1.15, ffT("大")], [1.3, ffT("更大")], [1.5, ffT("很大")], [1.8, ffT("特大")], [2.2, ffT("超大")], [2.7, ffT("最大")]]);
+        row(ffT("網頁上收藏的詞"), "ring", [[false, ffT("不標")], [true, ffT("彩虹框")]]);
+        row(ffT("網頁上的聲調顏色"), "tint", [[false, ffT("不上色")], ["saved", ffT("收藏的詞")], ["all", ffT("全部（華語）")]]);
+        row(ffT("英文解釋"), "en", [[false, ffT("不顯示")], [true, ffT("顯示")]]);
+        row(ffT("位置"), "pos", POSITIONS.map(([v, t]) => [v, ffT(t)]));
+        const size = el("button", "small", ffT("大小還原"));
         size.addEventListener("click", ev => { ev.preventDefault(); ev.stopPropagation(); prefs.w = 0; prefs.h = 0; savePrefs(); place(); });
-        const sl = el("label"); sl.append(el("span", null, "大小（拖拉角落調整）"), size); box.appendChild(sl);
-        box.appendChild(el("div", "note", "加到不熟和收藏的詞會先存在這裡，按「傳到 App」就會打開方方詞卡加進去。台語的聲調顏色照說出來的聲調：只有最後一個音節保持本調，其餘變調；輕聲是灰色。收藏的時候也會記住詞所在的那一句話。"));
+        const sl = el("label"); sl.append(el("span", null, ffT("大小（拖拉角落調整）")), size); box.appendChild(sl);
+        box.appendChild(el("div", "note", ffT("加到不熟和收藏的詞會先存在這裡，按「傳到 App」就會打開方方詞卡加進去。台語的聲調顏色照說出來的聲調：只有最後一個音節保持本調，其餘變調；輕聲是灰色。收藏的時候也會記住詞所在的那一句話。")));
         return box;
     }
     const POSITIONS = [["word", "詞的旁邊"], ["tl", "左上角"], ["tr", "右上角"], ["bl", "左下角"], ["br", "右下角"]];
@@ -1569,7 +1612,7 @@
     const inCard = e => host && e.composedPath && e.composedPath().includes(host);
     /// the pointer over the subtitle panel (its words open with a tap or a click there, never by hovering)
     function overSubs(e) {
-        if (e.target && e.target.closest && e.target.closest("#ff-subs, #ff-mine")) return true;
+        if (e.target && e.target.closest && e.target.closest("#ff-subs, #ff-mine, #ff-defs")) return true;
         const p = typeof subs !== "undefined" && subs && subs.panel;
         if (!p || p.classList.contains("hidden")) return false;
         const r = p.getBoundingClientRect();
@@ -1602,6 +1645,14 @@
         const a = document.activeElement;
         if (a && (a.isContentEditable || /^(input|textarea|select)$/i.test(a.tagName))) return;
         if (px < 0 || document.getElementById("ff-mine")) return;
+        // (over a card above the subtitles: its word)
+        const over = document.elementFromPoint(px, py);
+        const dc = over && over.closest ? over.closest("#ff-defs .dc") : null;
+        if (dc && dc.__o) {
+            e.preventDefault(); e.stopImmediatePropagation();
+            keyMark(want, dc.__o.e.k, dc.__o.x || "", dc.__o.L);
+            return;
+        }
         const hit = charAt(px, py);
         if (!hit) return;
         const inSubs = hit.node.parentElement && hit.node.parentElement.closest("#ff-subs");
@@ -1625,16 +1676,21 @@
             if (e0) { pick = e0; lang = l; break; }
         }
         if (!pick) return;
-        const key = pick.k, han = key.split("\t")[0];
         const sentence = (sc ? sc.sentence : sentenceAt(hit.node, lat ? lat.start : hit.off)) || "";
+        keyMark(want, pick.k, sentence, lang);
+    }, true);
+
+    /// A / S on a word: 認識, or 不熟 + 收藏 (with its sentence)
+    function keyMark(want, key, sentence, lang) {
+        const han = key.split("\t")[0];
         if (want === "known") {
             queue = queue.filter(q => !(q.k === key && (q.w === "unknown" || q.w === "known")));
             queue.push({ k: key, w: "known", h: han });
             localAdd(han, keyLang(key)); saveKnownLocal();
         } else {
             queue = queue.filter(q => !(q.k === key && (q.w === "known" || q.w === "unknown" || q.w === "saved")));
-            queue.push({ k: key, w: "unknown", h: han, x: sentence });
-            queue.push({ k: key, w: "saved", h: han, x: sentence });
+            queue.push(withGroup({ k: key, w: "unknown", h: han, x: sentence }));
+            queue.push(withGroup({ k: key, w: "saved", h: han, x: sentence }));
             localDel(han, keyLang(key)); saveKnownLocal();
             if (!saved.some(x => x.h === han)) { saved.push({ h: han, c: [] }); saveSaved(); }
         }
@@ -1642,9 +1698,10 @@
         pageMarks();
         if (subs && subs.key) subsColour(subs.key);
         if (isOpen() && last && !card.querySelector(".set")) redraw();
-        const NAMES = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語", sv: "瑞典語" };
-        toast((want === "known" ? "認識：" : "不熟＋收藏：") + han + "（" + NAMES[lang] + "）", want === "known" ? "#3fae66" : "#c9a227");
-    }, true);
+        const NAMES = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語"), sv: ffT("瑞典語") };
+        toast((want === "known" ? ffT("認識：") : ffT("不熟＋收藏：")) + han + ffT("（") + NAMES[lang] + ffT("）"), want === "known" ? "#3fae66" : "#c9a227");
+        if (subs) subsDefs(true);
+    }
 
     /// a short note near the pointer, fading away
     function toast(text, colour) {
@@ -1818,6 +1875,13 @@
         }
         return best;
     }
+    // AirPlay: the video plays on the TV, so the whole screen here is for the subtitles
+    function subsAir() {
+        const v = subsVideo();
+        return !!(v && v.webkitCurrentPlaybackTargetIsWireless);
+    }
+    // (the letters on the whole screen: twice as big, A− / A+ still change them)
+    const subsScale = () => (prefs.subsFont || 1) * (subs && subs.air ? 2 : 1);
     function ytVideoId() {
         if (!/youtube\.com$/.test(location.hostname)) return "";
         const u = new URL(location.href);
@@ -1828,7 +1892,9 @@
     function subsTick() {
         const st = subs;
         if (!subsMine()) return;
-        if (!prefs.subs) { if (st.panel) st.panel.style.display = "none"; return; }
+        if (!prefs.subs) { if (st.panel) st.panel.style.display = "none"; subsDefs(false); return; }
+        subsTint();
+        if (subsAir() !== !!st.air) subsLayout();
         const vid = ytVideoId() || (SUBS_SITE ? location.pathname : "");
         if (vid !== st.vid) {
             st.vid = vid; st.files.clear(); st.key = ""; st.ytTracks = []; st.ytTrans = []; st.cur = ""; st.tried.clear();
@@ -1970,6 +2036,193 @@
             }
         } catch (e) { key = "f:" + url; }
         subsAdd(key, cues);
+    }
+
+    // ── 詞卡 over the row at the bottom: a panel of the same size at the top of the screen, with a card for each word
+    // of the line being said that you don't know yet (reading, word, meaning). Tap a card for the whole entry;
+    // A / S over a card marks its word.
+    function subsDefs(force) {
+        const st = subs;
+        let box = document.getElementById("ff-defs");
+        const on = st && st.panel && st.flow && !st.collapsed && prefs.subsDefs && prefs.subs &&
+            !st.panel.classList.contains("hidden") && st.panel.style.display !== "none";
+        if (!on) { if (box) box.remove(); return; }
+        const fsT = fsTarget();
+        if (!box) {
+            box = document.createElement("div");
+            box.id = "ff-defs";
+            box.addEventListener("pointerdown", e => e.stopPropagation());
+            st.defsAt = null;
+        }
+        if (box.parentNode !== fsT) fsT.appendChild(box);
+        box.classList.toggle("clear", subsBgMode() === "clear" && !st.air);
+        // (AirPlay: the top part of the screen, the subtitles under it)
+        box.classList.toggle("air", !!st.air);
+        box.style.height = st.air ? Math.max(120, Math.round(window.innerHeight * 0.42) - 96) + "px" : st.panel.offsetHeight + "px";
+        box.style.setProperty("--ff-defs-font", Math.round(18 * subsScale()) + "px");
+        // (the line being said; before the first one, the first)
+        const at = st.now >= 0 ? st.now : 0;
+        const cue = st.cues[at];
+        const sig = at + "|" + (cue && cue.unk ? cue.unk.map(u => u.w).join(",") : "?");
+        if (!force && st.defsAt === sig) return;
+        st.defsAt = sig;
+        box.replaceChildren();
+        const list = (cue && cue.unk) || [];
+        if (!list.length) {
+            const n = document.createElement("div");
+            n.className = "none";
+            n.textContent = cue && cue.unk ? ffT("這句沒有不認識的詞") : "";
+            box.appendChild(n);
+            return;
+        }
+        const meta = st.meta;
+        const sentence = cue.t.replace(/\s+/g, " ").trim();
+        for (const o of list) {
+            const c = document.createElement("div");
+            c.className = "dc" + (o.learn ? " learn" : "");
+            c.__o = { ...o, x: sentence };
+            let p = { h: [], r: [] };
+            try { p = subsParts(o.e, o.L, meta); } catch (err) {}
+            const rd = document.createElement("div"); rd.className = "rd";
+            (p.r || []).forEach((sg, i) => { const x = document.createElement("span"); x.textContent = i && o.L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t; if (sg.c && prefs.colours) x.style.color = "#" + sg.c; rd.appendChild(x); });
+            const h = document.createElement("div"); h.className = "h";
+            (p.h || []).forEach(sg => { const x = document.createElement("span"); x.textContent = sg.t; if (sg.c && prefs.colours) x.style.color = "#" + sg.c; h.appendChild(x); });
+            if (!h.textContent) h.textContent = o.w;
+            const gl = document.createElement("div"); gl.className = "gl";
+            gl.textContent = subsGlossLong(o.e);
+            c.append(rd, h, gl);
+            c.addEventListener("click", ev => {
+                ev.stopPropagation();
+                const v = subsVideo();
+                if (prefs.subsPause && v && !v.paused) { v.pause(); st.pausedBy = "tap"; }
+                lookup(o.w, c.getBoundingClientRect(), "defs:" + o.w, null).then(() => { lastSentence = sentence; });
+            });
+            box.appendChild(c);
+        }
+    }
+    /// a word's meaning on its card: more than under the word (the first two senses), English or 中文 as 英文 is set
+    function subsGlossLong(e) {
+        const en = () => e.e ? e.e.split(";").slice(0, 3).map(x => x.trim()).filter(Boolean).join("; ") : "";
+        const zh = () => {
+            if (!e.m) return "";
+            const m = e.m.replace(/^\s*[0-9０-９]+[.．、]\s*/, "").replace(/\s+/g, " ").trim();
+            return [...m].length > 60 ? [...m].slice(0, 58).join("") + "…" : m;
+        };
+        return prefs.en ? (en() || zh()) : (zh() || en());
+    }
+
+    // ── the panels' colour: the colour most of what's under them has (the part of the video under them, or the
+    // page's background), darkened when it's light so the words stay easy to read. A video that can't be read
+    // (protected, like some streams' are) leaves them dark.
+    const tintCv = document.createElement("canvas");
+    tintCv.width = 32; tintCv.height = 10;
+    function subsBgMode() { return ["tint", "dark", "clear"].includes(prefs.subsBg) ? prefs.subsBg : "dark"; }
+    function subsTint() {
+        const st = subs;
+        const mode = subsBgMode();
+        for (const el of [st && st.panel, document.getElementById("ff-defs")]) {
+            if (!el) continue;
+            el.classList.toggle("clear", mode === "clear");
+            const c = mode === "tint" ? tintUnder(el) : null;
+            if (c) el.style.setProperty("--ff-bg", c); else el.style.removeProperty("--ff-bg");
+        }
+    }
+    function tintUnder(el) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
+        // (a video under the panel: its picture, or nothing when it can't be read; never what's around it, like the
+        // player's own coloured box behind the picture)
+        for (const v of document.querySelectorAll("video")) {
+            const vr = v.getBoundingClientRect();
+            if (vr.width && vr.right > r.left && vr.left < r.right && vr.bottom > r.top && vr.top < r.bottom) return videoTint(v, r);
+        }
+        let stack = [];
+        try { stack = document.elementsFromPoint(r.left + r.width / 2, r.top + r.height / 2); } catch (e) { return null; }
+        for (const x of stack) {
+            if (x.closest && x.closest("#ff-subs, #ff-defs, #ff-mine")) continue;
+            if (x.tagName === "VIDEO") return videoTint(x, r);
+            const m = (getComputedStyle(x).backgroundColor || "").match(/rgba?\(([^)]+)\)/);
+            if (!m) continue;
+            const [cr, cg, cb, ca = 1] = m[1].split(",").map(Number);
+            if (ca >= 0.5) return tintOf(cr, cg, cb);
+        }
+        return null;
+    }
+    function videoTint(v, r) {
+        const st = subs;
+        if (!v.videoWidth || (st.tintFail && Date.now() - st.tintFail < 15000)) return null;
+        // (a protected video, as Viki's often are: its picture can't be read, and what comes back isn't its colour)
+        if (v.mediaKeys || v.webkitKeys) return null;
+        const vr = v.getBoundingClientRect();
+        // (where the picture is in the video's box: the rest is black bars)
+        const sc = Math.min(vr.width / v.videoWidth, vr.height / v.videoHeight);
+        const cw = v.videoWidth * sc, ch = v.videoHeight * sc, cx = vr.left + (vr.width - cw) / 2, cy = vr.top + (vr.height - ch) / 2;
+        const x0 = Math.max(r.left, cx), y0 = Math.max(r.top, cy), x1 = Math.min(r.right, cx + cw), y1 = Math.min(r.bottom, cy + ch);
+        if (x1 - x0 < 4 || y1 - y0 < 4) return tintOf(0, 0, 0);
+        try {
+            const g = tintCv.getContext("2d", { willReadFrequently: true });
+            g.drawImage(v, (x0 - cx) / sc, (y0 - cy) / sc, (x1 - x0) / sc, (y1 - y0) / sc, 0, 0, tintCv.width, tintCv.height);
+            const d = g.getImageData(0, 0, tintCv.width, tintCv.height).data;
+            // (the colour most of it has: the pixels sorted into rough colours, the biggest group's average)
+            const groups = new Map();
+            for (let i = 0; i < d.length; i += 4) {
+                const k = (d[i] >> 5) << 6 | (d[i + 1] >> 5) << 3 | (d[i + 2] >> 5);
+                const a = groups.get(k) || [0, 0, 0, 0];
+                a[0] += d[i]; a[1] += d[i + 1]; a[2] += d[i + 2]; a[3]++;
+                groups.set(k, a);
+            }
+            let best = null;
+            for (const a of groups.values()) if (!best || a[3] > best[3]) best = a;
+            return best ? tintOf(best[0] / best[3], best[1] / best[3], best[2] / best[3]) : null;
+        } catch (e) {
+            st.tintFail = Date.now();
+            return null;
+        }
+    }
+    /// the colour as the panels' background: light ones darkened (the words on it are light)
+    function tintOf(r, g, b) {
+        const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+        const k = lum > 0.3 ? 0.3 / lum : 1;
+        return `rgba(${Math.round(r * k)}, ${Math.round(g * k)}, ${Math.round(b * k)}, 0.9)`;
+    }
+
+    // ── 影片詞組: the words chosen while a video with subtitles is on go into its group (one per video / episode),
+    // which the app keeps together: g its id (the video), gn its name (the page's title), gu its address
+    function videoGroup() {
+        const st = subs;
+        if (!st || !st.cues || !st.cues.length) return null;
+        const yt = ytVideoId();
+        const id = yt ? "yt:" + yt : (/viki\./.test(location.hostname) ? "viki:" : location.hostname + ":") + location.pathname;
+        const name = (document.title || "").replace(/^\(\d+\)\s*/, "").replace(/\s*[-|｜]\s*(YouTube|Viki|Rakuten Viki)\s*$/i, "").trim() || id;
+        const u = yt ? "https://www.youtube.com/watch?v=" + yt : location.origin + location.pathname;
+        return { id, name, u };
+    }
+    /// words chosen before there were 影片詞組, whose sentence is a line of this video: into its group (once each)
+    function subsRegroup(st) {
+        if (!foundBy.size || !st.cues.length) return;
+        const g = videoGroup();
+        if (!g) return;
+        const add = [];
+        for (const c of st.cues) {
+            for (const t of [c.t, c.o]) {
+                const ks = t != null && foundBy.get(sentNorm(t));
+                if (!ks) continue;
+                for (const k of ks) if (!grouped.has(k) && !add.includes(k)) add.push(k);
+            }
+        }
+        if (!add.length) return;
+        for (const k of add) {
+            grouped.add(k);
+            queue.push({ k, w: "group", h: k.split("\t")[0], g: g.id, gn: g.name, gu: g.u });
+        }
+        saveQueue();
+        store.set({ ffGrouped: [...grouped] }).catch(() => {});
+        toast(ffT("這部影片裡有 ") + add.length + ffT(" 個之前選的詞：放進它的影片詞組了（按「傳到 App」）"), "#6eaaff");
+    }
+    function withGroup(q) {
+        const g = videoGroup();
+        if (g) { q.g = g.id; q.gn = g.name; q.gu = g.u; }
+        return q;
     }
 
     // ── whole subtitles of a stream (Viki and the like): the player loads them a line or two at a time, as the video
@@ -2145,12 +2398,23 @@
         } catch (e) {}
         return [];
     }
+    // (the subtitles' &amp; &#39; &nbsp; … as the characters they stand for: worked out here, not by the page's HTML)
+    const SUBS_ENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", hellip: "…", mdash: "—", ndash: "–", lrm: "", rlm: "" };
+    function subsEntities(s) {
+        return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+            if (e[0] === "#") {
+                const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+                return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m;
+            }
+            const v = SUBS_ENT[e.toLowerCase()];
+            return v == null ? m : v;
+        });
+    }
     function subsClean(cues) {
-        const ta = document.createElement("textarea");
         const out = [];
         for (const c of cues) {
-            ta.innerHTML = String(c.t).replace(/<[^>]+>/g, "").replace(/\{\\[^}]*\}/g, "");
-            const t = ta.value.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim();
+            const raw = subsEntities(String(c.t).replace(/<[^>]+>/g, "").replace(/\{\\[^}]*\}/g, ""));
+            const t = raw.replace(/\s*\n\s*/g, " ").replace(/\s+/g, " ").trim();
             if (!t) continue;
             const prev = out[out.length - 1];
             // (the same words again straight after: one line)
@@ -2167,12 +2431,19 @@
         const css = document.createElement("style");
         css.textContent = `
 #ff-subs { all: initial; position: fixed; z-index: 2147483640; box-sizing: border-box; display: block;
-  background: rgba(16, 18, 28, 0.9); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  background: var(--ff-bg, rgba(0, 0, 0, 0.88)); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   color: #e9eaf2; font: 18px/1.55 -apple-system, "PingFang TC", "Heiti TC", system-ui, sans-serif; overflow: hidden;
-  transition: opacity .3s ease, transform .35s cubic-bezier(.2,.9,.3,1); }
+  transition: opacity .3s ease, transform .35s cubic-bezier(.2,.9,.3,1), background-color 1.2s ease; }
 #ff-subs.wide { top: 72px; right: 12px; bottom: 12px; width: min(380px, 34vw); }
 #ff-subs.narrow { left: 8px; right: 8px; bottom: 8px; height: 40vh; }
+/* (no background: only the lines, the buttons and the cards, each in a box of its own) */
+#ff-subs.clear { background: transparent !important; border-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+#ff-subs.clear .top, #ff-subs.clear .study { border-bottom-color: transparent; }
+#ff-subs.clear .top b, #ff-subs.clear .meter { text-shadow: 0 1px 4px rgba(0,0,0,.9); }
+#ff-subs.clear .btn, #ff-subs.clear select { background: rgba(16,18,28,.82); }
+#ff-subs.clear .line { background: rgba(16,18,28,.8); }
+#ff-subs.clear .line.now { background: rgba(28,32,50,.94); }
 #ff-subs.hidden { opacity: 0; transform: translateY(12px); pointer-events: none; }
 #ff-subs .top { position: absolute; left: 0; right: 0; top: 0; height: 38px; display: flex; align-items: center; gap: 8px;
   padding: 0 10px 0 14px; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 13px; color: #a7abc0; }
@@ -2207,14 +2478,17 @@
 #ff-subs .new { text-decoration: underline dotted rgba(255,255,255,0.55); text-underline-offset: 5px; text-decoration-thickness: 2px; }
 #ff-subs .learn { text-decoration: underline solid rgba(255,214,102,0.85); text-underline-offset: 5px; text-decoration-thickness: 2px; }
 #ff-subs .h { text-shadow: 0 0 7px currentColor; }
-#ff-subs .w { display: inline-flex; flex-direction: column; align-items: center; vertical-align: top; line-height: 1.2; }
-#ff-subs .w.a { margin: 0 .14em; }
+#ff-subs .w { display: inline-block; position: relative; vertical-align: baseline; line-height: 1.2; }
+#ff-subs .w.r { padding-top: calc(var(--ff-rd, .56em) * 1.25 + 1px); }
+#ff-subs .w.g { padding-bottom: calc(var(--ff-gl, .5em) * 1.25 + 2px); }
 #ff-subs .line:has(.w) .tm { vertical-align: middle; }
 #ff-subs .cw { white-space: nowrap; }
 #ff-subs .rd, #ff-subs .gl { user-select: none; -webkit-user-select: none; white-space: nowrap; pointer-events: none;
   font-family: -apple-system, system-ui, "PingFang TC", sans-serif; }
-#ff-subs .rd { font-size: var(--ff-rd, .56em); margin-bottom: 1px; }
-#ff-subs .gl { font-size: .5em; color: #b6bad0; max-width: 9em; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+#ff-subs .rd { font-size: var(--ff-rd, .56em); line-height: 1.25; position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
+#ff-subs .gl { font-size: var(--ff-gl, .5em); line-height: 1.25; color: #b6bad0; max-width: 9em; overflow: hidden; text-overflow: ellipsis;
+  position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
+#ff-subs .gl.zh { color: #d9ddf2; }
 #ff-subs.flow .view { top: 38px; }
 #ff-subs.flow .top b { margin-right: 2px; }
 #ff-subs.flow .top .study { position: static; flex: 1 1 auto; min-width: 0; height: 38px; border-bottom: none; padding: 0 4px; }
@@ -2226,6 +2500,35 @@
   white-space: nowrap; transition: none; }
 #ff-subs.flow .line { flex: none; margin: 0; padding: 8px 14px; }
 #ff-subs.mini { height: 38px !important; }
+#ff-subs.air { left: 0 !important; right: 0 !important; top: 0 !important; bottom: 0 !important; width: auto !important;
+  height: auto !important; border-radius: 0; border: none; background: #000 !important; }
+#ff-subs.air.mini { top: auto !important; height: 38px !important; }
+#ff-subs.air.flow .view { top: 42%; }
+#ff-subs.air.clear .line { background: transparent; }
+#ff-subs.air .line { padding: .35em .6em; }
+#ff-subs.air:not(.flow) .rail { padding: 0 6vw; }
+#ff-subs.air .tm { font-size: 14px; }
+#ff-defs.air { z-index: 2147483641; top: 84px; left: 24px; right: 24px; background: transparent !important; border-color: transparent; box-shadow: none; }
+#ff-defs { all: initial; position: fixed; z-index: 2147483639; left: 12px; right: 12px; top: 12px; box-sizing: border-box;
+  display: flex; gap: 10px; align-items: stretch; padding: 10px; overflow-x: auto; overflow-y: hidden;
+  background: var(--ff-bg, rgba(0, 0, 0, 0.88)); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+  transition: background-color 1.2s ease;
+  border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  color: #e9eaf2; font: 15px/1.4 -apple-system, "PingFang TC", "Heiti TC", system-ui, sans-serif; scrollbar-width: none; }
+#ff-defs::-webkit-scrollbar { display: none; }
+#ff-defs .dc { flex: none; box-sizing: border-box; min-width: 150px; max-width: 340px; padding: 6px 14px; border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); display: flex; flex-direction: column;
+  justify-content: center; overflow: hidden; animation: ffDefIn .3s cubic-bezier(.2,.9,.3,1); }
+@keyframes ffDefIn { from { opacity: 0; transform: translateY(-6px); } }
+#ff-defs.clear { background: transparent !important; border-color: transparent; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+#ff-defs.clear .dc { background: rgba(16,18,28,.88); }
+#ff-defs.clear .none { display: none; }
+#ff-defs .dc.learn { border-color: rgba(255,209,102,.45); }
+#ff-defs .dc:hover { background: rgba(255,255,255,0.09); }
+#ff-defs .rd { font-size: 12.5px; white-space: nowrap; }
+#ff-defs .h { font-size: var(--ff-defs-font, 18px); font-weight: 600; line-height: 1.25; white-space: nowrap; text-shadow: 0 0 7px currentColor; }
+#ff-defs .gl { font-size: 13px; color: #c3c7d9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#ff-defs .none { margin: auto; color: #8b90a8; font-size: 14px; }
 #ff-subs.wide.mini { bottom: auto; }
 #ff-subs.mini .view { display: none; }
 #ff-subs.mini .top { border-bottom: none; }
@@ -2296,6 +2599,8 @@
         window.addEventListener("resize", () => subsLayout(), { passive: true });
         // a video full screen (Mac, iPad): the panel goes inside it, as a row at the bottom
         for (const ev of ["fullscreenchange", "webkitfullscreenchange"]) document.addEventListener(ev, () => setTimeout(subsLayout, 50));
+        // AirPlay starting or ending (the event doesn't bubble: caught on its way down)
+        document.addEventListener("webkitcurrentplaybacktargetiswirelesschanged", () => setTimeout(subsLayout, 50), true);
         subsLayout();
         return p;
     }
@@ -2305,30 +2610,41 @@
         if (!st.panel) return;
         const fsT = fsTarget();
         if (st.panel.parentNode !== fsT) fsT.appendChild(st.panel);
-        const flow = !!prefs.subsFlow || fsT !== document.documentElement;
+        // (AirPlay: the whole screen, 直排 or 橫排 as chosen)
+        const air = subsAir();
+        const airChanged = air !== !!st.air;
+        st.air = air;
+        const flow = !!prefs.subsFlow || (!air && fsT !== document.documentElement);
         const wide = window.innerWidth >= 900 && window.innerWidth > window.innerHeight;
-        const changed = flow !== st.flow;
+        const changed = flow !== st.flow || airChanged;
         st.flow = flow;
+        st.panel.classList.toggle("air", air);
         st.panel.classList.toggle("flow", flow);
         st.panel.classList.toggle("wide", !flow && wide);
         st.panel.classList.toggle("narrow", !flow && !wide);
         st.panel.classList.toggle("mini", st.collapsed);
+        st.panel.classList.toggle("clear", subsBgMode() === "clear");
         // (the row at the bottom: tall enough for the letters)
         // (one line on top; the readings and meanings over and under the words need room too)
-        const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl;
-        st.panel.style.height = flow && !st.collapsed ? Math.round(38 + Math.max(76, fs * (anno ? 3.6 + (prefs.subsRdSize || 0.56) : 3))) + "px" : "";
+        const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl || st.hasEn;
+        st.panel.style.height = flow && !st.collapsed && !air ? Math.round(38 + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3))) + "px" : "";
         const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
+        if (airChanged) { subsSize(); return; }
+        // (a new width: the words may break onto other rows)
+        const wNow = st.view ? st.view.clientWidth : 0;
+        if (wNow !== st.spreadW) { st.spreadW = wNow; subsSpread(); }
         subsMeasure();
         subsPlace(false);
+        subsDefs(true);
     }
 
     function subsHeader() {
         const st = subs;
         if (!st.top) return;
         st.top.replaceChildren();
-        const title = document.createElement("b"); title.textContent = "字幕";
+        const title = document.createElement("b"); title.textContent = ffT("字幕");
         st.top.appendChild(title);
         // (YouTube: the video's languages, its automatic ones, and YouTube's translations of them)
         if (st.ytTracks.length > 1 || st.ytTrans.length) {
@@ -2339,11 +2655,11 @@
                 parent.appendChild(o);
                 return o;
             };
-            st.ytTracks.forEach((t, i) => add(sel, "t" + i, t.name + (t.kind === "asr" ? "（自動）" : "")));
+            st.ytTracks.forEach((t, i) => add(sel, "t" + i, t.name + (t.kind === "asr" ? ffT("（自動）") : "")));
             const base = subsBase();
             if (st.ytTrans.length && base) {
                 const g = document.createElement("optgroup");
-                g.label = "自動翻譯";
+                g.label = ffT("自動翻譯");
                 st.ytTrans.forEach((t, i) => add(g, "x" + i, "→ " + t.name));
                 sel.appendChild(g);
             }
@@ -2358,16 +2674,16 @@
             st.top.appendChild(sel);
         }
         const eye = document.createElement("span"); eye.className = "btn";
-        eye.textContent = prefs.subsHideVideo ? "影片上：關" : "影片上：開";
-        eye.title = "影片上的字幕";
+        eye.textContent = prefs.subsHideVideo ? ffT("影片上：關") : ffT("影片上：開");
+        eye.title = ffT("影片上的字幕");
         eye.addEventListener("click", e => { e.stopPropagation(); prefs.subsHideVideo = !prefs.subsHideVideo; savePrefs(); subsHeader(); subsTick(); });
         // (full screen: always the row at the bottom)
         const lay = document.createElement("span"); lay.className = "btn";
-        lay.textContent = st.flow ? "直排" : "橫排";
-        lay.title = st.flow ? "字幕在旁邊，往上捲" : "字幕在下面，往旁邊流";
-        if (fsTarget() !== document.documentElement) lay.style.display = "none";
+        lay.textContent = st.flow ? ffT("直排") : ffT("橫排");
+        lay.title = st.flow ? ffT("字幕在旁邊，往上捲") : ffT("字幕在下面，往旁邊流");
+        if (fsTarget() !== document.documentElement && !st.air) lay.style.display = "none";
         lay.addEventListener("click", e => { e.stopPropagation(); prefs.subsFlow = !prefs.subsFlow; savePrefs(); subsLayout(); });
-        const min = document.createElement("span"); min.className = "btn"; min.textContent = st.collapsed ? "展開" : "收起";
+        const min = document.createElement("span"); min.className = "btn"; min.textContent = st.collapsed ? ffT("展開") : ffT("收起");
         min.addEventListener("click", e => { e.stopPropagation(); st.collapsed = !st.collapsed; subsHeader(); subsLayout(); subsTick(); });
         // the letters bigger or smaller
         const SIZES = [0.85, 1, 1.15, 1.3, 1.5, 1.8, 2.2, 2.7];
@@ -2378,9 +2694,9 @@
             savePrefs(); subsSize(); subsLayout();
         };
         const smaller = document.createElement("span"); smaller.className = "btn"; smaller.textContent = "A−";
-        smaller.title = "字小一點"; smaller.addEventListener("click", step(-1));
+        smaller.title = ffT("字小一點"); smaller.addEventListener("click", step(-1));
         const bigger = document.createElement("span"); bigger.className = "btn"; bigger.textContent = "A+";
-        bigger.title = "字大一點"; bigger.addEventListener("click", step(1));
+        bigger.title = ffT("字大一點"); bigger.addEventListener("click", step(1));
         st.top.append(smaller, bigger, eye, lay, min);
         // (the row at the bottom: one line on top, the study buttons and 懂 % in it, after 字幕; at the side: their own line)
         if (st.study) {
@@ -2394,10 +2710,48 @@
     function subsSize() {
         const st = subs;
         if (!st || !st.rail) return;
-        st.rail.style.fontSize = Math.round(18 * (prefs.subsFont || 1)) + "px";
+        st.rail.style.fontSize = Math.round(18 * subsScale()) + "px";
         st.rail.style.setProperty("--ff-rd", (prefs.subsRdSize || 0.56) + "em");
+        st.rail.style.setProperty("--ff-gl", (prefs.subsGlSize || 0.5) + "em");
         st.centers = [];
-        requestAnimationFrame(() => { subsMeasure(); subsPlace(false); });
+        requestAnimationFrame(() => { subsSpread(); subsMeasure(); subsPlace(false); subsDefs(true); });
+    }
+
+    /// the words with a reading / meaning: close together, unless their readings or meanings would run into each
+    /// other (or past the start of the line); then just as far apart as needed. Measured all at once, then moved.
+    function subsSpread() {
+        const st = subs;
+        if (!st || !st.rail) return;
+        const all = [...st.rail.querySelectorAll(".w.a")];
+        for (const w of all) { w.style.marginLeft = ""; }
+        if (!all.length) return;
+        const fs = parseFloat(getComputedStyle(st.rail).fontSize) || 18;
+        const gap = fs * 0.25;
+        const ext = w => {
+            let l = Infinity, r = -Infinity;
+            for (const x of w.children) {
+                const b = x.getBoundingClientRect();
+                if (!b.width) continue;
+                l = Math.min(l, b.left); r = Math.max(r, b.right);
+            }
+            return { l, r, top: Math.round(w.getBoundingClientRect().top) };
+        };
+        const moves = [];
+        for (const line of st.lines) {
+            const ws = [...line.querySelectorAll(".w.a")];
+            if (!ws.length) continue;
+            const tx = line.querySelector(".tx");
+            const start = (tx || line).getBoundingClientRect().left;
+            const box = ws.map(ext);
+            let shift = 0, row = null, prevR = -Infinity;
+            box.forEach((b, i) => {
+                if (b.top !== row) { row = b.top; shift = 0; prevR = start - gap; }
+                const need = prevR + gap - (b.l + shift);
+                if (need > 0.5) { moves.push([ws[i], need]); shift += need; }
+                prevR = b.r + shift;
+            });
+        }
+        for (const [w, m] of moves) w.style.marginLeft = (m / fs).toFixed(3) + "em";
     }
 
     // the lines of a new subtitle file
@@ -2436,9 +2790,16 @@
     // ── 簡體 subtitles → 繁體 (on by default): each word as the 華語 dictionary writes it (头发 → 頭髮, 后来 → 後來),
     // the rest character by character (d-s2t.json: characters that are only ever 簡體). The words you know (繁體, from
     // the app) are found that way too, and a word saved keeps its sentence in 繁體. The subtitles' own text is kept.
-    let s2tTable = null;
+    // (d-s2t.json: m the characters to change, s the ones only ever 簡體, which tell 簡體 subtitles from 繁體 ones;
+    // an older file: one table, every character only 簡體)
+    let s2tTable = null, s2tStrict = null;
     async function getS2T() {
-        if (s2tTable === null) { try { s2tTable = (await getFile("d-s2t.json")) || {}; } catch (e) { s2tTable = {}; } }
+        if (s2tTable === null) {
+            let o = {};
+            try { o = (await getFile("d-s2t.json")) || {}; } catch (e) {}
+            if (o.m) { s2tTable = o.m; s2tStrict = new Set([...(o.s || "")]); }
+            else { s2tTable = o; s2tStrict = new Set(Object.keys(o)); }
+        }
         return s2tTable;
     }
     async function subsTrad(st, key, meta) {
@@ -2454,7 +2815,7 @@
         if (st.simpKey !== key) { st.simpKey = key; st.simp = null; }
         if (st.simp === null) {
             let n = 0, han = 0;
-            for (const c of st.cues) for (const ch of c.o != null ? c.o : c.t) { if (tb[ch]) n++; if (isHan(ch.codePointAt(0))) han++; }
+            for (const c of st.cues) for (const ch of c.o != null ? c.o : c.t) { if (s2tStrict.has(ch)) n++; if (isHan(ch.codePointAt(0))) han++; }
             if (n >= 3) st.simp = true;
             else if (han > 300) st.simp = false;
             else return;
@@ -2518,10 +2879,15 @@
         return L === "tw" ? twParts(e, meta) : L === "yue" ? yueParts(e) : L === "hak" ? hakParts(e, meta) : zhParts(e, meta);
     }
     /// the entry to use of a word's entries (華語: not 四川話's own words, unless 四川話 is chosen)
-    const subsEntry = (list, L) => list.find(x => x.k && !(L === "zh" && x.p === 3 && prefs.zhPlace !== 2)) || null;
+    // (of a word's readings, the most common: 的 de, not dì)
+    const subsEntry = (list, L) => {
+        const ok = list.filter(x => x.k && !(L === "zh" && x.p === 3 && prefs.zhPlace !== 2));
+        if (!ok.length) return null;
+        return ok.reduce((a, b) => (b.f != null && (a.f == null || b.f < a.f)) ? b : a);
+    };
 
     async function subsColour(key) {
-        if (!prefs.colours && !knownSet && !localKnown.size && !prefs.subsRd && !prefs.subsGl) {
+        if (!prefs.colours && !knownSet && !localKnown.size && !prefs.subsRd && !prefs.subsGl && !prefs.subsEnZh) {
             subs.lines.forEach((line, li) => { const tx = line.querySelector(".tx"); if (tx.querySelector(".w")) tx.textContent = subs.cues[li].t; });
             return;
         }
@@ -2530,6 +2896,7 @@
         if (!meta || st.key !== key) return;
         await subsTrad(st, key, meta);
         if (st.key !== key) return;
+        st.meta = meta;
         const SL = subsLangNow(meta);
         st.lang = SL;
         const cps = new Set();
@@ -2540,12 +2907,25 @@
             const nm = `d-${SL}-${String(i).padStart(3, "0")}.json`;
             if (!files.has(nm)) files.set(nm, await getFile(nm));
         }));
+        // English subtitles: the parts of the English list their words are in (each word, and without -s / -ing / -ed)
+        const enOn = !!(prefs.subsEnZh && meta.en);
+        if (enOn) {
+            const names = new Set();
+            for (const c of st.cues) for (const m of String(c.t).matchAll(/[A-Za-z][A-Za-z'-]+/g)) {
+                for (const w of subsEnForms(m[0].toLowerCase())) names.add(enShard(w, meta));
+            }
+            await Promise.all([...names].map(async nm => { if (!files.has(nm)) files.set(nm, await getFile(nm)); }));
+        }
+        st.hasEn = false;
         if (st.key !== key) return;
         st.dict = files; st.dictKey = key;
         let total = 0, knownN = 0;
         st.lines.forEach((line, li) => {
             const tx = line.querySelector(".tx");
             const chars = [...st.cues[li].t];
+            // (the line's words you don't know: 有生詞才停, and the cards over the row at the bottom)
+            const unk = [];
+            st.cues[li].unk = unk;
             const frag = document.createDocumentFragment();
             let plain = "";
             // (readings / meanings on: every word, also the ones without them, in a box of the same height, so the
@@ -2553,11 +2933,15 @@
             const annoOn = !!(prefs.subsRd || prefs.subsGl);
             const flush = () => {
                 if (!plain) return;
-                if (!annoOn) frag.appendChild(document.createTextNode(plain));
+                if (!annoOn && !enOn) frag.appendChild(document.createTextNode(plain));
                 else for (const t of plain.split(/(\s+)/)) {
                     if (!t) continue;
-                    if (/^\s+$/.test(t)) frag.appendChild(document.createTextNode(t));
-                    else subsAnnotate(frag, null, null).appendChild(document.createTextNode(t));
+                    if (/^\s+$/.test(t)) { frag.appendChild(document.createTextNode(t)); continue; }
+                    // (an English word: the Chinese for it under it)
+                    const g = enOn ? subsEnGloss(t, SL, files, meta) : "";
+                    if (g) { st.hasEn = true; subsEnBox(frag, g).appendChild(document.createTextNode(t)); }
+                    else if (annoOn) subsAnnotate(frag, null, null).appendChild(document.createTextNode(t));
+                    else frag.appendChild(document.createTextNode(t));
                 }
                 plain = "";
             };
@@ -2583,8 +2967,14 @@
                 // (known as written, or as the dictionary writes it: 裡 / 裏, 台 / 臺…)
                 const head = entry && entry.k ? entry.k.split("\t")[0] : word;
                 const known = isKnownIn(word, SL) || (head !== word && isKnownIn(head, SL));
-                // (a word you don't know: its reading over it and its meaning under it)
-                if (annoOn) box = subsAnnotate(frag, entry && !known ? entry : null, meta, SL);
+                // (the words marked: the ones you don't know, the less common ones (past the place set: f is how
+                // common, 0 the most), or the ones that are both)
+                const rare = !!entry && (entry.f == null || entry.f >= (prefs.subsRare || 3000));
+                const mode = prefs.subsMark || "new";
+                const marked = !!entry && (mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known);
+                if (marked && !unk.some(u => u.w === word)) unk.push({ w: word, e: entry, L: SL, learn: learnIn(word, SL) || learnIn(head, SL) });
+                // (a word marked: its reading over it and its meaning under it)
+                if (annoOn) box = subsAnnotate(frag, marked ? entry : null, meta, SL);
                 if (knownSet) {
                     total++;
                     const k = known;
@@ -2599,9 +2989,9 @@
                 for (let j = 0; j < len; j++) {
                     const sp = document.createElement("span");
                     sp.className = "h";
-                    // (只替不認識的詞上色: a word you know stays plain, without its glow)
-                    if (cols[j] && prefs.colours && !(prefs.onlyNew && known)) sp.style.color = "#" + cols[j];
-                    else if (prefs.onlyNew && known) sp.className = "";
+                    // (只替標出來的詞上色: a word not marked stays plain, without its glow)
+                    if (cols[j] && prefs.colours && !(prefs.onlyNew && !marked)) sp.style.color = "#" + cols[j];
+                    else if (prefs.onlyNew && !marked) sp.className = "";
                     sp.textContent = chars[i + j];
                     sp.dataset.ci = li + ":" + (i + j);
                     box.appendChild(sp);
@@ -2613,9 +3003,12 @@
         });
         // 懂 %: the words of the video you know
         st.known = knownSet && total ? Math.round(100 * knownN / total) : null;
+        subsRegroup(st);
         subsStudy();
+        subsSpread();
         subsMeasure();
         subsPlace(false);
+        subsDefs(true);
     }
 
     /// the subtitles' words again (a setting changed): readings and meanings on or off
@@ -2629,7 +3022,9 @@
     /// and a short meaning under it; returns where its characters go
     /// (e null: a word without them, the same height: an empty line over and under it)
     function subsAnnotate(frag, e, meta, L) {
-        const w = document.createElement("span"); w.className = e ? "w a" : "w";
+        // (the reading and meaning take no room of their own: they may reach over the words beside it; subsSpread
+        // moves a word over only when two of them would run into each other)
+        const w = document.createElement("span"); w.className = (e ? "w a" : "w") + (prefs.subsRd ? " r" : "") + (prefs.subsGl ? " g" : "");
         if (prefs.subsRd) {
             const rd = document.createElement("span"); rd.className = "rd ffx";
             if (!e) rd.textContent = "\u00a0";
@@ -2655,6 +3050,42 @@
             if (g) gl.title = g;
             w.appendChild(gl);
         }
+        frag.appendChild(w);
+        return cw;
+    }
+    /// an English word of the subtitles: the Chinese words for it in the language on (the most usual first; at most two),
+    /// or "" (short words like "the", "and", "you" are left as they are)
+    const SUBS_EN_SKIP = new Set(("a an the to of and or but so if is am are was were be been being i you he she it we they me him her us " +
+        "them my your his its our their this that these those in on at for with by from as not no do does did have has had will would " +
+        "can could shall should may might must just oh ok okay yeah yes uh um ah hey hi what who how why when where there here than " +
+        "then too very all any some").split(" "));
+    function subsEnForms(w) {
+        const out = [w];
+        for (const end of ["ing", "ed", "es", "s"]) {
+            if (!w.endsWith(end) || w.length - end.length < 3) continue;
+            out.push(w.slice(0, -end.length), w.slice(0, -end.length) + "e");
+        }
+        return out;
+    }
+    function subsEnGloss(token, SL, files, meta) {
+        const m = token.match(/^[^A-Za-z]*([A-Za-z][A-Za-z'-]*)[^A-Za-z]*$/);
+        if (!m) return "";
+        const w = m[1].toLowerCase();
+        if (w.length < 2 || SUBS_EN_SKIP.has(w)) return "";
+        let hit = null;
+        for (const f of subsEnForms(w)) { const sh = files.get(enShard(f, meta)); if (sh && sh[f]) { hit = sh[f]; break; } }
+        if (!hit) return "";
+        const list = hit[SL] || hit.zh || hit.tw || hit.yue || hit.hak || [];
+        return list.slice(0, 2).join("、");
+    }
+    /// the box of an English word: the Chinese under it (the same box as a marked word's, so the line stays level)
+    function subsEnBox(frag, g) {
+        const w = document.createElement("span"); w.className = "w a g" + (prefs.subsRd ? " r" : "");
+        if (prefs.subsRd) { const rd = document.createElement("span"); rd.className = "rd ffx"; rd.textContent = "\u00a0"; w.appendChild(rd); }
+        const cw = document.createElement("span"); cw.className = "cw";
+        w.appendChild(cw);
+        const gl = document.createElement("span"); gl.className = "gl ffx zh"; gl.textContent = g;
+        w.appendChild(gl);
         frag.appendChild(w);
         return cw;
     }
@@ -2714,7 +3145,9 @@
             if (t >= end + 0.12 || t < c.s - 1.5) { v.currentTime = c.s + 0.01; return; }
         }
         // 一句一停: the video waits at the end of each line (play goes on to the next)
-        else if (st.pauseEach && at >= 0 && st.stopped !== at && !v.paused && t >= subsEnd(at) - 0.08) {
+        // (有生詞才停: only after a line with a word you don't know yet)
+        else if (st.pauseEach && at >= 0 && st.stopped !== at && !v.paused && t >= subsEnd(at) - 0.08 &&
+                 (st.pauseEach !== "new" || (st.cues[at].unk && st.cues[at].unk.length))) {
             st.stopped = at; v.pause();
         }
         if (at === st.now) return;
@@ -2727,6 +3160,7 @@
         else for (let i = from; i <= to; i++) if (st.lines[i]) st.lines[i].classList.toggle("past", i < at);
         if (at >= 0 && st.lines[at]) st.lines[at].classList.add("now");
         if (!st.manualUntil) subsPlace(true);
+        subsDefs(false);
     }
 
     // 練習統計 in the app: the time watched with the subtitle panel (playing, the panel open), kept by day and sent
@@ -2772,30 +3206,35 @@
         };
         // (the language the subtitles are read in: 自動 follows the subtitles' own language)
         const ls = document.createElement("select");
-        ls.className = "lang"; ls.title = "字幕的讀音和意思用哪個語言";
-        const LN = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語" };
+        ls.className = "lang"; ls.title = ffT("字幕的讀音和意思用哪個語言");
+        const LN = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語") };
         const auto = document.createElement("option"); auto.value = "auto";
-        auto.textContent = "自動" + (st.lang ? "（" + LN[st.lang] + "）" : "");
+        auto.textContent = ffT("自動") + (st.lang ? ffT("（") + LN[st.lang] + ffT("）") : "");
         ls.appendChild(auto);
-        for (const [v, t] of SUBS_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = t; ls.appendChild(o); }
+        for (const [v, t] of SUBS_LANGS) { const o = document.createElement("option"); o.value = v; o.textContent = ffT(t); ls.appendChild(o); }
         ls.value = prefs.subsLang || "auto";
         ls.addEventListener("click", e => e.stopPropagation());
         ls.addEventListener("change", () => { prefs.subsLang = ls.value; savePrefs(); subsRedraw(); });
         st.study.appendChild(ls);
-        b("上一句", false, "回到上一句", () => go(-1));
-        b("重複", st.loop >= 0, "一直重複這一句", () => { st.loop = st.loop >= 0 ? -1 : Math.max(0, st.now); });
-        b("慢速", !!st.slow, "放慢到 0.75 倍", () => { st.slow = !st.slow; const vv = v(); if (vv) vv.playbackRate = st.slow ? 0.75 : 1; });
-        b("一句一停", !!st.pauseEach, "每一句說完影片就暫停，按播放再說下一句", () => { st.pauseEach = !st.pauseEach; st.stopped = Math.max(-1, st.now - 1); });
-        b("下一句", false, "跳到下一句", () => go(1));
+        b(ffT("上一句"), false, ffT("回到上一句"), () => go(-1));
+        b(ffT("重複"), st.loop >= 0, ffT("一直重複這一句"), () => { st.loop = st.loop >= 0 ? -1 : Math.max(0, st.now); });
+        b(ffT("慢速"), !!st.slow, ffT("放慢到 0.75 倍"), () => { st.slow = !st.slow; const vv = v(); if (vv) vv.playbackRate = st.slow ? 0.75 : 1; });
+        // (一句一停 → 有生詞才停 → off)
+        b(st.pauseEach === "new" ? ffT("有生詞才停") : ffT("一句一停"), !!st.pauseEach,
+          ffT("按一下：每一句說完都停；再按：只在有不認識的詞的句子停；再按：關掉"),
+          () => { st.pauseEach = !st.pauseEach ? true : (st.pauseEach === true ? "new" : false); st.stopped = Math.max(-1, st.now - 1); });
+        b(ffT("下一句"), false, ffT("跳到下一句"), () => go(1));
         // (over and under the words you don't know yet)
-        b("讀音", !!prefs.subsRd, "不認識的詞上面標讀音", () => { prefs.subsRd = !prefs.subsRd; savePrefs(); subsRedraw(); });
-        b("意思", !!prefs.subsGl, "不認識的詞下面標意思（英文或中文，跟著「英文」的設定）", () => { prefs.subsGl = !prefs.subsGl; savePrefs(); subsRedraw(); });
+        // (the cards at the top: only with the row at the bottom)
+        if (st.flow) b(ffT("詞卡"), !!prefs.subsDefs, ffT("畫面最上面顯示這句不認識的詞的詞卡"), () => { prefs.subsDefs = !prefs.subsDefs; savePrefs(); subsDefs(true); });
+        b(ffT("讀音"), !!prefs.subsRd, ffT("不認識的詞上面標讀音"), () => { prefs.subsRd = !prefs.subsRd; savePrefs(); subsRedraw(); });
+        b(ffT("意思"), !!prefs.subsGl, ffT("不認識的詞下面標意思（英文或中文，跟著「英文」的設定）"), () => { prefs.subsGl = !prefs.subsGl; savePrefs(); subsRedraw(); });
         // (all the words of the video you don't know yet, in a big window: tick the ones you know)
-        b("生詞", false, "這部影片裡還不認識的詞，一次標完", () => subsWordList());
+        b(ffT("生詞"), false, ffT("這部影片裡還不認識的詞，一次標完"), () => subsWordList());
         // (how much of the video's words you know: 懂 87%)
         const m = document.createElement("span"); m.className = "meter";
-        m.textContent = st.known != null ? "懂 " + st.known + "%" : "";
-        m.title = "這部影片的字幕裡，你認識的詞佔多少";
+        m.textContent = st.known != null ? ffT("懂 ") + st.known + "%" : "";
+        m.title = ffT("這部影片的字幕裡，你認識的詞佔多少");
         st.study.appendChild(m);
     }
 
@@ -2910,19 +3349,19 @@
         let order = "at";
 
         const hd = el("div", "hd");
-        const LN = { zh: "華語", tw: "台語", yue: "粵語", hak: "客語" };
-        hd.appendChild(el("h2", null, "這部影片的生詞" + (list[0] ? "（" + LN[list[0].L] + "）" : "")));
+        const LN = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語") };
+        hd.appendChild(el("h2", null, ffT("這部影片的生詞") + (list[0] ? ffT("（") + LN[list[0].L] + ffT("）") : "")));
         const sub = el("div", "sub");
         hd.appendChild(sub);
         const seg = el("div", "seg");
         const sortBtn = (o, t) => { const b = el("button", order === o ? "on" : "", t); b.addEventListener("click", () => { order = o; [...seg.children].forEach(x => x.classList.toggle("on", x === b)); draw(); }); seg.appendChild(b); };
-        sortBtn("at", "出現順序"); sortBtn("n", "出現次數");
+        sortBtn("at", ffT("出現順序")); sortBtn("n", ffT("出現次數"));
         hd.appendChild(seg);
         const grid = el("div", "grid");
         const ft = el("div", "ft");
-        const allBtn = el("button", null, "全部認識"), noneBtn = el("button", null, "全部取消");
+        const allBtn = el("button", null, ffT("全部認識")), noneBtn = el("button", null, ffT("全部取消"));
         const count = el("span", "count");
-        const close = el("button", null, "關掉");
+        const close = el("button", null, ffT("關掉"));
         const go = el("button", "go"), rest = el("button", "rest");
         ft.append(allBtn, noneBtn, count, el("span", "sp"), close, go, rest);
         win.append(hd, grid, ft);
@@ -2930,24 +3369,24 @@
         const fresh = () => list.filter(o => !o.learn);
         const paint = () => {
             const k = known.size, r = fresh().filter(o => !known.has(o.w)).length;
-            sub.textContent = list.length ? "點你已經認識的詞（綠色）。上面是還沒標過的詞，下面是已經標成不熟的詞。" : "";
-            count.textContent = list.length ? "認識 " + k + " 個・其他 " + r + " 個" : "";
-            go.textContent = "確定（" + k + " 個認識）";
-            rest.textContent = "確定，其他 " + r + " 個加到不熟";
+            sub.textContent = list.length ? ffT("點你已經認識的詞（綠色）。上面是還沒標過的詞，下面是已經標成不熟的詞。") : "";
+            count.textContent = list.length ? ffT("認識 ") + k + ffT(" 個・其他 ") + r + ffT(" 個") : "";
+            go.textContent = ffT("確定（") + k + ffT(" 個認識）");
+            rest.textContent = ffT("確定，其他 ") + r + ffT(" 個加到不熟");
             go.style.display = list.length ? "" : "none";
             rest.style.display = list.length ? "" : "none";
             allBtn.style.display = noneBtn.style.display = list.length ? "" : "none";
         };
         const draw = () => {
             grid.replaceChildren();
-            if (!list.length) { grid.appendChild(el("div", "empty", "這部影片裡沒有還不認識的詞了。")); paint(); return; }
+            if (!list.length) { grid.appendChild(el("div", "empty", ffT("這部影片裡沒有還不認識的詞了。"))); paint(); return; }
             const sorted = [...list].sort(order === "n" ? (a, b) => b.n - a.n || a.at - b.at : (a, b) => a.at - b.at);
             // (two sections: the words not marked yet, then the ones already in 不熟)
-            const groups = [[sorted.filter(o => !o.learn), "還沒標過的詞", "new"], [sorted.filter(o => o.learn), "已經標成不熟的詞", "learn"]];
+            const groups = [[sorted.filter(o => !o.learn), ffT("還沒標過的詞"), "new"], [sorted.filter(o => o.learn), ffT("已經標成不熟的詞"), "learn"]];
             for (const [items, title, cls] of groups) {
             if (!items.length) continue;
             const sec = el("div", "sec " + cls);
-            sec.append(el("span", null, title), el("small", null, items.length + " 個" + (cls === "learn" ? "・點認識的，其他的照舊留在不熟" : "")));
+            sec.append(el("span", null, title), el("small", null, items.length + ffT(" 個") + (cls === "learn" ? ffT("・點認識的，其他的照舊留在不熟") : "")));
             grid.appendChild(sec);
             for (const o of items) {
                 const t = el("div", "t" + (o.learn ? " learn" : "") + (known.has(o.w) ? " on" : ""));
@@ -2960,7 +3399,7 @@
                 if (!h.textContent) h.textContent = o.w;
                 const gl = el("div", "gl", subsGloss(o.e));
                 const sn = el("div", "sn", subs.cues[o.li] ? subs.cues[o.li].t : "");
-                t.append(rd, h, gl, sn, el("span", "n", o.n > 1 ? "×" + o.n : ""), el("span", "ok", "認識"));
+                t.append(rd, h, gl, sn, el("span", "n", o.n > 1 ? "×" + o.n : ""), el("span", "ok", ffT("認識")));
                 t.addEventListener("click", () => { if (known.has(o.w)) known.delete(o.w); else known.add(o.w); t.classList.toggle("on", known.has(o.w)); paint(); });
                 grid.appendChild(t);
             }
@@ -2984,7 +3423,7 @@
                     localAdd(o.w, o.L); localAdd(han, o.L);
                 } else if (restToo && !o.learn) {
                     queue = queue.filter(q => !(q.k === o.k && (q.w === "unknown" || q.w === "known")));
-                    queue.push({ k: o.k, w: "unknown", h: han, x: subs.cues[o.li] ? subs.cues[o.li].t.replace(/\s+/g, " ").trim() : "" });
+                    queue.push(withGroup({ k: o.k, w: "unknown", h: han, x: subs.cues[o.li] ? subs.cues[o.li].t.replace(/\s+/g, " ").trim() : "" }));
                 }
             }
             saveQueue(); saveKnownLocal();
@@ -2992,7 +3431,7 @@
             if (subs && subs.key) subsColour(subs.key);
             const k = known.size, r = restToo ? fresh().filter(o => !known.has(o.w)).length : 0;
             shut();
-            toast("認識 " + k + " 個" + (r ? "・不熟 " + r + " 個" : "") + "（按「傳到 App」傳過去）", "#3fae66");
+            toast(ffT("認識 ") + k + ffT(" 個") + (r ? ffT("・不熟 ") + r + ffT(" 個") : "") + ffT("（按「傳到 App」傳過去）"), "#3fae66");
         };
         go.addEventListener("click", () => finish(false));
         rest.addEventListener("click", () => finish(true));

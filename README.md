@@ -45,6 +45,17 @@ iPhone／iPad／Mac 版只能在 Mac 上建置。在 Windows 上可以做 Androi
 
 建置失敗的話，把終端機裡的錯誤訊息傳給 Claude。
 
+### 查詞的附加元件給 Firefox（電腦和 Android）
+
+Safari 查詞（網頁查詞、影片字幕）也可以裝在 Firefox，包括 Android 手機上的 Firefox。不用先做詞典資料：
+
+- **Windows**：在資料夾裡**雙擊 `build-firefox.bat`**。
+- **Mac**：在終端機執行 `bash ~/Desktop/fangfang-cards-main/apple/tools/build_firefox.sh`。
+
+桌面會多一個 `fangfang-firefox.xpi`。**裡面沒有任何詞典**（詞典的授權不允許散布改過的版本）：裝好以後打開它的設定頁，在「詞典」選語言按「安裝」，它會下載詞典原本的檔案，在瀏覽器裡整理好。所以這個版本可以公開：在 addons.mozilla.org/developers 第一次按「Submit a New Add-on」，之後在「My Add-ons」打開它按「Upload New Version」，都選「On this site」，審核通過以後大家都能在 Firefox 的附加元件頁找到、安裝。（要先自己試的話：上傳時選「On your own」，下載簽好的檔案，在 Firefox 從檔案安裝；Android：設定 → 關於 Firefox → 連點標誌 5 次 → 回到設定 → 從檔案安裝附加元件。）
+
+只給自己用、把做好的資料直接放進去的版本：`build-firefox.bat withdata`（Mac：`build_firefox.sh withdata`，要先照上面做出詞典資料），做出 `fangfang-firefox-private.xpi`。這個版本有改過的詞典資料，只能選「On your own」，不能公開。
+
 ---
 
 Taiwanese and Mandarin word cards, dictionary and practice. `apple/` is the iPhone / iPad / Mac version,

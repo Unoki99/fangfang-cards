@@ -101,7 +101,8 @@ fun TileGrid(count: Int, spacing: Dp = 10.dp, tile: @Composable (index: Int, mod
     Column(verticalArrangement = Arrangement.spacedBy(spacing)) {
         for (start in 0 until count step 2) Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(spacing)) {
             tile(start, Modifier.weight(1f).fillMaxHeight())
-            if (start + 1 < count) tile(start + 1, Modifier.weight(1f).fillMaxHeight()) else Spacer(Modifier.weight(1f))
+            // (an odd one out at the end: the whole row, no empty slot)
+            if (start + 1 < count) tile(start + 1, Modifier.weight(1f).fillMaxHeight())
         }
     }
 }

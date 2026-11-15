@@ -774,6 +774,8 @@ struct SvConvertPane: View {
     /// the 歌詞 window: no typing, only the coloured words (left) and the words split into morphemes (right)
     let lyrics: Bool
     @EnvironmentObject var store: Store
+    /// (歌詞: the readings side can be turned off; it takes memory and slows a long song down)
+    @AppStorage(LyricsBridge.readingsKey) private var lyricsReadings = true
     @AppStorage private var text: String
     @AppStorage(ToneColors.key) private var toneSys = 0
     @State private var words: [Tok] = []
@@ -805,7 +807,7 @@ struct SvConvertPane: View {
                 if lyrics {
                     if !words.isEmpty {
                         // (letters only: no glow here, it got slow)
-                        LyricsColumns { coloured; split }.environment(\.noToneGlow, true)
+                        LyricsColumns { coloured; if lyricsReadings { split } }.environment(\.noToneGlow, true)
                     }
                 } else {
                 ZStack(alignment: .topLeading) {

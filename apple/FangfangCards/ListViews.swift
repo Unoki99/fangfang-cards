@@ -18,6 +18,7 @@ struct UnknownView: View {
     @State private var readingOrder = false
     @State private var blanks = false
     @State private var memory = false
+    @State private var swiping = false
     @State private var writing = false
     @State private var freeWriting = false
     @State private var gaming = false
@@ -49,6 +50,7 @@ struct UnknownView: View {
                 }
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty || !due.isEmpty) { studying = true }
+                    PracticeTile(title: tr("滑卡練習"), icon: "hand.draw", enabled: !pool.isEmpty || !due.isEmpty) { swiping = true }
                     PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
                                  enabled: (pool + due).contains { !store.blanks($0).isEmpty }) { blanks = true }
                     PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
@@ -120,6 +122,7 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $particles) { JaParticleQuiz().environmentObject(store) }
         .fullScreenCover(isPresented: $scrambling) { ScrambleView().environmentObject(store) }
         .fullScreenCover(isPresented: $memory) { MemoryView().environmentObject(store) }
+        .fullScreenCover(isPresented: $swiping) { PracticeSwipeView().environmentObject(store) }
         .fullScreenCover(isPresented: $writing) { HandwritingView().environmentObject(store) }
         .fullScreenCover(isPresented: $freeWriting) { FreeWritingView().environmentObject(store) }
         .fullScreenCover(isPresented: $gaming) { FallingGameView().environmentObject(store) }
@@ -262,22 +265,57 @@ struct PracticeTile: View {
 /// 不熟 → 練習範圍: all of 不熟, or one level / group (華語: HSK / TOCFL words or characters; 台語: 常用詞 / 常用字)
 struct PracticeScopeMenu: View {
     @EnvironmentObject var store: Store
+    @State private var groupsOpen = false
+    /// 創作範圍 / 編輯: the sheet (nil name: a new 範圍)
+    @State private var scopeSheet: ScopeSheet?
+    struct ScopeSheet: Identifiable { let name: String?; var id: String { name ?? "\u{1}new" } }
     var body: some View {
         let ts = store.practiceTopics
         let all = store.allTopicProgress()
         let words = ts.filter { store.isZh ? $0.id < Lang.charTopicBase : $0.id < Lang.freqCharBase }
         let chars = ts.filter { store.isZh ? $0.id > Lang.charTopicBase : $0.id >= Lang.freqCharBase }
-        if !ts.isEmpty {
+        let groups = store.groupIds
+        let unknown = Set(store.unknownCards.map(\.k))
+        if !ts.isEmpty || !groups.isEmpty {
             Menu {
-                Picker(tr("練習範圍"), selection: $store.practiceTopic) {
-                    Text(tr("全部不熟的詞（\(store.unknownCount)）")).tag(-1)
-                }
-                .pickerStyle(.inline)
-                Menu(store.isZh ? trs("詞（等級）") : trs("常用詞")) {
-                    Picker(tr("詞"), selection: $store.practiceTopic) {
-                        ForEach(words) { t in Text(tr("\(t.name)（不熟 \(all[t.id]?.unknown ?? 0)）")).tag(t.id) }
+                Button {
+                    store.practiceGroup = nil; store.practiceTopic = -1
+                } label: {
+                    if store.practiceGroup == nil && store.practiceTopic < 0 {
+                        Label(tr("全部不熟的詞（\(store.unknownCount)）"), systemImage: "checkmark")
+                    } else {
+                        Text(tr("全部不熟的詞（\(store.unknownCount)）"))
                     }
-                    .pickerStyle(.inline)
+                }
+                // 自己的範圍: made with 創作範圍 (some 影片詞組 together)
+                let scopes = store.groupFolders
+                if !scopes.isEmpty {
+                    Section(trs("自己的範圍")) {
+                        ForEach(scopes, id: \.self) { f in
+                            Button {
+                                store.practiceGroup = "folder:" + f
+                            } label: {
+                                let n = Set(store.folderGroups(f).flatMap { store.groupKeys($0) }).filter { unknown.contains($0) }.count
+                                Label(tr("\(f)（不熟 \(n)）"), systemImage: store.practiceGroup == "folder:" + f ? "checkmark" : "square.stack")
+                            }
+                        }
+                    }
+                }
+                // (影片詞組: the words chosen from one video in Safari 查詞)
+                if !groups.isEmpty {
+                    Menu(trs("影片詞組")) {
+                        ForEach(groups, id: \.self) { g in groupButton(g, unknown) }
+                        Divider()
+                        Button { groupsOpen = true } label: { Label(tr("看全部影片詞組"), systemImage: "list.bullet.rectangle") }
+                    }
+                }
+                if !words.isEmpty {
+                    Menu(store.isZh ? trs("詞（等級）") : trs("常用詞")) {
+                        Picker(tr("詞"), selection: $store.practiceTopic) {
+                            ForEach(words) { t in Text(tr("\(t.name)（不熟 \(all[t.id]?.unknown ?? 0)）")).tag(t.id) }
+                        }
+                        .pickerStyle(.inline)
+                    }
                 }
                 if !chars.isEmpty {
                     Menu(store.isZh ? trs("漢字（等級）") : trs("常用字")) {
@@ -287,9 +325,18 @@ struct PracticeScopeMenu: View {
                         .pickerStyle(.inline)
                     }
                 }
+                if !groups.isEmpty {
+                    Divider()
+                    Button { scopeSheet = ScopeSheet(name: nil) } label: { Label(tr("創作範圍"), systemImage: "plus") }
+                    if let g = store.practiceGroup, g.hasPrefix("folder:"), store.isFolderRef(g) {
+                        Button { scopeSheet = ScopeSheet(name: String(g.dropFirst(7))) } label: {
+                            Label(tr("編輯「\(String(g.dropFirst(7)))」"), systemImage: "pencil")
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "scope").foregroundStyle(T.btnInk)
+                    Image(systemName: store.practiceGroup.map { $0.hasPrefix("folder:") ? "square.stack" : "film" } ?? "scope").foregroundStyle(T.btnInk)
                     Text(tr("練習範圍")).foregroundStyle(T.muted)
                     Text(store.practiceName).foregroundStyle(T.glyph).lineLimit(1)
                     Spacer(minLength: 4)
@@ -304,6 +351,19 @@ struct PracticeScopeMenu: View {
                 .contentShape(RoundedRectangle(cornerRadius: 12))
             }
             .buttonStyle(.plain)
+            .sheet(isPresented: $groupsOpen) { VideoGroupsView().environmentObject(store) }
+            .sheet(item: $scopeSheet) { sh in
+                ScopeEditor(editing: sh.name) { n in store.practiceGroup = "folder:" + n }.environmentObject(store)
+            }
+        }
+    }
+
+    private func groupButton(_ g: String, _ unknown: Set<String>) -> some View {
+        Button {
+            store.practiceGroup = g
+        } label: {
+            let n = store.groupKeys(g).filter { unknown.contains($0) }.count
+            Label(tr("\(store.groupName(g))（不熟 \(n)）"), systemImage: store.practiceGroup == g ? "checkmark" : "film")
         }
     }
 }
@@ -318,6 +378,7 @@ struct PracticeHelp: View {
         var a: [(String, String, String)] = [
             ("calendar", trs("本週學習"), trs("從不熟的詞選這個星期要學的（或在列表往右滑 → 本週學習），一週後做期末測驗；答錯的詞可以留到下一週。")),
             ("graduationcap.fill", trs("開始練習"), tr("各種題目混在一起練。連續答對 \(goal) 次，詞就會移到「熟悉」；在列表往右滑可以直接移過去。")),
+            ("hand.draw", trs("滑卡練習"), tr("像「新詞」一樣滑卡片：往右是會、往左是不會。不會直接放到「熟悉」，而是和其他練習一樣算答對／答錯；連續答對 \(goal) 次才到「熟悉」，過幾天再出來複習。")),
             ("text.badge.checkmark", trs("例句填空"), trs("只做例句填空題。")),
             ("pencil.line", trs("寫字題"), trs("開始練習和本週學習裡也有寫字題：看意思和讀音，一個字一個字把整個詞寫出來，按「對答案」以後自己說寫對了沒有。可以在「設定 → 卡片與練習」關掉。")),
             ("rectangle.3.group", trs("排句子"), trs("例句被打亂了，照華語的意思把詞排回去。")),

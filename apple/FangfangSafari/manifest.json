@@ -2,7 +2,7 @@
     "manifest_version": 3,
     "name": "方方詞卡 查詞",
     "description": "Hover over a word with the Apple Pencil (or a trackpad) to see it in the dictionaries of 方方詞卡, and send it to the app. On YouTube and Viki, the video's subtitles in a panel beside it.",
-    "version": "1.6",
+    "version": "1.23",
     "icons": {
         "48": "icon-48.png",
         "64": "icon-64.png",
@@ -23,6 +23,7 @@
     },
     "background": {
         "scripts": [
+            "datastore.js",
             "background.js"
         ],
         "type": "module"
@@ -41,6 +42,7 @@
         },
         {
             "js": [
+                "ui-en.js",
                 "content.js"
             ],
             "matches": [
@@ -50,7 +52,8 @@
         }
     ],
     "permissions": [
-        "storage"
+        "storage",
+        "unlimitedStorage"
     ],
     "web_accessible_resources": [
         {
@@ -66,5 +69,26 @@
     "options_ui": {
         "page": "options.html",
         "open_in_tab": true
-    }
+    },
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "fangfang-lookup@unoki99",
+            "strict_min_version": "140.0",
+            "data_collection_permissions": {
+                "required": [
+                    "none"
+                ]
+            }
+        },
+        "gecko_android": {
+            "strict_min_version": "142.0"
+        }
+    },
+    "host_permissions": [
+        "https://raw.githubusercontent.com/*",
+        "https://sutian.moe.edu.tw/*",
+        "https://hakkadict.moe.edu.tw/*",
+        "https://kaikki.org/*",
+        "http://folkets-lexikon.csc.kth.se/*"
+    ]
 }

@@ -257,14 +257,24 @@ struct HandwritingView: View {
 private struct HandwritingSetup: View {
     @EnvironmentObject var store: Store
     let start: ([String]) -> Void
-    @AppStorage("handwritingList") private var listID = "unknown"
+    @AppStorage("handwritingList") private var listID = "scope"
     @AppStorage("handwritingShuffle") private var shuffle = false
     @AppStorage("handwritingOwn") private var own = ""
     @State private var off: Set<String> = []
 
     struct Source: Identifiable { let id: String; let name: String; let chars: [String] }
 
-    private var sources: [Source] {
+    /// 練習範圍 (不熟 → 練習範圍): the characters of its words, the same words the other games use
+    private var scopeSource: Source {
+        var seen = Set<String>()
+        let chars = store.practiceCards.flatMap { c in c.h.unicodeScalars.filter { Zhuyin.isHan($0) }.map { String($0) } }
+            .filter { seen.insert($0).inserted }
+        return Source(id: "scope", name: tr("練習範圍：\(store.practiceName)"), chars: chars)
+    }
+
+    private var sources: [Source] { [scopeSource] + listSources }
+
+    private var listSources: [Source] {
         // 台語: the characters of your 不熟 / 熟悉 words
         if !store.isZh {
             let sets = store.twCharSets()

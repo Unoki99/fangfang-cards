@@ -56,7 +56,7 @@ struct SettingsView: View {
             Topic(id: 5, title: tr("備份與同步"), icon: "arrow.triangle.2.circlepath", summary: store.backupFolderName ?? trs("還沒設定")),
             Topic(id: 8, title: tr("詞典資料"), icon: "arrow.down.circle", summary: tr("安裝、移除詞典")),
             Topic(id: 6, title: tr("匯出與匯入"), icon: "square.and.arrow.up", summary: tr("CSV・備份檔・Anki・Safari 查詞")),
-            Topic(id: 7, title: tr("關於與資料來源"), icon: "info.circle", summary: tr("資料、授權")),
+            Topic(id: 7, title: tr("用法及資料來源"), icon: "info.circle", summary: tr("每個部分能做什麼・資料、授權")),
         ]
     }
 
@@ -94,7 +94,7 @@ struct SettingsView: View {
     /// with tone colours on, each topic is one of the tone colours (a little surprise)
     private func tint(_ id: Int) -> Color? {
         guard toneSys != 0 else { return nil }
-        // (詞典資料 yellow, 匯出與匯入 pink, 關於與資料來源 grey; the others the tone colours in turn)
+        // (詞典資料 yellow, 匯出與匯入 pink, 用法及資料來源 grey; the others the tone colours in turn)
         switch id {
         case 8: return Color(hex: 0xffe066)
         case 6: return Color(hex: 0xff8cc6)
@@ -687,12 +687,19 @@ private struct ExportSettings: View {
     }
 }
 
-// MARK: 關於與資料來源
+// MARK: 用法及資料來源
 
+/// what each part of the app can do (用法, Usage.swift), then where the data comes from
 private struct AboutSettings: View {
     var body: some View {
-        SettingsPage(title: tr("關於與資料來源")) {
-            Section(tr("台語")) {
+        SettingsPage(title: tr("用法及資料來源")) {
+            UsageSections()
+            Section {
+                Text(tr("以下是每個語言的資料從哪裡來、用什麼授權。")).ffFont(.footnote).foregroundStyle(T.muted)
+            } header: {
+                Text(tr("資料來源"))
+            }
+            Section(tr("資料來源・台語")) {
                 credit(tr("詞條、讀音、釋義、例句、音檔"), "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）。釋義、例句原文照錄，音檔未經修改；讀音依規則轉成皓羅、方音、白話字。")
                 credit(tr("推算的內容"), "辭典沒寫的腔口讀音是依規則推算的，用紅色和「推測」標示。")
                 credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》（經作者同意使用）")
@@ -703,7 +710,7 @@ private struct AboutSettings: View {
                 credit(tr("詞頻"), "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
                 credit(tr("英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
             }
-            Section(tr("華語")) {
+            Section(tr("資料來源・華語")) {
                 credit(tr("詞條、注音、釋義、例句"), "中華文化總會《兩岸常用詞典》（CC BY-NC-ND），g0v 萌典整理。拼音依注音轉寫，例句讀音依詞推算。")
                 credit(tr("漢字卡的字義"), "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄，引用的古書省略。")
                 credit(tr("漢字等級"), "HSK 3.0 漢字表、TOCFL（TBCL）漢字表")
@@ -713,22 +720,22 @@ private struct AboutSettings: View {
                 credit(tr("四川話讀音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：成都話的四川話拼音，漢字一樣、普通話讀音也一樣的詞。另外存，不改辭典的內容。")
                 credit(tr("發音"), "裝置內建的語音")
             }
-            Section(tr("練習")) {
+            Section(tr("資料來源・練習")) {
                 credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
             }
-            Section(tr("粵語")) {
+            Section(tr("資料來源・粵語")) {
                 credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
                 credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
                 credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
                 credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
                 credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
             }
-            Section(tr("客語")) {
+            Section(tr("資料來源・客語")) {
                 credit(tr("詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
                 credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
                 credit(tr("注音"), "照臺灣客家語拼音方案由拼音轉寫")
             }
-            Section(tr("其他")) {
+            Section(tr("資料來源・其他")) {
                 credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")
                 Text(tr("本 App 與教育部無關，不是官方產品。")).ffFont(.footnote).foregroundStyle(T.muted)
             }

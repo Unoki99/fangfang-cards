@@ -233,6 +233,8 @@ struct ConvertPane: View {
     /// the 歌詞 window: no typing, only the 漢字 (left) and the chosen spelling (right)
     let lyrics: Bool
     @EnvironmentObject var store: Store
+    /// (歌詞: the readings side can be turned off; it takes memory and slows a long song down)
+    @AppStorage(LyricsBridge.readingsKey) private var lyricsReadings = true
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @StateObject private var model: ConvModel
@@ -259,7 +261,9 @@ struct ConvertPane: View {
                         LyricsColumns {
                             panel(0, trs("漢字"))
                             // (letters: no glow here, it got slow)
-                            panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)])).environment(\.noToneGlow, true)
+                            if lyricsReadings {
+                                panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)])).environment(\.noToneGlow, true)
+                            }
                         }
                         .padding()
                         .frame(maxWidth: 1100)
@@ -1467,6 +1471,33 @@ struct LookupPane: View {
     /// several words searched: the one whose 更多 is shown (nil = the whole search)
     @State private var picked: Int?
 
+    /// 部首查字, 依詞類列出, 單詞比較, 日語借詞, (a 腔口 chosen: its own words,) 依常用度列出
+    private var tiles: [AnyView] {
+        var t: [AnyView] = [
+            AnyView(NavigationLink {
+                RadicalPage(isChar: { dict.hanMap[$0] != nil }) { query += $0 }
+            } label: { TileLabel(icon: "square.grid.3x3", title: trs("部首查字")) }.buttonStyle(.plain)),
+            AnyView(NavigationLink(value: MoreRoute.classes) { TileLabel(icon: "list.bullet.indent", title: trs("依詞類列出")) }.buttonStyle(.plain)),
+            AnyView(NavigationLink(value: MoreRoute.compare) { TileLabel(icon: "rectangle.split.2x1", title: trs("單詞比較")) }.buttonStyle(.plain)),
+            AnyView(NavigationLink(value: MoreRoute.japanese) { TileLabel(icon: "globe.asia.australia", title: trs("日語借詞")) }.buttonStyle(.plain)),
+        ]
+        // (with a 腔口 chosen: the words that place uses and (almost) no other does: 鹿港偏好用詞)
+        if place >= 0, place < dict.raw.places.count {
+            t.append(AnyView(NavigationLink(value: MoreRoute.placeWords(place)) {
+                TileLabel(icon: "mappin.and.ellipse", title: PlaceWordsPage.title(dict, place),
+                          count: PlaceWordsPage.words(dict, place).count, cap: 1_000_000)
+            }.buttonStyle(.plain)))
+        }
+        // 依常用度列出: the words by how common they are (the 台語 cards' order)
+        t.append(AnyView(NavigationLink {
+            let keys = store.lang == 0 ? store.cards.map(\.k) : []
+            FreqBandsPage(keys: keys) { k in
+                AnyView(EntryLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) })
+            }
+        } label: { TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出")) }.buttonStyle(.plain)))
+        return t
+    }
+
     var body: some View {
         List {
             Section {
@@ -1477,36 +1508,10 @@ struct LookupPane: View {
                     .clearButton($query)
             }
             .listRowBackground(T.fn.opacity(0.7))
-            // 依詞類列出 and 單詞比較 side by side (as a header: a row's rounded corners would cut the tiles off)
+            // the tiles (as a header: a row's rounded corners would cut them off)
             Section {
             } header: {
-                VStack(spacing: 10) {
-                    HStack(spacing: 10) {
-                        NavigationLink(value: MoreRoute.classes) { TileLabel(icon: "list.bullet.indent", title: trs("依詞類列出")) }
-                            .buttonStyle(.plain)
-                        NavigationLink(value: MoreRoute.compare) { TileLabel(icon: "rectangle.split.2x1", title: trs("單詞比較")) }
-                            .buttonStyle(.plain)
-                    }
-                    HStack(spacing: 10) {
-                        NavigationLink {
-                            RadicalPage(isChar: { dict.hanMap[$0] != nil }) { query += $0 }
-                        } label: { TileLabel(icon: "square.grid.3x3", title: trs("部首查字")) }
-                            .buttonStyle(.plain)
-                        NavigationLink(value: MoreRoute.japanese) { TileLabel(icon: "globe.asia.australia", title: trs("日語借詞")) }
-                            .buttonStyle(.plain)
-                    }
-                    // with a 腔口 chosen: the words that place uses and (almost) no other does (鹿港偏好用詞)
-                    if place >= 0, place < dict.raw.places.count {
-                        HStack(spacing: 10) {
-                            NavigationLink(value: MoreRoute.placeWords(place)) {
-                                TileLabel(icon: "mappin.and.ellipse", title: PlaceWordsPage.title(dict, place),
-                                          count: PlaceWordsPage.words(dict, place).count, cap: 1_000_000)
-                            }
-                                .buttonStyle(.plain)
-                            Color.clear.frame(maxWidth: .infinity, maxHeight: 1)
-                        }
-                    }
-                }
+                TileGrid(tiles: tiles)
                 .padding(.vertical, 4)
                 .textCase(nil)
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))

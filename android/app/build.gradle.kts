@@ -52,4 +52,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     // (.xz: 華語's 《重編國語辭典修訂本》 comes packed that way, for installing it in the app)
     implementation("org.tukaani:xz:1.10")
+    // 電台: streams (also HLS), the song's name the station sends, and playing on with the app left
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    implementation("androidx.media3:media3-session:1.4.1")
 }
