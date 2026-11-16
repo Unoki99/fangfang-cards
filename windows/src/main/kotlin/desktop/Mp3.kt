@@ -20,7 +20,13 @@ object Mp3 {
             set(v) { field = v; gain(line, v) }
         /** sound has started coming */
         @Volatile var sounding = false
-        fun stop() { stopped = true; running = false; try { line?.stop(); line?.flush(); line?.close() } catch (_: Exception) {} }
+        /** (run when it's stopped: FFmpeg's process ended) */
+        @Volatile var onStop: (() -> Unit)? = null
+        fun stop() {
+            stopped = true; running = false
+            try { line?.stop(); line?.flush(); line?.close() } catch (_: Exception) {}
+            try { onStop?.invoke() } catch (_: Exception) {}
+        }
     }
 
     private fun gain(line: SourceDataLine?, v: Float) {
@@ -37,7 +43,11 @@ object Mp3 {
         p.volume = volume
         Thread({
             try {
-                val src = AudioSystem.getAudioInputStream(if (input.markSupported()) input else BufferedInputStream(input, 1 shl 16))
+                val bin = if (input.markSupported()) input else BufferedInputStream(input, 1 shl 16)
+                // (mp3 read by mp3spi itself: the AAC decoder's Java Sound reader isn't asked first, and so can't
+                // take an mp3 stream for its own; anything else, through Java Sound as before)
+                val src = try { javazoom.spi.mpeg.sampled.file.MpegAudioFileReader().getAudioInputStream(bin) }
+                    catch (e: javax.sound.sampled.UnsupportedAudioFileException) { AudioSystem.getAudioInputStream(bin) }
                 val base = src.format
                 val fmt = AudioFormat(AudioFormat.Encoding.PCM_SIGNED, base.sampleRate, 16, base.channels, base.channels * 2, base.sampleRate, false)
                 val pcm = AudioSystem.getAudioInputStream(fmt, src)

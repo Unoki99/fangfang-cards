@@ -23,6 +23,18 @@ $Log = Join-Path $LogDir $(if ($Win) { "windows-build.log" } else { "android-bui
 
 function Fail($msg) { Write-Host "✗ $msg"; exit 1 }
 
+# Gradle, tried again (up to 3 times) when it failed only because a download timed out or the connection dropped
+function Invoke-Gradle([string]$gradleArgs) {
+    for ($try = 1; $try -le 3; $try++) {
+        cmd /c "gradlew.bat $gradleArgs --console=plain > `"$Log`" 2>&1"
+        if ($LASTEXITCODE -eq 0) { return }
+        $net = Select-String -Path $Log -Pattern "timed out|timeout|Connection reset|Could not GET|Could not HEAD|Could not download|failed: timeout|UnknownHostException|SocketException" -Quiet
+        if (-not $net -or $try -eq 3) { return }
+        Write-Host "（網路下載逾時，$($try * 20) 秒後再試一次…）"
+        Start-Sleep -Seconds ($try * 20)
+    }
+}
+
 # ---- the Android SDK (comes with Android Studio; not needed for the Windows program) ----
 $Sdk = $env:ANDROID_HOME
 if (-not $Sdk) { $Sdk = $env:ANDROID_SDK_ROOT }
@@ -421,10 +433,40 @@ if ($Win) {
     if (-not (Test-Path (Join-Path $WinDir "build.gradle.kts"))) { Fail "找不到 windows 資料夾。請用完整的 fangfang-cards-main 資料夾。" }
     Get-ChildItem -Path $WinDir -Recurse -File -Include "* 2.kt", "* - Copy.kt", "* (1).kt", "* - Kopia.kt" -ErrorAction SilentlyContinue |
         ForEach-Object { Write-Host "（刪掉多出來的複本：$($_.Name)）"; Remove-Item $_.FullName -Force }
+    # FFmpeg: the radio plays every kind of stream with it (HLS, AAC+, Ogg, Opus…); only the first time, about 90 MB.
+    # Without it, mp3 and AAC stations still play.
+    $OwnFf = Join-Path $LogDir "ffmpeg"
+    $haveFf = (Get-Command ffmpeg -ErrorAction SilentlyContinue) -or (Get-ChildItem -Path $OwnFf -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue | Select-Object -First 1)
+    if (-not $haveFf) {
+        Write-Host "下載 FFmpeg（電台播各種格式用，只有第一次，大概 90 MB）…"
+        $fzip = Join-Path $env:TEMP "fangfang-ffmpeg.zip"
+        $got = $false
+        foreach ($u in @("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+                         "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip")) {
+            try { Invoke-WebRequest -Uri $u -OutFile $fzip -UseBasicParsing -ErrorAction Stop; $got = $true; break }
+            catch { Write-Host "（下載失敗：$u）" }
+        }
+        if ($got) {
+            try {
+                $ftmp = Join-Path $env:TEMP "fangfang-ffmpeg"
+                Remove-Item -Recurse -Force $ftmp -ErrorAction SilentlyContinue
+                Expand-Archive -Path $fzip -DestinationPath $ftmp -Force
+                $fe = Get-ChildItem -Path $ftmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+                if ($fe) {
+                    New-Item -ItemType Directory -Force -Path $OwnFf | Out-Null
+                    Copy-Item $fe.FullName (Join-Path $OwnFf "ffmpeg.exe") -Force
+                    Write-Host "✓ FFmpeg 好了。"
+                }
+                Remove-Item -Recurse -Force $ftmp -ErrorAction SilentlyContinue
+            } catch { Write-Host "（FFmpeg 解壓縮失敗：$($_.Exception.Message)）" }
+            Remove-Item $fzip -Force -ErrorAction SilentlyContinue
+        }
+        if (-not (Test-Path (Join-Path $OwnFf "ffmpeg.exe"))) { Write-Host "（沒有 FFmpeg：電台的 mp3 和 AAC 電台照樣能播，HLS 等其他格式可能播不了。下次執行會再試。）" }
+    }
     Write-Host "建置 Windows 版…（第一次要下載不少東西，可能 5–10 分鐘）"
     Push-Location $A
     # (through cmd: PowerShell's own redirect cuts long lines at the window's width, and the errors with them)
-    cmd /c "gradlew.bat -p `"$WinDir`" createDistributable --console=plain > `"$Log`" 2>&1"
+    Invoke-Gradle "-p `"$WinDir`" createDistributable"
     Pop-Location
     $Built = Join-Path $WinDir "build\compose\binaries\main\app\FangfangCards"
     $ok = (Test-Path (Join-Path $Built "FangfangCards.exe")) -and (Select-String -Path $Log -Pattern "BUILD SUCCESSFUL" -Quiet)
@@ -471,7 +513,7 @@ if ($Win) {
 # ---- build: the Android app ----
 Write-Host "建置 Android 版…（第一次要下載不少東西，可能 5–10 分鐘）"
 Push-Location $A
-& .\gradlew.bat assembleDebug --console=plain *> $Log
+Invoke-Gradle "assembleDebug"
 Pop-Location
 $Apk = Join-Path $A "app\build\outputs\apk\debug\app-debug.apk"
 $ok = (Test-Path $Apk) -and (Select-String -Path $Log -Pattern "BUILD SUCCESSFUL" -Quiet)

@@ -5,6 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.unoki99.fangfang.desktop.Aac
+import com.unoki99.fangfang.desktop.Ffmpeg
+import com.unoki99.fangfang.desktop.HlsInput
 import com.unoki99.fangfang.desktop.Mp3
 import com.unoki99.fangfang.engine.*
 import kotlinx.coroutines.*
@@ -13,121 +16,11 @@ import java.io.FilterInputStream
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
-import java.net.URLEncoder
 
-// (Windows) the same radio as the Android app's Radio.kt (stations, Radio Browser, lyrics); only the player is
-// Windows' own: mp3 streams through Java Sound, with the song's name the station sends in the stream (ICY), for 歌詞.
-// (A station that only sends AAC or HLS can't be played here yet: the next address is tried, then it says it failed.)
-
-// 電台: radio in the languages of the app, to listen to while practising (the same as the iPhone app's).
-// The stations come from Radio Browser (radio-browser.info), a free directory checked every day. A station is kept by
-// its Radio Browser id and the name it was found by: when a stream stops working, the app asks Radio Browser for the
-// station's address again, then searches for it by name, and only then falls back to the last address that worked.
-// It keeps playing when the app is left (with the usual media notification), until it's stopped.
-
-/** a station in 我的電台 */
-data class RadioStation(
-    val id: String, val name: String, val lang: Int, val uuid: String? = null, val query: String? = null,
-    val country: String? = null, val url: String? = null, val favicon: String? = null, val starter: Boolean = false,
-) {
-    fun toMap(): Map<String, Any?> = mapOf("id" to id, "name" to name, "lang" to lang, "uuid" to uuid, "query" to query,
-        "country" to country, "url" to url, "favicon" to favicon, "starter" to starter)
-    companion object {
-        fun from(m: Map<String, Any?>): RadioStation? {
-            val id = m["id"] as? String ?: return null
-            val name = m["name"] as? String ?: return null
-            return RadioStation(id, name, (m["lang"] as? Number)?.toInt() ?: 0, m["uuid"] as? String, m["query"] as? String,
-                m["country"] as? String, m["url"] as? String, m["favicon"] as? String, m["starter"] as? Boolean ?: false)
-        }
-    }
-}
-
-/** a station as Radio Browser lists it */
-class RBStation(val uuid: String, val name: String, val stream: String, val favicon: String, val tags: String, val language: String,
-                val country: String, val codec: String, val bitrate: Int, val clicks: Int, val ok: Boolean)
-
-object RadioDirectory {
-    private val servers = listOf("https://de1.api.radio-browser.info", "https://de2.api.radio-browser.info",
-        "https://nl1.api.radio-browser.info", "https://at1.api.radio-browser.info", "https://all.api.radio-browser.info")
-    @Volatile private var good = 0
-
-    private fun get(path: String): String {
-        var last: Exception = Exception("no server")
-        for (i in servers.indices) {
-            val n = (good + i) % servers.size
-            try {
-                val c = URL(servers[n] + path).openConnection() as HttpURLConnection
-                c.connectTimeout = 8000; c.readTimeout = 8000
-                c.setRequestProperty("User-Agent", "FangfangCards/1.0")
-                if (c.responseCode != 200) { c.disconnect(); throw Exception("HTTP ${c.responseCode}") }
-                val t = c.inputStream.bufferedReader().use { it.readText() }
-                c.disconnect()
-                good = n
-                return t
-            } catch (e: Exception) { last = e }
-        }
-        throw last
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun parse(t: String): List<RBStation> = ((JReader(t).any() as? List<Any?>) ?: emptyList()).mapNotNull { o ->
-        val m = o as? Map<String, Any?> ?: return@mapNotNull null
-        val url = m["url"] as? String ?: ""; val res = m["url_resolved"] as? String ?: ""
-        RBStation(m["stationuuid"] as? String ?: return@mapNotNull null, (m["name"] as? String ?: "").trim(), res.ifEmpty { url },
-            m["favicon"] as? String ?: "", m["tags"] as? String ?: "", m["language"] as? String ?: "", m["countrycode"] as? String ?: "",
-            m["codec"] as? String ?: "", (m["bitrate"] as? Number)?.toInt() ?: 0, (m["clickcount"] as? Number)?.toInt() ?: 0,
-            ((m["lastcheckok"] as? Number)?.toInt() ?: 1) == 1)
-    }
-
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
-
-    /** search by name, language (Radio Browser's English name, e.g. "cantonese") and/or country (e.g. "TW") */
-    suspend fun search(name: String? = null, language: String? = null, country: String? = null, limit: Int = 40): List<RBStation> = withContext(Dispatchers.IO) {
-        var q = "hidebroken=true&order=clickcount&reverse=true&limit=$limit"
-        if (!name.isNullOrEmpty()) q += "&name=" + enc(name)
-        if (!language.isNullOrEmpty()) q += "&language=" + enc(language)
-        if (!country.isNullOrEmpty()) q += "&countrycode=" + enc(country)
-        val seen = HashSet<String>()
-        // (one station is often listed more than once: the most played one is kept)
-        parse(get("/json/stations/search?$q")).filter { it.stream.isNotEmpty() && seen.add(it.name.lowercase() + "|" + it.stream) }
-    }
-
-    suspend fun station(uuid: String): RBStation? = withContext(Dispatchers.IO) { try { parse(get("/json/stations/byuuid/$uuid")).firstOrNull() } catch (_: Exception) { null } }
-
-    /** tells Radio Browser the station was played (its list of popular stations is made from these) */
-    fun clicked(uuid: String) { CoroutineScope(Dispatchers.IO).launch { try { get("/json/url/$uuid") } catch (_: Exception) {} } }
-
-    /** a playlist address (.pls / .m3u): the first stream in it */
-    suspend fun unwrap(s: String): String = withContext(Dispatchers.IO) {
-        val low = s.lowercase()
-        if (!(low.endsWith(".pls") || low.endsWith(".m3u")) || !low.startsWith("http")) return@withContext s
-        try {
-            val t = URL(s).readText()
-            for (line0 in t.lines()) {
-                var l = line0.trim()
-                if (l.lowercase().startsWith("file") && l.contains("=")) l = l.substringAfter("=")
-                if (l.startsWith("http")) return@withContext l
-            }
-        } catch (_: Exception) {}
-        s
-    }
-}
-
-/** the words to search Radio Browser with, for each language of the app */
-object RadioLang {
-    val languages = listOf(listOf("taiwanese", "hokkien", "min nan", "台語"), listOf("mandarin", "chinese", "華語", "國語"),
-        listOf("cantonese", "粵語", "廣東話"), listOf("hakka", "客家", "客語"), listOf("japanese"))
-    val countries = listOf(listOf("TW"), listOf("TW", "CN"), listOf("HK", "MO"), listOf("TW"), listOf("JP"))
-    /** the stations a language starts with: found by name in Radio Browser the first time they're played */
-    val starters = listOf(
-        Triple(0, "國立教育廣播電台", "教育廣播" to "TW"), Triple(0, "寶島聯播網", "寶島" to "TW"), Triple(0, "Rti 中央廣播電臺", "Rti" to "TW"),
-        Triple(1, "飛碟電台 UFO", "飛碟" to "TW"), Triple(1, "Hit FM", "Hit FM" to "TW"), Triple(1, "中廣流行網 i like radio", "中廣" to "TW"),
-        Triple(1, "中國之聲", "中国之声" to "CN"),
-        Triple(2, "香港電台第一台", "RTHK Radio 1" to "HK"), Triple(2, "香港電台第二台", "RTHK Radio 2" to "HK"), Triple(2, "商業電台 叱咤903", "903" to "HK"),
-        Triple(3, "講客廣播電台", "講客" to "TW"), Triple(3, "寶島客家廣播電台", "客家" to "TW"),
-        Triple(4, "NHK ラジオ第1", "NHK" to "JP"), Triple(4, "J-WAVE", "J-WAVE" to "JP"),
-    )
-}
+// (Windows) 電台's player; the stations, Radio Browser, the formats and the lyrics are the Android app's own
+// (RadioShared.kt). Plain mp3 and AAC streams play through Java Sound (Mp3.kt, Stream.kt), with the song's name the
+// station sends in the stream (ICY) for 歌詞; HLS and every other kind (Ogg, Opus, FLAC, AAC in MP4…) through FFmpeg
+// (Ffmpeg.kt), which install-windows.bat downloads. Without FFmpeg, HLS with mp3 or AAC in it is still tried in Java.
 
 object Radio {
     enum class State { IDLE, CONNECTING, PLAYING, FAILED }
@@ -141,6 +34,8 @@ object Radio {
     private val scope = MainScope()
     @Volatile private var playing: Mp3.Playing? = null
     @Volatile private var conn: HttpURLConnection? = null
+    /** (the stream being played: closed when it stops, so an HLS stream waiting for its next piece ends too) */
+    @Volatile private var stream: InputStream? = null
 
     fun init(c: Context) {
         if (loaded) return
@@ -158,7 +53,8 @@ object Radio {
     }
     fun add(rb: RBStation, lang: Int) {
         if (stations.any { it.uuid == rb.uuid }) return
-        stations.add(RadioStation(java.util.UUID.randomUUID().toString(), rb.name, lang, rb.uuid, rb.name, rb.country.ifEmpty { null }, rb.stream, rb.favicon))
+        stations.add(RadioStation(java.util.UUID.randomUUID().toString(), rb.name, lang, rb.uuid, rb.name, rb.country.ifEmpty { null }, rb.stream, rb.favicon,
+            format = rb.format))
         save()
     }
     fun add(name: String, url: String, lang: Int) { stations.add(RadioStation(java.util.UUID.randomUUID().toString(), name, lang, url = url)); save() }
@@ -176,6 +72,8 @@ object Radio {
 
     private fun halt() {
         playing?.stop(); playing = null
+        try { stream?.close() } catch (_: Exception) {}
+        stream = null
         try { conn?.disconnect() } catch (_: Exception) {}
         conn = null
     }
@@ -236,10 +134,16 @@ object Radio {
         }
     }
 
-    /** plays the address; true once sound is coming (false: it failed, or nothing came for 12 seconds) */
+    /** the format the last stream that played turned out to be (RadioFormat) */
+    @Volatile private var heard: String? = null
+
+    /** plays the address; true once sound is coming (false: it failed, or nothing came for 15 seconds). Plain mp3
+     *  and AAC: Java Sound; HLS and anything else: FFmpeg when it's there; Java Sound failing: FFmpeg too. */
     private suspend fun open(address: String): Boolean {
         halt()
-        val c = withContext(Dispatchers.IO) {
+        heard = null
+        // (what it is: HLS, or a stream and its first bytes of sound)
+        val probe = withContext(Dispatchers.IO) {
             try {
                 var url = URL(address)
                 var hops = 0
@@ -256,23 +160,96 @@ object Radio {
                     break
                 }
                 val type = (c.contentType ?: "").lowercase()
-                // (AAC and HLS: not playable here yet)
-                if (type.contains("aac") || type.contains("mpegurl") || type.contains("mp4") || address.lowercase().contains(".m3u8")) {
-                    c.disconnect(); return@withContext null
+                if (type.contains("mpegurl") || url.path.lowercase().endsWith(".m3u8")) { c.disconnect(); return@withContext Probe(url.toString(), true, null, null) }
+                val metaInt = c.getHeaderFieldInt("icy-metaint", 0)
+                val raw = BufferedInputStream(c.inputStream, 1 shl 16)
+                val input: InputStream = if (metaInt > 0) Icy(raw, metaInt) { t -> scope.launch { nowPlaying = t } } else raw
+                val b = BufferedInputStream(input, 1 shl 17)
+                b.mark(1 shl 16)
+                val head = ByteArray(4096)
+                var n = 0
+                while (n < head.size) { val r = b.read(head, n, head.size - n); if (r < 0) break; n += r }
+                b.reset()
+                val h = head.copyOf(n)
+                val kind = when {
+                    type.contains("aac") || HlsInput.isAdts(h) -> RadioFormat.AAC
+                    type.contains("mpeg") || type.contains("mp3") || looksMp3(h) -> RadioFormat.MP3
+                    else -> null
                 }
-                c
+                conn = c
+                Probe(url.toString(), false, kind, b)
             } catch (_: Exception) { null }
-        } ?: return false
-        conn = c
-        val metaInt = c.getHeaderFieldInt("icy-metaint", 0)
-        val raw = BufferedInputStream(c.inputStream, 1 shl 16)
-        val input: InputStream = if (metaInt > 0) Icy(raw, metaInt) { t -> scope.launch { nowPlaying = t } } else raw
+        } ?: return withFfmpeg(address, false)
+        // HLS: FFmpeg first (it plays every kind of HLS); else the pieces in Java
+        if (probe.hls) {
+            if (Ffmpeg.exe() != null && withFfmpeg(probe.url, true)) return true
+            return withJava(HlsInput(probe.url), null, hls = true)
+        }
+        // a plain stream: mp3 or AAC in Java (with the song names); anything else, or Java failing: FFmpeg
+        val input = probe.input ?: return withFfmpeg(probe.url, false)
+        if (probe.kind != null && withJava(input, probe.kind, hls = false)) return true
+        try { input.close() } catch (_: Exception) {}
+        halt()
+        return withFfmpeg(probe.url, false)
+    }
+
+    private class Probe(val url: String, val hls: Boolean, val kind: String?, val input: InputStream?)
+
+    /** mp3 frames: 0xFFE…, with a layer (not 00, which is AAC's ADTS) */
+    private fun looksMp3(h: ByteArray): Boolean {
+        for (i in 0 until h.size - 1) if (h[i] == 0xFF.toByte()) {
+            val b = h[i + 1].toInt() and 0xff
+            if (b and 0xE0 == 0xE0 && (b shr 1) and 3 != 0) return true
+        }
+        return false
+    }
+
+    private suspend fun withJava(input0: InputStream, kind: String?, hls: Boolean): Boolean {
+        var input = input0
+        var aac = kind == RadioFormat.AAC
+        if (hls) {
+            // (HLS in Java: AAC or mp3, by its first bytes)
+            val b = withContext(Dispatchers.IO) {
+                try {
+                    val b = BufferedInputStream(input, 1 shl 17)
+                    b.mark(1 shl 16)
+                    val head = ByteArray(4096); var n = 0
+                    while (n < head.size) { val r = b.read(head, n, head.size - n); if (r < 0) break; n += r }
+                    b.reset()
+                    aac = HlsInput.isAdts(head.copyOf(n))
+                    b
+                } catch (_: Exception) { null }
+            } ?: return false
+            input = b
+        }
+        stream = input
         var failed = false
-        val p = Mp3.play(BufferedInputStream(input, 1 shl 17), Prefs.volume.value, onError = { failed = true })
+        val p = if (aac) Aac.play(input, Prefs.volume.value, onError = { failed = true })
+                else Mp3.play(input, Prefs.volume.value, onError = { failed = true })
         playing = p
-        for (i in 0 until 120) {
+        for (i in 0 until 150) {
             delay(100)
-            if (p.sounding) return true
+            if (p.sounding) { heard = if (hls) RadioFormat.HLS else kind; return true }
+            if (failed || !p.running) break
+        }
+        try { input.close() } catch (_: Exception) {}
+        halt()
+        return false
+    }
+
+    private suspend fun withFfmpeg(url: String, hls: Boolean): Boolean {
+        if (Ffmpeg.exe() == null) return false
+        halt()
+        var failed = false
+        var found: String? = null
+        val p = Ffmpeg.play(url, Prefs.volume.value,
+            onFormat = { f -> found = f },
+            onTitle = { t -> scope.launch { nowPlaying = t } },
+            onError = { failed = true }) ?: return false
+        playing = p
+        for (i in 0 until 200) {
+            delay(100)
+            if (p.sounding) { heard = if (hls) RadioFormat.HLS else found; return true }
             if (failed || !p.running) break
         }
         halt()
@@ -281,7 +258,11 @@ object Radio {
 
     private fun remember(s: RadioStation, url: String, found: RBStation?) {
         val i = stations.indexOfFirst { it.id == s.id }
-        var t = s.copy(url = url)
+        // (its format: what it turned out to be when it played, else what Radio Browser says)
+        val said = found?.format ?: s.format
+        // (Java Sound can't tell AAC+ from AAC: Radio Browser's word is taken for that)
+        val f = if (heard == RadioFormat.AAC && said == RadioFormat.AACP) said else heard ?: said
+        var t = s.copy(url = url, format = f)
         if (found != null) {
             t = t.copy(uuid = found.uuid, query = t.query ?: t.name, country = t.country ?: found.country.ifEmpty { null },
                 favicon = t.favicon ?: found.favicon.ifEmpty { null })
@@ -322,51 +303,4 @@ private class Icy(input: InputStream, private val metaInt: Int, private val onTi
         return n
     }
     override fun markSupported() = false
-}
-
-// MARK: - 歌詞: the playing song's lyrics from LRCLIB (lrclib.net, a free lyrics database); only shown, never kept
-
-class LyricHit(val id: Int, val track: String, val artist: String, val text: String)
-
-object LyricsSource {
-    @Suppress("UNCHECKED_CAST")
-    suspend fun search(q: String): List<LyricHit> = withContext(Dispatchers.IO) {
-        val c = URL("https://lrclib.net/api/search?q=" + URLEncoder.encode(q, "UTF-8")).openConnection() as HttpURLConnection
-        c.connectTimeout = 10000; c.readTimeout = 10000
-        c.setRequestProperty("User-Agent", "FangfangCards/1.0")
-        if (c.responseCode != 200) { c.disconnect(); return@withContext emptyList() }
-        val t = c.inputStream.bufferedReader().use { it.readText() }; c.disconnect()
-        ((JReader(t).any() as? List<Any?>) ?: emptyList()).mapNotNull { o ->
-            val m = o as? Map<String, Any?> ?: return@mapNotNull null
-            if (m["instrumental"] == true) return@mapNotNull null
-            val plain = (m["plainLyrics"] as? String)?.trim().orEmpty()
-            val text = plain.ifEmpty {
-                (m["syncedLyrics"] as? String).orEmpty().lines().joinToString("\n") { it.replace(Regex("^(\\[[0-9:.]+\\]\\s*)+"), "") }.trim()
-            }
-            if (text.isEmpty()) null
-            else LyricHit((m["id"] as? Number)?.toInt() ?: 0, m["trackName"] as? String ?: "", m["artistName"] as? String ?: "", text)
-        }
-    }
-
-    /** what a station says is playing → what to search for: the whole of it, then each part on its own */
-    fun queries(playing: String): List<String> {
-        var s = playing
-        for (junk in listOf("\\([^)]*\\)", "（[^）]*）", "\\[[^\\]]*\\]", "【[^】]*】", "(?i)\\b(now playing|on air|live)\\b:?"))
-            s = s.replace(Regex(junk), " ")
-        val parts = s.split(Regex("[-–—/|]")).map { it.trim().trim('"', '\'', '「', '」', '『', '』', '《', '》') }.filter { it.isNotEmpty() }
-        val out = ArrayList<String>()
-        out.add(parts.joinToString(" "))
-        if (parts.size > 1) out.addAll(parts.sortedByDescending { it.length })
-        val seen = HashSet<String>()
-        return out.filter { it.isNotEmpty() && seen.add(it.lowercase()) }
-    }
-
-    /** songs for what's playing: the first search that finds any */
-    suspend fun find(playing: String): List<LyricHit> {
-        for (q in queries(playing)) {
-            val r = try { search(q) } catch (_: Exception) { emptyList() }
-            if (r.isNotEmpty()) return r
-        }
-        return emptyList()
-    }
 }

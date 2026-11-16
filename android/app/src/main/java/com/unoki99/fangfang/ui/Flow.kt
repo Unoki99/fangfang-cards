@@ -8,6 +8,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInParent
@@ -19,6 +22,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 const val FLOW_BREAK = "flow-break"
+
+/** a mouse is what points (the Windows version sets it): the words that open swell under the pointer, the pointer
+ *  becomes a hand over them, and the songs' lyrics open word by word */
+object PointerUI { var mouse = false }
 
 /** this piece starts a new line in a Flow */
 fun Modifier.flowBreak(on: Boolean = true): Modifier = if (on) this.layoutId(FLOW_BREAK) else this
@@ -112,12 +119,27 @@ fun TapWords(
                     }
                 }
             }
-        },
+        }.then(if (!PointerUI.mouse) Modifier else Modifier.pointerInput(count) {
+            // (a mouse: the word under the pointer swells, as it does on the iPad and the Mac)
+            awaitPointerEventScope {
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val ch = ev.changes.firstOrNull() ?: continue
+                    if (ch.pressed) continue
+                    when (ev.type) {
+                        PointerEventType.Move, PointerEventType.Enter -> { val h = hitAt(ch.position); if (h != hot.value) hot.value = h }
+                        PointerEventType.Exit -> hot.value = null
+                        else -> {}
+                    }
+                }
+            }
+        }),
         spacing = 0.dp, lineSpacing = lineSpacing,
     ) {
         for (i in 0 until count) {
             val isHot by remember(i) { derivedStateOf { hot.value == i } }
-            Box(Modifier.flowBreak(newLine(i)).onGloballyPositioned { rects[i] = it.boundsInParent() }) {
+            Box(Modifier.flowBreak(newLine(i)).onGloballyPositioned { rects[i] = it.boundsInParent() }
+                .then(if (PointerUI.mouse && tappable(i)) Modifier.pointerHoverIcon(PointerIcon.Hand) else Modifier)) {
                 item(i, isHot)
             }
         }

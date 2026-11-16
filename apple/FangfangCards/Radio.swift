@@ -29,6 +29,57 @@ struct RadioStation: Codable, Identifiable, Hashable {
     var favicon: String?
     /// a starter station (shown in the list until removed)
     var starter = false
+    /// the kind of stream it sends (RadioFormat: MP3, AAC, AAC+, HLS, other), from Radio Browser or found the first
+    /// time it played; nil: not known yet
+    var format: String?
+}
+
+/// the kinds of stream a station can send, for grouping 我的電台 by them (the same as the Android and Windows apps'):
+/// plain MP3 or AAC, AAC+ (HE-AAC, AAC made for low bitrates), HLS (a playlist of short pieces, often AAC) and the
+/// rest (Ogg Vorbis, Opus, FLAC)
+enum RadioFormat {
+    static let mp3 = "MP3", aac = "AAC", aacPlus = "AAC+", hls = "HLS", other = "other"
+    private static let order = [mp3, aac, aacPlus, hls, other]
+
+    /// from Radio Browser's codec name ("MP3", "AAC+", "OGG"…) and whether it's HLS; nil: it doesn't say
+    static func of(codec: String, hls isHls: Bool) -> String? {
+        if isHls { return hls }
+        let c = codec.trimmingCharacters(in: .whitespaces).uppercased()
+        if c.isEmpty || c == "UNKNOWN" { return nil }
+        if c.contains("AAC+") || c.contains("AACP") || c.contains("HE-AAC") { return aacPlus }
+        if c.contains("AAC") { return aac }
+        if c.contains("MP3") || c == "MPEG" { return mp3 }
+        return other
+    }
+
+    /// what the stream turned out to be once it played: HLS by its address, else the sound's codec
+    static func heard(_ item: AVPlayerItem, address: String) async -> String? {
+        if address.lowercased().contains(".m3u8") { return hls }
+        guard let track = try? await item.asset.loadTracks(withMediaType: .audio).first,
+              let fd = (try? await track.load(.formatDescriptions))?.first else { return nil }
+        switch CMFormatDescriptionGetMediaSubType(fd) {
+        case kAudioFormatMPEGLayer3: return mp3
+        case kAudioFormatMPEG4AAC: return aac
+        case kAudioFormatMPEG4AAC_HE, kAudioFormatMPEG4AAC_HE_V2: return aacPlus
+        case kAudioFormatOpus, kAudioFormatFLAC: return other
+        default: return nil
+        }
+    }
+
+    /// the order the groups come in (not known yet last)
+    static func rank(_ f: String?) -> Int { f.flatMap { order.firstIndex(of: $0) } ?? order.count }
+
+    /// a group's heading
+    static func title(_ f: String?) -> String {
+        switch f {
+        case mp3: return "MP3"
+        case aac: return "AAC"
+        case aacPlus: return "AAC+（HE-AAC）"
+        case hls: return trs("HLS（一段一段送的串流）")
+        case other: return trs("其他格式（Ogg、Opus、FLAC）")
+        default: return trs("格式還不知道（播一次就知道）")
+        }
+    }
 }
 
 // MARK: - Radio Browser
@@ -48,9 +99,11 @@ struct RBStation: Decodable, Identifiable, Hashable {
     let bitrate: Int
     let clickcount: Int
     let ok: Bool
+    /// sent as HLS (a playlist of short pieces)
+    let hls: Bool
 
     enum K: String, CodingKey {
-        case stationuuid, name, url, url_resolved, favicon, tags, language, countrycode, codec, bitrate, clickcount, lastcheckok
+        case stationuuid, name, url, url_resolved, favicon, tags, language, countrycode, codec, bitrate, clickcount, lastcheckok, hls
     }
     init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
@@ -66,7 +119,10 @@ struct RBStation: Decodable, Identifiable, Hashable {
         bitrate = (try? c.decode(Int.self, forKey: .bitrate)) ?? 0
         clickcount = (try? c.decode(Int.self, forKey: .clickcount)) ?? 0
         ok = ((try? c.decode(Int.self, forKey: .lastcheckok)) ?? 1) == 1
+        hls = ((try? c.decode(Int.self, forKey: .hls)) ?? 0) == 1
     }
+    /// its format, as RadioFormat names them
+    var format: String? { RadioFormat.of(codec: codec, hls: hls) }
     /// the address to play
     var stream: String { urlResolved.isEmpty ? url : urlResolved }
 }
@@ -349,6 +405,18 @@ final class RadioPlayer: ObservableObject {
         guard let i = stations.firstIndex(where: { $0.id == s.id }) else { current?.url = url; return }
         var t = stations[i]
         t.url = url
+        // (its format: what Radio Browser says now; what it turns out to be when it plays, just below)
+        if let f = found?.format { t.format = f }
+        if let item = player?.currentItem {
+            let id = s.id
+            Task { @MainActor [weak self] in
+                guard let self, let f = await RadioFormat.heard(item, address: url),
+                      let j = self.stations.firstIndex(where: { $0.id == id }) else { return }
+                // (AVFoundation can call HE-AAC plain AAC: Radio Browser's AAC+ is kept)
+                if f == RadioFormat.aac && self.stations[j].format == RadioFormat.aacPlus { return }
+                if self.stations[j].format != f { self.stations[j].format = f }
+            }
+        }
         if let f = found {
             t.uuid = f.stationuuid
             if t.query == nil { t.query = t.name }
@@ -623,7 +691,7 @@ final class RadioPlayer: ObservableObject {
         if stations.contains(where: { $0.uuid == rb.stationuuid }) { return }
         stations.append(RadioStation(name: rb.name, lang: lang, uuid: rb.stationuuid, query: rb.name,
                                      country: rb.countrycode.isEmpty ? nil : rb.countrycode,
-                                     url: rb.stream, favicon: rb.favicon.isEmpty ? nil : rb.favicon))
+                                     url: rb.stream, favicon: rb.favicon.isEmpty ? nil : rb.favicon, format: rb.format))
     }
 
     func add(name: String, url: String, lang: Int) {
@@ -856,7 +924,15 @@ struct RadioView: View {
                 let list = radio.stations.filter { $0.lang == l }
                 if !list.isEmpty {
                     Section(trs(Lang.names[l])) {
-                        ForEach(list) { s in row(s) }
+                        // (by the kind of stream each sends; not known yet until it has played)
+                        let byFormat = Dictionary(grouping: list) { $0.format ?? "" }
+                        let kinds = byFormat.keys.sorted { RadioFormat.rank($0.isEmpty ? nil : $0) < RadioFormat.rank($1.isEmpty ? nil : $1) }
+                        ForEach(kinds, id: \.self) { k in
+                            Text(RadioFormat.title(k.isEmpty ? nil : k))
+                                .ffFont(.caption, .semibold).foregroundStyle(T.muted)
+                                .listRowBackground(Color.clear)
+                            ForEach(byFormat[k] ?? []) { s in row(s) }
+                        }
                     }
                 }
             }
@@ -1049,6 +1125,8 @@ struct RadioSearchView: View {
         var parts = [String]()
         if !r.countrycode.isEmpty { parts.append(r.countrycode) }
         if !r.language.isEmpty { parts.append(r.language) }
+        if r.hls { parts.append("HLS") }
+        if !r.codec.isEmpty { parts.append(r.codec) }
         if r.bitrate > 0 { parts.append("\(r.bitrate) kbps") }
         if !r.tags.isEmpty { parts.append(r.tags.split(separator: ",").prefix(3).joined(separator: ", ")) }
         return parts.joined(separator: " · ")

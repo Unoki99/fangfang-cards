@@ -56,7 +56,13 @@ fun RadioScreen() {
                 }
                 val list = Radio.stations.filter { it.lang == lang }
                 if (list.isEmpty()) item { Txt(tr("這個語言還沒有電台。按上面的放大鏡找。"), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
-                items(list, key = { it.id }) { s ->
+                // (by the kind of stream each sends: MP3, AAC, AAC+, HLS, the rest; not known yet until it has played)
+                val groups = list.groupBy { it.format }.toList().sortedBy { RadioFormat.rank(it.first) }
+                for ((format, inGroup) in groups) {
+                item(key = "format-" + (format ?: "?")) {
+                    Txt(RadioFormat.title(format), ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(start = 4.dp, top = 6.dp))
+                }
+                items(inGroup, key = { it.id }) { s ->
                     val playing = Radio.current?.id == s.id && Radio.state != Radio.State.IDLE
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (playing) T.green.copy(alpha = 0.35f) else T.fn.copy(alpha = 0.7f))
                         .clickable { Radio.toggle(s) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -70,6 +76,7 @@ fun RadioScreen() {
                         }
                         IconButton(onClick = { removing = s }) { Icon(Icons.Filled.Delete, tr("移除"), tint = T.muted) }
                     }
+                }
                 }
                 item {
                     TextButton(onClick = { Radio.restoreStarters() }) { Text(tr("加回原本的電台"), color = T.btnInk) }
@@ -169,7 +176,7 @@ private fun RadioSearch(lang: Int, onDone: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Column(Modifier.weight(1f)) {
                         Txt(r.name, ff(FF.Body, FontWeight.SemiBold), T.glyph, maxLines = 1)
-                        Txt(listOf(r.country, r.language, r.codec + (if (r.bitrate > 0) " ${r.bitrate}k" else "")).filter { it.isNotBlank() }.joinToString("・"),
+                        Txt(listOf(r.country, r.language, (if (r.hls) "HLS " else "") + r.codec + (if (r.bitrate > 0) " ${r.bitrate}k" else "")).filter { it.isNotBlank() }.joinToString("・"),
                             ff(FF.Caption), T.muted, maxLines = 1)
                     }
                     if (have) Icon(Icons.Filled.Check, null, tint = T.greenInk)
@@ -248,13 +255,50 @@ private fun LyricsScreen() {
                     else Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable {
                         Prefs.lookupQuery.value = line.trim(); UI.tab = 4; UI.lyricsOpen = false; UI.radioOpen = false
                     }.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                        Txt(line, sz(20f), T.glyph)
+                        if (PointerUI.mouse) LyricWords(line.trim()) else Txt(line, sz(20f), T.glyph)
                         if (showReadings) readings[line.trim()]?.let { Txt(it, lat(14f), T.greenInk) }
                     }
                 }
-                item { Txt(tr("點一行，詞典會查那一行的詞。歌詞來自 LRCLIB（lrclib.net），不會存起來。"), ff(FF.Footnote), T.muted, Modifier.padding(top = 10.dp)) }
+                item { Txt(if (PointerUI.mouse) tr("點一個詞看它的意思；點一行旁邊空的地方，詞典會查那一行的詞。歌詞來自 LRCLIB（lrclib.net），不會存起來。") else tr("點一行，詞典會查那一行的詞。歌詞來自 LRCLIB（lrclib.net），不會存起來。"), ff(FF.Footnote), T.muted, Modifier.padding(top = 10.dp)) }
             }
             item { Spacer(Modifier.height(40.dp)) }
         }
     }
 }
+
+/** a line of the lyrics word by word (the Windows version, with a mouse): a word under the pointer swells, a click
+ *  opens it (華語: its entry in 華語 詞典; 台語: the 台語 word the converter finds for it); a click beside the words
+ *  still looks up the whole line */
+@Composable
+private fun LyricWords(line: String) {
+    val zk = listOf(Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value)
+    val words: List<Pair<androidx.compose.ui.text.AnnotatedString, () -> Unit>> = remember(line, zk, Store.isZh) {
+        try {
+            val z = Store.zh; val d = Store.dict
+            if (Store.isZh && z != null) {
+                z.convertPieces(line).map { p ->
+                    val k = if (p.tw != null) z.entryFor(p)?.k else null
+                    val t = z.sentenceHan(listOf(p), Prefs.zhPlace.value, T.glyph.argbInt()).annotated()
+                    Pair(t, if (k != null) ({ UI.open(Sheet.ZhWord(k)) }) else NOOP)
+                }
+            } else if (!Store.isZh && d != null) {
+                val e = ConvertEngine(d, Prefs)
+                val items = e.convert(line).items
+                e.pieces(items, 0, Prefs.rom.value, Prefs.place.value).filter { it.text != "\n" }.map { p ->
+                    val i = p.item
+                    val k = if (i != null && i >= 0) d.keyOf(items[i].current) else null
+                    Pair(androidx.compose.ui.text.AnnotatedString(p.text), if (k != null) ({ UI.openWord(k) }) else NOOP)
+                }
+            } else emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+    if (words.isEmpty()) { Txt(line, sz(20f), T.glyph); return }
+    TapWords(
+        count = words.size,
+        isTappable = { i -> words.getOrNull(i)?.second.let { it != null && it !== NOOP } },
+        onTap = { i -> words.getOrNull(i)?.second?.invoke() },
+    ) { i, hot ->
+        Text(words[i].first, style = sz(20f), color = T.glyph, modifier = Modifier.swell(hot).padding(vertical = 2.dp))
+    }
+}
+private val NOOP: () -> Unit = {}

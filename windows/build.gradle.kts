@@ -48,6 +48,9 @@ dependencies {
     implementation("org.tukaani:xz:1.10")
     // mp3 (the recordings, 鬥拍字, radio streams) through Java Sound
     implementation("com.googlecode.soundlibs:mp3spi:1.9.5.4")
+    // AAC (radio stations that send AAC, or HLS with AAC in it)
+    // (de.sfuhrm: the JAAD decoder as published on Maven Central; the same classes, net.sourceforge.jaad)
+    implementation("de.sfuhrm:jaad:0.8.7")
 }
 
 // (made with the Java install-windows.bat found, 17–23; the program runs on Java 17 or newer)

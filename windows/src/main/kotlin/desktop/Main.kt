@@ -58,6 +58,8 @@ fun main(args: Array<String>) {
     if (!Links.firstOne(args)) return
 
     Prefs.init(DesktopContext)
+    // (a mouse: words swell under the pointer, and the lyrics open word by word)
+    com.unoki99.fangfang.ui.PointerUI.mouse = true
     Store.init(DesktopContext)
     Radio.init(DesktopContext)
     if (crashFile.exists()) {

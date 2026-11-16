@@ -1438,6 +1438,7 @@
  "點一個詞，看那個詞的更多": "Tap a word to see more about it",
  "點一個部首，再點你要的字。字會放進搜尋框。": "Tap a radical, then the character you want. It goes into the search box.",
  "點一行，詞典會查那一行的詞。歌詞來自 LRCLIB（lrclib.net），不會存起來。": "Tap a line to look up its words in the dictionary. Lyrics come from LRCLIB (lrclib.net) and aren't kept.",
+ "點一個詞看它的意思；點一行旁邊空的地方，詞典會查那一行的詞。歌詞來自 LRCLIB（lrclib.net），不會存起來。": "Click a word to see its meaning; click the empty space beside a line to look up the whole line in the dictionary. Lyrics come from LRCLIB (lrclib.net) and aren't kept.",
  "點下面的詞，照順序排": "Tap the words below in order",
  "點好幾個部首（例如 氵 和 毋），這裡會出現裡面都有這些部首的字。偏旁也算：氵 = 水、亻 = 人、扌 = 手、艹 = 艸、⻌ = 辵、阝 = 阜／邑…不可能再組合的部首會變淡。": "Tap several radicals (e.g. 氵 and 毋) to see characters containing all of them. Side forms count too: 氵 = 水, 亻 = 人, 扌 = 手, 艹 = 艸, ⻌ = 辵, 阝 = 阜/邑… Radicals that can't combine further fade out.",
  "點字可以不選它。選了 {0}／{1} 個": "Tap a character to leave it out. {0}/{1} picked",
@@ -1544,5 +1545,8 @@
  "資料來源・其他": "Sources · Other",
  "關掉讀音那一邊": "Turn the readings side off",
  "打開讀音那一邊": "Turn the readings side on",
- "顯示讀音": "Show readings"
+ "顯示讀音": "Show readings",
+ "HLS（一段一段送的串流）": "HLS (sent in short pieces)",
+ "其他格式（Ogg、Opus、FLAC）": "Other formats (Ogg, Opus, FLAC)",
+ "格式還不知道（播一次就知道）": "Format not known yet (found once it plays)"
 }

@@ -135,7 +135,7 @@
             if (ch.ffWatch) watchCache = ch.ffWatch.newValue || {};
             if (ch.ffKnownLocal) { localKnown = new Set(ch.ffKnownLocal.newValue || []); pageMarks(); if (subs && subs.key) subsColour(subs.key); }
             if (ch.ffKnown) { setKnown(ch.ffKnown.newValue); if (subs && subs.key) subsColour(subs.key); }
-            if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on && !(subs && subs.pausedBy)) hide(); pageMarks(); }
+            if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on && !(subs && subs.pausedBy) && !subsCard()) hide(); pageMarks(); }
             if (ch.ffPrefs && subs && subs.panel) {
                 const o = ch.ffPrefs.oldValue || {}, n = ch.ffPrefs.newValue || {};
                 subsSize(); subsLayout();
@@ -185,6 +185,9 @@
 
     let host = null, root = null, card = null, body = null, grip = null;
     let dwellTimer = null, hideTimer = null, lastSpot = "", shownSpot = "", busy = 0;
+    let shownAt = 0;              // (when the card last opened: a tap on the subtitles' words keeps it open a moment)
+    /// the card open for a word of the subtitle panel (closed only by a tap elsewhere, Escape, or the page scrolling)
+    const subsCard = () => shownSpot.startsWith("subs:");
     let last = null;              // the last answer and where it was shown (redrawn after a setting changes)
 
     // ── the character under a point ─────────────────────────────────────────────────────────
@@ -1510,6 +1513,7 @@
         card.style.display = "flex";
         shownRect = rect;
         place();
+        if (opening || spot !== shownSpot) shownAt = Date.now();
         shownSpot = spot;
         if (opening) {
             void card.offsetWidth;              // (the hidden state is drawn first, so the change animates)
@@ -1607,6 +1611,7 @@
     }
     function hideSoon() {
         clearTimeout(hideTimer);
+        if (subsCard()) return;                    // (a subtitle word's card: not closed by the pointer moving)
         if (isOpen() && !card.querySelector(".set")) hideTimer = setTimeout(hide, HIDE);
     }
     const inCard = e => host && e.composedPath && e.composedPath().includes(host);
@@ -1759,6 +1764,14 @@
     document.addEventListener("pointerdown", e => { if (!inCard(e)) { clearTimeout(dwellTimer); hide(); } }, true);
     window.addEventListener("scroll", e => {
         if (host && e.target === host) return;          // (scrolling inside the card)
+        // (Firefox also tells of scrolls inside the page's parts, e.g. YouTube's player when the video pauses on the
+        // tap: those, and the subtitle panel's own, don't close the card of a subtitle word; only the page scrolling
+        // does, and not in the first moment after it opened)
+        const t = e.target;
+        const page = t === document || t === document.documentElement || t === document.body || t === document.scrollingElement;
+        const inSubs = t && t.nodeType === 1 && t.closest && t.closest("#ff-subs, #ff-mine, #ff-defs");
+        if (inSubs && !page) return;
+        if (subsCard() && (!page || Date.now() - shownAt < 600)) return;
         clearTimeout(dwellTimer); lastSpot = ""; hide();
     }, { passive: true, capture: true });
     document.addEventListener("keydown", e => { if (e.key === "Escape") hide(); }, true);

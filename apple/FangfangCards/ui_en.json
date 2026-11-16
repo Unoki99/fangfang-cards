@@ -1514,5 +1514,8 @@
  "資料來源・其他": "Sources · Other",
  "關掉讀音那一邊": "Turn the readings side off",
  "打開讀音那一邊": "Turn the readings side on",
- "顯示讀音": "Show readings"
+ "顯示讀音": "Show readings",
+ "HLS（一段一段送的串流）": "HLS (sent in short pieces)",
+ "其他格式（Ogg、Opus、FLAC）": "Other formats (Ogg, Opus, FLAC)",
+ "格式還不知道（播一次就知道）": "Format not known yet (found once it plays)"
 }
