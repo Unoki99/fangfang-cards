@@ -148,6 +148,8 @@ private struct LookSettings: View {
     private let glassOn = false   // the Liquid Glass look was taken out
     @AppStorage(SwellTest.key) private var swellOn = SwellTest.standard
     @AppStorage(TextSize.key) private var textSize = TextSize.standard
+    /// 文字大小 while the slider is held (applied when it's let go)
+    @State private var textSizeDraft: Double?
     @AppStorage("widgetBG") private var widgetBG = 0.45
     @AppStorage(ThemeMotion.key) private var themeMotion = true
     @AppStorage(DictFont.key) private var dictFont = 0
@@ -257,11 +259,18 @@ private struct LookSettings: View {
                 Section {
                     HStack(spacing: 10) {
                         Image(systemName: "textformat.size.smaller").foregroundStyle(T.muted)
-                        Slider(value: Binding(get: { Double(TextSize.clamp(textSize)) },
-                                              set: { textSize = TextSize.clamp(Int($0.rounded())) }),
-                               in: 0...Double(TextSize.levels.count - 1), step: 1)
+                        // (the size changes when you let go of the slider, not at every step while it moves)
+                        Slider(value: Binding(get: { textSizeDraft ?? Double(TextSize.clamp(textSize)) },
+                                              set: { textSizeDraft = $0 }),
+                               in: 0...Double(TextSize.levels.count - 1), step: 1,
+                               onEditingChanged: { editing in
+                                   if !editing, let d = textSizeDraft {
+                                       textSize = TextSize.clamp(Int(d.rounded()))
+                                       textSizeDraft = nil
+                                   }
+                               })
                         Image(systemName: "textformat.size.larger").foregroundStyle(T.muted)
-                        Text(TextSize.names[TextSize.clamp(textSize)]).foregroundStyle(T.muted).monospacedDigit()
+                        Text(TextSize.names[TextSize.clamp(textSizeDraft.map { Int($0.rounded()) } ?? textSize)]).foregroundStyle(T.muted).monospacedDigit()
                     }
                 } header: {
                     Text(tr("文字大小"))

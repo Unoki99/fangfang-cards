@@ -138,6 +138,8 @@ struct Progress: Codable {
     var senses: [String: Double] = [:]
     /// 自訂: words you added yourself (key -> time added; negative = removed, so synced devices remove it too)
     var own: [String: Double] = [:]
+    /// 自訂: a word's meaning and example sentence, when it has them (key -> [meaning, example])
+    var ownInfo: [String: [String]] = [:]
     /// 本週學習: words picked for this week (key -> time picked; negative = taken out)
     var week: [String: Double] = [:]
     /// when this week started, for 台語 ("tw") and 華語 ("zh") (0 = no week going)
@@ -180,6 +182,7 @@ struct Progress: Codable {
         groupTime = try c.decodeIfPresent([String: Double].self, forKey: .groupTime) ?? [:]
         groupInfo = try c.decodeIfPresent([String: [String]].self, forKey: .groupInfo) ?? [:]
         groupWords = try c.decodeIfPresent([String: Double].self, forKey: .groupWords) ?? [:]
+        ownInfo = try c.decodeIfPresent([String: [String]].self, forKey: .ownInfo) ?? [:]
     }
 }
 

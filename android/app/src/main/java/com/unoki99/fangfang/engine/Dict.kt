@@ -426,6 +426,9 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     var userKeys: Set<String> = emptySet(); private set
     fun isUser(key: String) = userKeys.contains(key)
 
+    /** your own words' meanings and example sentences (自訂: key -> [meaning, example]) */
+    @Volatile var userInfo: Map<String, List<String>> = emptyMap()
+
     @Synchronized
     fun setUserWords(keys: Set<String>) {
         val wanted = keys.filter { !baseKeys.contains(it) && altParent[it] == null && it.contains('\t') }.toSet()
@@ -1004,7 +1007,14 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     private val numRe = Regex("^\\d+\\.\\s*")
 
     fun senses(key: String): List<DictSense> {
-        val di = raw.defs.m[key] ?: return emptyList()
+        val di = raw.defs.m[key] ?: run {
+            // one of your own words: its meaning (and example), as you wrote them
+            val i = userInfo[key] ?: return emptyList()
+            val m = i.getOrElse(0) { "" }; val x = i.getOrElse(1) { "" }
+            if (m.isEmpty() && x.isEmpty()) return emptyList()
+            val text = m + (if (x.isEmpty()) "" else (if (m.isEmpty()) "" else "\n") + com.unoki99.fangfang.tr("例：") + x)
+            return listOf(DictSense(1, "", text, emptyList(), emptyList(), emptyList()))
+        }
         val pos = (raw.pos[key] ?: "").split("|")
         val sy = raw.sy[key] ?: emptyMap(); val an = raw.an[key] ?: emptyMap()
         return raw.defs.t[di].split("\n").withIndex().map { (i, line) ->
@@ -1023,6 +1033,7 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     }
 
     fun defText(key: String): String? = raw.defs.m[key]?.let { raw.defs.t[it] }
+        ?: userInfo[key]?.firstOrNull()?.takeIf { it.isNotEmpty() }      // (one of your own words: the meaning you gave it)
 
     // MARK: 方言詞 and 各地講法
 

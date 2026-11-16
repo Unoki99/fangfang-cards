@@ -11,6 +11,9 @@ struct OwnPane: View {
     @EnvironmentObject var store: Store
     @AppStorage("rom") private var rom = 0
     @State private var adding = false
+    @State private var picking = false
+    @State private var csv: CsvFile?
+    @State private var message: String?
 
     var body: some View {
         let keys = store.ownKeys
@@ -20,8 +23,15 @@ struct OwnPane: View {
                     Label(tr("加一個詞"), systemImage: "plus.circle.fill")
                         .ffFont(.headline).foregroundStyle(T.ownInk)
                 }
+                Button { picking = true } label: {
+                    Label(tr("從 CSV 檔加入"), systemImage: "tablecells")
+                        .ffFont(.headline).foregroundStyle(T.ownInk)
+                }
+                if let message {
+                    Text(message).ffFont(.footnote).foregroundStyle(T.muted)
+                }
             } footer: {
-                Text(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。"))
+                Text(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
             if !keys.isEmpty {
@@ -44,6 +54,19 @@ struct OwnPane: View {
         .sheet(isPresented: $adding) {
             AddOwnWordSheet(dict: dict).environmentObject(store)
         }
+        .fileImporter(isPresented: $picking, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .text]) { result in
+            guard case .success(let url) = result else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url), let text = CsvText.decode(data) else { message = trs("讀不到這個檔案。"); return }
+            let rows = CsvText.rows(text)
+            if rows.isEmpty { message = trs("這個檔案是空的。"); return }
+            message = nil
+            csv = CsvFile(name: url.lastPathComponent, rows: rows)
+        }
+        .sheet(item: $csv) { f in
+            CsvImportSheet(dict: dict, file: f) { n in message = tr("加入了 \(n) 個詞。") }.environmentObject(store)
+        }
     }
 
     private func row(_ k: String) -> some View {
@@ -51,6 +74,9 @@ struct OwnPane: View {
             Text(Dict.hanOf(k)).scaledFont(20, weight: .semibold).foregroundStyle(T.ownInk)
             Text(dict.codes(Dict.codesOf(k), TwRom.lat(rom), -1)).latFont(16).foregroundStyle(T.greenInk)
             Text(dict.codes(Dict.codesOf(k), 3, -1)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
+            // (its meaning, if you gave it one)
+            let m = store.ownInfo(k).meaning
+            if !m.isEmpty { Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1) }
             Spacer(minLength: 0)
             OwnChip()
         }
@@ -67,6 +93,8 @@ struct AddOwnWordSheet: View {
     @AppStorage("rom") private var rom = 0
     @State private var han = ""
     @State private var reading = ""
+    @State private var meaning = ""
+    @State private var example = ""
     @State private var engine: ConvertEngine?
 
     var body: some View {
@@ -87,6 +115,12 @@ struct AddOwnWordSheet: View {
                     Text(tr("讀音"))
                 } footer: {
                     Text(tr("用皓羅、台羅、白話字或方音都可以。寫聲調比較準；沒寫聲調的話，請看下面的結果對不對。"))
+                }
+                Section {
+                    TextField(tr("意思（可以不寫）"), text: $meaning, axis: .vertical)
+                    TextField(tr("例句（可以不寫）"), text: $example, axis: .vertical)
+                } header: {
+                    Text(tr("意思和例句"))
                 }
                 Section(tr("結果")) {
                     switch check {
@@ -113,7 +147,7 @@ struct AddOwnWordSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(tr("加入")) {
                         if case .ok(let codes) = check {
-                            store.addOwn(han.trimmingCharacters(in: .whitespaces) + "\t" + codes.joined(separator: " "))
+                            store.addOwn(han.trimmingCharacters(in: .whitespaces) + "\t" + codes.joined(separator: " "), meaning: meaning, example: example)
                             dismiss()
                         }
                     }
@@ -130,29 +164,12 @@ struct AddOwnWordSheet: View {
 
     private enum Check { case ok([String]), problem(String) }
 
-    /// the reading as syllable codes, one per 漢字
+    /// the reading as syllable codes, one per 漢字 (the same check as a CSV file's words)
     private var check: Check {
-        let h = han.trimmingCharacters(in: .whitespaces)
-        let chars = h.unicodeScalars.filter { ConvertEngine.isHan($0.value) }
-        if h.isEmpty { return .problem(trs("先寫漢字。")) }
-        if chars.count != h.unicodeScalars.count { return .problem(trs("漢字欄只能寫漢字。")) }
-        if reading.trimmingCharacters(in: .whitespaces).isEmpty { return .problem(trs("再寫讀音。")) }
         guard let engine else { return .problem("") }
-        var codes: [String] = []
-        for it in engine.convert(reading).items {
-            if it.space || it.newline { continue }
-            if let raw = it.raw {
-                if raw.trimmingCharacters(in: CharacterSet(charactersIn: " -‑–")).isEmpty { continue }
-                return .problem(tr("看不懂「\(raw)」這個讀音。"))
-            }
-            guard let c = it.current.codes else { return .problem(trs("看不懂這個讀音。")) }
-            codes += c
+        switch OwnWordCheck.check(han: han, reading: reading, engine: engine, dict: dict, store: store) {
+        case .ok(let c): return .ok(c)
+        case .problem(let p): return .problem(p)
         }
-        if codes.isEmpty { return .problem(trs("看不懂這個讀音。")) }
-        if codes.count != chars.count { return .problem(tr("讀音有 \(codes.count) 個音節，漢字有 \(chars.count) 個字，要一樣多。")) }
-        let key = h + "\t" + codes.joined(separator: " ")
-        if dict.baseKeys.contains(key) || (dict.altParent[key] != nil) { return .problem(trs("辭典裡已經有這個詞了。")) }
-        if store.isOwn(key) { return .problem(trs("這個詞已經在「自訂」裡了。")) }
-        return .ok(codes)
     }
 }

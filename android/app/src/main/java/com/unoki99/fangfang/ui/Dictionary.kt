@@ -1006,11 +1006,30 @@ private fun OwnPane(d: Dict) {
     val nav = LocalNav.current
     val rom = Prefs.rom.value
     var adding by remember { mutableStateOf(false) }
+    var csv by remember { mutableStateOf<CsvFile?>(null) }
+    var message by remember { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            val bytes = try { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (_: Exception) { null }
+            if (bytes == null) message = tr("讀不到這個檔案。")
+            else {
+                val rows = CsvText.rows(CsvText.decode(bytes))
+                if (rows.isEmpty()) message = tr("這個檔案是空的。")
+                else { message = null; csv = CsvFile(uri.lastPathSegment?.substringAfterLast('/') ?: "CSV", rows) }
+            }
+        }
+    }
     val keys = Store.ownKeys
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             SoftButton(onClick = { adding = true }, modifier = Modifier.fillMaxWidth()) { IconLabel(Icons.Filled.AddCircle, tr("加一個詞"), ff(FF.Headline), T.ownInk) }
-            Txt(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。"), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
+            Spacer(Modifier.height(8.dp))
+            SoftButton(onClick = { pick.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
+                IconLabel(Icons.Filled.TableChart, tr("從 CSV 檔加入"), ff(FF.Headline), T.ownInk)
+            }
+            message?.let { Txt(it, ff(FF.Footnote), T.muted, Modifier.padding(6.dp)) }
+            Txt(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。"), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
             if (keys.isNotEmpty()) SectionTitle(tr("{0} 個詞（往左滑刪除）", keys.size))
         }
         items(keys, key = { "o|$it" }) { k ->
@@ -1018,7 +1037,9 @@ private fun OwnPane(d: Dict) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(Dict.hanOf(k), sz(20f, FontWeight.SemiBold), T.ownInk)
                     Txt(d.codes(Dict.codesOf(k), rom.coerceIn(0, 2), -1), lat(16f), T.greenInk)
-                    Txt(d.codes(Dict.codesOf(k), 3, -1), ff(FF.Footnote), T.purpleInk, Modifier.weight(1f))
+                    Txt(d.codes(Dict.codesOf(k), 3, -1), ff(FF.Footnote), T.purpleInk)
+                    // (its meaning, if you gave it one)
+                    Txt(Store.ownInfo(k).first, ff(FF.Footnote), T.muted, Modifier.weight(1f), maxLines = 1)
                     OwnChip()
                 }
             }
@@ -1026,6 +1047,7 @@ private fun OwnPane(d: Dict) {
         }
     }
     if (adding) AddOwnWordDialog(d) { adding = false }
+    csv?.let { f -> CsvImportDialog(d, f) { n -> csv = null; if (n != null) message = tr("加入了 {0} 個詞。", n) } }
 }
 
 /** add a word: 漢字 and its reading (typed in 皓羅, 台羅, 白話字 or 方音) */
@@ -1036,39 +1058,10 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
     val engine = remember { ConvertEngine(d, Prefs) }
     val fHan = remember { androidx.compose.ui.focus.FocusRequester() }
     val fReading = remember { androidx.compose.ui.focus.FocusRequester() }
-    val check: Pair<List<String>?, String> = run {
-        val h = han.trim()
-        val chars = h.cps()
-        when {
-            h.isEmpty() -> Pair(null, tr("先寫漢字。"))
-            chars.any { !ConvertEngine.isHan(it.firstCp()) } -> Pair(null, tr("漢字欄只能寫漢字。"))
-            reading.trim().isEmpty() -> Pair(null, tr("再寫讀音。"))
-            else -> {
-                var problem: String? = null
-                val codes = ArrayList<String>()
-                for (it in engine.convert(reading).items) {
-                    if (it.space || it.newline) continue
-                    val raw = it.raw
-                    if (raw != null) {
-                        if (raw.trim(' ', '-', '‑', '–').isEmpty()) continue
-                        problem = tr("看不懂「{0}」這個讀音。", raw); break
-                    }
-                    val c = it.current.codes
-                    if (c == null) { problem = tr("看不懂這個讀音。"); break }
-                    codes.addAll(c)
-                }
-                val key = h + "\t" + codes.joinToString(" ")
-                when {
-                    problem != null -> Pair(null, problem)
-                    codes.isEmpty() -> Pair(null, tr("看不懂這個讀音。"))
-                    codes.size != chars.size -> Pair(null, tr("讀音有 {0} 個音節，漢字有 {1} 個字，要一樣多。", codes.size, chars.size))
-                    d.baseKeys.contains(key) || d.altParent[key] != null -> Pair(null, tr("辭典裡已經有這個詞了。"))
-                    Store.isOwn(key) -> Pair(null, tr("這個詞已經在「自訂」裡了。"))
-                    else -> Pair(codes, "")
-                }
-            }
-        }
-    }
+    var meaning by remember { mutableStateOf("") }
+    var example by remember { mutableStateOf("") }
+    // (the same check as a CSV file's words)
+    val check: Pair<List<String>?, String> = ownWordCheck(d, engine, han, reading)
     AlertDialog(
         onDismissRequest = onDone, containerColor = T.fn,
         title = { Txt(tr("加一個詞"), ff(FF.Headline)) },
@@ -1079,6 +1072,8 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
                 OutlinedTextField(reading, { reading = it }, Modifier.focusRequester(fReading), label = { Text(tr("讀音")) }, placeholder = { Text(tr("例：tshuē-thâu-lōo")) }, singleLine = true,
                     textStyle = lat(17f).copy(color = T.glyph), trailingIcon = { ClearIcon(reading, { reading = it }, fReading) })
                 Txt(tr("用皓羅、台羅、白話字或方音都可以。寫聲調比較準；沒寫聲調的話，請看下面的結果對不對。"), ff(FF.Caption), T.muted)
+                OutlinedTextField(meaning, { meaning = it }, label = { Text(tr("意思（可以不寫）")) })
+                OutlinedTextField(example, { example = it }, label = { Text(tr("例句（可以不寫）")) })
                 val codes = check.first
                 if (codes != null) {
                     val cs = codes.joinToString(" ")
@@ -1093,7 +1088,7 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
         },
         confirmButton = {
             TextButton(onClick = {
-                check.first?.let { Store.addOwn(han.trim() + "\t" + it.joinToString(" ")); onDone() }
+                check.first?.let { Store.addOwn(han.trim() + "\t" + it.joinToString(" "), meaning, example); onDone() }
             }, enabled = check.first != null) { Text(tr("加入"), color = if (check.first != null) T.btnInk else T.muted) }
         },
         dismissButton = { TextButton(onClick = onDone) { Text(tr("取消"), color = T.muted) } },

@@ -230,15 +230,18 @@ class Progress(
     val groupTime: HashMap<String, Double> = HashMap(),
     val groupInfo: HashMap<String, MutableList<String>> = HashMap(),
     val groupWords: HashMap<String, Double> = HashMap(),
+    /** 自訂: a word's meaning and example sentence, when it has them (key -> [meaning, example]) */
+    val ownInfo: HashMap<String, MutableList<String>> = HashMap(),
 ) {
     fun copy() = Progress(HashMap(status), HashMap(added), HashMap(streak), HashMap(saved), HashMap(own),
         HashMap(senses), HashMap(week), HashMap(weekStart),
         HashMap(srs.mapValues { it.value.toMutableList() }), HashMap(log.mapValues { it.value.toMutableList() }),
-        HashMap(groupTime), HashMap(groupInfo.mapValues { it.value.toMutableList() }), HashMap(groupWords))
+        HashMap(groupTime), HashMap(groupInfo.mapValues { it.value.toMutableList() }), HashMap(groupWords),
+        HashMap(ownInfo.mapValues { it.value.toMutableList() }))
 
     fun toJson(): String = JWriter.any(mapOf("status" to status, "added" to added, "streak" to streak, "saved" to saved, "own" to own,
         "senses" to senses, "week" to week, "weekStart" to weekStart, "srs" to srs, "log" to log,
-        "groupTime" to groupTime, "groupInfo" to groupInfo, "groupWords" to groupWords))
+        "groupTime" to groupTime, "groupInfo" to groupInfo, "groupWords" to groupWords, "ownInfo" to ownInfo))
 
     companion object {
         fun parse(text: String): Progress {
@@ -259,6 +262,7 @@ class Progress(
                     "groupTime" -> j.obj { w -> p.groupTime[w] = j.nextDouble() }
                     "groupInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.groupInfo[w] = l }
                     "groupWords" -> j.obj { w -> p.groupWords[w] = j.nextDouble() }
+                    "ownInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.ownInfo[w] = l }
                     else -> j.skip()
                 }
             }

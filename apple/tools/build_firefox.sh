@@ -12,12 +12,19 @@
 # ~/Desktop/fangfang-firefox-private.xpi. Only for yourself (sign it "On your own", never listed): it has the
 # dictionaries' data, made changed, inside it.
 #   bash tools/build_firefox.sh withdata
+#
+# test: a test copy of its own, 方方詞卡 查詞（測試版）, with another ID (fangfang-lookup-test@unoki99), so it never
+# touches the public one: ~/Desktop/fangfang-firefox-test.xpi (also: test withdata)
+#   bash tools/build_firefox.sh test
 set -e
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 CODE="$HERE/FangfangSafari"
 CONV="$HERE/FangfangCards/Install"
-WITH=""
-[ "$1" = "withdata" ] && WITH=1
+WITH=""; TEST=""
+for a in "$@"; do
+  [ "$a" = "withdata" ] && WITH=1
+  [ "$a" = "test" ] && TEST=1
+done
 DATA=""
 if [ -n "$WITH" ]; then
   for d in "$HOME/FangfangCards/FangfangSafari" "$CODE"; do
@@ -30,6 +37,7 @@ if [ -n "$WITH" ]; then
 fi
 OUT="$HOME/Desktop/fangfang-firefox.xpi"
 [ -n "$WITH" ] && OUT="$HOME/Desktop/fangfang-firefox-private.xpi"
+[ -n "$TEST" ] && OUT="${OUT%.xpi}"; [ -n "$TEST" ] && OUT="$(echo "$OUT" | sed 's/fangfang-firefox/fangfang-firefox-test/').xpi"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 # the add-on's own files (not the Safari-only ones, not data)
@@ -42,11 +50,26 @@ mkdir -p "$TMP/install"
 for f in common taigi mandarin cantonese hakka swedish; do cp "$CONV/$f.js" "$TMP/install/"; done
 cp "$CONV/twown.json" "$TMP/install/"
 [ -n "$WITH" ] && cp "$DATA"/d-*.json "$TMP/"
+# the test copy: its own name and ID (the public add-on's are left as they are)
+if [ -n "$TEST" ]; then
+  python3 - "$TMP/manifest.json" <<'PY'
+import sys
+p = sys.argv[1]; s = open(p, encoding="utf-8").read()
+s = s.replace('"name": "方方詞卡 查詞"', '"name": "方方詞卡 查詞（測試版）"').replace('"id": "fangfang-lookup@unoki99"', '"id": "fangfang-lookup-test@unoki99"')
+assert "fangfang-lookup-test@unoki99" in s
+open(p, "w", encoding="utf-8").write(s)
+PY
+fi
 rm -f "$OUT"
 (cd "$TMP" && zip -qr -X "$OUT" .)
 echo "✓ $OUT（$(du -h "$OUT" | cut -f1)）"
 echo
-if [ -n "$WITH" ]; then
+if [ -n "$TEST" ]; then
+  echo "這是測試版（方方詞卡 查詞（測試版），ID fangfang-lookup-test@unoki99），和公開的版本分開，不會動到它："
+  echo "- 馬上試：Firefox 網址列打 about:debugging → 這個 Firefox → 載入暫時的附加元件 → 選這個檔案。關掉 Firefox 就會不見，要再載入一次。"
+  echo "- 一直留著：在 addons.mozilla.org/developers 用「Submit a New Add-on」上傳，選「On your own」（不公開），簽好的檔案再拖進 Firefox。"
+  echo "- 試的時候先在附加元件頁把公開的方方詞卡 查詞停用，不然兩個都會跳出查詞卡。測試版的詞典要在它自己的設定頁另外安裝。"
+elif [ -n "$WITH" ]; then
   echo "這個版本裡面有詞典的資料：只能給你自己用。在 addons.mozilla.org/developers 上傳時一定要選「On your own」（不公開）。"
 else
   echo "這個版本裡面沒有詞典，可以公開："

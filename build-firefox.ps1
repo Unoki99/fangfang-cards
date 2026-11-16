@@ -11,11 +11,16 @@
 # withdata: with the lookup files made from the data android-install.bat made on this computer inside it (needs Python 3);
 # fangfang-firefox-private.xpi. Only for yourself (sign it "On your own", never listed).
 #   build-firefox.bat withdata
+#
+# test: a test copy of its own, 方方詞卡 查詞（測試版）, with another ID (fangfang-lookup-test@unoki99), so it never
+# touches the public one: fangfang-firefox-test.xpi. Load it in about:debugging, or sign it "On your own" (never
+# listed). Double-click build-firefox-test.bat, or: build-firefox.bat test (also: build-firefox.bat test withdata)
 $ErrorActionPreference = "Stop"
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
 $Here = $PSScriptRoot
 function Fail($msg) { Write-Host "✗ $msg"; exit 1 }
 $With = ($args -contains "withdata")
+$Test = ($args -contains "test")
 
 $Code = Join-Path $Here "apple\FangfangSafari"
 $Conv = Join-Path $Here "apple\FangfangCards\Install"
@@ -57,9 +62,18 @@ try {
     foreach ($f in @("common.js", "taigi.js", "mandarin.js", "cantonese.js", "hakka.js", "swedish.js", "twown.json")) {
         Copy-Item (Join-Path $Conv $f) (Join-Path $Inst $f) -Force
     }
+    # the test copy: its own name and ID (the public add-on's are left as they are)
+    if ($Test) {
+        $Man = Join-Path $Tmp "manifest.json"
+        $m = [IO.File]::ReadAllText($Man, [Text.Encoding]::UTF8)
+        $m = $m.Replace('"name": "方方詞卡 查詞"', '"name": "方方詞卡 查詞（測試版）"').Replace('"id": "fangfang-lookup@unoki99"', '"id": "fangfang-lookup-test@unoki99"')
+        if (-not $m.Contains("fangfang-lookup-test@unoki99")) { Fail "改不了 manifest.json 的 ID。把這個訊息傳給 Claude。" }
+        [IO.File]::WriteAllText($Man, $m, (New-Object Text.UTF8Encoding $false))
+    }
     $Desk = [Environment]::GetFolderPath("Desktop")
     $Name = "fangfang-firefox"
     if ($With) { $Name = "fangfang-firefox-private" }
+    if ($Test) { $Name = "fangfang-firefox-test" + $(if ($With) { "-private" } else { "" }) }
     $Out = Join-Path $Desk "$Name.xpi"
     Remove-Item $Out -Force -ErrorAction SilentlyContinue
     # (packed here, not with Compress-Archive: it writes folders as install\x.js, which Firefox refuses; the names
@@ -79,7 +93,12 @@ try {
     $mb = [math]::Round((Get-Item $Out).Length / 1MB, 1)
     Write-Host "✓ $Out（$mb MB）"
     Write-Host ""
-    if ($With) {
+    if ($Test) {
+        Write-Host "這是測試版（方方詞卡 查詞（測試版），ID fangfang-lookup-test@unoki99），和公開的版本分開，不會動到它："
+        Write-Host "- 馬上試：Firefox 網址列打 about:debugging → 這個 Firefox → 載入暫時的附加元件 → 選這個檔案。關掉 Firefox 就會不見，要再載入一次。"
+        Write-Host "- 一直留著：在 addons.mozilla.org/developers 用「Submit a New Add-on」上傳，選「On your own」（不公開），簽好的檔案再拖進 Firefox。"
+        Write-Host "- 試的時候先在附加元件頁把公開的方方詞卡 查詞停用，不然兩個都會跳出查詞卡。測試版的詞典要在它自己的設定頁另外安裝。"
+    } elseif ($With) {
         Write-Host "這個版本裡面有詞典的資料：只能給你自己用。在 addons.mozilla.org/developers 上傳時一定要選「On your own」（不公開）。"
     } else {
         Write-Host "這個版本裡面沒有詞典，可以公開："

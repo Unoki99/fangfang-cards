@@ -285,6 +285,9 @@ final class Dict: @unchecked Sendable {
     private(set) var userKeys: Set<String> = []
     func isUser(_ key: String) -> Bool { userKeys.contains(key) }
 
+    /// your own words' meanings and example sentences (自訂: key -> [meaning, example])
+    var userInfo: [String: [String]] = [:]
+
     /// the current list of your words: the ones removed leave the dictionary, new ones join it
     func setUserWords(_ keys: Set<String>) {
         let wanted = Set(keys.filter { !baseKeys.contains($0) && altParent[$0] == nil && $0.contains("\t") })
@@ -953,7 +956,14 @@ final class Dict: @unchecked Sendable {
     // MARK: meanings
 
     func senses(_ key: String) -> [DictSense] {
-        guard let di = raw.defs.m[key] else { return [] }
+        guard let di = raw.defs.m[key] else {
+            // one of your own words: its meaning (and example), as you wrote them
+            guard let i = userInfo[key], !i.isEmpty else { return [] }
+            let m = i[0], x = i.count > 1 ? i[1] : ""
+            if m.isEmpty && x.isEmpty { return [] }
+            let text = m + (x.isEmpty ? "" : (m.isEmpty ? "" : "\n") + trs("例：") + x)
+            return [DictSense(n: 1, pos: "", text: text, ex: [], syn: [], ant: [])]
+        }
         let pos = (raw.pos[key] ?? "").components(separatedBy: "|")
         let sy = raw.sy[key] ?? [:], an = raw.an[key] ?? [:]
         return raw.defs.t[di].components(separatedBy: "\n").enumerated().map { i, line in
@@ -973,7 +983,12 @@ final class Dict: @unchecked Sendable {
         return (pick(raw.sy[key]), pick(raw.an[key]))
     }
 
-    func defText(_ key: String) -> String? { raw.defs.m[key].map { raw.defs.t[$0] } }
+    func defText(_ key: String) -> String? {
+        if let i = raw.defs.m[key] { return raw.defs.t[i] }
+        // (one of your own words: the meaning you gave it)
+        if let m = userInfo[key]?.first, !m.isEmpty { return m }
+        return nil
+    }
 
     // MARK: 方言詞 and 各地講法
 

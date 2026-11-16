@@ -1323,10 +1323,26 @@ final class Store: ObservableObject {
     var ownKeys: [String] { progress.own.filter { $0.value > 0 }.sorted { $0.value > $1.value }.map { $0.key } }
     func isOwn(_ key: String) -> Bool { (progress.own[key] ?? -1) > 0 }
 
-    func addOwn(_ key: String) {
-        progress.own[key] = Date().timeIntervalSince1970
+    func addOwn(_ key: String, meaning: String = "", example: String = "") {
+        addOwn([(key, meaning, example)])
+    }
+    /// several at once (加入 CSV 檔): one save
+    func addOwn(_ words: [(key: String, meaning: String, example: String)]) {
+        let now = Date().timeIntervalSince1970
+        var p = progress
+        for (i, w) in words.enumerated() {
+            p.own[w.key] = now + Double(i) * 0.001       // (the file's order, newest last)
+            let m = w.meaning.trimmingCharacters(in: .whitespacesAndNewlines), x = w.example.trimmingCharacters(in: .whitespacesAndNewlines)
+            if m.isEmpty && x.isEmpty { p.ownInfo[w.key] = nil } else { p.ownInfo[w.key] = [m, x] }
+        }
+        progress = p
         save()
         applyOwn()
+    }
+    /// a word's own meaning and example sentence ("" when none)
+    func ownInfo(_ key: String) -> (meaning: String, example: String) {
+        let i = progress.ownInfo[key] ?? []
+        return (i.first ?? "", i.count > 1 ? i[1] : "")
     }
     func removeOwn(_ key: String) {
         progress.own[key] = -Date().timeIntervalSince1970
@@ -1334,7 +1350,11 @@ final class Store: ObservableObject {
         applyOwn()
     }
     /// let 轉換 and 詞典 know about the current list
-    func applyOwn() { dict?.setUserWords(Set(ownKeys)) }
+    func applyOwn() {
+        let keys = Set(ownKeys)
+        dict?.userInfo = progress.ownInfo.filter { keys.contains($0.key) }
+        dict?.setUserWords(keys)
+    }
 
     /// how common a word is (its place in the card order)
     /// how common a word is (0 = the most): 華語 / 粵語 / 客語 / 日語 / 瑞典語 its place in the dictionary (which is in
@@ -1581,10 +1601,14 @@ final class Store: ObservableObject {
             for (k, t) in obj["groupWords"] as? [String: Double] ?? [:] where abs(t) > abs(p.groupWords[k] ?? 0) {
                 p.groupWords[k] = t
             }
+            let oi = obj["ownInfo"] as? [String: [String]] ?? [:]
             for (k, t) in obj["own"] as? [String: Double] ?? [:] where abs(t) > abs(p.own[k] ?? 0) {
                 if (t > 0) != ((p.own[k] ?? -1) > 0) { n += 1; ownChanged = true }
                 p.own[k] = t
+                // (its meaning and example come with it)
+                if let i = oi[k] { p.ownInfo[k] = i; ownChanged = true }
             }
+            for (k, i) in oi where p.ownInfo[k] == nil { p.ownInfo[k] = i; ownChanged = true }
             // 複習: the one answered last wins; 練習統計: the bigger count of each day (the same answers can be in both)
             for (k, v) in obj["srs"] as? [String: [Double]] ?? [:] where v.count >= 6 && v[5] > ((p.srs[k]?.count ?? 0) >= 6 ? p.srs[k]![5] : -1) {
                 p.srs[k] = v
@@ -1647,7 +1671,7 @@ final class Store: ObservableObject {
             "app": "fangfang-cards", "version": 1,
             "exported": ISO8601DateFormatter().string(from: Date()),
             "status": progress.status, "added": progress.added, "streak": progress.streak,
-            "saved": progress.saved, "own": progress.own, "senses": progress.senses,
+            "saved": progress.saved, "own": progress.own, "ownInfo": progress.ownInfo, "senses": progress.senses,
             "week": progress.week, "weekStart": progress.weekStart,
             "srs": progress.srs, "log": progress.log,
             "groupTime": progress.groupTime, "groupInfo": progress.groupInfo, "groupWords": progress.groupWords,

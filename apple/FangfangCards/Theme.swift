@@ -495,13 +495,12 @@ struct MacTextSize: ViewModifier {
             .onAppear { MacWindow.applyTextSize(level) }
             .onChange(of: level) { MacWindow.applyTextSize(level) }
         #else
-        if TextSize.padScales && level > 0 {
-            // iPad: text without a style of its own, and what the system draws (form rows, lists), bigger too
-            content.font(.system(size: 17 * TextSize.factor(level)))
-                .dynamicTypeSize(TextSize.levels[TextSize.clamp(level)])
-        } else {
-            content
-        }
+        // iPad: text without a style of its own, and what the system draws (form rows, lists), bigger too. (One and
+        // the same view at every size: an if / else here made the whole app, and 設定 with it, start again when the
+        // size went to or from 100%, so 設定 went back to its first page while you moved the slider.)
+        let on = TextSize.padScales && level > 0
+        content.font(on ? .system(size: 17 * TextSize.factor(level)) : nil)
+            .transformEnvironment(\.dynamicTypeSize) { s in if on { s = TextSize.levels[TextSize.clamp(level)] } }
         #endif
     }
 }

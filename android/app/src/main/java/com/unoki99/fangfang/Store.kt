@@ -1193,9 +1193,25 @@ object Store {
 
     val ownKeys: List<String> get() { rev; return progress.own.filter { it.value > 0 }.entries.sortedByDescending { it.value }.map { it.key } }
     fun isOwn(key: String): Boolean { rev; return (progress.own[key] ?: -1.0) > 0 }
-    fun addOwn(key: String) { progress.own[key] = now; changed(); save(); applyOwn() }
+    fun addOwn(key: String, meaning: String = "", example: String = "") { addOwn(listOf(Triple(key, meaning, example))) }
+    /** several at once (加入 CSV 檔): one save. Each: key, meaning, example */
+    fun addOwn(words: List<Triple<String, String, String>>) {
+        val t = now
+        for ((i, w) in words.withIndex()) {
+            progress.own[w.first] = t + i * 0.001       // (the file's order, newest last)
+            val m = w.second.trim(); val x = w.third.trim()
+            if (m.isEmpty() && x.isEmpty()) progress.ownInfo.remove(w.first) else progress.ownInfo[w.first] = mutableListOf(m, x)
+        }
+        changed(); save(); applyOwn()
+    }
+    /** a word's own meaning and example sentence ("" when none) */
+    fun ownInfo(key: String): Pair<String, String> { val i = progress.ownInfo[key] ?: emptyList<String>(); return Pair(i.getOrElse(0) { "" }, i.getOrElse(1) { "" }) }
     fun removeOwn(key: String) { progress.own[key] = -now; changed(); save(); applyOwn() }
-    fun applyOwn() { dict?.setUserWords(ownKeys.toSet()) }
+    fun applyOwn() {
+        val keys = ownKeys.toSet()
+        dict?.userInfo = progress.ownInfo.filterKeys { it in keys }
+        dict?.setUserWords(keys)
+    }
 
     fun rankOf(key: String): Int = rank[key] ?: Int.MAX_VALUE
 
@@ -1409,10 +1425,16 @@ object Store {
             for ((k, i) in gi) if (progress.groupInfo[k] == null) progress.groupInfo[k] = i
             for ((k, t) in dmap("groupWords")) if (Math.abs(t) > Math.abs(progress.groupWords[k] ?: 0.0)) progress.groupWords[k] = t
         }
+        val oi = if (from == 0) (obj["ownInfo"] as? Map<String, Any?>)?.mapNotNull { (k, v) ->
+            (v as? List<Any?>)?.let { l -> k to l.map { (it as? String) ?: "" }.toMutableList() }
+        }?.toMap() ?: emptyMap() else emptyMap()
         if (from == 0) for ((k, t) in dmap("own")) if (Math.abs(t) > Math.abs(progress.own[k] ?: 0.0)) {
             if ((t > 0) != isOwn(k)) { n++; ownChangedInMerge = true }
             progress.own[k] = t
+            // (its meaning and example come with it)
+            oi[k]?.let { progress.ownInfo[k] = it; ownChangedInMerge = true }
         }
+        for ((k, i) in oi) if (progress.ownInfo[k] == null) { progress.ownInfo[k] = i; ownChangedInMerge = true }
         // 複習: the one answered last wins; 練習統計: the bigger count of each day (the same answers can be in both)
         if (from == 0) (obj["srs"] as? Map<String, Any?>)?.forEach { (k, v) ->
             val l = (v as? List<Any?>)?.mapNotNull { (it as? Number)?.toDouble() } ?: return@forEach
@@ -1473,7 +1495,7 @@ object Store {
             .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
         return JWriter.any(mapOf("app" to "fangfang-cards", "version" to 1, "exported" to exported,
             "status" to progress.status, "added" to progress.added, "streak" to progress.streak,
-            "saved" to progress.saved, "own" to progress.own, "senses" to progress.senses,
+            "saved" to progress.saved, "own" to progress.own, "ownInfo" to progress.ownInfo, "senses" to progress.senses,
             "week" to progress.week, "weekStart" to progress.weekStart, "srs" to progress.srs, "log" to progress.log,
             "groupTime" to progress.groupTime, "groupInfo" to progress.groupInfo, "groupWords" to progress.groupWords), pretty = true)
     }
