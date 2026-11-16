@@ -179,11 +179,17 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
+                // (English chosen as the app's language: the meanings in English too, unless changed below)
+                fun meaningsEnglish(en: Boolean) { Prefs.zhEnglish.value = en; Prefs.twEnglish.value = en; Prefs.hakEnglish.value = en }
+                LaunchedEffect(Unit) { if (Prefs.uiLanguage.value == 1) meaningsEnglish(true) }
                 Box(Modifier.widthIn(max = 320.dp)) {
-                    Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it })
+                    Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it; meaningsEnglish(it == 1) })
                 }
                 Column(Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(22.dp)).background(T.fn.copy(alpha = 0.8f))
                     .border(1.5.dp, T.fnEdge, RoundedCornerShape(22.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Txt(tr("解釋先用哪一種語言？"), ff(FF.Headline), T.glyph)
+                    Segmented(listOf(false to tr("華語"), true to tr("英文")), Prefs.zhEnglish.value, { meaningsEnglish(it) })
+                    Txt(tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。之後每個語言可以在「設定 → 詞典 → 主要解釋」分開改。"), ff(FF.Caption), T.muted)
                     Txt(tr("每個語言用哪一種拼寫？"), ff(FF.Headline), T.glyph)
                     Spelling(0, Prefs.rom, listOf("皓羅", "台羅", "白話字"))
                     Spelling(1, Prefs.mandRom, listOf("拼音", "注音"))

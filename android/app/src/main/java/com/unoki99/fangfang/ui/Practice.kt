@@ -56,6 +56,7 @@ fun PracticeHost(p: Practice) {
                 Practice.SWIPE -> PracticeSwipeScreen { close() }
                 Practice.TONE_GAME -> ToneGameScreen(stars) { close() }
                 Practice.FREE_WRITING -> FreeWritingScreen { close() }
+                Practice.IDIOM_WRITE -> IdiomWriteScreen { close() }
                 Practice.STATS -> ReviewStatsScreen { close() }
                 Practice.WEEK_WRITE -> StudyScreen(false, stars, words = Store.weekCards, writeOnly = true)
                 Practice.WORD_WRITE -> UI.writeCard?.let { WordWriteScreen(it) { UI.writeCard = null; close() } }

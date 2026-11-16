@@ -966,7 +966,8 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         val out = ArrayList<OtherReading>()
         val main = codesOf(key); val shown = codesFor(key, place)
         for (x in alsoSaid(key, place)) if (x != shown) out.add(OtherReading("也講", x, null))
-        if (differsFromCommon(key, place) && !alsoSaid(key, place).contains(main)) out.add(OtherReading("通行", main, raw.tok[key]))
+        // (a 方言詞 has no 通行 reading: its places' readings are in the row of places)
+        if (raw.loc?.get(key) == null && differsFromCommon(key, place) && !alsoSaid(key, place).contains(main)) out.add(OtherReading("通行", main, raw.tok[key]))
         for (a in raw.alt[key] ?: emptyList()) {
             // (the same syllables in another way, 輕聲 or not: 的 --ê / ê 第5義)
             if (a.isEmpty() || (a[0] == shown && !(a.size > 2 && a[2] != (raw.tok[key] ?: a[0])))) continue

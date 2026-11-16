@@ -398,6 +398,8 @@ struct LanguageWelcome: View {
         .onChange(of: installer.version) { if let p, DataFiles.has(p.outputs.first ?? "") { pick(l) } }
     }
 
+    private func meaningsEnglish(_ en: Bool) { zhEnglish = en; twEnglish = en; hakEnglish = en }
+
     /// the app's language, then the meanings (華語 or English) and each language's spelling
     private var setup: some View {
         ScrollView {
@@ -448,6 +450,9 @@ struct LanguageWelcome: View {
             .frame(maxWidth: .infinity)
         }
         .appBackground()
+        // (English chosen as the app's language: the meanings in English too, unless changed below)
+        .onAppear { if uiLang == 1 { meaningsEnglish(true) } }
+        .onChange(of: uiLang) { meaningsEnglish(uiLang == 1) }
         .interactiveDismissDisabled()
     }
 

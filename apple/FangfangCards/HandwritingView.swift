@@ -1999,3 +1999,244 @@ struct FreeWritingView: View {
         clearCount += 1
     }
 }
+
+// MARK: - 四字格手寫 (華語): a 四字格 (成語) from its meaning, written character by character
+
+/// the 四字格 to write: 成語 from the dictionary (CC-CEDICT marks them "idiom"), the most common first, and the four-character
+/// words of 練習範圍
+enum IdiomList {
+    nonisolated(unsafe) private static var cache: (n: Int, keys: [String])?
+    /// every 成語 of four 漢字, the most common first (the dictionary's order)
+    static func idioms(_ d: ZhDict) -> [String] {
+        if let c = cache, c.n == d.entries.count { return c.keys }
+        var out: [String] = []
+        for e in d.entries where isFour(e.h) && (e.en ?? "").contains("(idiom)") { out.append(e.k) }
+        cache = (d.entries.count, out)
+        return out
+    }
+    /// four characters, all 漢字 (the same test as Store.canWrite, which belongs to the main thread)
+    static func isFour(_ h: String) -> Bool { h.count == 4 && h.unicodeScalars.allSatisfy { $0.properties.isUnifiedIdeograph } }
+}
+
+struct IdiomWriteView: View {
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("idiomSource") private var source = "common"
+    @AppStorage("idiomCount") private var count = 10
+    @AppStorage("idiomReading") private var showReading = true
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    /// the round (nil = choosing)
+    @State private var queue: [Card]?
+    @State private var idx = 0
+    @State private var answered = false
+    @State private var wasRight = false
+    @State private var right = 0
+    @State private var missed: [Card] = []
+    /// written wrong once already: it came back at the end of the round
+    @State private var again: Set<String> = []
+    @State private var added = false
+
+    private var commonKeys: [String] { store.zh.map { Array(IdiomList.idioms($0).prefix(300)) } ?? [] }
+    private var allKeys: [String] { store.zh.map { IdiomList.idioms($0) } ?? [] }
+    private var mine: [Card] { store.practiceCards.filter { IdiomList.isFour($0.h) } }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let q = queue {
+                    if idx < q.count { play(q[idx], q.count) } else { done(q) }
+                } else { setup }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .appBackground()
+            .navigationTitle(tr("四字格手寫"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: { Image(systemName: "xmark") }.accessibilityLabel(tr("結束"))
+                }
+                if queue != nil {
+                    ToolbarItem(placement: .topBarTrailing) { PenTools() }
+                }
+            }
+        }
+    }
+
+    // ── choosing ──
+    private var setup: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(tr("看意思（和讀音）寫出整個四字格，一個字一個字寫，寫完對答案。寫錯的會在這一輪最後再出現一次。"))
+                    .ffFont(.subheadline).foregroundStyle(T.muted)
+                Picker(tr("要寫的四字格"), selection: $source) {
+                    Text(tr("常見的成語（\(commonKeys.count)）")).tag("common")
+                    Text(tr("所有成語（\(allKeys.count)）")).tag("all")
+                    Text(tr("練習範圍裡的四字詞（\(mine.count)）")).tag("mine")
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 6)
+                .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.7)))
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
+                Text(tr("一輪幾個")).ffFont(.footnote).foregroundStyle(T.muted)
+                Picker(tr("一輪幾個"), selection: $count) {
+                    ForEach([5, 10, 20, 30], id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Toggle(tr("顯示讀音"), isOn: $showReading)
+                Button { start() } label: {
+                    Label(tr("開始寫"), systemImage: "pencil.and.scribble").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .prominentButton(T.btnEdge)
+                .disabled(pool().isEmpty)
+                if pool().isEmpty {
+                    Text(source == "mine" ? trs("練習範圍裡還沒有四個字的詞。") : trs("華語詞典還沒有安裝，或沒有成語。"))
+                        .ffFont(.footnote).foregroundStyle(T.muted)
+                }
+            }
+            .padding()
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func pool() -> [Card] {
+        switch source {
+        case "mine": return mine
+        case "all": return allKeys.compactMap { store.card(for: $0) }
+        default: return commonKeys.compactMap { store.card(for: $0) }
+        }
+    }
+
+    private func start() {
+        let p: [Card]
+        if source == "all" {
+            // (thousands: only the cards of the ones picked are made)
+            p = allKeys.shuffled().prefix(count).compactMap { store.card(for: $0) }
+        } else {
+            p = Array(pool().shuffled().prefix(count))
+        }
+        guard !p.isEmpty else { return }
+        idx = 0; right = 0; missed = []; again = []; answered = false; added = false
+        queue = p
+    }
+
+    /// its meaning, with the 四字格 itself left out (the dictionary's meanings often quote it)
+    private func meaning(_ c: Card, hide: Bool) -> (p: String, t: String) {
+        var m = store.practiceMeaning(c)
+        m.t = m.t.replacingOccurrences(of: "(idiom) ", with: "").replacingOccurrences(of: "(idiom)", with: "")
+        if hide { m.t = m.t.replacingOccurrences(of: c.h, with: "＿＿＿＿") }
+        return m
+    }
+
+    // ── writing one ──
+    // (no scrolling here: a finger writing in the squares would move the page)
+    private func play(_ c: Card, _ n: Int) -> some View {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(tr("第 \(idx + 1)／\(n) 個")).ffFont(.footnote, .semibold).foregroundStyle(T.muted)
+                    Spacer()
+                    Text(tr("寫對 \(right)")).ffFont(.footnote, .semibold).foregroundStyle(T.greenInk)
+                }
+                Panel {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .center, spacing: 14) {
+                            KaitiText(text: answered ? c.h : "＿＿＿＿", size: 46, color: answered ? (wasRight ? T.greenInk : T.rustInk) : T.muted)
+                            if showReading || answered {
+                                Text(store.cardRom(c, rom, place)).latFont(20).toneGlow().foregroundStyle(T.greenInk)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        let m = meaning(c, hide: !answered)
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            if !m.p.isEmpty { Chip(text: m.p) }
+                            Text(m.t).ffFont(.body).foregroundStyle(T.glyph).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                WordWriteArea(chars: c.h.map(String.init), answered: answered, dontKnow: { miss(c) }) { ok in grade(c, ok) }
+                    .id("\(idx)|\(c.k)")
+                if answered {
+                    HStack(spacing: 12) {
+                        if !wasRight, store.status(c) == nil || store.status(c) == 0 {
+                            Button { store.addUnknown([c.k]) } label: {
+                                Label(tr("加到不熟"), systemImage: "star").frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .softButton()
+                        }
+                        Button { next() } label: {
+                            Label(tr("下一個"), systemImage: "chevron.right").frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .prominentButton(T.btnEdge)
+                    }
+                    .frame(maxWidth: 560)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding()
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity)
+    }
+
+    private func miss(_ c: Card) {
+        if !missed.contains(where: { $0.k == c.k }) { missed.append(c) }
+    }
+    private func grade(_ c: Card, _ ok: Bool) {
+        wasRight = ok
+        withAnimation(.snappy) { answered = true }
+        if ok { right += 1 }
+        else {
+            miss(c)
+            // (once more at the end of the round)
+            if !again.contains(c.k), var q = queue { again.insert(c.k); q.append(c); queue = q }
+        }
+    }
+    private func next() {
+        answered = false
+        withAnimation(.snappy) { idx += 1 }
+    }
+
+    // ── the end of the round ──
+    private func done(_ q: [Card]) -> some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                Text(tr("寫完了")).ffFont(.title, .bold).foregroundStyle(T.glyph)
+                Text(tr("寫對 \(right)／\(q.count)")).ffFont(.title3).foregroundStyle(T.greenInk)
+                if !missed.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(tr("寫錯或不會寫的")).ffFont(.headline).foregroundStyle(T.glyph)
+                        ForEach(missed, id: \.k) { c in
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                KaitiText(text: c.h, size: 26, color: T.blueInk)
+                                Text(store.cardRom(c, rom, place)).latFont(15).foregroundStyle(T.greenInk)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        Button { store.addUnknown(missed.map(\.k)); added = true } label: {
+                            Label(added ? trs("加好了") : trs("全部加到不熟"), systemImage: added ? "checkmark" : "star")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .softButton()
+                        .disabled(added)
+                    }
+                    .padding()
+                    .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.7)))
+                }
+                HStack(spacing: 12) {
+                    Button { queue = nil } label: {
+                        Label(tr("換一組"), systemImage: "square.grid.3x3").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .softButton()
+                    Button { start() } label: {
+                        Label(tr("再寫一輪"), systemImage: "arrow.counterclockwise").frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .prominentButton(T.btnEdge)
+                }
+            }
+            .padding()
+            .frame(maxWidth: 640)
+            .frame(maxWidth: .infinity)
+        }
+    }
+}

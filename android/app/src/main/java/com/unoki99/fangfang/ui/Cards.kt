@@ -505,6 +505,8 @@ fun UnknownTab() {
                         PT(tr("翻牌配對"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
                         PT(tr("自由寫字"), Icons.Filled.GridOn, true, Practice.FREE_WRITING),
+                        // (華語: 四字格 from their meaning)
+                        if (Store.lang == 1) PT(tr("四字格手寫"), Icons.Filled.Apps, Store.zh != null, Practice.IDIOM_WRITE) else null,
                         PT(tr("遊戲"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
                     )
                     // the last tile: 怎麼練習, what each way of practising does
@@ -623,6 +625,7 @@ private fun PracticeHelp(goal: Int, close: () -> Unit) {
         add(tr("聲調色球") to tr("聽一個詞，照每個字的聲調點顏色球（顏色是設定裡選的聲調顏色）。每個字都算，全對有連對加分。"))
         add(tr("自由寫字") to tr("打一句話，字會出現在格子裡，可以照著寫；格子的大小用上面的滑桿調。"))
         add(tr("手寫練習") to (if (Store.isZh) tr("選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），") else tr("選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），")) + tr("看字、讀音和意思，用手指或觸控筆在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。"))
+        if (Store.lang == 1) add(tr("四字格手寫") to tr("看一個四字格（成語）的意思和讀音，把四個字寫出來，寫完對答案、自己說寫對了沒有。寫錯的在這一輪最後再出現一次，寫錯的可以加到不熟。可以選常見的成語、所有成語，或練習範圍裡四個字的詞。"))
         add(tr("練習範圍") to tr("只練一個等級（或一組）的不熟的詞或字。"))
     }
     AlertDialog(onDismissRequest = close, containerColor = T.bg,

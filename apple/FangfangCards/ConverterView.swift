@@ -1329,6 +1329,9 @@ struct LookupResult: Sendable {
     var patternZh: [String] = []     // 台語 words for 華語 words matching it
     var isPattern = false
     var gloss: [String] = []
+    /// 華語 近義詞 of it (幫忙 → 幫助): the 台語 words for them, and the words whose 華語 meaning is one of them
+    var synonyms: [String] = []
+    var synWords: [String] = []
     var defs: [String] = []
     var places: [(zh: String, rows: [(han: String, codes: String, places: [Int])])] = []
     var tones: [String] = []                  // words with a tone pattern (4-5)
@@ -1340,7 +1343,30 @@ struct LookupResult: Sendable {
     var partResults: [LookupResult] = []
     /// words whose English (Wiktionary) has the word: added after the rest, which stay as they are
     var english: [String] = []
-    var empty: Bool { english.isEmpty && parts.isEmpty && tones.isEmpty && taigi.isEmpty && contains.isEmpty && pattern.isEmpty && patternZh.isEmpty && exact.isEmpty && gloss.isEmpty && defs.isEmpty && places.isEmpty }
+    var empty: Bool { english.isEmpty && parts.isEmpty && tones.isEmpty && taigi.isEmpty && contains.isEmpty && pattern.isEmpty && patternZh.isEmpty && exact.isEmpty && gloss.isEmpty && synonyms.isEmpty && defs.isEmpty && places.isEmpty }
+}
+
+/// 華語's 近義詞 (教育部《重編國語辭典修訂本》): 幫忙 → 幫助、協助. The 台語 search uses them: a 台語 word may be explained
+/// with another 華語 word of the same meaning than the one searched. Both ways: the word's own 近義詞, and the words
+/// that have it as theirs.
+enum ZhSynonyms {
+    /// the 華語 dictionary, once it's read (Store); kept when 粵語 / 客語 is read after it
+    nonisolated(unsafe) static var dict: ZhDict?
+    nonisolated(unsafe) private static var rev: (n: Int, map: [String: [String]])?
+    private static let lock = NSLock()
+    static func of(_ q: String) -> [String] {
+        guard let d = dict, d.lang == 1 else { return [] }
+        lock.lock(); defer { lock.unlock() }
+        var out: [String] = []
+        for i in d.byHan[q] ?? [] { for s in d.entries[i].syn where s != q && !out.contains(s) { out.append(s) } }
+        if rev?.n != d.entries.count {
+            var m: [String: [String]] = [:]
+            for e in d.entries { for s in e.syn where !(m[s]?.contains(e.h) ?? false) { m[s, default: []].append(e.h) } }
+            rev = (d.entries.count, m)
+        }
+        for h in rev?.map[q] ?? [] where h != q && !out.contains(h) { out.append(h) }
+        return Array(out.prefix(12))
+    }
 }
 
 enum Lookup {
@@ -1486,6 +1512,26 @@ enum Lookup {
         func rank(_ k: String) -> Double { d.score(Dict.hanOf(k), Dict.codesOf(k)) - 0.15 * Double(Dict.hanOf(k).count) }
         r.gloss = Array(g.sorted { rank($0) > rank($1) }.prefix(60))
         seen.formUnion(r.gloss)
+        // 華語 近義詞 (幫忙 → 幫助、協助): a 台語 word may be explained with another 華語 word of the same meaning
+        if q.unicodeScalars.allSatisfy({ ConvertEngine.isHan($0.value) }) {
+            let syns = ZhSynonyms.of(q)
+            if !syns.isEmpty {
+                let set = Set(syns)
+                var sk: [String] = [], used: [String] = []
+                for s in syns {
+                    for k in d.termIndex[s] ?? [] where seen.insert(k).inserted { sk.append(k); if !used.contains(s) { used.append(s) } }
+                }
+                var sg: [(String, String)] = []
+                for (k, arr) in d.gl where !seen.contains(k) {
+                    if let t = arr.first(where: { set.contains($0.t) })?.t { sg.append((k, t)) }
+                }
+                for (k, t) in sg.sorted(by: { rank($0.0) > rank($1.0) }).prefix(60) {
+                    seen.insert(k); sk.append(k); if !used.contains(t) { used.append(t) }
+                }
+                r.synonyms = sk
+                r.synWords = syns.filter { used.contains($0) }
+            }
+        }
         // meanings that mention it
         var m: [String] = []
         for (k, i) in d.raw.defs.m where !seen.contains(k) && d.raw.defs.t[i].contains(q) { m.append(k) }
@@ -1508,6 +1554,7 @@ enum Lookup {
         let shown = Set(r.exact)
         r.contains = d.withLocal(r.contains).filter { !shown.contains($0) }
         r.gloss = d.withLocal(r.gloss).filter { !shown.contains($0) && !r.contains.contains($0) }
+        r.synonyms = d.withLocal(r.synonyms).filter { !shown.contains($0) && !r.contains.contains($0) && !r.gloss.contains($0) }
         addSentences(d, &r, r.exact)
         // not one word: the words it's made of, each searched on its own
         if split, r.exact.isEmpty, let ps = Segmenter.parts(q, isWord: { d.termIndex[$0] != nil || d.hanMap[$0] != nil }) {
@@ -1623,6 +1670,10 @@ struct LookupPane: View {
             }
             group(tr("台語「\(query)」"), result.taigi)
             group(trs("台語講法"), result.exact)
+            // (華語 近義詞: 幫忙 → the 台語 words explained as 幫助)
+            if !result.synonyms.isEmpty {
+                group(tr("華語近義詞「\(result.synWords.prefix(4).joined(separator: "、"))」"), result.synonyms)
+            }
             KeyListSection(dict: dict, title: tr("英文「\(query)」（維基詞典）"), keys: result.english, englishQuery: query)
             if !result.parts.isEmpty {
                 ForEach(Array(result.parts.enumerated()), id: \.offset) { i, w in
@@ -2974,7 +3025,7 @@ struct ComparePane: View {
             let r = await Task.detached(priority: .userInitiated) { Lookup.run(d, q) }.value
             guard !Task.isCancelled else { return }
             var out: [String] = []
-            for k in r.tones + r.taigi + r.exact + r.contains + r.gloss where !out.contains(k) { out.append(k) }
+            for k in r.tones + r.taigi + r.exact + r.contains + r.gloss + r.synonyms where !out.contains(k) { out.append(k) }
             found = Array(out.prefix(40))
         }
     }

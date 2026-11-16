@@ -149,6 +149,10 @@ object Prefs : KeyValue {
     val lyricsReadings = Pref("lyricsReadings", true)
     val lockSource = Pref("lockWordSource", "")
     val freeText = Pref("freeWritingText", "")
+    /** 四字格手寫: which ones (common 成語, all 成語, the 練習範圍's four-character words), how many a round, the reading shown */
+    val idiomSource = Pref("idiomSource", "common")
+    val idiomCount = Pref("idiomCount", 10)
+    val idiomReading = Pref("idiomReading", true)
     /** how big the writing square is (dp); 格子大小 changes it, the shadow follows */
     val handPad = Pref("handwritingPadSize", 380f)
     /** how much a stylus's pressure changes the thickness (0 = not at all, 1.5 = a lot) */
@@ -211,7 +215,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return

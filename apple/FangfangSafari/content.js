@@ -351,6 +351,11 @@
     }
 
     // ── English → the Chinese languages: the words whose English meaning it is ("eat" → 吃, 食…) ─────────────────
+    // English endings, longest first, and what the word may have had before them ("" as it is; "y": happily → happy)
+    const EN_ENDS = [["fully", ["ful"]], ["ically", ["ic", "ical"]], ["ily", ["y"]], ["ally", ["al", ""]], ["ly", ["", "le", "e"]],
+        ["iness", ["y"]], ["ness", [""]], ["ments", [""]], ["ment", [""]], ["ities", ["ity"]], ["ity", ["", "e"]],
+        ["ied", ["y"]], ["ies", ["y"]], ["ier", ["y"]], ["iest", ["y"]], ["ing", ["", "e"]], ["est", ["", "e"]], ["ers", ["", "e"]],
+        ["er", ["", "e"]], ["ed", ["", "e"]], ["es", ["", "e"]], ["s", [""]], ["able", ["", "e"]], ["ible", ["", "e"]]];
     function enShard(w, meta) { return svShard(w, meta).replace("d-sv-", "d-en-"); }
     async function findEn(text) {
         const meta = await getMeta();
@@ -358,16 +363,24 @@
         const out = { ok: true, ready: true, tab: meta };
         let w = text.toLowerCase();
         if (!prefs.en2zh || !meta.en || w.length < 2) return out;
-        let hit = await getEntry(enShard(w, meta), w);
-        // (eats, eating, eaten: the word without its ending)
-        if (!hit) for (const end of ["ing", "ed", "es", "s"]) {
+        let hit = await getEntry(enShard(w, meta), w), base = w;
+        const tryWord = async b => {
+            if (hit || b.length < 3 || b === w) return;
+            const e2 = await getEntry(enShard(b, meta), b);
+            if (e2) { hit = e2; base = b; }
+        };
+        // (the word without its ending: eats, eating, eaten, beautifully → beautiful, happily → happy, bigger → big)
+        if (!hit) for (const [end, adds] of EN_ENDS) {
             if (!w.endsWith(end) || w.length - end.length < 3) continue;
-            for (const b of [w.slice(0, -end.length), w.slice(0, -end.length) + "e"]) {
-                const e2 = await getEntry(enShard(b, meta), b);
-                if (e2) { hit = e2; break; }
-            }
+            const st = w.slice(0, -end.length);
+            for (const a of adds) await tryWord(st + a);
+            // (running → run, stopped → stop: a doubled last letter as one)
+            if (st.length > 3 && st[st.length - 1] === st[st.length - 2] && !/[aeiouls]/.test(st[st.length - 1])) await tryWord(st.slice(0, -1));
             if (hit) break;
         }
+        // (still nothing: the word made shorter a letter at a time, down to about two thirds of it, the longest
+        // word the dictionary has: carefulness → careful)
+        if (!hit) for (let n = w.length - 1; n >= Math.max(3, Math.ceil(w.length * 0.6)) && !hit; n--) await tryWord(w.slice(0, n));
         if (!hit) return out;
         for (const lang of ["zh", "tw", "yue", "hak"]) {
             if (!prefs[lang] || !hit[lang]) continue;
@@ -379,7 +392,7 @@
                     list.push(e);
                 }
             }
-            if (list.length) out[lang] = { w: text, list: list.slice(0, 6), en: true };
+            if (list.length) out[lang] = { w: text, list: list.slice(0, 6), en: true, base: base === w ? "" : base };
         }
         return out;
     }
@@ -1340,7 +1353,7 @@
             const part = res[lang];
             if (!part) continue;
             const sec = el("div", "sec " + lang);
-            sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? ffT("・") + tab.hacc[prefs.hakAcc] : "") + (part.en ? ffT("・英文「") + part.w + ffT("」") : "")));
+            sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? ffT("・") + tab.hacc[prefs.hakAcc] : "") + (part.en ? ffT("・英文「") + part.w + (part.base ? " → " + part.base : "") + ffT("」") : "")));
             for (const e of part.list) {
                 if (lang === "zh" && e.p === 3 && prefs.zhPlace !== 2) continue;     // (四川話's own words: with 四川話 only)
                 const p = lang === "sv" ? svParts(e, part.form) : lang === "zh" ? zhParts(e, tab) : (lang === "tw" ? twParts(e, tab) : (lang === "yue" ? yueParts(e) : hakParts(e, tab)));
@@ -1572,14 +1585,23 @@
         card.style.maxWidth = prefs.w ? "none" : (corner ? "min(900px, calc(100vw - 16px))" : "");
         card.style.height = prefs.h ? Math.min(prefs.h, vh - 16) + "px" : "";
         card.style.maxHeight = prefs.h ? "none" : "";
-        const w = card.offsetWidth, h = card.offsetHeight, rect = shownRect || { left: 8, top: 8, bottom: 8 };
+        const w = card.offsetWidth, rect = shownRect || { left: 8, top: 8, bottom: 8 };
         const pos = prefs.pos || "word";
+        let h = card.offsetHeight;
         let left, top;
         if (pos === "word") {
+            // (strictly under or over the word, never over its line: under it when it fits, else over it when it fits
+            // there, else on the side with more room, made only as tall as that room, its words scrolling inside)
+            const gap = 8, edge = 8;
+            const below = vh - rect.bottom - gap - edge, over = rect.top - gap - edge;
+            const up = h > below && (h <= over || over > below);
+            const room = Math.max(40, Math.floor(up ? over : below));
+            if (h > room) {
+                if (prefs.h) card.style.height = room + "px"; else card.style.maxHeight = room + "px";
+                h = card.offsetHeight;
+            }
             left = Math.min(Math.max(8, rect.left), vw - w - 8);
-            top = rect.bottom + 8;
-            if (top + h > vh - 8 && rect.top - h - 8 >= 8) top = rect.top - h - 8;
-            top = Math.max(8, Math.min(top, vh - h - 8));
+            top = up ? rect.top - gap - h : rect.bottom + gap;
         } else {
             left = pos[1] === "l" ? 12 : vw - w - 12;
             top = pos[0] === "t" ? 12 : vh - h - 12;
@@ -3328,12 +3350,18 @@
         "them my your his its our their this that these those in on at for with by from as not no do does did have has had will would " +
         "can could shall should may might must just oh ok okay yeah yes uh um ah hey hi what who how why when where there here than " +
         "then too very all any some").split(" "));
+    // (the word, then without its ending the same way as on the page, then shorter a letter at a time down to about
+    // two thirds of it; all in the same part of the list, which goes by the first two letters)
     function subsEnForms(w) {
         const out = [w];
-        for (const end of ["ing", "ed", "es", "s"]) {
+        const add = b => { if (b.length >= 3 && !out.includes(b)) out.push(b); };
+        for (const [end, adds] of EN_ENDS) {
             if (!w.endsWith(end) || w.length - end.length < 3) continue;
-            out.push(w.slice(0, -end.length), w.slice(0, -end.length) + "e");
+            const st = w.slice(0, -end.length);
+            for (const a of adds) add(st + a);
+            if (st.length > 3 && st[st.length - 1] === st[st.length - 2] && !/[aeiouls]/.test(st[st.length - 1])) add(st.slice(0, -1));
         }
+        for (let n = w.length - 1; n >= Math.max(3, Math.ceil(w.length * 0.6)); n--) add(w.slice(0, n));
         return out;
     }
     function subsEnGloss(token, SL, files, meta) {

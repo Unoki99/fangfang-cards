@@ -11,6 +11,9 @@ class LookupResult {
     var patternZh: List<String> = emptyList()   // 台語 words for 華語 words matching it
     var isPattern = false
     var gloss: List<String> = emptyList()
+    /** 華語 近義詞 of it (幫忙 → 幫助): the 台語 words for them, and the words whose 華語 meaning is one of them */
+    var synonyms: List<String> = emptyList()
+    var synWords: List<String> = emptyList()
     var defs: List<String> = emptyList()
     var places: List<PlaceGroup> = emptyList()
     var tones: List<String> = emptyList()
@@ -24,7 +27,29 @@ class LookupResult {
     var english: List<String> = emptyList()
     val empty: Boolean
         get() = english.isEmpty() && parts.isEmpty() && tones.isEmpty() && taigi.isEmpty() && contains.isEmpty() && pattern.isEmpty() && patternZh.isEmpty() &&
-            exact.isEmpty() && gloss.isEmpty() && defs.isEmpty() && places.isEmpty()
+            exact.isEmpty() && gloss.isEmpty() && synonyms.isEmpty() && defs.isEmpty() && places.isEmpty()
+}
+
+/** 華語's 近義詞 (教育部《重編國語辭典修訂本》): 幫忙 → 幫助、協助. The 台語 search uses them: a 台語 word may be explained
+ *  with another 華語 word of the same meaning than the one searched. Both ways: the word's own 近義詞, and the words
+ *  that have it as theirs. (The 華語 dictionary only while the app keeps it: it can let it go to save memory.) */
+object ZhSynonyms {
+    @Volatile private var ref: java.lang.ref.WeakReference<ZhDict>? = null
+    private var rev: Pair<Int, Map<String, List<String>>>? = null
+    fun use(d: ZhDict) { if (d.lang == 1) { ref = java.lang.ref.WeakReference(d) } }
+    @Synchronized fun of(q: String): List<String> {
+        val d = ref?.get() ?: return emptyList()
+        if (d.lang != 1) return emptyList()
+        val out = ArrayList<String>()
+        for (i in d.byHan[q] ?: emptyList<Int>()) for (s in d.entries[i].syn) if (s != q && s !in out) out.add(s)
+        if (rev?.first != System.identityHashCode(d)) {
+            val m = HashMap<String, MutableList<String>>()
+            for (e in d.entries) for (s in e.syn) { val l = m.getOrPut(s) { ArrayList() }; if (e.h !in l) l.add(e.h) }
+            rev = Pair(System.identityHashCode(d), m)
+        }
+        for (h in rev?.second?.get(q) ?: emptyList()) if (h != q && h !in out) out.add(h)
+        return out.take(12)
+    }
 }
 
 object Lookup {
@@ -160,6 +185,20 @@ object Lookup {
         for ((k, arr) in d.gl) if (!seen.contains(k) && arr.any { it.t != q && it.t.contains(q) }) g.add(k)
         r.gloss = g.sortedByDescending { rank(it) }.take(60)
         seen.addAll(r.gloss)
+        // 華語 近義詞 (幫忙 → 幫助、協助): a 台語 word may be explained with another 華語 word of the same meaning
+        if (q.codePoints().allMatch { ConvertEngine.isHan(it) }) {
+            val syns = ZhSynonyms.of(q)
+            if (syns.isNotEmpty()) {
+                val set = syns.toHashSet()
+                val sk = ArrayList<String>(); val used = ArrayList<String>()
+                for (s in syns) for (k in d.termIndex[s] ?: emptyList<String>()) if (seen.add(k)) { sk.add(k); if (s !in used) used.add(s) }
+                val sg = ArrayList<Pair<String, String>>()
+                for ((k, arr) in d.gl) if (!seen.contains(k)) arr.firstOrNull { it.t in set }?.let { sg.add(k to it.t) }
+                for ((k, t) in sg.sortedByDescending { rank(it.first) }.take(60)) { seen.add(k); sk.add(k); if (t !in used) used.add(t) }
+                r.synonyms = sk
+                r.synWords = syns.filter { it in used }
+            }
+        }
         val m = ArrayList<String>()
         for ((k, i) in d.raw.defs.m) if (!seen.contains(k) && d.raw.defs.t[i].contains(q)) m.add(k)
         r.defs = m.sortedByDescending { rank(it) }.take(60)
@@ -182,6 +221,8 @@ object Lookup {
         r.contains = d.withLocal(r.contains).filter { it !in shown }
         val inContains = r.contains.toHashSet()
         r.gloss = d.withLocal(r.gloss).filter { it !in shown && it !in inContains }
+        val inGloss = r.gloss.toHashSet()
+        r.synonyms = d.withLocal(r.synonyms).filter { it !in shown && it !in inContains && it !in inGloss }
         addSentences(d, r, r.exact)
         // not one word: the words it's made of, each searched on its own
         if (split && r.exact.isEmpty()) Segmenter.parts(q) { d.termIndex.containsKey(it) || d.hanMap.containsKey(it) }?.let { ps ->

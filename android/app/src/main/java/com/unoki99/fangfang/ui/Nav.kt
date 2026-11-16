@@ -62,7 +62,7 @@ sealed class Sheet {
     data class CharWords(val ch: String) : Sheet()
 }
 
-enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE, JA_PARTICLES, FALLING, SWIPE, TONE_GAME, FREE_WRITING }
+enum class Practice { STUDY, BLANKS, SCRAMBLE, READING, TONES, MEMORY, WEEK, WEEK_TEST, HANDWRITING, STATS, WEEK_WRITE, WORD_WRITE, JA_PARTICLES, FALLING, SWIPE, TONE_GAME, FREE_WRITING, IDIOM_WRITE }
 
 /** the app's screens that open over everything */
 object UI {

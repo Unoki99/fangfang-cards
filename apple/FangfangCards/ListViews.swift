@@ -21,6 +21,7 @@ struct UnknownView: View {
     @State private var swiping = false
     @State private var writing = false
     @State private var freeWriting = false
+    @State private var idiomWriting = false
     @State private var gaming = false
     @State private var helping = false
     @State private var statsOpen = false
@@ -67,6 +68,10 @@ struct UnknownView: View {
                     PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
                     PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: !store.isSv) { writing = true }
                     PracticeTile(title: tr("自由寫字"), icon: "square.grid.3x3", enabled: !store.isSv) { freeWriting = true }
+                    // (華語: 四字格 from their meaning)
+                    if store.lang == 1 {
+                        PracticeTile(title: tr("四字格手寫"), icon: "square.grid.2x2.fill", enabled: store.zh != nil) { idiomWriting = true }
+                    }
                     PracticeTile(title: tr("遊戲"), icon: "gamecontroller", enabled: pool.count > 3) { gaming = true }
                     // what each way of practising does
                     PracticeTile(title: tr("怎麼練習"), icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
@@ -125,6 +130,7 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $swiping) { PracticeSwipeView().environmentObject(store) }
         .fullScreenCover(isPresented: $writing) { HandwritingView().environmentObject(store) }
         .fullScreenCover(isPresented: $freeWriting) { FreeWritingView().environmentObject(store) }
+        .fullScreenCover(isPresented: $idiomWriting) { IdiomWriteView().environmentObject(store) }
         .fullScreenCover(isPresented: $gaming) { FallingGameView().environmentObject(store) }
         .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
         .sheet(isPresented: $statsOpen) { NavigationStack { ReviewStatsView() }.environmentObject(store).macTextSize() }
@@ -389,6 +395,9 @@ struct PracticeHelp: View {
         ]
         do {
             a.append(("pencil.and.scribble", trs("手寫練習"), store.isZh ? trs("選要寫的字（不熟的漢字、HSK／TOCFL 的漢字等級、認識的漢字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。") : trs("選要寫的字（不熟的詞的字、熟悉的詞的字或自己打的字），看字、讀音和意思，用手指或 Apple Pencil 在格子裡寫。「描字」會在格子裡放一個淡淡的字，藥水條顯示描得多像；點上面的字看有這個字的詞，打勾表示這個字會了。")))
+        }
+        if store.lang == 1 {
+            a.append(("square.grid.2x2.fill", trs("四字格手寫"), trs("看一個四字格（成語）的意思和讀音，把四個字寫出來，寫完對答案、自己說寫對了沒有。寫錯的在這一輪最後再出現一次，寫錯的可以加到不熟。可以選常見的成語、所有成語，或練習範圍裡四個字的詞。")))
         }
         a.append(("scope", trs("練習範圍"), trs("只練一個等級（或一組）的不熟的詞或字。")))
         return a

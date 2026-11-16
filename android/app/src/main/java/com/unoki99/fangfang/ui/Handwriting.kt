@@ -11,6 +11,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -1124,6 +1126,148 @@ fun FreeWritingScreen(onClose: () -> Unit) {
                 IconButton(onClick = { page = maxOf(0, pg - 1); strokes.clear() }, enabled = pg > 0) { Icon(Icons.Filled.ChevronLeft, null, tint = T.glyph) }
                 Txt("${pg + 1}／$pages", lat(14f), T.glyph)
                 IconButton(onClick = { page = minOf(pages - 1, pg + 1); strokes.clear() }, enabled = pg < pages - 1) { Icon(Icons.Filled.ChevronRight, null, tint = T.glyph) }
+            }
+        }
+    }
+}
+
+
+// MARK: - 四字格手寫 (華語): a 四字格 (成語) from its meaning, written character by character
+
+/** the 四字格 to write: 成語 from the dictionary (CC-CEDICT marks them "idiom"), the most common first */
+object IdiomList {
+    private var cache: Pair<Int, List<String>>? = null
+    fun idioms(d: ZhDict): List<String> {
+        cache?.let { if (it.first == d.entries.size) return it.second }
+        val out = d.entries.filter { it.h.codePointCount(0, it.h.length) == 4 && Store.canWrite(it.h) && (it.en ?: "").contains("(idiom)") }.map { it.k }
+        cache = Pair(d.entries.size, out)
+        return out
+    }
+    fun isFour(h: String) = h.codePointCount(0, h.length) == 4 && Store.canWrite(h)
+}
+
+@Composable
+fun IdiomWriteScreen(onClose: () -> Unit) {
+    var source by Prefs.idiomSource
+    var count by Prefs.idiomCount
+    var showReading by Prefs.idiomReading
+    val rom = Prefs.rom.value; val place = Prefs.place.value
+    val d = Store.zh
+    val all = remember(d) { d?.let { IdiomList.idioms(it) } ?: emptyList() }
+    val common = remember(all) { all.take(300) }
+    val mine = Store.practiceCards.filter { IdiomList.isFour(it.h) }
+    var queue by remember { mutableStateOf<List<Card>?>(null) }
+    var idx by remember { mutableIntStateOf(0) }
+    var answered by remember { mutableStateOf(false) }
+    var wasRight by remember { mutableStateOf(false) }
+    var right by remember { mutableIntStateOf(0) }
+    val missed = remember { mutableStateListOf<Card>() }
+    val again = remember { mutableStateListOf<String>() }
+    var added by remember { mutableStateOf(false) }
+    fun pool(): List<Card> = when (source) {
+        "mine" -> mine
+        "all" -> all.mapNotNull { Store.cardFor(it) }
+        else -> common.mapNotNull { Store.cardFor(it) }
+    }
+    val poolSize = when (source) { "mine" -> mine.size; "all" -> all.size; else -> common.size }
+    fun start() {
+        // (所有成語: thousands, only the cards of the ones picked are made)
+        val p = if (source == "all") all.shuffled().take(count).mapNotNull { Store.cardFor(it) } else pool().shuffled().take(count)
+        if (p.isEmpty()) return
+        idx = 0; right = 0; missed.clear(); again.clear(); answered = false; added = false
+        queue = p
+    }
+    fun miss(c: Card) { if (missed.none { it.k == c.k }) missed.add(c) }
+    // its meaning, with the 四字格 itself left out (the dictionary's meanings often quote it)
+    fun meaning(c: Card, hide: Boolean): Pair<String, String> {
+        val (p, t0) = Store.practiceMeaning(c)
+        var t = t0.replace("(idiom) ", "").replace("(idiom)", "")
+        if (hide) t = t.replace(c.h, "＿＿＿＿")
+        return p to t
+    }
+    Column(Modifier.fillMaxSize()) {
+        TopBar(tr("四字格手寫"), onClose, close = true, settings = false) {}
+        val q = queue
+        // (no scrolling while writing: a finger in the squares would move the page)
+        val scroll = if (q == null || idx >= q.size) Modifier.verticalScroll(rememberScrollState()) else Modifier
+        Column(Modifier.fillMaxSize().then(scroll).widthIn(max = 1100.dp).align(Alignment.CenterHorizontally).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            if (q == null) {
+                // ── choosing ──
+                Txt(tr("看意思（和讀音）寫出整個四字格，一個字一個字寫，寫完對答案。寫錯的會在這一輪最後再出現一次。"), ff(FF.Subheadline), T.muted)
+                Txt(tr("要寫的四字格"), ff(FF.Headline), T.glyph)
+                Segmented(listOf("common" to tr("常見的成語（{0}）", common.size), "all" to tr("所有成語（{0}）", all.size), "mine" to tr("練習範圍裡的四字詞（{0}）", mine.size)),
+                    source, { source = it })
+                Txt(tr("一輪幾個"), ff(FF.Headline), T.glyph)
+                Segmented(listOf(5, 10, 20, 30).map { it to "$it" }, count, { count = it })
+                Row(Modifier.fillMaxWidth().clickable { showReading = !showReading }, verticalAlignment = Alignment.CenterVertically) {
+                    Txt(tr("顯示讀音"), ff(FF.Body), modifier = Modifier.weight(1f))
+                    Switch(showReading, { showReading = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
+                }
+                ProminentButton({ start() }, Modifier.fillMaxWidth().heightIn(min = 44.dp), enabled = poolSize > 0) {
+                    IconLabel(Icons.Filled.Draw, tr("開始寫"), ff(FF.Headline), Color.White)
+                }
+                if (poolSize == 0) Txt(if (source == "mine") tr("練習範圍裡還沒有四個字的詞。") else tr("華語詞典還沒有安裝，或沒有成語。"), ff(FF.Footnote), T.muted)
+            } else if (idx < q.size) {
+                // ── writing one ──
+                val c = q[idx]
+                Row(Modifier.fillMaxWidth()) {
+                    Txt(tr("第 {0}／{1} 個", idx + 1, q.size), ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.weight(1f))
+                    Txt(tr("寫對 {0}", right), ff(FF.Footnote, FontWeight.SemiBold), T.greenInk)
+                }
+                Panel {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Text(if (answered) c.h else "＿＿＿＿", style = sz(46f, FontWeight.Medium).copy(fontFamily = Kai.family),
+                            color = if (!answered) T.muted else if (wasRight) T.greenInk else T.rustInk)
+                        if (showReading || answered) Txt(Store.cardRom(c, rom, place).annotated(), lat(20f), T.greenInk)
+                    }
+                    val (p, t) = meaning(c, !answered)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (p.isNotEmpty()) Chip(p)
+                        Txt(t, ff(FF.Body), T.glyph)
+                    }
+                }
+                key(idx, c.k) {
+                    WordWriteArea(c.h.codePoints().toArray().map { String(Character.toChars(it)) }, answered, dontKnow = { miss(c) }) { ok ->
+                        wasRight = ok; answered = true
+                        if (ok) right++ else {
+                            miss(c)
+                            // (once more at the end of the round)
+                            if (c.k !in again) { again.add(c.k); queue = q + c }
+                        }
+                    }
+                }
+                if (answered) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val st = Store.cardStatus(c.k)
+                    if (!wasRight && (st == null || st == 0)) SoftButton({ Store.addUnknown(listOf(c.k)) }, Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        IconLabel(Icons.Filled.StarBorder, tr("加到不熟"), ff(FF.Headline), T.glyph)
+                    }
+                    ProminentButton({ answered = false; idx++ }, Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        IconLabel(Icons.Filled.ChevronRight, tr("下一個"), ff(FF.Headline), Color.White)
+                    }
+                }
+            } else {
+                // ── the end of the round ──
+                Txt(tr("寫完了"), ff(FF.Title, FontWeight.Bold), T.glyph)
+                Txt(tr("寫對 {0}／{1}", right, q.size), ff(FF.Title3), T.greenInk)
+                if (missed.isNotEmpty()) Panel {
+                    Txt(tr("寫錯或不會寫的"), ff(FF.Headline), T.glyph)
+                    for (c in missed) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.h, style = sz(26f, FontWeight.Medium).copy(fontFamily = Kai.family), color = T.blueInk)
+                        Txt(Store.cardRom(c, rom, place).annotated(), lat(15f), T.greenInk)
+                    }
+                    SoftButton({ Store.addUnknown(missed.map { it.k }); added = true }, Modifier.fillMaxWidth().heightIn(min = 44.dp), enabled = !added) {
+                        IconLabel(if (added) Icons.Filled.Check else Icons.Filled.StarBorder, if (added) tr("加好了") else tr("全部加到不熟"), ff(FF.Headline), T.glyph)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SoftButton({ queue = null }, Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        IconLabel(Icons.Filled.GridView, tr("換一組"), ff(FF.Headline), T.glyph)
+                    }
+                    ProminentButton({ start() }, Modifier.weight(1f).heightIn(min = 44.dp)) {
+                        IconLabel(Icons.Filled.Refresh, tr("再寫一輪"), ff(FF.Headline), Color.White)
+                    }
+                }
             }
         }
     }

@@ -23,13 +23,19 @@ $Log = Join-Path $LogDir $(if ($Win) { "windows-build.log" } else { "android-bui
 
 function Fail($msg) { Write-Host "✗ $msg"; exit 1 }
 
+# (Gradle's helpers stopped after a build: left running, they keep files in this folder open, and the folder can't
+# be deleted until the computer restarts. Note: this stops every Gradle build on the computer, so run one installer
+# at a time)
+# (the build's own result kept: $LASTEXITCODE is what the caller reads)
+function Stop-Gradle { $code = $LASTEXITCODE; try { cmd /c "gradlew.bat --stop > nul 2>&1" } catch {}; $global:LASTEXITCODE = $code }
+
 # Gradle, tried again (up to 3 times) when it failed only because a download timed out or the connection dropped
 function Invoke-Gradle([string]$gradleArgs) {
     for ($try = 1; $try -le 3; $try++) {
         cmd /c "gradlew.bat $gradleArgs --console=plain > `"$Log`" 2>&1"
-        if ($LASTEXITCODE -eq 0) { return }
+        if ($LASTEXITCODE -eq 0) { Stop-Gradle; return }
         $net = Select-String -Path $Log -Pattern "timed out|timeout|Connection reset|Could not GET|Could not HEAD|Could not download|failed: timeout|UnknownHostException|SocketException" -Quiet
-        if (-not $net -or $try -eq 3) { return }
+        if (-not $net -or $try -eq 3) { Stop-Gradle; return }
         Write-Host "（網路下載逾時，$($try * 20) 秒後再試一次…）"
         Start-Sleep -Seconds ($try * 20)
     }

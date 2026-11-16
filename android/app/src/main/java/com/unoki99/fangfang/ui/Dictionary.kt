@@ -742,7 +742,7 @@ private fun ComparePane(d: Dict, slot: com.unoki99.fangfang.Pref<String>, hint: 
         val q = query
         val r = withContext(Dispatchers.Default) { Lookup.run(d, q, -1, Prefs) }
         val out = ArrayList<String>()
-        for (k in r.tones + r.taigi + r.exact + r.contains + r.gloss) if (!out.contains(k)) out.add(k)
+        for (k in r.tones + r.taigi + r.exact + r.contains + r.gloss + r.synonyms) if (!out.contains(k)) out.add(k)
         found = out.take(40)
     }
     Column(Modifier.fillMaxSize()) {
@@ -873,6 +873,8 @@ private fun LookupList(d: Dict) {
         r.toneNote?.let { item { Txt(it, ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) } }
         keyItems(d, tr("台語「{0}」", query), r.taigi)
         keyItems(d, tr("台語講法"), r.exact)
+        // (華語 近義詞: 幫忙 → the 台語 words explained as 幫助)
+        if (r.synonyms.isNotEmpty()) keyItems(d, tr("華語近義詞「{0}」", r.synWords.take(4).joinToString("、")), r.synonyms)
         keyItems(d, tr("英文「{0}」（維基詞典）", query), r.english, englishQuery = query)
         // several words searched at once: each word's words, then a capsule for each to see its 更多
         for ((i, w) in r.parts.withIndex()) {

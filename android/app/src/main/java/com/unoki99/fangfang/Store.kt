@@ -65,7 +65,10 @@ object Store {
     /** switching language: the other deck is being loaded */
     var switching by mutableStateOf(false); private set
     /** the 華語 dictionary (zh.json), once loaded */
-    var zh by mutableStateOf<ZhDict?>(null); private set
+    private var zhState by mutableStateOf<ZhDict?>(null)
+    var zh: ZhDict?
+        get() = zhState
+        private set(v) { zhState = v; if (v != null) com.unoki99.fangfang.engine.ZhSynonyms.use(v) }
     var zhError by mutableStateOf<String?>(null)
     /** changes when the deck is made again (pages showing it start over) */
     var listVersion by mutableIntStateOf(0); private set
@@ -142,7 +145,8 @@ object Store {
                 makeFreqTopics()
                 // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
                 loadDict()
-                if (Prefs.lang.value in 1 until Lang.count) setLanguage(Prefs.lang.value) else preloadZh()
+                // (台語: the 華語 dictionary when it's installed, for its 近義詞 in the 台語 search; else the one used last)
+                if (Prefs.lang.value in 1 until Lang.count) setLanguage(Prefs.lang.value) else if (DataFiles.has("zh")) preloadMandarin() else preloadZh()
                 Backup.syncNow()
                 WidgetBridge.appOpened()
             } catch (e: java.io.FileNotFoundException) {
@@ -248,7 +252,7 @@ object Store {
             if (otherKind == 0) swapDecks()
             // (an empty deck shown while a dictionary was read: not kept)
             if (placeholder) { placeholder = false; if (otherKind != 0) other = null }
-            shown(0); return
+            shown(0); preloadMandarin(); return
         }
         // the deck waiting is the one wanted (台語 → 華語 / 粵語)
         if (lang == 0 && otherKind == want) { swapDecks(); shown(want); return }
@@ -316,6 +320,15 @@ object Store {
     }
 
     /** reads the 華語 (or 粵語, if that was used last) dictionary in the background (at start-up, in 台語 mode) */
+    /** 台語 mode: the 華語 dictionary read in the background, whichever language was used last (its 近義詞 help the 台語
+     *  search find words explained with another 華語 word), when it's installed */
+    fun preloadMandarin() {
+        if (zh?.lang == 1 || !DataFiles.has("zh")) return
+        scope.launch {
+            try { val (d, deck) = zhLoad(1).await(); if (lang == 0) useZh(d, deck) } catch (e: Throwable) { zhJob = null }
+        }
+    }
+
     fun preloadZh() {
         if (zh != null) return
         val kind = Prefs.lastZh.value.let { if (it in 1 until Lang.count) it else 1 }

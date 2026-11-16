@@ -910,7 +910,8 @@ final class Dict: @unchecked Sendable {
         var out: [(label: String, codes: String, tokens: String?)] = []
         let main = Dict.codesOf(key), shown = codesFor(key, place)
         for x in alsoSaid(key, place) where x != shown { out.append(("也講", x, nil)) }
-        if differsFromCommon(key, place), !alsoSaid(key, place).contains(main) { out.append(("通行", main, raw.tok[key])) }
+        // (a 方言詞 has no 通行 reading: its places' readings are in the row of places)
+        if raw.loc?[key] == nil, differsFromCommon(key, place), !alsoSaid(key, place).contains(main) { out.append(("通行", main, raw.tok[key])) }
         // (the same syllables in another way, 輕聲 or not: 的 --ê / ê 第5義)
         for a in raw.alt[key] ?? [] where !a.isEmpty && (a[0] != shown || (a.count > 2 && a[2] != (raw.tok[key] ?? a[0]))) {
             out.append(((a.count > 1 && !a[1].isEmpty) ? a[1] : "又", a[0], a.count > 2 ? a[2] : nil))

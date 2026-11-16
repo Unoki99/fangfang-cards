@@ -64,7 +64,7 @@ final class Store: ObservableObject {
     /// switching language: the other deck is being loaded
     @Published private(set) var switching = false
     /// the 華語 dictionary (zh.json), once loaded
-    @Published private(set) var zh: ZhDict? { didSet { listsChanged() } }
+    @Published private(set) var zh: ZhDict? { didSet { listsChanged(); if let d = zh, d.lang == 1 { ZhSynonyms.dict = d } } }
     @Published private(set) var zhError: String?
     /// 華語 reading shown: 0 拼音, 1 注音 (published, so every page redraws when it changes)
     @Published var zhRom = Lang.zhRom { didSet { UserDefaults.standard.set(zhRom, forKey: Lang.romKey) } }
@@ -134,7 +134,8 @@ final class Store: ObservableObject {
         if Lang.isZh { setLanguage(Lang.current) }
         // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
         loadDict()
-        if !Lang.isZh { preloadZh() }
+        // (台語: the 華語 dictionary when it's installed, for its 近義詞 in the 台語 search; else the one used last)
+        if !Lang.isZh { if DataFiles.has("zh") { preloadMandarin() } else { preloadZh() } }
         migrateSenses()
         restoreBackupState()
         syncNow()
@@ -191,6 +192,7 @@ final class Store: ObservableObject {
             // (leaving a language whose dictionary isn't installed: its empty deck isn't kept)
             if missingDict { other = nil }
             shown(0)
+            preloadMandarin()
             return
         }
         // the deck waiting is the one wanted (台語 → 華語 / 粵語)
@@ -251,6 +253,15 @@ final class Store: ObservableObject {
 
     /// reads the 華語 (or 粵語, if that was used last) dictionary in the background (at start-up, in 台語 mode),
     /// ready for switching
+    /// 台語 mode: the 華語 dictionary read in the background, whichever language was used last (its 近義詞 help the
+    /// 台語 search find words explained with another 華語 word), when it's installed
+    func preloadMandarin() {
+        guard zh?.lang != 1, DataFiles.has("zh") else { return }
+        Task {
+            if case .success(let (d, deck)) = await zhLoadTask(priority: .utility, kind: 1).value, lang == 0 { useZh(d, deck: deck) }
+        }
+    }
+
     func preloadZh() {
         guard zh == nil else { return }
         let last = UserDefaults.standard.integer(forKey: Store.lastZhKey)

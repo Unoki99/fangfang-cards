@@ -185,7 +185,7 @@ struct CardDetail: View {
                             ForEach(Array(store.alsoSaid(card, rom, place).enumerated()), id: \.offset) { _, x in
                                 OtherRow(label: trs("也講"), rom: x.rom, zy: x.zy)
                             }
-                            if store.cardDiffers(card, place), !store.alsoSaid(card, rom, place).contains(where: { $0.rom == card.rom(rom) }) {
+                            if store.cardDiffers(card, place), store.dict?.raw.loc?[card.k] == nil, !store.alsoSaid(card, rom, place).contains(where: { $0.rom == card.rom(rom) }) {
                                 OtherRow(label: trs("通行"), rom: card.rom(rom), zy: card.zy())
                             }
                             // 華語: the 國語 / 普通話 / 四川話 readings that aren't shown, where they differ
