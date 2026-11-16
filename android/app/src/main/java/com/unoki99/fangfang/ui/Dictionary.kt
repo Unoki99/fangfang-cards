@@ -97,6 +97,8 @@ fun DictEntryBody(d: Dict, key: String) {
             Txt(r, lat(22f), T.greenInk)
             val z = remember(key, tk) { d.wordText(key, 3, place).annotated() }
             Txt(z, sz(19f), T.purpleInk)
+            // every 腔口's reading, the one chosen in colour (guessed ones marked 推測)
+            TwPlaceRows(d, key)
             InputCodesRow(han)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 d.raw.reg[key]?.let { RegChip(it) }
@@ -421,6 +423,35 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
 }
 
 // MARK: - 各地讀音
+
+/** every 腔口 side by side (the name, its reading under it), wrapping onto more lines when needed. A 方言詞 (柑仔得,
+ *  天遮): only the places that say it, not every place nor 通行 */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun TwPlaceRows(d: Dict, key: String) {
+    if (d.raw.places.isEmpty()) return
+    val rom = Prefs.rom.value.coerceIn(0, 2)
+    val place = Prefs.place.value
+    val tk = textKey()
+    val local = d.raw.loc?.get(key)?.filter { it < d.raw.places.size }
+    val cells = if (local != null) local else listOf(-1) + d.raw.places.indices.toList()
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (p in cells) {
+            val mine = p == place
+            val guessed = p >= 0 && d.guessedSyllables(key, p).isNotEmpty()
+            val name = if (p < 0) tr("通行") else tr(d.raw.places[p].take(2))
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
+                    if (guessed) Txt(tr("推測"), ff(FF.Caption2), T.muted)
+                }
+                Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk)
+                Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk)
+                if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p), ff(FF.Caption2), T.muted)
+            }
+        }
+    }
+}
 
 @Composable
 fun PlacesTable(d: Dict, key: String, always: Boolean = false) {

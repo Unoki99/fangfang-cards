@@ -217,6 +217,30 @@ for zh, row in cmp:
         w = add[k]
         w["places"].update(ps)
         if not any(g[0] == zh for g in w["groups"]): w["groups"].append([zh, std])
+# (one 方言詞 said differently in different places, 天遮: one entry, its reading the one most places say, the
+# others as those places' readings)
+by_h = collections.OrderedDict()
+for k in order: by_h.setdefault(k.split("\t")[0], []).append(k)
+order2 = []
+for han, ks in by_h.items():
+    main = max(ks, key=lambda x: len(add[x]["places"]))      # (the first among equals)
+    order2.append(main)
+    w = add[main]
+    for k in ks:
+        if k == main: continue
+        o, rc = add[k], k.split("\t")[1]
+        for p in sorted(o["places"]):
+            if p in w["places"]:
+                xs = dia2.setdefault(main, {}).setdefault(str(p), [])
+                if rc not in xs: xs.append(rc)
+            else:
+                dia.setdefault(main, {})[str(p)] = rc
+                dex[main] = dex.get(main, "") + str(p)
+        used.update(rc.split())
+        w["places"].update(o["places"])
+        for g in o["groups"]:
+            if not any(x[0] == g[0] for x in w["groups"]): w["groups"].append(g)
+order = order2
 TYPE_LOCAL = D["types"].index("方言詞")
 for k in order:
     w = add[k]
@@ -325,7 +349,7 @@ chars = {ch for h, _ in words for ch in h}
 freq = {ch: round(math.log(counts[ch]), 1) for ch in sorted(chars) if counts[ch] > 0}
 
 out = {
-    "v": 4, "words": words, "syl": syl, "tl": tl, "pj": pj,
+    "v": 5, "words": words, "syl": syl, "tl": tl, "pj": pj,
     "defs": {"t": defs_t, "m": defs_m}, "pos": pos, "ex": ex, "reg": reg, "own": own, "au": au,
     "gl": [[k, v] for k, v in gl.items()], "freq": freq, "dex": dex, "ctx": ctx, "dia2": dia2, "sdia": sdia,
     "places": D["places"], "g1": D["g1"], "types": D["types"], "cats": D["cats"],

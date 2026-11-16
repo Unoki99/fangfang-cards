@@ -4,22 +4,51 @@
 // (Everything is inside the extension: no shared folder with the app is needed, so it also works when the app was
 // installed with Sideloadly.)
 
+// (the files read, kept here: a page asks for the words it needs, not the whole files, since sending a whole file to
+// the page each time is slow in Firefox; the newest 96 files are kept, the meta file always)
 const cache = new Map();
-async function file(name) {
-    if (cache.has(name)) return cache.get(name);
-    let j = null;
-    try { j = await ffDB.get(name); } catch (e) { j = null; }
-    if (j === null) {
-        try {
-            const r = await fetch(browser.runtime.getURL(name));
-            if (r.ok) j = await r.json();
-        } catch (e) { j = null; }
+function file(name) {
+    if (cache.has(name)) {
+        const p = cache.get(name);
+        cache.delete(name); cache.set(name, p);          // (most recently used last)
+        return p;
     }
-    cache.set(name, j);
-    if (cache.size > 16) {
+    const p = (async () => {
+        let j = null;
+        try { j = await ffDB.get(name); } catch (e) { j = null; }
+        if (j === null || j === undefined) {
+            try {
+                const r = await fetch(browser.runtime.getURL(name));
+                if (r.ok) j = await r.json();
+            } catch (e) { j = null; }
+        }
+        return j === undefined ? null : j;
+    })();
+    cache.set(name, p);
+    if (cache.size > 96) {
         for (const k of cache.keys()) { if (k !== "d-meta.json") { cache.delete(k); break; } }
     }
-    return j;
+    return p;
+}
+const shardOf = (lang, cp, meta) => `d-${lang}-${String(cp % ((meta && meta.shards) || 256)).padStart(3, "0")}.json`;
+
+/// the longest word each language has at the start of the text (only those words go back to the page)
+async function findWords(text, langs) {
+    const meta = await file("d-meta.json");
+    if (!meta) return { ok: true, ready: false };
+    const chars = [...text].slice(0, meta.max || 12);
+    const out = { ok: true, ready: true };
+    if (!chars.length) return out;
+    const cp = chars[0].codePointAt(0);
+    await Promise.all((langs || []).filter(l => /^[a-z]+$/.test(l)).map(async lang => {
+        const sh = await file(shardOf(lang, cp, meta));
+        if (!sh) return;
+        for (let n = chars.length; n >= 1; n--) {
+            const w = chars.slice(0, n).join("");
+            if (sh[w]) { out[lang] = { w, list: sh[w] }; break; }
+        }
+    }));
+    return out;
 }
 
 async function lookup(text, show) {
@@ -65,6 +94,18 @@ browser.runtime.onMessage.addListener((msg) => {
     }
     // a whole file, for the page's script to keep (it then looks words up by itself, at once)
     if (msg && msg.op === "file" && /^d-[a-z0-9-]+\.json$/.test(msg.name || "")) return file(msg.name).then(data => ({ ok: !!data, data }));
+    if (msg && msg.op === "find") return findWords(String(msg.text || ""), msg.langs).catch(e => ({ ok: false, error: String(e) }));
+    // one entry of a file (the words of one key)
+    if (msg && msg.op === "entry" && /^d-[a-z0-9-]+\.json$/.test(msg.name || "")) {
+        return file(msg.name).then(sh => ({ ok: !!sh, data: (sh && Object.prototype.hasOwnProperty.call(sh, msg.key) && sh[msg.key]) || null }));
+    }
+    // (read ahead into the cache here, nothing sent back)
+    if (msg && msg.op === "warm") {
+        return file("d-meta.json").then(meta => {
+            if (meta) for (const l of (msg.langs || [])) if (/^[a-z]+$/.test(l)) file(shardOf(l, msg.cp | 0, meta));
+            return { ok: true };
+        });
+    }
     if (msg && msg.op === "lookup") return lookup(msg.text || "", msg.show).catch(e => ({ ok: false, error: String(e) }));
     if (msg && msg.op === "places") return file("d-meta.json").then(m => ({ ok: true, places: (m && m.places) || [], ready: !!m }));
     return Promise.resolve({ ok: false });

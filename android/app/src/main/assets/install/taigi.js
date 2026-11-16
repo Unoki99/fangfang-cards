@@ -795,6 +795,35 @@ function buildTaigi(a) {
                 if (!w.groups.some(g => g[0] === zh)) w.groups.push([zh, std]);
             }
         }
+        // (one 方言詞 said differently in different places, 天遮: one entry, its reading the one most places say,
+        // the others as those places' readings)
+        const byH = new Map();
+        for (const k of order) { const h = k.split("\t")[0]; if (!byH.has(h)) byH.set(h, []); byH.get(h).push(k); }
+        const order2 = [];
+        for (const ks of byH.values()) {
+            let main = ks[0];
+            for (const k of ks) if (add.get(k).places.size > add.get(main).places.size) main = k;
+            order2.push(main);
+            const w = add.get(main);
+            for (const k of ks) {
+                if (k === main) continue;
+                const o = add.get(k), rc = k.split("\t")[1];
+                for (const p of Array.from(o.places).sort((x, y) => x - y)) {
+                    if (w.places.has(p)) {
+                        const d2 = dia2[main] || (dia2[main] = {});
+                        const xs = d2[String(p)] || (d2[String(p)] = []);
+                        if (!xs.includes(rc)) xs.push(rc);
+                    } else {
+                        (dia[main] = dia[main] || {})[String(p)] = rc;
+                        dex[main] = (dex[main] || "") + String(p);
+                    }
+                }
+                for (const y of split(rc)) used.add(y);
+                for (const p of o.places) w.places.add(p);
+                for (const g of o.groups) if (!w.groups.some(x => x[0] === g[0])) w.groups.push(g);
+            }
+        }
+        order.length = 0; order.push(...order2);
         for (const k of order) {
             const w = add.get(k);
             const [han, rc] = k.split("\t");
@@ -921,7 +950,7 @@ function buildTaigi(a) {
     }
     const mapObj = m => { const o = {}; for (const [k, v] of m) o[k] = v; return o; };
     const dict = {
-        v: 4, words, syl: sylT, tl, pj,
+        v: 5, words, syl: sylT, tl, pj,
         defs: { t: defsT, m: defsM }, pos: posM, ex, reg, own, au,
         gl: Array.from(gl), freq, dex, ctx, dia2, sdia,
         places: D.places, g1: D.g1, types: D.types, cats: D.cats,

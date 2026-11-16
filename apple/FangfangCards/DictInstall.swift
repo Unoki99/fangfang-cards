@@ -196,7 +196,7 @@ struct DictPack: Identifiable {
         from: "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻",
         download: "約 15 MB", bundled: ["own": "twown.json"],
         // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own)
-        dataVersion: 4)
+        dataVersion: 5)
 
     static let mandarin: DictPack = {
         let g = "https://raw.githubusercontent.com/"

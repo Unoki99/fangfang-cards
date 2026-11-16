@@ -135,7 +135,7 @@
         if (browser.storage.onChanged) browser.storage.onChanged.addListener((ch, area) => {
             if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (isOpen() && last && !card.querySelector(".set")) redraw(); }
             // (a dictionary installed or taken away in 設定 → 詞典: its files read again)
-            if (ch.ffData) { metaP = null; shardP.clear(); }
+            if (ch.ffData) { metaP = null; shardP.clear(); foundP.clear(); entryP.clear(); warmed.clear(); }
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
             if (ch.ffSaved) saved = ch.ffSaved.newValue || [];
             if (ch.ffWatch) watchCache = ch.ffWatch.newValue || {};
@@ -288,11 +288,30 @@
         const n = (meta && meta.shards) || 256;
         return `d-sv-${String((w.charCodeAt(0) * 31 + (w.length > 1 ? w.charCodeAt(1) : 0)) % n).padStart(3, "0")}.json`;
     }
+    // (the languages looked up: the ones chosen that have a dictionary)
+    const findLangs = meta => ["zh", "tw", "yue", "hak"].filter(l => prefs[l] && (meta[l] === undefined || meta[l] > 0));
+    // (the files for a character read ahead where they're kept, in the add-on: only the words found come to the page.
+    // Sending whole files to the page on every new character made hovering slow on long pages in Firefox)
+    let warmed = new Set();
     function prefetch(cp) {
         getMeta().then(m => {
             if (!m) return;
-            for (const l of ["zh", "tw", "yue", "hak"]) if (prefs[l] && (m[l] === undefined || m[l] > 0)) getFile(shardName(l, cp, m));
+            const i = cp % (m.shards || 256);
+            if (warmed.has(i)) return;
+            warmed.add(i);
+            if (warmed.size > 80) warmed = new Set([i]);
+            ask({ op: "warm", cp, langs: findLangs(m) });
         });
+    }
+    // one entry of a file (sv / en words), asked for alone
+    const entryP = new Map();
+    function getEntry(name, key) {
+        const k = name + "|" + key;
+        if (!entryP.has(k)) {
+            entryP.set(k, ask({ op: "entry", name, key }).then(r => (r && r.ok) ? r.data : null));
+            if (entryP.size > 2000) entryP.delete(entryP.keys().next().value);
+        }
+        return entryP.get(k);
     }
 
     // 瑞典語: the word, or one of its forms (bilarna → bil)
@@ -339,14 +358,13 @@
         const out = { ok: true, ready: true, tab: meta };
         let w = text.toLowerCase();
         if (!prefs.en2zh || !meta.en || w.length < 2) return out;
-        const sh = await getFile(enShard(w, meta));
-        let hit = sh && sh[w];
+        let hit = await getEntry(enShard(w, meta), w);
         // (eats, eating, eaten: the word without its ending)
         if (!hit) for (const end of ["ing", "ed", "es", "s"]) {
             if (!w.endsWith(end) || w.length - end.length < 3) continue;
             for (const b of [w.slice(0, -end.length), w.slice(0, -end.length) + "e"]) {
-                const s2 = await getFile(enShard(b, meta));
-                if (s2 && s2[b]) { hit = s2[b]; break; }
+                const e2 = await getEntry(enShard(b, meta), b);
+                if (e2) { hit = e2; break; }
             }
             if (hit) break;
         }
@@ -355,8 +373,7 @@
             if (!prefs[lang] || !hit[lang]) continue;
             const list = [];
             for (const h of hit[lang]) {
-                const s2 = await getFile(shardName(lang, h.codePointAt(0), meta));
-                for (const e of (s2 && s2[h]) || []) {
+                for (const e of (await getEntry(shardName(lang, h.codePointAt(0), meta), h)) || []) {
                     // (the word's own entries, not the 台語 words given for a 華語 word)
                     if (e.k.split("\t")[0] !== h || e.v || list.some(x => x.k === e.k)) continue;
                     list.push(e);
@@ -546,23 +563,25 @@
     // (華語 guessed from the English, ≈, when there's no Chinese meaning and the 設定 says so)
     function svGloss(e) { return e.m ? e.m.split("、")[0] : (prefs.svGuess && e.q ? "≈" + e.q.split("、")[0] : (e.e ? e.e.split(";")[0].trim() : "")); }
 
+    const foundP = new Map();     // (the words found for a text, kept: the same text again is answered at once)
     async function find(text) {
         const meta = await getMeta();
         if (!meta) return { ok: true, ready: false };
         const chars = [...text].slice(0, meta.max || 12);
         const out = { ok: true, ready: true, tab: meta };
         if (!chars.length) return out;
-        const cp = chars[0].codePointAt(0);
-        const want = ["zh", "tw", "yue", "hak"].filter(l => prefs[l] && (meta[l] === undefined || meta[l] > 0));
-        const files = await Promise.all(want.map(l => getFile(shardName(l, cp, meta))));
-        want.forEach((lang, j) => {
-            const sh = files[j];
-            if (!sh) return;
-            for (let n = chars.length; n >= 1; n--) {
-                const w = chars.slice(0, n).join("");
-                if (sh[w]) { out[lang] = { w, list: sh[w] }; break; }
-            }
-        });
+        const want = findLangs(meta);
+        const ck = want.join(",") + "|" + chars.join("");
+        let r = foundP.get(ck);
+        if (!r) {
+            r = ask({ op: "find", text: chars.join(""), langs: want });
+            foundP.set(ck, r);
+            if (foundP.size > 400) foundP.delete(foundP.keys().next().value);
+        }
+        const res = await r;
+        if (!res || !res.ok) { foundP.delete(ck); return res || { ok: false }; }
+        if (!res.ready) { foundP.delete(ck); return { ok: true, ready: false }; }
+        for (const l of want) if (res[l]) out[l] = res[l];
         return out;
     }
 
@@ -1175,8 +1194,11 @@
 
     // ── the card ────────────────────────────────────────────────────────────────────────────
     const CSS_TEXT = `
-        :host { all: initial; }
-        .card { position: fixed; z-index: 2147483647; width: max-content; max-width: min(360px, calc(100vw - 16px));
+        /* (the box the card lives in is out of the page's flow, size 0 in the corner: changing the card then doesn't make the
+           browser lay out the whole page again, which on long pages, Wikipedia or YouTube's comments, made it slow) */
+        :host { all: initial; position: fixed !important; left: 0 !important; top: 0 !important; width: 0 !important;
+            height: 0 !important; overflow: visible !important; z-index: 2147483647 !important; contain: style; }
+        .card { position: fixed; z-index: 2147483647; contain: layout style; width: max-content; max-width: min(360px, calc(100vw - 16px));
             max-height: min(70vh, 540px); display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden;
             background: rgba(30, 31, 35, 0.97); color: #f2f2f2; border: 1.5px solid #4b4b4e;
             border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,.45);
@@ -1781,7 +1803,7 @@
         if (lat) {
             getMeta().then(m => {
                 if (m && m.sv && prefs.sv) getFile(svShard(lat.text.toLowerCase(), m));
-                if (m && m.en && prefs.en2zh) getFile(enShard(lat.text.toLowerCase(), m));
+                if (m && m.en && prefs.en2zh) getEntry(enShard(lat.text.toLowerCase(), m), lat.text.toLowerCase());
             });
         } else prefetch(hit.cp);
         const go = () => {

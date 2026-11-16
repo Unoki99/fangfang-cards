@@ -94,7 +94,7 @@ class DictPack(
             "taigi", "buildTaigi", "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻", "約 15 MB",
             bundled = mapOf("own" to "twown.json"),
             // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own)
-            dataVersion = 4)
+            dataVersion = 5)
 
         val mandarin = DictPack("zh", 1, "華語", listOf("zh", "inputcodes"),
             listOf(Source("dict-csld.json", G + "g0v/moedict-data-csld/master/dict-csld.json", arg = "csld"),

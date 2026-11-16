@@ -153,7 +153,7 @@ foreach ($dir in @($Keep, $Assets, $Apd)) {
     $dj = Join-Path $dir "dict.json"
     if (Test-Path $dj) {
         $fs = [IO.File]::OpenRead($dj); $buf = New-Object byte[] 64; $n = $fs.Read($buf, 0, 64); $fs.Close()
-        if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":4')) {
+        if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":5')) {
             Remove-Item $dj -Force
             Remove-Item (Join-Path $dir "cards.json") -Force -ErrorAction SilentlyContinue
         }

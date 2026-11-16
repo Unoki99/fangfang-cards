@@ -75,7 +75,7 @@ if [ "$SAFARI" = "1" ]; then
   for f in "$DEST"/data/safari/d-*.json; do [ -f "$f" ] && mv -f "$f" "$DEST/FangfangSafari/"; done
   # (台語 data made by an older version, without the 方言詞, or with 的 --ê and ê as one word: made again)
   D0="$DEST/FangfangCards/dict.json"
-  if [ -f "$D0" ] && ! head -c 40 "$D0" | grep -q '"v":4'; then echo "（台語資料是舊版做的，重新建立）"; rm -f "$D0" "$DEST/FangfangCards/cards.json"; fi
+  if [ -f "$D0" ] && ! head -c 40 "$D0" | grep -q '"v":5'; then echo "（台語資料是舊版做的，重新建立）"; rm -f "$D0" "$DEST/FangfangCards/cards.json"; fi
   if [ ! -f "$DEST/FangfangCards/dict.json" ] || [ ! -f "$DEST/FangfangCards/cards.json" ]; then
     bash "$DEST/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
   fi
@@ -100,7 +100,7 @@ if [ "$SAFARI" = "1" ]; then
   # 華語 words' 四川話 readings (Wiktionary); made again when it was made by an older version (without the guessed and
   # predicted ones)
   SC="$DEST/FangfangCards/zh_sc.json"
-  if [ -f "$SC" ] && ! head -c 40 "$SC" | grep -q '"v":4'; then rm -f "$SC"; fi
+  if [ -f "$SC" ] && ! head -c 40 "$SC" | grep -q '"v":5'; then rm -f "$SC"; fi
   if [ ! -f "$DEST/FangfangCards/zh_sc.json" ]; then
     bash "$DEST/build-data.sh" sc || echo "（沒辦法建立四川話讀音，先跳過）"
   fi
