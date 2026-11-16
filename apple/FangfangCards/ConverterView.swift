@@ -2546,9 +2546,11 @@ struct PlacesTable: View {
     var body: some View {
         let main = Dict.codesOf(key)
         let colours = ToneColors.system != 0
+        // a 方言詞 (柑仔得): only the places that say it, not every place
+        let local = dict.raw.loc?[key]
         let groups: [(codes: String, guessed: Bool, tones: [Int], places: [Int])] = {
             var out: [(codes: String, guessed: Bool, tones: [Int], places: [Int])] = []
-            for p in dict.raw.places.indices {
+            for p in local ?? Array(dict.raw.places.indices) where p < dict.raw.places.count {
                 // a place that says it like 通行 (臺南/高雄 o → or included) shares the 通行 box
                 let c = dict.differsFromCommon(key, p) ? dict.codesFor(key, p) : main
                 let g = !dict.guessedSyllables(key, p).isEmpty
@@ -2568,7 +2570,7 @@ struct PlacesTable: View {
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
                     VStack(alignment: .leading, spacing: 3) {
                         Text(g.places.map { String(dict.raw.places[$0].prefix(2)) }.joined(separator: "、")
-                             + (g.codes == main ? (commonBoxes > 1 ? (g.places.contains(where: { dict.quanSandhi($0) }) ? trs("（同通行，泉腔變調）") : trs("（同通行，漳腔變調）")) : trs("（同通行）")) : ""))
+                             + (local != nil ? "" : g.codes == main ? (commonBoxes > 1 ? (g.places.contains(where: { dict.quanSandhi($0) }) ? trs("（同通行，泉腔變調）") : trs("（同通行，漳腔變調）")) : trs("（同通行）")) : ""))
                             .ffFont(.caption).foregroundStyle(g.places.contains(place) ? T.oliveInk : T.muted)
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             // the 通行 box is written the 通行 way, whichever places share it
@@ -3348,10 +3350,12 @@ struct TwPlaceRows: View {
     @AppStorage("place") private var place = -1
     var body: some View {
         // every 腔口 side by side (the name, its reading under it), wrapping onto more lines when needed
+        // (a 方言詞, 柑仔得: only the places that say it, not every place nor 通行)
         if !dict.raw.places.isEmpty {
+            let local = dict.raw.loc?[key]?.filter { $0 < dict.raw.places.count }
             FlowLayout(spacing: 10) {
-                cell(-1)
-                ForEach(dict.raw.places.indices, id: \.self) { p in cell(p) }
+                if local == nil { cell(-1) }
+                ForEach(local ?? Array(dict.raw.places.indices), id: \.self) { p in cell(p) }
             }
         }
     }

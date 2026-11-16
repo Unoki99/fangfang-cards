@@ -335,7 +335,7 @@ final class Dict: @unchecked Sendable {
         guard let s = raw.syl[c] else { return c }
         switch sys {
         // with a place chosen, 台羅 o is ㄛ — except in 臺南 and 高雄, where o is always said ㄜ
-        case 3: return place >= 0 && c.contains("ø") && !orPlaces.contains(place) ? s[0].replacingOccurrences(of: "ㄜ", with: "ㄛ") : s[0]
+        case 3: return HongimTone1.apply(place >= 0 && c.contains("ø") && !orPlaces.contains(place) ? s[0].replacingOccurrences(of: "ㄜ", with: "ㄛ") : s[0])
         case 1: return raw.tl[c]?.first ?? s[1]
         case 2: return raw.pj[c] ?? s[1]
         default: return s[1]

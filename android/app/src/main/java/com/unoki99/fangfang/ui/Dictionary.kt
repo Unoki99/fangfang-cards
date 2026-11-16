@@ -37,7 +37,7 @@ import kotlinx.coroutines.withContext
 
 /** what the texts depend on: redraw (and work out again) when one of these changes */
 @Composable
-fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneMarks.value, Prefs.toneGlow.value, Prefs.theme.value,
+fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value, Prefs.toneGlow.value, Prefs.theme.value,
     Prefs.zhRom.value, Prefs.zhPlace.value)
 
 // MARK: - entry
@@ -430,7 +430,9 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
     class G(val codes: String, val guessed: Boolean, val tones: List<Int>, val places: MutableList<Int>)
     val groups = remember(key, colours) {
         val out = ArrayList<G>()
-        for (p in d.raw.places.indices) {
+        // a 方言詞 (柑仔得): only the places that say it, not every place
+        for (p in (d.raw.loc?.get(key) ?: d.raw.places.indices.toList())) {
+            if (p >= d.raw.places.size) continue
             // a place that says it like 通行 shares the 通行 box
             val c = if (d.differsFromCommon(key, p)) d.codesFor(key, p) else main
             val g = d.guessedSyllables(key, p).isNotEmpty()
@@ -450,7 +452,7 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.55f))
                 .border(1.5.dp, if (g.places.contains(place)) T.placeEdge else Color.Transparent, RoundedCornerShape(12.dp)).padding(10.dp),
                 verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                val note = if (g.codes != main) "" else if (commonBoxes > 1) (if (g.places.any { d.quanSandhi(it) }) "（同通行，泉腔變調）" else "（同通行，漳腔變調）") else "（同通行）"
+                val note = if (g.codes != main || d.raw.loc?.get(key) != null) "" else if (commonBoxes > 1) (if (g.places.any { d.quanSandhi(it) }) "（同通行，泉腔變調）" else "（同通行，漳腔變調）") else "（同通行）"
                 Txt(g.places.joinToString("、") { d.raw.places[it].take(2) } + note,
                     ff(FF.Caption), if (g.places.contains(place)) T.oliveInk else T.muted)
                 // the 通行 box is spelled the 通行 way, but with the tones as these places change them
@@ -1020,6 +1022,22 @@ private fun OwnPane(d: Dict) {
             }
         }
     }
+    // 匯出: your words as a CSV file (漢字, 讀音 in the spelling picked, 意思, 例句), the columns 從 CSV 檔加入 reads
+    var exportMenu by remember { mutableStateOf(false) }
+    var pending by remember { mutableStateOf("") }
+    val saveCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
+        if (uri != null) try { ctx.contentResolver.openOutputStream(uri)?.use { it.write(pending.toByteArray()) } } catch (_: Exception) { message = tr("匯出失敗。") }
+    }
+    fun ownCsv(sys: Int): String {
+        fun q(s: String) = if (s.any { it == ',' || it == '"' || it == '\n' || it == '\r' }) "\"" + s.replace("\"", "\"\"") + "\"" else s
+        val rows = mutableListOf("characters,reading,meaning,example")
+        for (k in Store.ownKeys) {
+            val i = Store.ownInfo(k)
+            rows.add(listOf(Dict.hanOf(k), d.codes(Dict.codesOf(k), sys, -1), i.first, i.second).joinToString(",") { q(it) })
+        }
+        // (with the mark at the start that tells Excel the file is UTF-8)
+        return "\uFEFF" + rows.joinToString("\r\n") + "\r\n"
+    }
     val keys = Store.ownKeys
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
@@ -1028,8 +1046,24 @@ private fun OwnPane(d: Dict) {
             SoftButton(onClick = { pick.launch(arrayOf("text/*", "application/csv", "application/vnd.ms-excel", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth()) {
                 IconLabel(Icons.Filled.TableChart, tr("從 CSV 檔加入"), ff(FF.Headline), T.ownInk)
             }
+            if (keys.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Box {
+                    SoftButton(onClick = { exportMenu = true }, modifier = Modifier.fillMaxWidth()) {
+                        IconLabel(Icons.Filled.IosShare, tr("匯出 CSV"), ff(FF.Headline), T.ownInk)
+                    }
+                    DropdownMenu(exportMenu, { exportMenu = false }, containerColor = T.fn) {
+                        Text(tr("讀音用哪一種寫法？"), color = T.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp))
+                        listOf("皓羅", "台羅", "白話字", "方音").forEachIndexed { sys, name ->
+                            DropdownMenuItem(text = { Text(tr(name), color = T.glyph) }, onClick = {
+                                exportMenu = false; pending = ownCsv(sys); saveCsv.launch("方方-自訂詞-$name.csv")
+                            })
+                        }
+                    }
+                }
+            }
             message?.let { Txt(it, ff(FF.Footnote), T.muted, Modifier.padding(6.dp)) }
-            Txt(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。"), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
+            Txt(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。匯出的時候可以選讀音用哪一種寫法。"), ff(FF.Footnote), T.muted, Modifier.padding(6.dp))
             if (keys.isNotEmpty()) SectionTitle(tr("{0} 個詞（往左滑刪除）", keys.size))
         }
         items(keys, key = { "o|$it" }) { k ->

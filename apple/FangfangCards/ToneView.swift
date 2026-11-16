@@ -247,7 +247,7 @@ struct ToneView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(q.card.h).ffFont(.title2, .medium).foregroundStyle(T.blueInk)
                         Text(q.answer.rom[min(max(rom, 0), 2)]).latFont(22).foregroundStyle(T.greenInk)
-                        Text(q.card.z).foregroundStyle(T.purpleInk)
+                        Text(q.card.zy()).foregroundStyle(T.purpleInk)
                     }
                     if store.isYue {
                         Text(tr("第 \(t) 聲（\(YUE_TONE_NAMES[t] ?? "")）")).ffFont(.subheadline).foregroundStyle(T.glyph)

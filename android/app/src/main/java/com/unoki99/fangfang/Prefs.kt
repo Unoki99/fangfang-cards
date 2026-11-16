@@ -53,6 +53,10 @@ object Prefs : KeyValue {
     val place = Pref("place", -1)
     val toneSys = Pref("toneColors", 0)
     val toneMarks = Pref("toneMarksSandhi", false)
+    /** 設定 → 語言與讀音 → 台語: 方音's first-tone mark (ˉ) written or left out */
+    val hongimTone1 = Pref("hongimTone1", true)
+    /** …and, left out, a space in its place */
+    val hongimTone1Space = Pref("hongimTone1Space", false)
     val toneGlow = Pref("toneGlow", true)
     val hideMeaning = Pref("hideMeaning", false)
     val autoPlay = Pref("autoPlay", false)
@@ -202,7 +206,7 @@ object Prefs : KeyValue {
     /** 本週學習 → 選詞: the 分類 the words are picked from (-1 = 不熟) */
     val weekPickTopic = Pref("weekPickTopic", -1)
 
-    private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, toneGlow, hideMeaning, autoPlay, volume, goal, sessionSize,
+    private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, hongimTone1, hongimTone1Space, toneGlow, hideMeaning, autoPlay, volume, goal, sessionSize,
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
@@ -218,6 +222,8 @@ object Prefs : KeyValue {
         syncEngine()
         toneSys.onChange = { syncEngine() }
         toneMarks.onChange = { syncEngine() }
+        hongimTone1.onChange = { syncEngine() }
+        hongimTone1Space.onChange = { syncEngine() }
         com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value, toneColorsHak.value)
         simplified.onChange = { syncEngine() }
         loadJaColors()
@@ -230,6 +236,8 @@ object Prefs : KeyValue {
     fun syncEngine() {
         EngineSettings.toneSystem = toneSys.value
         EngineSettings.toneMarks = toneMarks.value
+        EngineSettings.hongimTone1 = hongimTone1.value
+        EngineSettings.hongimTone1Space = hongimTone1Space.value
         EngineSettings.simplified = simplified.value
         EngineSettings.hakAccent = hakAccent.value.coerceIn(0, 5)
     }

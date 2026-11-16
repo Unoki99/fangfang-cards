@@ -464,7 +464,7 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     fun syl(c: String, sys: Int, place: Int): String {
         val s = raw.syl[c] ?: return c
         return when (sys) {
-            3 -> if (place >= 0 && c.contains("ø") && !orPlaces.contains(place)) s[0].replace("ㄜ", "ㄛ") else s[0]
+            3 -> EngineSettings.hongim(if (place >= 0 && c.contains("ø") && !orPlaces.contains(place)) s[0].replace("ㄜ", "ㄛ") else s[0])
             1 -> raw.tl[c]?.firstOrNull() ?: s[1]
             2 -> raw.pj[c] ?: s[1]
             else -> s[1]

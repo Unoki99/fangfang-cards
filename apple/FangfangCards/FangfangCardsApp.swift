@@ -66,6 +66,8 @@ struct RootView: View {
     @AppStorage("rom") private var rom = 0
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
+    @AppStorage(HongimTone1.key) private var hongimTone1 = true
+    @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
     @AppStorage("pickedLanguage") private var pickedLanguage = false
     @AppStorage(UILang.key) private var uiLang = 0
@@ -172,6 +174,8 @@ struct RootView: View {
         // 聲調顏色 needs the dictionary (word classes, readings in sentences)
         .onChange(of: toneSys) { if toneSys != 0 { store.loadDict() }; WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: toneMarks) { WidgetBridge.rebuildIfNeeded(store) }
+        .onChange(of: hongimTone1) { WidgetBridge.rebuildIfNeeded(store) }
+        .onChange(of: hongimTone1Space) { WidgetBridge.rebuildIfNeeded(store) }
         // 華語 words on the widgets: their meaning, reading and word list
         .onChange(of: zhEnglish) { WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: store.zhList) { WidgetBridge.rebuildIfNeeded(store) }

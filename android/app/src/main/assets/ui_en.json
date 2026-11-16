@@ -1558,7 +1558,8 @@
   "從 CSV 檔加入": "Add from a CSV file",
   "這個檔案是空的。": "This file is empty.",
   "加入了 {0} 個詞。": "Added {0} words.",
-  "自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。": "Words you add yourself aren't from the Ministry of Education dictionary; Convert and Dictionary mark them in purple with “Own”. A CSV file: one word a line, with its characters and reading, and a meaning and example sentence if you like; you choose which column is which before adding.",
+  "自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。匯出的時候可以選讀音用哪一種寫法。": "Words you add yourself aren't from the Ministry of Education dictionary; Convert and Dictionary mark them in purple with “Own”. A CSV file: one word a line, with its characters and reading, and a meaning and example sentence if you like; you choose which column is which before adding. When you export, you choose which spelling the readings are written in.",
+  "讀音用哪一種寫法？": "Which spelling for the readings?",
   "意思（可以不寫）": "Meaning (optional)",
   "例句（可以不寫）": "Example sentence (optional)",
   "意思和例句": "Meaning and example",
@@ -1579,5 +1580,7 @@
   "第 {0} 行": "Line {0}",
   "第 {0} 行：讀音不像選的寫法，請看一下對不對。": "Line {0}: the reading doesn't look like the chosen spelling; check that it's right.",
   "檔案裡已經有這個詞了。": "This word is already in the file.",
-  "{0} 行": "{0} lines"
+  "{0} 行": "{0} lines",
+  "方音標第一聲（ˉ）": "Mark Hongim's first tone (ˉ)",
+  "第一聲的地方空一格": "A space where the first-tone mark was"
 }

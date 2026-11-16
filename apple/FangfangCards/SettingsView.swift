@@ -126,13 +126,29 @@ struct SettingsView: View {
 /// every topic page looks the same: a Form on the app's background
 struct SettingsPage<Content: View>: View {
     let title: String
+    /// a row kept on the screen when `trigger` changes (文字大小: the page is laid out again at the new size, and
+    /// the list would otherwise go back to its top)
+    var keep: String? = nil
+    var trigger: Int = 0
     @ViewBuilder let content: () -> Content
     var body: some View {
-        Form { content() }
-            .scrollContentBackground(.hidden)
-            .appBackground()
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
+        ScrollViewReader { proxy in
+            Form { content() }
+                .scrollContentBackground(.hidden)
+                .appBackground()
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .onChange(of: trigger) {
+                    guard let keep else { return }
+                    // (once the new size is laid out, and again when the rows have settled)
+                    for delay in [0.05, 0.3] {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                            var t = Transaction(); t.disablesAnimations = true
+                            withTransaction(t) { proxy.scrollTo(keep, anchor: .center) }
+                        }
+                    }
+                }
+        }
     }
 }
 
@@ -156,7 +172,7 @@ private struct LookSettings: View {
     @State private var fontReady = true
 
     var body: some View {
-        SettingsPage(title: tr("顏色與外觀")) {
+        SettingsPage(title: tr("顏色與外觀"), keep: "textSize", trigger: textSize) {
             // 字體: the app's 漢字 and kana in the system font or a handwriting font
             Section {
                 Picker(tr("字體"), selection: $dictFont) {
@@ -277,6 +293,7 @@ private struct LookSettings: View {
                 } footer: {
                     Text(tr("鍵盤：⌘+、⌘−、⌘0"))
                 }
+                .id("textSize")
             }
             Section {
                 HStack(spacing: 10) {
@@ -317,6 +334,8 @@ private struct LanguageSettings: View {
     @AppStorage(Lang.svRomKey) private var svRomSaved = 0
     @AppStorage(SvGuess.key) private var svGuess = true
     @AppStorage(Simp.key) private var simplified = false
+    @AppStorage(HongimTone1.key) private var hongimTone1 = true
+    @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
@@ -355,6 +374,12 @@ private struct LanguageSettings: View {
                     ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
                 }
                 .onChange(of: place) { if place >= 0 { store.loadDict() } }
+                Toggle(tr("方音標第一聲（ˉ）"), isOn: $hongimTone1)
+                    .onChange(of: hongimTone1) { store.objectWillChange.send() }
+                // (only when the mark is left out: a space in its place)
+                Toggle(tr("第一聲的地方空一格"), isOn: $hongimTone1Space)
+                    .disabled(hongimTone1)
+                    .onChange(of: hongimTone1Space) { store.objectWillChange.send() }
             }
             Section {
                 Picker(tr("字形"), selection: $simplified) {

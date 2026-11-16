@@ -134,6 +134,10 @@ fun CsvImportDialog(d: Dict, file: CsvFile, onDone: (Int?) -> Unit) {
         colHan = hc; colReading = rc
         colMeaning = (0 until columns).firstOrNull { it != hc && it != rc } ?: -1
         header = !isHan(first.getOrElse(hc) { "" }) || !isReading(first.getOrElse(rc) { "" })
+        // (a file this app exported, or one with its columns named: the meaning and example columns by their names)
+        val names = first.map { it.lowercase() }
+        names.indexOfFirst { it == "meaning" || it == "意思" }.let { if (it >= 0 && it != hc && it != rc) colMeaning = it }
+        names.indexOfFirst { it == "example" || it == "例句" }.let { if (it >= 0 && it != hc && it != rc && it != colMeaning) colExample = it }
     }
     val results = remember(header, colHan, colReading, colMeaning, colExample, system, Store.rev) {
         val out = ArrayList<CsvRow>(); val seen = HashSet<String>()

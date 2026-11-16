@@ -119,6 +119,13 @@ private fun taigiRows(d: Dict?, q0: String, rom: Int, toneSys: Int): List<Readin
     for ((n, codes) in codesList.take(4).withIndex()) {
         val key = q + "\t" + codes
         val alt = if (n > 0) "（" + tr("又") + "）" else ""
+        // (a 方言詞, 柑仔得: only the places that say it)
+        val local = d.raw.loc?.get(key)?.filter { it < d.raw.places.size }
+        if (!local.isNullOrEmpty()) {
+            val names = local.joinToString("、") { tr(d.raw.places[it].take(2)) }
+            out.add(ReadingRow(0, tr("臺") + "・" + names + alt, d.wordText(key, rom, -1).annotated(), d.wordText(key, 3, -1).plain()))
+            continue
+        }
         out.add(ReadingRow(0, tr("臺") + "・" + tr("通行") + alt, d.wordText(key, rom, -1).annotated(), d.wordText(key, 3, -1).plain()))
         // the places that say it differently (or, with tone colours, change its tones differently)
         class G(val codes: String, val tones: List<Int>, val places: MutableList<Int>)

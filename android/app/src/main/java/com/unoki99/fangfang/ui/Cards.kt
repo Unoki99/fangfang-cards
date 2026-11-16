@@ -419,7 +419,7 @@ private fun CardDetail(card: Card) {
                 }
                 Txt(Store.cardRom(card, rom, place).annotated(), lat(24f), T.greenInk)
                 Txt(Store.cardZy(card, place).annotated(), sz(17f), T.purpleInk)
-                for (o in card.o ?: emptyList()) OtherRow(o.l, o.r[rom.coerceIn(0, 2)], o.z)
+                for (o in card.o ?: emptyList()) OtherRow(o.l, o.r[rom.coerceIn(0, 2)], com.unoki99.fangfang.engine.EngineSettings.hongim(o.z))
                 Txt(when (Store.status(card)) { 1 -> tr("熟悉"); 2 -> tr("不熟（連續答對 {0} 次）", Store.streak(card)); else -> tr("還沒看過") }, ff(FF.Caption), T.muted)
             }
             for ((i, d) in card.d.withIndex()) Panel {

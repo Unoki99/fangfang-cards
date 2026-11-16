@@ -84,7 +84,7 @@ struct WordCard: View {
                     } else if let o = card.o?.first {
                         HStack(spacing: 6) {
                             Chip(text: o.l)
-                            Text(rom == 3 ? o.z : o.r[min(max(rom, 0), 2)]).latFont(15).foregroundStyle(T.greenInk.opacity(0.85))
+                            Text(rom == 3 ? HongimTone1.apply(o.z) : o.r[min(max(rom, 0), 2)]).latFont(15).foregroundStyle(T.greenInk.opacity(0.85))
                         }
                     }
                 }
@@ -186,7 +186,7 @@ struct CardDetail: View {
                                 OtherRow(label: trs("也講"), rom: x.rom, zy: x.zy)
                             }
                             if store.cardDiffers(card, place), !store.alsoSaid(card, rom, place).contains(where: { $0.rom == card.rom(rom) }) {
-                                OtherRow(label: trs("通行"), rom: card.rom(rom), zy: card.z)
+                                OtherRow(label: trs("通行"), rom: card.rom(rom), zy: card.zy())
                             }
                             // 華語: the 國語 / 普通話 / 四川話 readings that aren't shown, where they differ
                             if card.isZh, let d = store.zh {
@@ -195,7 +195,7 @@ struct CardDetail: View {
                                 }
                             }
                             ForEach(Array((card.o ?? []).enumerated()), id: \.offset) { _, o in
-                                OtherRow(label: o.l, rom: rom == 3 ? o.z : o.r[min(max(rom, 0), 2)], zy: o.z)
+                                OtherRow(label: o.l, rom: rom == 3 ? HongimTone1.apply(o.z) : o.r[min(max(rom, 0), 2)], zy: HongimTone1.apply(o.z))
                             }
                             if let cs = card.cats, !cs.isEmpty {
                                 HStack(spacing: 6) {

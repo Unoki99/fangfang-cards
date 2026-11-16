@@ -67,9 +67,9 @@ class Card(
         return r[j]
     }
     fun zy(place: Int = -1): String {
-        if (place < 0) return z
-        v?.get(place.toString())?.let { return it.z }
-        return zo ?: z
+        if (place < 0) return EngineSettings.hongim(z)
+        v?.get(place.toString())?.let { return EngineSettings.hongim(it.z) }
+        return EngineSettings.hongim(zo ?: z)
     }
     fun differs(place: Int) = place >= 0 && v?.get(place.toString()) != null
     val syllables: Int get() = r[0].split("-").filter { it.isNotEmpty() }.size

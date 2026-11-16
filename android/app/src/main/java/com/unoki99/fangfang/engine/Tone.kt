@@ -20,6 +20,13 @@ object EngineSettings {
     @Volatile var toneSystem = 0
     /** the tone marks show the tone after sandhi too */
     @Volatile var toneMarks = true
+    /** 方音's first-tone mark (ˉ) written (設定 → 語言與讀音 → 台語); some leave it out, as 注音 does */
+    @Volatile var hongimTone1 = true
+    /** with the mark left out: a space where it was (ㄉㄚ ㄍㄚ), or nothing */
+    @Volatile var hongimTone1Space = false
+
+    /** a 方音 reading with or without the first-tone mark, as chosen */
+    fun hongim(s: String): String = if (hongimTone1 || !s.contains('ˉ')) s else s.replace("ˉ", if (hongimTone1Space) " " else "")
     /** 粵語 shown (Store) */
     @Volatile var yue = false
     /** 客語 shown (Store) */

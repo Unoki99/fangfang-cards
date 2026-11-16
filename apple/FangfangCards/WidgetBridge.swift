@@ -95,7 +95,7 @@ enum WidgetBridge {
     private static var cacheStamp = ""
     private static func writeUnknown(_ store: Store, _ keys: [String]) {
         let place = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
-        let stamp = "\(keys.hashValue)|\(place)|\(store.zh?.lang ?? -1)|\(store.dict != nil)|\(ToneColors.system)|\(ToneColors.marks)|\(ToneColors.signature)|\(ZhMeaning.english)|\(Lang.zhRom)|\(Lang.zhPlace)"
+        let stamp = "\(keys.hashValue)|\(place)|\(store.zh?.lang ?? -1)|\(store.dict != nil)|\(ToneColors.system)|\(ToneColors.marks)|\(HongimTone1.on)\(HongimTone1.space)|\(ToneColors.signature)|\(ZhMeaning.english)|\(Lang.zhRom)|\(Lang.zhPlace)"
         guard stamp != unknownStamp else { return }
         unknownStamp = stamp
         // the words already written out stay good while the settings stay the same
@@ -139,7 +139,7 @@ enum WidgetBridge {
         let needsDict = place >= 0 || tones != 0
         let tw = store.twDeck, zh = store.zhDeck
         let kind = store.zh?.lang ?? 1
-        let stamp = "v4|\(kind)|\(tw.cards.count)|\(tw.cards.first?.k ?? "")|\(place)|\(needsDict && store.dict != nil)|\(tones)|\(ToneColors.marks)|\(ToneColors.signature)"
+        let stamp = "v4|\(kind)|\(tw.cards.count)|\(tw.cards.first?.k ?? "")|\(place)|\(needsDict && store.dict != nil)|\(tones)|\(ToneColors.marks)|\(HongimTone1.on)\(HongimTone1.space)|\(ToneColors.signature)"
             + "|zh\(zh.cards.count)|\(store.zhList)|\(Lang.zhRom)|\(Lang.zhPlace)|\(ZhMeaning.english)"
         if WidgetShared.defaults?.string(forKey: "words-stamp") == stamp,
            WidgetShared.read([WidgetCategory].self, "categories.json") != nil { return }

@@ -398,6 +398,9 @@ private fun LanguagePage() {
         MenuRow(tr("腔口"), if (place in PLACE_NAMES.indices) tr(PLACE_NAMES[place]) else tr("通行"), listOf(-1 to tr("通行")) + PLACE_NAMES.mapIndexed { i, p -> i to tr(p) }) {
             Prefs.place.value = it
         }
+        RowDivider(); SwitchRow(tr("方音標第一聲（ˉ）"), Prefs.hongimTone1)
+        // (only when the mark is left out: a space in its place)
+        RowDivider(); SwitchRow(tr("第一聲的地方空一格"), Prefs.hongimTone1Space, enabled = !Prefs.hongimTone1.value)
     }
     SectionTitle(tr("字形"))
     Group {
@@ -577,10 +580,10 @@ fun SenseCopySettingsPage(onBack: () -> Unit) {
 private fun Group(content: @Composable ColumnScope.() -> Unit) = ListCard(content = content)
 
 @Composable
-private fun SwitchRow(title: String, pref: Pref<Boolean>) {
-    Row(Modifier.fillMaxWidth().clickable { pref.value = !pref.value }.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Txt(title, ff(FF.Body), modifier = Modifier.weight(1f))
-        Switch(pref.value, { pref.value = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
+private fun SwitchRow(title: String, pref: Pref<Boolean>, enabled: Boolean = true) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { pref.value = !pref.value }.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        Txt(title, ff(FF.Body), if (enabled) T.glyph else T.muted, modifier = Modifier.weight(1f))
+        Switch(pref.value, { pref.value = it }, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
     }
 }
 

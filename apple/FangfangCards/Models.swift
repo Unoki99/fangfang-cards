@@ -98,9 +98,9 @@ struct Card: Decodable, Identifiable, Hashable {
         return r[j]
     }
     func zy(_ place: Int = -1) -> String {
-        guard place >= 0 else { return z }
-        if let x = v?[String(place)] { return x.z }
-        return zo ?? z
+        guard place >= 0 else { return HongimTone1.apply(z) }
+        if let x = v?[String(place)] { return HongimTone1.apply(x.z) }
+        return HongimTone1.apply(zo ?? z)
     }
     func differs(in place: Int) -> Bool { place >= 0 && v?[String(place)] != nil }
     var syllables: Int { r[0].split(separator: "-").count }

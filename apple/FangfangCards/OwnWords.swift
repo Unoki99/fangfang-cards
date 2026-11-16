@@ -14,6 +14,8 @@ struct OwnPane: View {
     @State private var picking = false
     @State private var csv: CsvFile?
     @State private var message: String?
+    @State private var exporting = false
+    @State private var shareItem: ShareItem?
 
     var body: some View {
         let keys = store.ownKeys
@@ -27,11 +29,17 @@ struct OwnPane: View {
                     Label(tr("從 CSV 檔加入"), systemImage: "tablecells")
                         .ffFont(.headline).foregroundStyle(T.ownInk)
                 }
+                if !keys.isEmpty {
+                    Button { exporting = true } label: {
+                        Label(tr("匯出 CSV"), systemImage: "square.and.arrow.up")
+                            .ffFont(.headline).foregroundStyle(T.ownInk)
+                    }
+                }
                 if let message {
                     Text(message).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             } footer: {
-                Text(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。"))
+                Text(tr("自己加的詞不是教育部辭典的內容，在「轉換」和「詞典」都會用紫色和「自訂」標示。CSV 檔：一行一個詞，漢字和讀音一定要有，意思和例句可以有；加入之前可以選哪一欄是什麼。匯出的時候可以選讀音用哪一種寫法。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
             if !keys.isEmpty {
@@ -64,9 +72,35 @@ struct OwnPane: View {
             message = nil
             csv = CsvFile(name: url.lastPathComponent, rows: rows)
         }
+        .confirmationDialog(tr("讀音用哪一種寫法？"), isPresented: $exporting, titleVisibility: .visible) {
+            Button(tr("皓羅")) { export(0) }
+            Button(tr("台羅")) { export(1) }
+            Button(tr("白話字")) { export(2) }
+            Button(tr("方音")) { export(3) }
+            Button(tr("取消"), role: .cancel) {}
+        }
+        .sheet(item: $shareItem) { ShareSheet(url: $0.url) }
         .sheet(item: $csv) { f in
             CsvImportSheet(dict: dict, file: f) { n in message = tr("加入了 \(n) 個詞。") }.environmentObject(store)
         }
+    }
+
+    /// your words as a CSV file (漢字, 讀音 in the spelling picked, 意思, 例句): the same columns 從 CSV 檔加入 reads
+    private func export(_ sys: Int) {
+        func q(_ s: String) -> String {
+            s.contains(where: { $0 == "," || $0 == "\"" || $0 == "\n" || $0 == "\r" }) ? "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\"" : s
+        }
+        var rows = ["characters,reading,meaning,example"]
+        for k in store.ownKeys {
+            let i = store.ownInfo(k)
+            rows.append([Dict.hanOf(k), dict.codes(Dict.codesOf(k), sys, -1), i.meaning, i.example].map(q).joined(separator: ","))
+        }
+        // (with the mark at the start that tells Excel the file is UTF-8)
+        let text = "\u{FEFF}" + rows.joined(separator: "\r\n") + "\r\n"
+        let name = ["方方-自訂詞-皓羅.csv", "方方-自訂詞-台羅.csv", "方方-自訂詞-白話字.csv", "方方-自訂詞-方音.csv"][sys]
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
+        if (try? Data(text.utf8).write(to: url, options: .atomic)) != nil { shareItem = ShareItem(url: url) }
+        else { message = trs("匯出失敗。") }
     }
 
     private func row(_ k: String) -> some View {

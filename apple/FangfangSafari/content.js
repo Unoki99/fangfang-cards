@@ -588,12 +588,18 @@
         // the word on the page, marked in light blue (the longer of the 華語 and the 台語 word found)
         const len = Math.max(...["zh", "tw", "yue", "hak", "sv"].map(l => res[l] ? [...res[l].w].length : 0));
         if (at) markWord(at.node, at.off, len); else unmark();
+        shownWord = null;
+        if (at && at.node.isConnected) {
+            const b = wordRange(at.node, at.off, 1).getBoundingClientRect();
+            shownWord = { node: at.node, off: at.off, top: b.top, left: b.left };
+        }
         const sc = at && subsCueAt(at.node, at.off);
         lastSentence = sc ? sc.sentence : (at ? sentenceAt(at.node, at.off) : (window.getSelection ? sentenceOfSelection() : ""));
     }
 
     // ── the light blue mark around the word ─────────────────────────────────────────────────
     let marks = null;
+    let shownWord = null;         // (the word the card is for, and where it was: the card stays while it doesn't move)
     function wordRange(node, off, len) {
         const r = document.createRange();
         r.setStart(node, off);
@@ -1639,16 +1645,24 @@
     // (the Pencil, a trackpad or a mouse; on the Mac, Safari may send only mouse events)
     let lastPointer = 0;
     let px = -1, py = -1;          // (where the pointer is: for the keys that mark the word under it)
+    // (at most once a frame: a mouse can tell of its moves far more often than the screen is drawn, and on a long
+    // page like Wikipedia's each look at the text under the pointer takes a while)
+    let moveEv = null, moveRaf = 0;
+    function hoverSoon(e) {
+        moveEv = e;
+        if (moveRaf) return;
+        moveRaf = requestAnimationFrame(() => { moveRaf = 0; const ev = moveEv; moveEv = null; if (ev) hover(ev); });
+    }
     document.addEventListener("pointermove", e => {
         if (e.pointerType === "touch") return;
         lastPointer = Date.now();
         px = e.clientX; py = e.clientY;
-        hover(e);
+        hoverSoon(e);
     }, { capture: true, passive: true });
     document.addEventListener("mousemove", e => {
         px = e.clientX; py = e.clientY;
         if (Date.now() - lastPointer < 300) return;               // (already handled as a pointer event)
-        hover(e);
+        hoverSoon(e);
     }, { capture: true, passive: true });
 
     // ── keys: the word under the pointer, 認識 (A) or 不熟 + 收藏 (S), without opening anything ──────────
@@ -1736,6 +1750,7 @@
         }, 1400);
     }
 
+    let hitBox = null;            // (the character the pointer was last found over, where it is on the screen)
     function hover(e) {
         // (網頁查詞 turned off in Safari's toolbar: only the subtitle panel's words are still looked up)
         if (!alive() || (!prefs.on && !(e.target && e.target.closest && e.target.closest("#ff-subs")))) return;
@@ -1745,7 +1760,14 @@
         if (e.buttons !== 0) return;                              // writing / dragging, not hovering
         if (!metaP) getMeta();                                    // (the Pencil is near: the tables read already)
         if (inCard(e)) { clearTimeout(hideTimer); clearTimeout(dwellTimer); return; }
+        // (still over the same character as last time: nothing to find again; reading where the text is under the
+        // pointer is slow on long pages, so it's done once per character, not on every move)
+        if (hitBox && e.clientX >= hitBox.left && e.clientX <= hitBox.right && e.clientY >= hitBox.top && e.clientY <= hitBox.bottom) {
+            if (lastSpot && lastSpot === shownSpot) clearTimeout(hideTimer);
+            return;
+        }
         const hit = charAt(e.clientX, e.clientY);
+        hitBox = hit && hit.rect && hit.node && hit.node.isConnected ? hit.rect : null;
         if (hit && hit.node && hit.node.parentElement && hit.node.parentElement.closest("#ff-subs")) { clearTimeout(dwellTimer); return; }
         // (瑞典語: a Latin letter, the whole word around it)
         // (a Latin word: 瑞典語, and English → the Chinese languages)
@@ -1782,9 +1804,26 @@
         const page = t === document || t === document.documentElement || t === document.body || t === document.scrollingElement;
         const inSubs = t && t.nodeType === 1 && t.closest && t.closest("#ff-subs, #ff-mine, #ff-defs");
         if (inSubs && !page) return;
+        hitBox = null;
         if (subsCard() && (!page || Date.now() - shownAt < 600)) return;
+        if (!subsCard() && isOpen()) {
+            // (a word on the page: closed only when the word itself has moved. Sites like YouTube scroll parts of
+            // the page by themselves all the time, which used to close the card the moment it opened)
+            if (scrollRaf) return;
+            scrollRaf = requestAnimationFrame(() => {
+                scrollRaf = 0;
+                if (!isOpen() || subsCard()) return;
+                if (shownWord && shownWord.node.isConnected) {
+                    const b = wordRange(shownWord.node, shownWord.off, 1).getBoundingClientRect();
+                    if (Math.abs(b.top - shownWord.top) < 4 && Math.abs(b.left - shownWord.left) < 4) return;
+                }
+                clearTimeout(dwellTimer); lastSpot = ""; hide();
+            });
+            return;
+        }
         clearTimeout(dwellTimer); lastSpot = ""; hide();
     }, { passive: true, capture: true });
+    let scrollRaf = 0;
     document.addEventListener("keydown", e => { if (e.key === "Escape") hide(); }, true);
 
     // ── selecting text with a finger (for iPads without Pencil hover) ───────────────────────

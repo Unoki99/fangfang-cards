@@ -252,6 +252,10 @@ struct CsvImportSheet: View {
         colReading = readCol
         colMeaning = (0..<columns).first { $0 != hanCol && $0 != readCol } ?? -1
         colExample = -1
+        // (a file this app exported, or one with its columns named: the meaning and example columns by their names)
+        let names = first.map { $0.lowercased() }
+        if let m = names.firstIndex(where: { $0 == "meaning" || $0 == "意思" }), m != hanCol, m != readCol { colMeaning = m }
+        if let x = names.firstIndex(where: { $0 == "example" || $0 == "例句" }), x != hanCol, x != readCol, x != colMeaning { colExample = x }
         // (a title line: its 漢字 column isn't a word like the others)
         header = hanCol < first.count && !isHan(first[hanCol]) || (readCol < first.count && !isReading(first[readCol]))
     }

@@ -168,6 +168,13 @@ struct ReadingsPane: View {
         for (n, codes) in codesList.prefix(4).enumerated() {
             let key = q + "\t" + codes
             let alt = n > 0 ? "（" + trs("又") + "）" : ""
+            // (a 方言詞, 柑仔得: only the places that say it)
+            if let local = d.raw.loc?[key]?.filter({ $0 < d.raw.places.count }), !local.isEmpty {
+                let names = local.map { trs(String(d.raw.places[$0].prefix(2))) }.joined(separator: "、")
+                out.append(ReadingRow(lang: 0, label: trs("臺") + "・" + names + alt, main: d.wordText(key, rom, -1),
+                                      other: String(d.wordText(key, 3, -1).characters)))
+                continue
+            }
             out.append(ReadingRow(lang: 0, label: trs("臺") + "・" + trs("通行") + alt, main: d.wordText(key, rom, -1),
                                   other: String(d.wordText(key, 3, -1).characters)))
             // the places that say it differently (or, with tone colours, change its tones differently)

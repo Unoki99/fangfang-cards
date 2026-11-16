@@ -17,6 +17,17 @@ import SwiftUI
 // Sandhi follows the 腔口: 通行 and the 漳 / 混合 places 2→1, 5→7, 8→4 (8 ending in h → 3); the 泉 places 2→5, 5→3, 8→3.
 // Tone 6 (鹿港 and other places that keep it) → 3.
 
+/// 方音's first-tone mark (ˉ, ㄉㄚˉ): written or left out (設定 → 語言與讀音 → 台語). Some write the first tone
+/// without a mark, as 注音 does
+enum HongimTone1 {
+    static let key = "hongimTone1"
+    static var on: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+    /// with the mark left out: a space where it was (ㄉㄚ ㄍㄚ), or nothing
+    static let spaceKey = "hongimTone1Space"
+    static var space: Bool { UserDefaults.standard.bool(forKey: spaceKey) }
+    static func apply(_ s: String) -> String { on || !s.contains("ˉ") ? s : s.replacingOccurrences(of: "ˉ", with: space ? " " : "") }
+}
+
 enum ToneColors {
     static let key = "toneColors"
     /// 0 = off, 7 = 七聲, 5 = 五聲

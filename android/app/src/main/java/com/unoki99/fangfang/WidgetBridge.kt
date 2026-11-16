@@ -82,7 +82,7 @@ object WidgetBridge {
 
     private fun writeUnknown(keys: List<String>) {
         val place = Prefs.place.value
-        val settings = "$place|${Store.zh != null}|${Store.dict != null}|${Prefs.toneSys.value}|${Prefs.toneMarks.value}|${ToneColors.signature}|" +
+        val settings = "$place|${Store.zh != null}|${Store.dict != null}|${Prefs.toneSys.value}|${Prefs.toneMarks.value}|${Prefs.hongimTone1.value}${Prefs.hongimTone1Space.value}|${ToneColors.signature}|" +
             "${Prefs.zhEnglish.value}|${Prefs.zhRom.value}|${Prefs.zhPlace.value}"
         val stamp = "${keys.hashCode()}|$settings"
         if (stamp == unknownStamp) return
@@ -126,7 +126,7 @@ object WidgetBridge {
         val needsDict = place >= 0 || tones != 0
         val (twCards, twTopics) = Store.twDeck
         val (zhCards, zhTopics) = Store.zhDeck
-        val stamp = "v3|${twCards.size}|${twCards.firstOrNull()?.k}|$place|${needsDict && Store.dict != null}|$tones|${Prefs.toneMarks.value}|${ToneColors.signature}" +
+        val stamp = "v3|${twCards.size}|${twCards.firstOrNull()?.k}|$place|${needsDict && Store.dict != null}|$tones|${Prefs.toneMarks.value}|${Prefs.hongimTone1.value}${Prefs.hongimTone1Space.value}|${ToneColors.signature}" +
             "|zh${zhCards.size}|${Prefs.zhList.value}|${Prefs.zhRom.value}|${Prefs.zhPlace.value}|${Prefs.zhEnglish.value}"
         if (WidgetFiles.stamp(Store.app) == stamp && WidgetFiles.hasCategories(Store.app)) return
         building = true

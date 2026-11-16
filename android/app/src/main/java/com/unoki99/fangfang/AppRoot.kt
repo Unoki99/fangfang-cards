@@ -55,7 +55,7 @@ private fun Root() {
     LaunchedEffect(Unit) { Store.load() }
     // a place or tone colours chosen: the dictionary is needed (local readings, word classes)
     val place = Prefs.place.value; val tones = Prefs.toneSys.value; val rom = Prefs.rom.value
-    LaunchedEffect(place, tones, Prefs.toneMarks.value) {
+    LaunchedEffect(place, tones, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value) {
         if (place >= 0 || tones != 0) Store.loadDict()
         if (Store.loaded) { WidgetBridge.writeState(); WidgetBridge.rebuildIfNeeded() }
     }

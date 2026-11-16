@@ -578,7 +578,7 @@ private fun ToneScreen(stars: StarField) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Txt(q.card.h, ff(FF.Title2, FontWeight.Medium), T.blueInk)
                                 Txt(q.answer.rom[rom.coerceIn(0, 2)], lat(22f), T.greenInk)
-                                Txt(q.card.z, ff(FF.Body), T.purpleInk)
+                                Txt(q.card.zy(), ff(FF.Body), T.purpleInk)
                             }
                             Txt(if (Store.isYue) tr("第 {0} 聲（{1}）", t, YUE_TONE_NAMES[t] ?: "") else if (Store.isZh) (if (t == 0) tr("輕聲") else tr("第 {0} 聲（{1}）", t, ZH_TONE_NAMES[t] ?: "")) else tr("第 {0} 聲（{1}）{2}", t, TONE_NAMES[t] ?: "", hint(t, rom)), ff(FF.Subheadline), T.glyph)
                             Txt(Store.practiceMeaning(q.card).second, ff(FF.Footnote), T.muted)
