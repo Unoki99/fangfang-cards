@@ -227,7 +227,8 @@ var ffShards = (() => {
             const dia = d.dia || {}, tok = d.tok || {};
             const rank = new Map(((data.cards && data.cards.cards) || []).map((c, i) => [c.k, i]));
             const twEntry = (k, via) => {
-                const codes = k.slice(k.indexOf("\t") + 1);
+                // (the 輕聲 one of a pair, 的\t-- e5: its syllables without the "--"; its spelling is in tok)
+                const codes = k.slice(k.indexOf("\t") + 1).split(" ").filter(x => x && x !== "--").join(" ");
                 const e = { k, c: codes };
                 if (has(dia, k)) e.d = dia[k];
                 if (has(tok, k)) e.o = tok[k];

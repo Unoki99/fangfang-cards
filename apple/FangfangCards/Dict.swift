@@ -71,9 +71,13 @@ struct DictRaw: Decodable {
     let dex: [String: String]?          // places whose reading MOE states (the others are worked out by rule)
     /// a place's reading of one meaning only: key -> meaning (from 0) -> place -> codes (足「很」in 臺南: tsok)
     let sdia: [String: [String: [String: String]]]?
+    /// 方言詞 (words only some places say, from 詞彙比較): key -> the places that say it
+    let loc: [String: [Int]]?
+    /// 方言詞: key -> the usual words for its meaning (看「臭柿仔」、「柑仔蜜」)
+    let lstd: [String: [String]]?
 
     enum CodingKeys: String, CodingKey {
-        case words, syl, tl, pj, defs, pos, ex, reg, own, au, gl, freq, places, alt, dia, tok, sub, typ, sy, an, cmp, names, sur, types, cats, cat, dex, ctx, dia2, sdia
+        case words, syl, tl, pj, defs, pos, ex, reg, own, au, gl, freq, places, alt, dia, tok, sub, typ, sy, an, cmp, names, sur, types, cats, cat, dex, ctx, dia2, sdia, loc, lstd
         case variants = "var"
     }
 }
@@ -109,6 +113,10 @@ final class Dict: @unchecked Sendable {
     private(set) var hanAlt: [String: [Opt]] = [:]
     private(set) var altParent: [String: String] = [:]
     private(set) var maxHan = 1
+    /// a usual word -> the 方言詞 that point to it (臭柿仔 -> 柑仔得, 虎井蜜 …), in the dictionary's order
+    private(set) var localOf: [String: [String]] = [:]
+    /// words places say differently (詞彙比較): 轉換 marks them (各地講法)
+    private(set) var sayingHans: Set<String> = []
     private(set) var maxSyl = 1
     // input
     private(set) var zyRev: [String: [String]] = [:]
@@ -134,6 +142,16 @@ final class Dict: @unchecked Sendable {
         own = Set(r.own)
         subst = Set(r.sub)
         orPlaces = Set(r.places.indices.filter { r.places[$0].hasPrefix("臺南") || r.places[$0].hasPrefix("高雄") })
+        for e in r.cmp {
+            let hs = Set(e.rows.filter { !$0.codes.isEmpty }.map(\.han))
+            if hs.count > 1 { sayingHans.formUnion(hs) }
+        }
+        if let ls = r.lstd {
+            for w in r.words where w.count == 2 {
+                let k = w[0] + "\t" + w[1]
+                for s in ls[k] ?? [] where !(localOf[s] ?? []).contains(k) { localOf[s, default: []].append(k) }
+            }
+        }
 
         func push(_ m: inout [String: [String]], _ k: String, _ v: String) {
             if var a = m[k] { if !a.contains(v) { a.append(v); m[k] = a } } else { m[k] = [v] }
@@ -155,11 +173,27 @@ final class Dict: @unchecked Sendable {
         }
         for (c, v) in r.syl { push(&plainRev, Dict.plainKey(v[1]), c) }
         // words
+        var light: [(h: String, c: String)] = []
         for w in r.words where w.count == 2 {
             let h = w[0], c = w[1]
+            // (the 輕聲 one of a pair, 的\t-- e5: a choice of the other one, below)
+            if c.contains("--") { light.append((h, c)); continue }
             push(&hanMap, h, c); push(&codeMap, c, h)
             maxHan = max(maxHan, h.count)
             maxSyl = max(maxSyl, c.split(separator: " ").count)
+        }
+        // the 輕聲 one of a pair (的 --ê, beside 的 ê): another choice for the same characters and syllables (轉換),
+        // and right after the other one in searches
+        for (h, c) in light {
+            let k = h + "\t" + c, clean = Dict.codesOf(k), plain = h + "\t" + clean
+            if hanMap[h]?.contains(clean) == true {
+                hanAlt[h, default: []].append(Opt(han: h, codes: clean.split(separator: " ").map(String.init), parent: k, label: "輕聲", tokens: r.tok[k]))
+                localOf[plain, default: []].insert(k, at: 0)
+            } else {
+                push(&hanMap, h, clean); push(&codeMap, clean, h)
+                altParent[plain] = k
+            }
+            maxHan = max(maxHan, h.count)
         }
         maxHan = min(maxHan, 12)
         for w in r.words where w.count == 2 {
@@ -198,8 +232,8 @@ final class Dict: @unchecked Sendable {
         // variant characters (異用字)
         for (v, keys) in r.variants where hanMap[v] == nil {
             for k in keys {
-                guard let tab = k.firstIndex(of: "\t") else { continue }
-                let c = String(k[k.index(after: tab)...])
+                guard k.contains("\t") else { continue }
+                let c = Dict.codesOf(k)
                 push(&hanMap, v, c)
                 altParent[v + "\t" + c] = k
                 maxHan = max(maxHan, v.count)
@@ -280,9 +314,11 @@ final class Dict: @unchecked Sendable {
         let k = h + "\t" + codes.joined(separator: " ")
         return baseKeys.contains(k) ? k : (altParent[k] ?? k)
     }
+    /// a key's syllables (the 輕聲 one of a pair, 的\t-- e5, without its "--")
     static func codesOf(_ key: String) -> String {
         guard let tab = key.firstIndex(of: "\t") else { return "" }
-        return String(key[key.index(after: tab)...])
+        let s = String(key[key.index(after: tab)...])
+        return s.contains("--") ? s.split(separator: " ").filter { $0 != "--" }.joined(separator: " ") : s
     }
     static func hanOf(_ key: String) -> String {
         guard let tab = key.firstIndex(of: "\t") else { return key }
@@ -872,7 +908,8 @@ final class Dict: @unchecked Sendable {
         let main = Dict.codesOf(key), shown = codesFor(key, place)
         for x in alsoSaid(key, place) where x != shown { out.append(("也講", x, nil)) }
         if differsFromCommon(key, place), !alsoSaid(key, place).contains(main) { out.append(("通行", main, raw.tok[key])) }
-        for a in raw.alt[key] ?? [] where !a.isEmpty && a[0] != shown {
+        // (the same syllables in another way, 輕聲 or not: 的 --ê / ê 第5義)
+        for a in raw.alt[key] ?? [] where !a.isEmpty && (a[0] != shown || (a.count > 2 && a[2] != (raw.tok[key] ?? a[0]))) {
             out.append(((a.count > 1 && !a[1].isEmpty) ? a[1] : "又", a[0], a.count > 2 ? a[2] : nil))
         }
         return out
@@ -937,4 +974,56 @@ final class Dict: @unchecked Sendable {
     }
 
     func defText(_ key: String) -> String? { raw.defs.m[key].map { raw.defs.t[$0] } }
+
+    // MARK: 方言詞 and 各地講法
+
+    /// a 方言詞's places, short (金門, 臺南・高雄); nil: not one
+    func placeLabel(_ key: String) -> String? {
+        guard let ps = raw.loc?[key], !ps.isEmpty else { return nil }
+        return placeNames(ps)
+    }
+    func placeNames(_ ps: [Int], most: Int = 3) -> String {
+        let names = ps.prefix(most).map { $0 < raw.places.count ? trs(String(raw.places[$0].prefix(2))) : "" }
+        return names.joined(separator: "・") + (ps.count > most ? "…" : "")
+    }
+    /// the same syllables said another way, with or without 輕聲 (的 --ê: "/ê"), each after a "/"
+    func otherSpellings(_ key: String, _ sys: Int, _ place: Int) -> String {
+        let c = Dict.codesOf(key)
+        var s = ""
+        for a in raw.alt[key] ?? [] where a.count > 2 && a[0] == c {
+            s += "/" + render(a[2].split(separator: " ").map(String.init), sys, place)
+        }
+        return s
+    }
+    /// the keys, each 方言詞 right after the usual word it points to
+    func withLocal(_ keys: [String]) -> [String] {
+        var out: [String] = [], seen = Set<String>()
+        for k in keys {
+            if seen.insert(k).inserted { out.append(k) }
+            for l in localOf[k] ?? [] where seen.insert(l).inserted { out.append(l) }
+        }
+        return out
+    }
+    /// 各地講法: for each meaning (華語) a word is compared under in 詞彙比較, the words the places say for it (the
+    /// ones most places say first), each with the places that say it
+    func sayings(of han: String) -> [(zh: String, words: [(key: String, places: [Int])])] {
+        var out: [(zh: String, words: [(key: String, places: [Int])])] = []
+        for e in raw.cmp where e.rows.contains(where: { $0.han == han }) {
+            var order: [String] = [], by: [String: [Int]] = [:]
+            for r in e.rows where !r.codes.isEmpty {
+                guard let k = keyOf(Opt(han: r.han, codes: r.codes.split(separator: " ").map(String.init))),
+                      raw.defs.m[k] != nil || baseKeys.contains(k) else { continue }
+                if by[k] == nil { order.append(k) }
+                if !(by[k] ?? []).contains(r.place) { by[k, default: []].append(r.place) }
+            }
+            guard order.count > 1 else { continue }
+            let words = order.enumerated().sorted { a, b in
+                let x = by[a.element]!.count, y = by[b.element]!.count
+                return x != y ? x > y : a.offset < b.offset
+            }.map { (key: $0.element, places: by[$0.element]!.sorted()) }
+            out.append((zh: e.zh, words: words))
+            if out.count >= 4 { break }
+        }
+        return out
+    }
 }

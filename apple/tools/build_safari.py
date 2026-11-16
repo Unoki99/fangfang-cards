@@ -231,7 +231,8 @@ if d:
     rank = {c["k"]: i for i, c in enumerate(cards.get("cards", []))}
 
     def tw_entry(k, via=None):
-        codes = k.split("\t", 1)[1]
+        # (the 輕聲 one of a pair, 的\t-- e5: its syllables without the "--"; its spelling is in tok)
+        codes = " ".join(x for x in k.split("\t", 1)[1].split() if x != "--")
         e = {"k": k, "c": codes}
         if k in dia: e["d"] = dia[k]
         if k in tok: e["o"] = tok[k]

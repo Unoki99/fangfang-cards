@@ -49,7 +49,7 @@ object Lookup {
             if (!re.matches(h)) continue
             for (c in cs.toList()) { val k = h + "\t" + c; if (d.baseKeys.contains(k) || d.isUser(k)) keys.add(k) }
         }
-        r.pattern = keys.sortedWith(rankCmp(d)).take(300)
+        r.pattern = d.withLocal(keys.sortedWith(rankCmp(d)).take(300))
         val seen = r.pattern.toSet()
         val zh = HashSet<String>()
         for ((t, ks) in d.termIndex) if (re.matches(t)) zh.addAll(ks.filter { !seen.contains(it) })
@@ -128,7 +128,7 @@ object Lookup {
             return r
         }
         if (q.codePoints().anyMatch { ConvertEngine.isZy(it) || ConvertEngine.isLatinLetter(it) }) {
-            r.taigi = taigi(d, q, prefs)
+            r.taigi = d.withLocal(taigi(d, q, prefs))
             addSentences(d, r, r.taigi)
             // (letters: maybe English too; a section of its own, after the 台語 results)
             if (q.codePoints().noneMatch { ConvertEngine.isZy(it) }) {
@@ -176,6 +176,12 @@ object Lookup {
             places.add(PlaceGroup(e.zh, order.map { PlaceRow(Dict.hanOf(it), Dict.codesOf(it), by[it]!!) }))
         }
         r.places = places
+        // (each 方言詞 right after the usual word it points to: 臭柿仔 → 柑仔得 金門)
+        r.exact = d.withLocal(r.exact)
+        val shown = r.exact.toHashSet()
+        r.contains = d.withLocal(r.contains).filter { it !in shown }
+        val inContains = r.contains.toHashSet()
+        r.gloss = d.withLocal(r.gloss).filter { it !in shown && it !in inContains }
         addSentences(d, r, r.exact)
         // not one word: the words it's made of, each searched on its own
         if (split && r.exact.isEmpty()) Segmenter.parts(q) { d.termIndex.containsKey(it) || d.hanMap.containsKey(it) }?.let { ps ->

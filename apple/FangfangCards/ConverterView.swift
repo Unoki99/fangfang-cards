@@ -197,6 +197,27 @@ final class ConvModel: ObservableObject {
         latinMode = LatinMode(rawValue: UserDefaults.standard.string(forKey: "ff-latin") ?? "") ?? .auto
     }
 
+    /// the word of item k in the text replaced by another (各地講法: 柑仔蜜 → 柑仔得); false: not a word typed in
+    /// 漢字, so not found in the text
+    @discardableResult func replaceWord(_ k: Int, with han: String) -> Bool {
+        guard result.items.indices.contains(k) else { return false }
+        var pos = text.startIndex
+        for (j, it) in result.items.enumerated() {
+            guard it.src == "han", !it.opts.isEmpty, let h = it.current.han, !h.isEmpty else {
+                if j == k { return false }
+                continue
+            }
+            guard let r = text.range(of: h, range: pos..<text.endIndex) else { return false }
+            if j == k {
+                text.replaceSubrange(r, with: han)
+                run()
+                return true
+            }
+            pos = r.upperBound
+        }
+        return false
+    }
+
     func attach(_ d: Dict) {
         guard engine == nil else { return }
         let e = ConvertEngine(dict: d)
@@ -549,6 +570,7 @@ struct ConvertPane: View {
                         if it.unsure { a.swiftUI.foregroundColor = .orange }
                         else if !colored { a.swiftUI.foregroundColor = ink }
                         if it.opts.count > 1 { a.swiftUI.underlineStyle = Text.LineStyle(pattern: .dot, color: (it.unsure ? Color.orange : ink).opacity(0.6)) }
+                        else if let h = it.current.han, dict.sayingHans.contains(h) { a.swiftUI.underlineStyle = Text.LineStyle(pattern: .dot, color: (it.unsure ? Color.orange : ink).opacity(0.6)) }
                     }
                 }
             }
@@ -577,6 +599,8 @@ struct ConvertPane: View {
             else { a = dict.toneText(tt.tokens, mode == 2 ? 3 : rom, place, tones: tt.tones, system: toneSys) }
             a.link = URL(string: "ff://w/\(i)")
             if it.opts.count > 1 { a.swiftUI.underlineStyle = Text.LineStyle(pattern: .dot, color: (it.unsure ? Color.orange : ink).opacity(0.6)) }
+            // (other places say it differently: 各地講法, marked the same way)
+            else if let h = it.current.han, dict.sayingHans.contains(h) { a.swiftUI.underlineStyle = Text.LineStyle(pattern: .dot, color: (it.unsure ? Color.orange : ink).opacity(0.6)) }
             out += a
         }
         return all
@@ -690,6 +714,7 @@ struct WordSheet: View {
                     ScrollView(.vertical) {
                         VStack(alignment: .leading, spacing: 14) {
                             if it.opts.count > 1 { options(it) }
+                            if let h = it.current.han { sayings(h, canSwap: it.src == "han") }
                             if let k = dict.keyOf(it.current), dict.baseKeys.contains(k) || dict.raw.defs.m[k] != nil {
                                 DictEntryBody(dict: dict, key: k).dictFontArea()
                             } else {
@@ -748,12 +773,70 @@ struct WordSheet: View {
         guessColored(model.engine?.wordPieces(o, mode: mode, rom: min(max(rom, 0), 2), place: place) ?? [])
     }
 
+    /// 各地講法: the words the places say for the same meaning, the usual ones first and each place's own after,
+    /// each with where it's said and what it means (tap one for its entry)
+    /// canSwap: tapping another word puts it in the text in place of this one (its entry: the arrow)
+    @ViewBuilder private func sayings(_ han: String, canSwap: Bool) -> some View {
+        let groups = dict.sayings(of: han)
+        if !groups.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(tr("各地講法")).ffFont(.caption, .bold).foregroundStyle(T.muted)
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
+                    if groups.count > 1 { Text(tr("華語「\(g.zh)」")).ffFont(.caption).foregroundStyle(T.muted) }
+                    ForEach(Array(g.words.enumerated()), id: \.offset) { _, w in
+                        let other = Dict.hanOf(w.key) != han
+                        let row = HStack(alignment: .center, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                    Text(Dict.hanOf(w.key)).scaledFont(19, weight: .semibold)
+                                        .foregroundStyle(Dict.hanOf(w.key) == han ? T.greenInk : T.glyph)
+                                    Text(dict.wordText(w.key, min(max(rom, 0), 2), place)).latFont(16).foregroundStyle(T.greenInk)
+                                    Spacer(minLength: 0)
+                                    PlaceChip(text: w.places.count >= 6 ? trs("多數地方") : dict.placeNames(w.places, most: 4))
+                                }
+                                if let g = glossKey(w.key, plain: dict.raw.loc?[w.key] != nil) {
+                                    Text(g).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.75))
+                                        .lineLimit(2).multilineTextAlignment(.leading)
+                                }
+                                if canSwap && other {
+                                    Text(tr("點一下換成這個講法")).ffFont(.caption2).foregroundStyle(T.muted)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            // (its entry, when tapping the row puts the word in the text)
+                            if canSwap && other {
+                                NavigationLink(value: DictKey(k: w.key)) {
+                                    Image(systemName: "chevron.right.circle").ffFont(.title3).foregroundStyle(T.muted)
+                                        .padding(6).contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 6).padding(.horizontal, 10)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.6)))
+                        .contentShape(Rectangle())
+                        if canSwap && other {
+                            // (the word in the text replaced by this one)
+                            row.onTapGesture { withAnimation(.snappy) { _ = model.replaceWord(index, with: Dict.hanOf(w.key)) } }
+                        } else {
+                            NavigationLink(value: DictKey(k: w.key)) { row }.buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// a short meaning for a reading choice: its 華語 words, or the start of its definition
     private func gloss(_ o: Opt) -> String? {
         guard let k = dict.keyOf(o) else { return nil }
+        return glossKey(k)
+    }
+    /// plain: the definition, not the 華語 words (a 方言詞: 看「臭柿仔」…)
+    private func glossKey(_ k: String, plain: Bool = false) -> String? {
         let pos = (dict.raw.pos[k] ?? "").split(separator: "|").first.map(String.init) ?? ""
         let text: String?
-        if let g = dict.gl[k], !g.isEmpty { text = g.prefix(5).map { $0.t }.joined(separator: "、") }
+        if !plain, let g = dict.gl[k], !g.isEmpty { text = g.prefix(5).map { $0.t }.joined(separator: "、") }
         else if let t = dict.defText(k) {
             text = t.replacingOccurrences(of: #"\d+\.\s*"#, with: "", options: .regularExpression)
                 .replacingOccurrences(of: "\n", with: "／")
@@ -898,7 +981,7 @@ struct DictEntryBody: View {
                                  targets: charKeys) { tapped = DictKey(k: $0) }
                     .toneGlow()
                 // the reading of the 腔口 chosen, in the spelling chosen, right next to the word
-                Text(dict.wordText(key, rom, place)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
+                Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                 if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
                 Spacer()
                 FrequencyBadge(key: key)
@@ -925,6 +1008,7 @@ struct DictEntryBody: View {
                 if let t = dict.raw.typ[key], t > 0, let types = dict.raw.types, t < types.count, t != 1 {
                     InfoChip.grey(types[t])
                 }
+                if let ps = dict.raw.loc?[key], !ps.isEmpty { PlaceChip(text: dict.placeNames(ps, most: 12) + trs("的講法")) }
                 if dict.own.contains(key) { InfoChip.grey(tr("方方補")) }
                 if dict.isUser(key) { OwnChip() }
             }
@@ -1284,7 +1368,7 @@ enum Lookup {
                 if d.baseKeys.contains(k) || d.isUser(k) { keys.append(k) }
             }
         }
-        r.pattern = Array(keys.sorted { rank($0) < rank($1) }.prefix(300))
+        r.pattern = d.withLocal(Array(keys.sorted { rank($0) < rank($1) }.prefix(300)))
         // 華語 words that match → their 台語 words
         let seen = Set(r.pattern)
         var zh: [String] = []
@@ -1369,7 +1453,7 @@ enum Lookup {
             return r
         }
         if q.unicodeScalars.contains(where: { ConvertEngine.isZy($0.value) || ConvertEngine.isLatinLetter($0.value) }) {
-            r.taigi = taigi(d, q)
+            r.taigi = d.withLocal(taigi(d, q))
             addSentences(d, &r, r.taigi)
             // (letters: maybe English too; a section of its own, after the 台語 results)
             if !q.unicodeScalars.contains(where: { ConvertEngine.isZy($0.value) }) {
@@ -1419,6 +1503,11 @@ enum Lookup {
             }
             r.places.append((zh: e.zh, rows: order.map { (han: Dict.hanOf($0), codes: Dict.codesOf($0), places: by[$0]!) }))
         }
+        // (each 方言詞 right after the usual word it points to: 臭柿仔 → 柑仔得 金門)
+        r.exact = d.withLocal(r.exact)
+        let shown = Set(r.exact)
+        r.contains = d.withLocal(r.contains).filter { !shown.contains($0) }
+        r.gloss = d.withLocal(r.gloss).filter { !shown.contains($0) && !r.contains.contains($0) }
         addSentences(d, &r, r.exact)
         // not one word: the words it's made of, each searched on its own
         if split, r.exact.isEmpty, let ps = Segmenter.parts(q, isWord: { d.termIndex[$0] != nil || d.hanMap[$0] != nil }) {
@@ -2326,9 +2415,10 @@ struct DictRow: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph)).scaledFont(20, weight: .semibold).toneGlow()
-                Text(dict.wordText(key, rom, place)).toneGlow().latFont(16).foregroundStyle(T.greenInk)
-                Text(dict.wordText(key, 3, place)).toneGlow().ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
+                Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(16).foregroundStyle(T.greenInk)
+                Text(dict.wordText(key, 3, place) + AttributedString(dict.otherSpellings(key, 3, place))).toneGlow().ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                 Spacer(minLength: 0)
+                if let p = dict.placeLabel(key) { PlaceChip(text: p) }
                 if dict.isUser(key) { OwnChip() }
                 if store.isSaved(key) { Image(systemName: "bookmark.fill").ffFont(.caption).foregroundStyle(T.oliveInk) }
                 switch store.cardStatus(key) {
@@ -2388,6 +2478,12 @@ extension Dict {
         }
         return out
     }
+}
+
+/// where a word is said (a 方言詞's places, 各地講法)
+struct PlaceChip: View {
+    let text: String
+    var body: some View { Chip(text: text, fill: T.twFill, edge: T.twEdge, ink: T.twInk) }
 }
 
 /// shown under examples when some readings in them are guessed

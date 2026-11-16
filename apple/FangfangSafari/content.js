@@ -60,6 +60,12 @@
         keys: true, keyKnown: "a", keyNew: "s",
         // subsFont: the subtitles' size (its own, apart from the card's; A− / A+ on the panel)
         subsFont: 1,
+        // subs2: a second language shown under each line, small and grey ("en", "zh-hant"…; "" none), when the video has it
+        subs2: "",
+        // subsColours: the tone colours in the subtitles (apart from 聲調顏色, the card's and the page's)
+        subsColours: true,
+        // subsBar: the panel's buttons shown (the gear in its corner hides them, and brings them back)
+        subsBar: true,
         // uiLang: the add-on's own words in 中文 ("zh") or English ("en")
         uiLang: "zh" };
     let prefs = { ...DEFAULTS };
@@ -141,7 +147,7 @@
                 subsSize(); subsLayout();
                 subsTint();
                 if (o.uiLang !== n.uiLang) { subsHeader(); subsStudy(); }
-                if (["subsRd", "subsGl", "subsLang", "subsTrad", "subsMark", "subsRare", "subsEnZh", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
+                if (["subsRd", "subsGl", "subsLang", "subsTrad", "subsMark", "subsRare", "subsEnZh", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "subsColours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
             }
         });
     }
@@ -169,6 +175,11 @@
     const LANGS_ONE = ["zh", "tw", "yue", "hak", "sv"];
     /// the one language on
     const activeLang = () => LANGS_ONE.find(l => prefs[l]) || "zh";
+    // the tone colours: 聲調顏色 (the card's and the page's); the subtitles have their own (subsColours), used while
+    // their words are made (colFor)
+    let colFor = null;
+    const colOn = () => colFor === null ? !!prefs.colours : colFor;
+    const subsCol = () => prefs.subsColours !== false;
     function fixPrefs(p) {
         const out = { ...DEFAULTS, ...(p || {}) };
         if (out.corner === true && (!p || !p.pos)) out.pos = "tl";      // (the older 左上角 setting)
@@ -684,7 +695,7 @@
         const out = [];
         let i = 0;
         for (const ch of han) {
-            if (isHan(ch.codePointAt(0)) && i < tones.length) { out.push({ t: ch, c: prefs.colours ? pal[tones[i]] : null }); i++; }
+            if (isHan(ch.codePointAt(0)) && i < tones.length) { out.push({ t: ch, c: colOn() ? pal[tones[i]] : null }); i++; }
             else out.push({ t: ch, c: null });
         }
         return out;
@@ -697,7 +708,7 @@
         let lastT = 1;
         const tones = syl.map(s => s === "-" ? lastT : (lastT = isSc ? digitTone(s) : zyTone(s)));
         const shown = syl.filter(s => s !== "-");
-        const col = (s, t) => prefs.colours ? (isSc ? SC : ZH)[t] : null;
+        const col = (s, t) => colOn() ? (isSc ? SC : ZH)[t] : null;
         const tShown = tones.filter((_, i) => syl[i] !== "-");
         let r, r2 = null;
         const zy = () => shown.map((s, i) => ({ t: (i ? " " : "") + s, c: col(s, tShown[i]) }));
@@ -801,7 +812,7 @@
                     const cap = t.startsWith("^"), c = cap ? t.slice(1) : t;
                     let sp = twSpell(c, tab, sys, place);
                     if (cap && sys !== 3) sp = sp.charAt(0).toUpperCase() + sp.slice(1);
-                    out.push({ t: (prevCode && sys !== 3 ? "-" : "") + sp, c: prefs.colours ? TW[tones[n]] : null });
+                    out.push({ t: (prevCode && sys !== 3 ? "-" : "") + sp, c: colOn() ? TW[tones[n]] : null });
                     n++; prevCode = true;
                 } else if (t === "--") { if (sys !== 3) out.push({ t: "--", c: null }); prevCode = false; }
                 else if (t === "_") { out.push({ t: " ", c: null }); prevCode = false; }
@@ -818,7 +829,7 @@
     function yueParts(e) {
         const syl = e.s.split(" ").filter(Boolean);
         const tones = syl.map(x => parseInt(x.slice(-1), 10) || 0);
-        const r = syl.map((x, i) => ({ t: (i ? " " : "") + x, c: prefs.colours ? YUE[tones[i]] : null }));
+        const r = syl.map((x, i) => ({ t: (i ? " " : "") + x, c: colOn() ? YUE[tones[i]] : null }));
         return { h: hanSegs(e.k.split("\t")[0], tones, YUE), r, r2: null };
     }
     // 客語: a syllable is its letters, the tone category as a superscript digit and the accent as a subscript one
@@ -844,7 +855,7 @@
         const r = parsed.map((p, i) => {
             const mark = (marks[p.acc] || [])[p.cat] || "";
             const body = prefs.hakRom === 1 ? (hz[p.l] || p.l) : p.l;
-            return { t: (i ? " " : "") + body + mark, c: prefs.colours ? hakColour(p.acc, p.cat) : null };
+            return { t: (i ? " " : "") + body + mark, c: colOn() ? hakColour(p.acc, p.cat) : null };
         });
         const cols = {}; parsed.forEach((p, i) => { cols[i + 1] = hakColour(p.acc, p.cat); });
         return { h: hanSegs(e.k.split("\t")[0], parsed.map((_, i) => i + 1), cols), r, r2: null, guess: !!(e.a && !e.a[acc]) };
@@ -959,8 +970,8 @@
         const cols = svColours(ms);
         const many = ms.filter(m => m.k !== "w").length > 1;
         const whole = ms.map(m => m.t).join("") === head;
-        const h = whole && many ? ms.map((m, i) => ({ t: m.t, c: prefs.colours && m.k !== "w" ? cols[i] : null })) : [{ t: head, c: null }];
-        const r = many ? ms.map((m, i) => ({ t: m.k === "w" ? " " : ((i && ms[i - 1].k !== "w" ? "-" : "") + m.t), c: prefs.colours && m.k !== "w" ? cols[i] : null })) : [];
+        const h = whole && many ? ms.map((m, i) => ({ t: m.t, c: colOn() && m.k !== "w" ? cols[i] : null })) : [{ t: head, c: null }];
+        const r = many ? ms.map((m, i) => ({ t: m.k === "w" ? " " : ((i && ms[i - 1].k !== "w" ? "-" : "") + m.t), c: colOn() && m.k !== "w" ? cols[i] : null })) : [];
         let parts = null;
         if (many) {
             parts = el("div", "parts");
@@ -1911,7 +1922,8 @@
         const vid = ytVideoId() || (SUBS_SITE ? location.pathname : "");
         if (vid !== st.vid) {
             st.vid = vid; st.files.clear(); st.key = ""; st.ytTracks = []; st.ytTrans = []; st.cur = ""; st.tried.clear();
-            st.fullTracks = []; st.fullUrl = ""; st.fullFailed = new Set(); st.hlsSrc = "";
+            st.fullTracks = []; st.fullUrl = ""; st.fullFailed = new Set(); st.hlsSrc = ""; st.fullShift = 0;
+            st.ytTransAll = []; st.sec = null; st.secWant = ""; st.secFailed = new Set();
             subsShow([]);
             if (ytVideoId()) subsAskTracks(0);
         }
@@ -1925,6 +1937,7 @@
             pageGet(src).then(t => { if (t) subsManifest(src, t); });
         }
         subsFullPick();
+        subs2Pick();
         if (!ytVideoId() && v && v.textTracks && v.textTracks.length && Date.now() - st.textTracksAt > 2000 && !String(st.key).startsWith("full:")) {
             st.textTracksAt = Date.now();
             const list = [...v.textTracks].filter(tt => /subtitles|captions/.test(tt.kind));
@@ -1979,6 +1992,7 @@
         const first = !subs.ytTracks.length;
         subs.ytTracks = j.tracks;
         subs.ytTrans = (j.trans || []).filter(t => SUBS_TRANS.includes(t.lang));
+        subs.ytTransAll = j.trans || [];
         // (the first time: the language wanted; after that, whatever the player shows stays). No subtitles in a
         // language of the add-on: YouTube's translation of them into 繁體中文
         if (first && !subs.key) {
@@ -2097,9 +2111,9 @@
             let p = { h: [], r: [] };
             try { p = subsParts(o.e, o.L, meta); } catch (err) {}
             const rd = document.createElement("div"); rd.className = "rd";
-            (p.r || []).forEach((sg, i) => { const x = document.createElement("span"); x.textContent = i && o.L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t; if (sg.c && prefs.colours) x.style.color = "#" + sg.c; rd.appendChild(x); });
+            (p.r || []).forEach((sg, i) => { const x = document.createElement("span"); x.textContent = i && o.L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t; if (sg.c && subsCol()) x.style.color = "#" + sg.c; rd.appendChild(x); });
             const h = document.createElement("div"); h.className = "h";
-            (p.h || []).forEach(sg => { const x = document.createElement("span"); x.textContent = sg.t; if (sg.c && prefs.colours) x.style.color = "#" + sg.c; h.appendChild(x); });
+            (p.h || []).forEach(sg => { const x = document.createElement("span"); x.textContent = sg.t; if (sg.c && subsCol()) x.style.color = "#" + sg.c; h.appendChild(x); });
             if (!h.textContent) h.textContent = o.w;
             const gl = document.createElement("div"); gl.className = "gl";
             gl.textContent = subsGlossLong(o.e);
@@ -2286,7 +2300,7 @@
             }
         } catch (e) {}
         for (const f of found) if (!st.fullTracks.some(t => t.url === f.url)) st.fullTracks.push(f);
-        if (found.length) subsFullPick();
+        if (found.length) { subsFullPick(); if (st.panel) subsHeader(); subs2Pick(); }
     }
     /// which language's whole subtitles to load: the one the player shows; else the add-on's language
     function subsFullPick() {
@@ -2304,10 +2318,10 @@
         if (!tr || tr.url === st.fullUrl || (st.fullFailed && st.fullFailed.has(tr.url))) return;
         subsFullLoad(tr, showing);
     }
-    async function subsFullLoad(tr, showing) {
-        const st = subs;
-        st.fullBusy = true;
-        const vid = st.vid;
+    /// a language's whole subtitles from the stream (its file, or its list of pieces), in order, each line once;
+    /// null: another video by then
+    async function subsFullFetch(tr) {
+        const st = subs, vid = st.vid;
         let cues = [];
         try {
             if (tr.kind === "hls") {
@@ -2316,24 +2330,30 @@
                 for (let i = 0; i < parts.length; i += 8) {
                     const texts = await Promise.all(parts.slice(i, i + 8).map(pageGet));
                     for (const t of texts) cues.push(...subsParse(t));
-                    if (st.vid !== vid) return;
+                    if (st.vid !== vid) return null;
                 }
             } else {
                 cues = subsParse(await pageGet(tr.url));
             }
         } catch (e) { cues = []; }
-        finally { st.fullBusy = false; }
-        if (st.vid !== vid) return;
-        if (!cues.length) { (st.fullFailed = st.fullFailed || new Set()).add(tr.url); return; }
+        if (st.vid !== vid) return null;
         // (in order, each line once: pieces of a stream repeat the lines at their edges)
         cues.sort((a, b) => a.s - b.s);
-        cues = cues.filter((c, i) => !i || !(Math.abs(c.s - cues[i - 1].s) < 0.05 && c.t === cues[i - 1].t));
+        return cues.filter((c, i) => !i || !(Math.abs(c.s - cues[i - 1].s) < 0.05 && c.t === cues[i - 1].t));
+    }
+    async function subsFullLoad(tr, showing) {
+        const st = subs;
+        st.fullBusy = true;
+        let cues;
+        try { cues = await subsFullFetch(tr); } finally { st.fullBusy = false; }
+        if (!cues) return;
+        if (!cues.length) { (st.fullFailed = st.fullFailed || new Set()).add(tr.url); return; }
         // (the same times as the player's: a line it already has tells how far off the file's clock is)
         if (showing && showing.cues && showing.cues.length) {
             const norm = t => String(t || "").replace(/<[^>]+>/g, "").replace(/\s+/g, "");
             for (const c of showing.cues) {
                 const m = cues.find(x => norm(x.t) === norm(c.text));
-                if (m) { const d = c.startTime - m.s; if (Math.abs(d) > 0.2) cues.forEach(x => { x.s += d; x.e += d; }); break; }
+                if (m) { const d = c.startTime - m.s; if (Math.abs(d) > 0.2) { cues.forEach(x => { x.s += d; x.e += d; }); st.fullShift = d; } break; }
             }
         }
         st.fullUrl = tr.url;
@@ -2460,7 +2480,7 @@
 #ff-subs.hidden { opacity: 0; transform: translateY(12px); pointer-events: none; }
 #ff-subs .top { position: absolute; left: 0; right: 0; top: 0; height: 38px; display: flex; align-items: center; gap: 8px;
   padding: 0 10px 0 14px; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.07); font-size: 13px; color: #a7abc0; }
-#ff-subs .top b { font-weight: 600; color: #e9eaf2; margin-right: auto; font-size: 13px; }
+#ff-subs .top b { font-weight: 600; color: #e9eaf2; margin-right: auto; font-size: 13px; white-space: nowrap; flex: none; }
 #ff-subs select { all: revert; font: 12px -apple-system, system-ui; background: rgba(255,255,255,0.08); color: #e9eaf2;
   border: 1px solid rgba(255,255,255,0.12); border-radius: 7px; padding: 2px 4px; max-width: 150px; min-width: 0; flex: 0 1 auto; }
 #ff-subs.narrow select, #ff-subs.flow select { max-width: 96px; }
@@ -2502,9 +2522,27 @@
 #ff-subs .gl { font-size: var(--ff-gl, .5em); line-height: 1.25; color: #b6bad0; max-width: 9em; overflow: hidden; text-overflow: ellipsis;
   position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); }
 #ff-subs .gl.zh { color: #d9ddf2; }
-#ff-subs.flow .view { top: 38px; }
+#ff-subs.flow .view { top: 0; bottom: 38px; }
+/* (the row at the bottom: its buttons under the lines, at the very bottom of the screen) */
+#ff-subs.flow .top { top: auto; bottom: 0; border-bottom: none; border-top: 1px solid rgba(255,255,255,0.07); }
+#ff-subs.flow.mini .top, #ff-subs.flow.clear .top { border-top-color: transparent; }
 #ff-subs.flow .top b { margin-right: 2px; }
 #ff-subs.flow .top .study { position: static; flex: 1 1 auto; min-width: 0; height: 38px; border-bottom: none; padding: 0 4px; }
+#ff-subs .t2 { display: block; font-size: .58em; line-height: 1.3; color: #9a9fb5; margin-top: 3px; white-space: normal;
+  font-family: -apple-system, system-ui, "PingFang TC", sans-serif; }
+#ff-subs .t2:empty { display: none; }
+#ff-subs.flow .t2 { white-space: nowrap; }
+/* the gear: the buttons hidden or shown (in the corner of the button row; with the buttons hidden, alone there) */
+#ff-subs .gear { position: absolute; z-index: 3; left: 8px; top: 5px; width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; color: #c9cce0; background: rgba(255,255,255,0.08); }
+#ff-subs .gear svg { width: 18px; height: 18px; display: block; }
+#ff-subs.flow .gear { top: auto; bottom: 5px; }
+#ff-subs .top { padding-left: 44px; }
+#ff-subs.bare .top, #ff-subs.bare .study { display: none; }
+#ff-subs.bare .view { top: 0; }
+#ff-subs.bare.flow .view { bottom: 0; }
+#ff-subs.bare .gear { opacity: .55; background: rgba(16,18,28,.7); }
+#ff-subs.bare .gear:hover { opacity: 1; }
 #ff-subs .empty { display: block; padding: 18px; color: #8b90a8; font-size: 14px; }
 #ff-subs.flow { left: 12px; right: 12px; bottom: 12px; top: auto; width: auto; height: 116px; }
 #ff-subs.flow .view { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
@@ -2516,7 +2554,8 @@
 #ff-subs.air { left: 0 !important; right: 0 !important; top: 0 !important; bottom: 0 !important; width: auto !important;
   height: auto !important; border-radius: 0; border: none; background: #000 !important; }
 #ff-subs.air.mini { top: auto !important; height: 38px !important; }
-#ff-subs.air.flow .view { top: 42%; }
+#ff-subs.air.flow .view { top: 42%; bottom: 38px; }
+#ff-subs.air.flow.bare .view { bottom: 0; }
 #ff-subs.air.clear .line { background: transparent; }
 #ff-subs.air .line { padding: .35em .6em; }
 #ff-subs.air:not(.flow) .rail { padding: 0 6vw; }
@@ -2556,8 +2595,12 @@
         view.appendChild(rail);
         // the study row: the line before / after, this line again and again, slower, a stop after each line
         const study = document.createElement("div"); study.className = "study";
-        p.append(top, study, view);
-        st.study = study;
+        // the gear: the buttons hidden or shown
+        const gear = document.createElement("div"); gear.className = "gear";
+        gear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17.47 10.78 L19.14 11.07 L19.14 12.93 L17.47 13.22 L16.73 15.00 L17.71 16.39 L16.39 17.71 L15.00 16.73 L13.22 17.47 L12.93 19.14 L11.07 19.14 L10.78 17.47 L9.00 16.73 L7.61 17.71 L6.29 16.39 L7.27 15.00 L6.53 13.22 L4.86 12.93 L4.86 11.07 L6.53 10.78 L7.27 9.00 L6.29 7.61 L7.61 6.29 L9.00 7.27 L10.78 6.53 L11.07 4.86 L12.93 4.86 L13.22 6.53 L15.00 7.27 L16.39 6.29 L17.71 7.61 L16.73 9.00 Z M12 9.6 A2.4 2.4 0 1 0 12 14.4 A2.4 2.4 0 1 0 12 9.6 Z"/></svg>';
+        gear.addEventListener("click", e => { e.stopPropagation(); prefs.subsBar = prefs.subsBar === false; savePrefs(); subsLayout(); });
+        p.append(top, study, view, gear);
+        st.study = study; st.gear = gear;
         document.documentElement.appendChild(p);
         st.panel = p; st.rail = rail; st.view = view; st.top = top;
 
@@ -2636,11 +2679,16 @@
         st.panel.classList.toggle("wide", !flow && wide);
         st.panel.classList.toggle("narrow", !flow && !wide);
         st.panel.classList.toggle("mini", st.collapsed);
+        const bare = prefs.subsBar === false;
+        st.panel.classList.toggle("bare", bare);
+        if (st.gear) st.gear.title = bare ? ffT("顯示按鈕") : ffT("隱藏按鈕");
         st.panel.classList.toggle("clear", subsBgMode() === "clear");
         // (the row at the bottom: tall enough for the letters)
         // (one line on top; the readings and meanings over and under the words need room too)
         const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl || st.hasEn;
-        st.panel.style.height = flow && !st.collapsed && !air ? Math.round(38 + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3))) + "px" : "";
+        // (the second language: a smaller line under each one)
+        const two = st.sec && st.sec.cues.length ? fs * 0.58 * 1.3 * 2 + 3 : 0;
+        st.panel.style.height = flow && !st.collapsed && !air ? Math.round((bare ? 0 : 38) + two + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3))) + "px" : "";
         const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
@@ -2719,6 +2767,146 @@
         subsStudy();
     }
 
+    // ── a second language under each line (small and grey), e.g. English under the Chinese: from the stream's list
+    // of languages (Viki and the like), YouTube's languages (or its translation), or the video's own tracks
+    const subs2Norm = l => String(l || "").toLowerCase().replace(/_/g, "-");
+    /// a language code is the one wanted ("en" is en-US too; "zh-hant" is zh-TW / zt …)
+    function subs2Match(code, want) {
+        const c = subs2Norm(code), w = subs2Norm(want);
+        if (!c || !w) return false;
+        if (c === w || c.startsWith(w + "-") || w.startsWith(c + "-")) return true;
+        const trad = ["zt", "zh-hant", "zh-tw", "zh-hk"];
+        return trad.includes(c) && trad.includes(w);
+    }
+    /// the languages this video has, other than the one shown: {code, name, key, get() → cues}
+    function subs2Options() {
+        const st = subs;
+        if (!st) return [];
+        const out = [];
+        if (ytVideoId()) {
+            const ytGet = url => async () => {
+                if (!url.includes("fmt=")) url += "&fmt=json3";
+                const r = await fetch(url, { credentials: "include" });
+                return subsParse(r.ok ? await r.text() : "");
+            };
+            for (const t of st.ytTracks || []) {
+                const id = subsId(t.lang, t.kind);
+                if (id === st.cur || !t.url) continue;
+                out.push({ code: subs2Norm(t.lang), name: t.name + (t.kind === "asr" ? ffT("（自動）") : ""), key: "yt:" + id, get: ytGet(t.url) });
+            }
+            // (no subtitles of its own in a language: YouTube's translation into it)
+            const base = subsBase();
+            if (base && base.url) for (const t of st.ytTransAll || []) {
+                const code = subs2Norm(t.lang);
+                if (out.some(o => subs2Match(o.code, code)) || st.cur.endsWith(">" + t.lang)) continue;
+                if (!["en", "zh-hant", "zh-hans", "ja", "ko", "sv"].includes(code)) continue;
+                out.push({ code, name: "→ " + t.name, key: "yt:" + subsId(base.lang, base.kind, t.lang), get: ytGet(base.url + "&tlang=" + encodeURIComponent(t.lang)) });
+            }
+            return out;
+        }
+        for (const t of st.fullTracks || []) {
+            if (t.url === st.fullUrl) continue;
+            out.push({ code: subs2Norm(t.lang), name: t.name || t.lang, key: "full2:" + t.url, get: async () => {
+                const cues = await subsFullFetch(t) || [];
+                if (st.fullShift) cues.forEach(x => { x.s += st.fullShift; x.e += st.fullShift; });
+                return cues;
+            } });
+        }
+        // (tracks the browser itself has loaded: only ones already there, none is turned on)
+        const v = subsVideo();
+        if (v && v.textTracks) for (const tt of v.textTracks) {
+            if (!/subtitles|captions/.test(tt.kind) || tt.mode === "showing" || !tt.cues || !tt.cues.length) continue;
+            const code = subs2Norm(tt.language || tt.label);
+            if (!code || out.some(o => o.code === code) || "track:" + (tt.language || tt.label || tt.id) === st.key) continue;
+            out.push({ code, name: tt.label || tt.language, key: "track2:" + code + ":" + tt.cues.length, get: async () => {
+                const cues = [];
+                for (const c of tt.cues) {
+                    const t = String(c.text || "").replace(/<[^>]+>/g, "").replace(/\s*\n\s*/g, " ").trim();
+                    if (t) cues.push({ s: c.startTime, e: c.endTime, t });
+                }
+                return subsClean(cues);
+            } });
+        }
+        return out;
+    }
+    /// the second language: loaded when chosen (and when the video has it); none chosen: taken away
+    async function subs2Pick(changed) {
+        const st = subs;
+        if (!st || !subsMine()) return;
+        const want = subs2Norm(prefs.subs2);
+        if (!want) { if (st.sec) { st.sec = null; subs2Fill(); subsLayout(); } if (changed) subsHeader(); return; }
+        const opts = subs2Options();
+        const o = opts.find(x => x.code === want) || opts.find(x => subs2Match(x.code, want));
+        if (changed) subsHeader();
+        if (!o) { if (changed && st.sec) { st.sec = null; subs2Fill(); subsLayout(); } return; }
+        if ((st.sec && st.sec.key === o.key) || st.secWant === o.key || (st.secFailed && st.secFailed.has(o.key))) return;
+        st.secWant = o.key;
+        const vid = st.vid;
+        let cues = [];
+        try { cues = await o.get(); } catch (e) { cues = []; }
+        if (st.vid !== vid || st.secWant !== o.key) return;
+        st.secWant = "";
+        if (!cues || !cues.length) { (st.secFailed = st.secFailed || new Set()).add(o.key); return; }
+        st.sec = { key: o.key, cues: subsClean(cues) };
+        subs2Fill();
+        subsLayout();
+    }
+    /// each line's second-language words: every line of the second language goes under the line it's said with
+    /// (the most time in common)
+    function subs2Fill() {
+        const st = subs;
+        if (!st || !st.lines) return;
+        const texts = st.lines.map(() => []);
+        const sec = st.sec ? st.sec.cues : [];
+        const cs = st.cues;
+        if (sec.length && cs.length) {
+            let j = 0;
+            for (const x of sec) {
+                while (j < cs.length && cs[j].e <= x.s) j++;
+                let best = -1, most = 0;
+                for (let k = Math.max(0, j - 1); k < cs.length && cs[k].s < x.e; k++) {
+                    const o = Math.min(cs[k].e, x.e) - Math.max(cs[k].s, x.s);
+                    if (o > most) { most = o; best = k; }
+                }
+                if (best >= 0 && !texts[best].includes(x.t)) texts[best].push(x.t);
+            }
+        }
+        st.lines.forEach((line, i) => {
+            const t2 = line.querySelector(".t2");
+            if (t2) t2.textContent = texts[i].join(" ");
+        });
+        st.centers = [];
+    }
+
+    /// the second language's menu (small and grey under each line): the languages this video has; null: none
+    function subs2Select() {
+        const st = subs;
+        const opts2 = subs2Options();
+        if (!opts2.length && !prefs.subs2) return null;
+        {
+            const sel2 = document.createElement("select");
+            sel2.title = ffT("第二種語言：小小的灰色字，在每一行下面");
+            const o0 = document.createElement("option"); o0.value = ""; o0.textContent = ffT("第二語言：無");
+            sel2.appendChild(o0);
+            const seen = new Set();
+            for (const o of opts2) {
+                if (seen.has(o.code)) continue;
+                seen.add(o.code);
+                const x = document.createElement("option"); x.value = o.code; x.textContent = "+ " + o.name;
+                sel2.appendChild(x);
+            }
+            const want = String(prefs.subs2 || "").toLowerCase();
+            if (want && !seen.has(want)) {
+                // (the one chosen before, not in this video)
+                const m = opts2.find(o => subs2Match(o.code, want));
+                if (m) sel2.value = m.code;
+                else { const x = document.createElement("option"); x.value = want; x.textContent = "+ " + want + ffT("（這部影片沒有）"); sel2.appendChild(x); sel2.value = want; }
+            } else sel2.value = want;
+            sel2.addEventListener("change", () => { prefs.subs2 = sel2.value; savePrefs(); subs2Pick(true); });
+            return sel2;
+        }
+    }
+
     // the subtitles' size (from 設定, or A− / A+ on the panel)
     function subsSize() {
         const st = subs;
@@ -2787,11 +2975,15 @@
             // (its own block: the sentence kept with a saved word is this line, without the time)
             const tx = document.createElement("div");
             tx.className = "tx"; tx.textContent = c.t;
-            line.append(tm, tx);
+            // (the second language's words for this line, small and grey)
+            const t2 = document.createElement("div");
+            t2.className = "t2";
+            line.append(tm, tx, t2);
             frag.appendChild(line);
             return line;
         });
         st.rail.replaceChildren(frag);
+        subs2Fill();
         subsSize();
         st.centers = [];
         subsLayout();
@@ -2889,7 +3081,10 @@
     }
     /// a word's characters (in the tone colours) and reading, in the subtitles' language
     function subsParts(e, L, meta) {
-        return L === "tw" ? twParts(e, meta) : L === "yue" ? yueParts(e) : L === "hak" ? hakParts(e, meta) : zhParts(e, meta);
+        // (the subtitles' own tone-colour setting, while their words are made)
+        colFor = subsCol();
+        try { return L === "tw" ? twParts(e, meta) : L === "yue" ? yueParts(e) : L === "hak" ? hakParts(e, meta) : zhParts(e, meta); }
+        finally { colFor = null; }
     }
     /// the entry to use of a word's entries (華語: not 四川話's own words, unless 四川話 is chosen)
     // (of a word's readings, the most common: 的 de, not dì)
@@ -2900,7 +3095,7 @@
     };
 
     async function subsColour(key) {
-        if (!prefs.colours && !knownSet && !localKnown.size && !prefs.subsRd && !prefs.subsGl && !prefs.subsEnZh) {
+        if (!subsCol() && !knownSet && !localKnown.size && !prefs.subsRd && !prefs.subsGl && !prefs.subsEnZh) {
             subs.lines.forEach((line, li) => { const tx = line.querySelector(".tx"); if (tx.querySelector(".w")) tx.textContent = subs.cues[li].t; });
             return;
         }
@@ -3003,7 +3198,7 @@
                     const sp = document.createElement("span");
                     sp.className = "h";
                     // (只替標出來的詞上色: a word not marked stays plain, without its glow)
-                    if (cols[j] && prefs.colours && !(prefs.onlyNew && !marked)) sp.style.color = "#" + cols[j];
+                    if (cols[j] && subsCol() && !(prefs.onlyNew && !marked)) sp.style.color = "#" + cols[j];
                     else if (prefs.onlyNew && !marked) sp.className = "";
                     sp.textContent = chars[i + j];
                     sp.dataset.ci = li + ":" + (i + j);
@@ -3048,7 +3243,7 @@
                 const x = document.createElement("span");
                 // (華語's 拼音 comes without spaces; the others bring their own spaces and hyphens)
                 x.textContent = i && (L || "zh") === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t;
-                if (sg.c && prefs.colours) x.style.color = "#" + sg.c;
+                if (sg.c && subsCol()) x.style.color = "#" + sg.c;
                 rd.appendChild(x);
                 });
             }
@@ -3229,6 +3424,8 @@
         ls.addEventListener("click", e => e.stopPropagation());
         ls.addEventListener("change", () => { prefs.subsLang = ls.value; savePrefs(); subsRedraw(); });
         st.study.appendChild(ls);
+        const sel2 = subs2Select();
+        if (sel2) st.study.appendChild(sel2);
         b(ffT("上一句"), false, ffT("回到上一句"), () => go(-1));
         b(ffT("重複"), st.loop >= 0, ffT("一直重複這一句"), () => { st.loop = st.loop >= 0 ? -1 : Math.max(0, st.now); });
         b(ffT("慢速"), !!st.slow, ffT("放慢到 0.75 倍"), () => { st.slow = !st.slow; const vv = v(); if (vv) vv.playbackRate = st.slow ? 0.75 : 1; });
@@ -3406,9 +3603,9 @@
                 let p = { h: [], r: [] };
                 try { p = subsParts(o.e, o.L, meta); } catch (err) {}
                 const rd = el("div", "rd");
-                (p.r || []).forEach((sg, i) => { const x = el("span", null, i && o.L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; rd.appendChild(x); });
+                (p.r || []).forEach((sg, i) => { const x = el("span", null, i && o.L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t); if (sg.c && subsCol()) x.style.color = "#" + sg.c; rd.appendChild(x); });
                 const h = el("div", "h");
-                (p.h || []).forEach(sg => { const x = el("span", null, sg.t); if (sg.c && prefs.colours) x.style.color = "#" + sg.c; h.appendChild(x); });
+                (p.h || []).forEach(sg => { const x = el("span", null, sg.t); if (sg.c && subsCol()) x.style.color = "#" + sg.c; h.appendChild(x); });
                 if (!h.textContent) h.textContent = o.w;
                 const gl = el("div", "gl", subsGloss(o.e));
                 const sn = el("div", "sn", subs.cues[o.li] ? subs.cues[o.li].t : "");
@@ -3457,23 +3654,28 @@
         const st = subs;
         st.centers = st.flow ? st.lines.map(l => l.offsetLeft + l.offsetWidth / 2) : [];
     }
-    // the row at the bottom: the line being said reaches the middle as it starts, and moves on steadily until
-    // the next one does (so the row flows evenly at the speed of the talking)
+    // the row at the bottom: the line being said is in the middle halfway through it (it comes in from the right as
+    // it starts, and moves on to the left as it ends), and the row moves on steadily from line to line (so it flows
+    // evenly at the speed of the talking)
     function subsFlowAt(t, at) {
         const st = subs;
         if (!st.centers.length) subsMeasure();
         const c = st.centers;
         if (!c.length) return;
+        const cs = st.cues;
+        // (each line's middle in time: halfway through it, or to the next line when that starts sooner)
+        const mid = i => { const q = cs[i], nx = cs[i + 1]; return q.s + 0.5 * Math.max(0.2, Math.min(q.e - q.s, nx ? nx.s - q.s : q.e - q.s)); };
+        let k = Math.max(0, Math.min(at, c.length - 1));
+        while (k > 0 && mid(k) > t) k--;
+        while (k < c.length - 1 && mid(k + 1) <= t) k++;
         let x;
-        if (at < 0) {
-            const first = st.cues[0];
-            x = c[0] - Math.max(0, first.s - t) * 60;
-        } else if (at >= c.length - 1) {
-            x = c[c.length - 1];
-        } else {
-            const a = st.cues[at], b = st.cues[at + 1];
-            const f = Math.min(1, Math.max(0, (t - a.s) / Math.max(0.3, b.s - a.s)));
-            x = c[at] + (c[at + 1] - c[at]) * f;
+        const m0 = mid(k);
+        if (t < m0) x = c[k] - (m0 - t) * 60;                 // (before the first line)
+        else if (k >= c.length - 1) x = c[k];
+        else {
+            const m1 = mid(k + 1);
+            const f = Math.min(1, Math.max(0, (t - m0) / Math.max(0.3, m1 - m0)));
+            x = c[k] + (c[k + 1] - c[k]) * f;
         }
         const y = st.view.clientWidth / 2 - x + st.manual;
         st.rail.style.transform = `translateX(${y.toFixed(1)}px)`;

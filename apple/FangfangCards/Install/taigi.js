@@ -238,7 +238,7 @@ function buildTaigi(a) {
     // ═════════════════════ build_moe.py ═════════════════════
     const PLACES = S["語音差異"][0].slice(2);
     const G1 = new Set(["宜蘭偏漳腔", "臺南混合腔", "高雄混合腔", "臺中偏漳腔"].map(p => PLACES.indexOf(p)));
-    const TYPES = ["主詞目", "臺華共同詞", "單字不成詞者", "附錄", "近反義詞不單列詞目者", "自補"];
+    const TYPES = ["主詞目", "臺華共同詞", "單字不成詞者", "附錄", "近反義詞不單列詞目者", "自補", "方言詞"];
     const rows = n => (S[n] || []).slice(1);
     const SYL = /[A-Za-z̀-ͯⁿ]+/gu;
 
@@ -620,7 +620,16 @@ function buildTaigi(a) {
         groups.get(k).push(e);
     }
     const mergedInto = new Map();
+    // (the same syllables, one with 輕聲 and one without, are words of their own: 的 --ê and 的 ê (我的冊); the
+    // one with 輕聲 has "--" in its key, 的\t-- e5)
+    const hasDash = e => split(e.r).includes("--");
+    const parts = [];
     for (const [, es] of groups) {
+        const dash = es.filter(hasDash), plain = es.filter(e => !hasDash(e));
+        if (dash.length && plain.length) { for (const e of dash) e._dash = true; parts.push(plain, dash); }
+        else parts.push(es);
+    }
+    for (const es of parts) {
         const base = es[0];
         for (const o of es.slice(1)) {
             mergedInto.set(o.i, base.i);
@@ -650,8 +659,11 @@ function buildTaigi(a) {
     for (const e of D.E) {
         if (e._merged) continue;
         if (!("r" in e)) { keyOf.set(e.i, e.h + "\t"); continue; }
-        const c = codesOnlyApp(e.r);
+        let c = codesOnlyApp(e.r);
         if (!c) { keyOf.set(e.i, e.h + "\t"); continue; }
+        // (the 輕聲 one of a pair: its "--" in its key)
+        if (e._dash) c = split(e.r).map(lstripCaret).filter(t => t === "--" || parse(t)).join(" ");
+        const cc = split(c).filter(x => x !== "--").join(" ");     // (its syllables)
         const k = e.h + "\t" + c;
         keyOf.set(e.i, k);
         if (seen.has(k)) continue;
@@ -677,14 +689,14 @@ function buildTaigi(a) {
         if (e.c && e.c.length) catM[k] = e.c;
         for (const [x, label] of e.a || []) {
             const ac = codesOnlyApp(x);
-            if (ac && ac !== c) {
+            if (ac && ac !== cc) {
                 (alt[k] = alt[k] || []).push([ac, label].concat(needsTokens(x) ? [x] : []));
                 for (const y of split(ac)) used.add(y);
             }
         }
         if (e.d) for (const [p, r] of e.d) {
             const rc = codesOnlyApp(r);
-            if (rc && rc !== c) {
+            if (rc && rc !== cc) {
                 (dia[k] = dia[k] || {})[p] = rc;
                 for (const y of split(rc)) used.add(y);
                 if ((e.dx || []).includes(p)) dex[k] = (dex[k] || "") + p;
@@ -692,7 +704,7 @@ function buildTaigi(a) {
         }
         if (e.sd) for (const [si, v] of e.sd) for (const [p, r] of v) {
             const rc = codesOnlyApp(r);
-            if (rc && rc !== c) {
+            if (rc && rc !== cc) {
                 const s1 = sdia[k] || (sdia[k] = {});
                 (s1[si] = s1[si] || {})[p] = rc;
                 for (const y of split(rc)) used.add(y);
@@ -749,6 +761,67 @@ function buildTaigi(a) {
     }
     const nm = namesOf(D.names), sr = namesOf(D.sur);
     const HAN = /^[㐀-鿿豈-﫿\u{20000}-\u{3134f}]+$/u;
+    // 方言詞: the words only some places say for a meaning (詞彙比較) and the dictionary has no entry for (柑仔得,
+    // 金門, for 番茄): words of their own, marked with the places that say them (loc), each meaning pointing to the
+    // word most places say (看「柑仔蜜」; lstd)
+    const loc = {}, lstd = {};
+    {
+        const hans = new Set(words.map(w => w[0]));
+        const firstKey = new Map();     // han → its first entry's key (the dictionary's own words)
+        for (const [h, c] of words) { const k = h + "\t" + c; if (!firstKey.has(h) && k in defsM) firstKey.set(h, k); }
+        const add = new Map();      // key → {places: Set, groups: [[zh, [std keys]]]}
+        const order = [];
+        for (const [zh, row] of cmp) {
+            // the words the dictionary has for this meaning, the ones most places say first (whatever the reading)
+            const byHan = new Map(), keyIn = new Map(), byKey = new Map();
+            for (const [p, han, rc] of row) {
+                if (!rc) continue;
+                if (!byHan.has(han)) byHan.set(han, new Set());
+                byHan.get(han).add(p);
+                const k = han + "\t" + rc;
+                if (k in defsM && !keyIn.has(han)) keyIn.set(han, k);
+                if (!byKey.has(k)) byKey.set(k, new Set());
+                byKey.get(k).add(p);
+            }
+            const std = Array.from(byHan).filter(([h]) => hans.has(h) && (keyIn.has(h) || firstKey.has(h)))
+                .sort((x, y) => y[1].size - x[1].size).slice(0, 3).map(([h]) => keyIn.get(h) || firstKey.get(h));
+            for (const [k, ps] of byKey) {
+                const [han, rc] = k.split("\t");
+                if (hans.has(han) || !HAN.test(han) || cpLen(han) !== split(rc).length) continue;
+                if (!split(rc).every(c => parse(c))) continue;
+                if (!add.has(k)) { add.set(k, { places: new Set(), groups: [] }); order.push(k); }
+                const w = add.get(k);
+                for (const p of ps) w.places.add(p);
+                if (!w.groups.some(g => g[0] === zh)) w.groups.push([zh, std]);
+            }
+        }
+        for (const k of order) {
+            const w = add.get(k);
+            const [han, rc] = k.split("\t");
+            // (a meaning each: 看 the usual words; none in the dictionary: its 華語)
+            const lines = [], stds = [];
+            for (const [zh, std] of w.groups) {
+                const t = std.length ? "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。" : "華語：" + zh + "。";
+                if (lines.includes(t)) continue;
+                lines.push(t); stds.push(std);
+            }
+            words.push([han, rc]);
+            seen.add(k);
+            for (const y of split(rc)) used.add(y);
+            defsM[k] = defsT.length;
+            defsT.push(lines.length === 1 ? lines[0] : lines.map((t, i) => (i + 1) + ". " + t).join("\n"));
+            typ[k] = TYPES.indexOf("方言詞");
+            loc[k] = Array.from(w.places).sort((x, y) => x - y);
+            const all = [];
+            for (const st of stds) for (const x of st) if (!all.includes(x)) all.push(x);
+            if (all.length) {
+                lstd[k] = all;
+                const rec = {};
+                stds.forEach((st, i) => { if (st.length) rec[String(i)] = st; });
+                sy[k] = rec;
+            }
+        }
+    }
     function termsOf(text) {
         const out = [];
         for (let t of text.split(/[、，,；;]/)) {
@@ -815,7 +888,7 @@ function buildTaigi(a) {
     // reading in context
     const HANC = /[㐀-䶿一-鿿豈-﫿\u{20000}-\u{3134f}〇]/gu;
     const single = new Map();
-    for (const [h, c] of words) if (cpLen(h) === 1) { if (!single.has(h)) single.set(h, new Set()); single.get(h).add(c); }
+    for (const [h, c] of words) if (cpLen(h) === 1) { if (!single.has(h)) single.set(h, new Set()); single.get(h).add(split(c).filter(x => x !== "--").join(" ")); }
     const amb = new Set(Array.from(single).filter(([, cs]) => cs.size > 1).map(([h]) => h));
     const cu = new Map(), cl = new Map(), cr = new Map();
     const inc = (m, k) => m.set(k, (m.get(k) || 0) + 1);
@@ -848,12 +921,12 @@ function buildTaigi(a) {
     }
     const mapObj = m => { const o = {}; for (const [k, v] of m) o[k] = v; return o; };
     const dict = {
-        v: 2, words, syl: sylT, tl, pj,
+        v: 4, words, syl: sylT, tl, pj,
         defs: { t: defsT, m: defsM }, pos: posM, ex, reg, own, au,
         gl: Array.from(gl), freq, dex, ctx, dia2, sdia,
         places: D.places, g1: D.g1, types: D.types, cats: D.cats,
         alt, dia, tok, sub: subL, typ, cat: catM,
-        sy, an, var: varM, cmp, names: nm, sur: sr,
+        sy, an, var: varM, cmp, names: nm, sur: sr, loc, lstd,
     };
     host.progress(0.65, "寫 dict.json…");
     host.writeText(a.outDict || a.out_dict, JSON.stringify(dict));
@@ -894,7 +967,7 @@ function buildTaigi(a) {
         return out;
     }
     function tokensFor(k, codes) {
-        const cs = split(codes);
+        const cs = split(codes).filter(x => x !== "--");
         const base = dict.tok[k];
         if (!base) return cs;
         let i = 0; const out = [];
@@ -930,6 +1003,7 @@ function buildTaigi(a) {
     const BAD_TOPIC = /畫|全部|線|捷運|輕軌|鐵路|機場|縣$|市$|其他$|海港|外交/;
     const RANK = { "白": 0, "俗": 1, "": 2, "文": 3 };
     const TYPE_LABEL = { 1: "臺華共同", 3: "附錄" };
+    const placeLabel = ps => ps.slice(0, 3).map(p => String(PLACES[p] || "").slice(0, 2)).join("・") + (ps.length > 3 ? "…" : "");
     const EXS = [];
     for (const per of Object.values(dict.ex)) for (const lst of per) for (const [eh, tpl] of lst) {
         EXS.push([eh, Array.from(tpl.matchAll(TOK)).map(mm => mm[2])]);
@@ -1001,6 +1075,8 @@ function buildTaigi(a) {
         if (o.length) card.o = o;
         if (subL.includes(k)) card.s = 1;
         if (TYPE_LABEL[dict.typ[k]]) card.t = TYPE_LABEL[dict.typ[k]];
+        // (a 方言詞: the places that say it, 金門 / 臺南・高雄)
+        if (dict.loc[k]) card.t = placeLabel(dict.loc[k]);
         const others = (rec, x) => Object.keys(rec).filter(i => i !== "e").some(i => rec[i].includes(x));
         const ws = (syk.e || []).filter(x => !others(syk, x));
         const wa = (ank.e || []).filter(x => !others(ank, x));
@@ -1015,6 +1091,25 @@ function buildTaigi(a) {
     cardsOut.forEach((e, i) => { e._i = i; });
     cardsOut.sort((x, y) => (y._t - x._t) || (y._f - x._f) || (x._r - y._r) || (x._i - y._i));
     for (const e of cardsOut) { delete e._t; delete e._f; delete e._r; delete e._i; }
+    // (each 方言詞 right after the usual word it points to)
+    {
+        const after = new Map(), placed = new Set();
+        for (const e of cardsOut) {
+            const st = dict.lstd[e.k];
+            if (!st) continue;
+            if (!after.has(st[0])) after.set(st[0], []);
+            after.get(st[0]).push(e);
+        }
+        const have = new Set(cardsOut.map(e => e.k));
+        const out = [];
+        for (const e of cardsOut) {
+            if (dict.lstd[e.k] && have.has(dict.lstd[e.k][0])) continue;
+            out.push(e);
+            for (const x of after.get(e.k) || []) if (!placed.has(x.k)) { placed.add(x.k); out.push(x); }
+        }
+        cardsOut.length = 0;
+        cardsOut.push(...out);
+    }
     const toneSyl = {};
     for (const e of cardsOut) {
         const last = e.c[e.c.length - 1];

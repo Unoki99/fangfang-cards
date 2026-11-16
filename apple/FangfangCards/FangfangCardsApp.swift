@@ -33,7 +33,11 @@ struct FangfangCardsApp: App {
                 .modifier(SettingsSheet())
                 .modifier(RadioSheetModifier())
                 .fontDesign((AppTheme(rawValue: theme) ?? .night).fontDesign)
-                .onAppear { MacWindow.setUp() }
+                .onAppear {
+                    MacWindow.setUp()
+                    // (a dictionary made by an older version of the app: made again, with what's new)
+                    DictInstaller.shared.updateOutdated()
+                }
                 .environmentObject(store)
                 .preferredColorScheme(.dark)
                 .tint(AppTint.accent)

@@ -44,7 +44,7 @@ def render(tokens, s, place=None):
     return out
 
 def tokens_for(k, codes):
-    cs = codes.split()
+    cs = [x for x in codes.split() if x != "--"]
     base = D["tok"].get(k)
     if not base: return cs
     i, out = 0, []
@@ -156,6 +156,10 @@ for h, c in D["words"]:
     if o: card["o"] = o
     if k in D["sub"]: card["s"] = 1
     if TYPE_LABEL.get(D["typ"].get(k)): card["t"] = TYPE_LABEL[D["typ"][k]]
+    # (a 方言詞: the places that say it, 金門 / 臺南・高雄)
+    if D.get("loc", {}).get(k):
+        ps = D["loc"][k]
+        card["t"] = "・".join(PLACES[p][:2] for p in ps[:3]) + ("…" if len(ps) > 3 else "")
     ws = [x for x in sy.get("e", []) if not any(x in sy[i] for i in sy if i != "e")]
     wa = [x for x in an.get("e", []) if not any(x in an[i] for i in an if i != "e")]
     if ws: card["sy"] = link_list(ws)
@@ -169,6 +173,19 @@ for h, c in D["words"]:
 
 cards.sort(key=lambda e: (-e["_t"], -e["_f"], e["_r"]))
 for e in cards: del e["_t"], e["_f"], e["_r"]
+# (each 方言詞 right after the usual word it points to)
+LSTD = D.get("lstd", {})
+after = {}
+for e in cards:
+    if e["k"] in LSTD: after.setdefault(LSTD[e["k"]][0], []).append(e)
+have = {e["k"] for e in cards}
+placed, out_ = set(), []
+for e in cards:
+    if e["k"] in LSTD and LSTD[e["k"]][0] in have: continue
+    out_.append(e)
+    for x in after.get(e["k"], []):
+        if x["k"] not in placed: placed.add(x["k"]); out_.append(x)
+cards = out_
 
 # every tone of the last syllables, for the tone practice (spelled by rule)
 tone_syl = {}

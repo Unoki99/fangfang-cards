@@ -73,6 +73,9 @@ if [ "$SAFARI" = "1" ]; then
   # FangfangCards/: the data is put there for that, then taken out again)
   for f in $DATA; do [ -f "$DEST/data/$f" ] && cp "$DEST/data/$f" "$DEST/FangfangCards/$f"; done
   for f in "$DEST"/data/safari/d-*.json; do [ -f "$f" ] && mv -f "$f" "$DEST/FangfangSafari/"; done
+  # (台語 data made by an older version, without the 方言詞, or with 的 --ê and ê as one word: made again)
+  D0="$DEST/FangfangCards/dict.json"
+  if [ -f "$D0" ] && ! head -c 40 "$D0" | grep -q '"v":4'; then echo "（台語資料是舊版做的，重新建立）"; rm -f "$D0" "$DEST/FangfangCards/cards.json"; fi
   if [ ! -f "$DEST/FangfangCards/dict.json" ] || [ ! -f "$DEST/FangfangCards/cards.json" ]; then
     bash "$DEST/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
   fi

@@ -923,15 +923,19 @@ struct RadioView: View {
             ForEach(order, id: \.self) { l in
                 let list = radio.stations.filter { $0.lang == l }
                 if !list.isEmpty {
-                    Section(trs(Lang.names[l])) {
-                        // (by the kind of stream each sends; not known yet until it has played)
-                        let byFormat = Dictionary(grouping: list) { $0.format ?? "" }
-                        let kinds = byFormat.keys.sorted { RadioFormat.rank($0.isEmpty ? nil : $0) < RadioFormat.rank($1.isEmpty ? nil : $1) }
-                        ForEach(kinds, id: \.self) { k in
-                            Text(RadioFormat.title(k.isEmpty ? nil : k))
-                                .ffFont(.caption, .semibold).foregroundStyle(T.muted)
-                                .listRowBackground(Color.clear)
+                    // (by the kind of stream each sends, not known yet until it has played: each kind its own
+                    // rounded group, the language's name over the first one)
+                    let byFormat = Dictionary(grouping: list) { $0.format ?? "" }
+                    let kinds = byFormat.keys.sorted { RadioFormat.rank($0.isEmpty ? nil : $0) < RadioFormat.rank($1.isEmpty ? nil : $1) }
+                    ForEach(kinds, id: \.self) { k in
+                        Section {
                             ForEach(byFormat[k] ?? []) { s in row(s) }
+                        } header: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                if k == kinds.first { Text(trs(Lang.names[l])) }
+                                Text(RadioFormat.title(k.isEmpty ? nil : k))
+                                    .ffFont(.caption, .semibold).foregroundStyle(T.muted).textCase(nil)
+                            }
                         }
                     }
                 }

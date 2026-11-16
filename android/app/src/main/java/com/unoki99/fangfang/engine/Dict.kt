@@ -46,6 +46,10 @@ class DictRaw(
     val dex: Map<String, String>?,
     /** per meaning place readings: key -> meaning index -> place -> codes (足「非常」: 臺南 tsok) */
     val sdia: Map<String, Map<String, Map<String, String>>>? = null,
+    /** 方言詞 (words only some places say, from 詞彙比較): key -> the places that say it */
+    val loc: Map<String, List<Int>>? = null,
+    /** 方言詞: key -> the usual words for its meaning (看「臭柿仔」、「柑仔蜜」) */
+    val lstd: Map<String, List<String>>? = null,
 ) {
     companion object {
         fun parse(text: String): DictRaw {
@@ -81,6 +85,8 @@ class DictRaw(
             var dia2: Map<String, Map<String, List<String>>>? = null
             var dex: Map<String, String>? = null
             var sdia: Map<String, Map<String, Map<String, String>>>? = null
+            var loc: Map<String, List<Int>>? = null
+            var lstd: Map<String, List<String>>? = null
             j.obj { k ->
                 when (k) {
                     "words" -> words = j.strList2()
@@ -138,11 +144,13 @@ class DictRaw(
                     "dia2" -> dia2 = j.map { j.strListMap() }
                     "dex" -> dex = j.strMap()
                     "sdia" -> sdia = j.map { j.map { j.strMap() } }
+                    "loc" -> loc = j.map { j.intList() }
+                    "lstd" -> lstd = j.strListMap()
                     else -> j.skip()
                 }
             }
             return DictRaw(words, syl, tl, pj, defs, pos, ex, reg, own, au, gl, freq, places, alt, dia, tok, sub, typ,
-                sy, an, variants, cmp, names, sur, types, cats, cat, ctx, dia2, dex, sdia)
+                sy, an, variants, cmp, names, sur, types, cats, cat, ctx, dia2, dex, sdia, loc, lstd)
         }
     }
 }
@@ -195,6 +203,21 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     private val pairCount = HashMap<String, Int>()
     val catWords = HashMap<Int, MutableList<String>>()
     val catCounts: Map<Int, Int> get() = catWords.mapValues { it.value.size }
+    /** a usual word -> the 方言詞 that point to it (臭柿仔 -> 柑仔得, 虎井蜜 …), in the dictionary's order */
+    val localOf: Map<String, List<String>> by lazy {
+        val m = LinkedHashMap<String, MutableList<String>>()
+        // (the 輕聲 one of a pair first: 的 ê → 的 --ê)
+        for (w in raw.words) if (w.size == 2 && w[1].contains("--")) {
+            val k = w[0] + "\t" + w[1]; val plain = w[0] + "\t" + codesOf(k)
+            if (baseKeys.contains(plain)) m.getOrPut(plain) { ArrayList() }.add(k)
+        }
+        val ls = raw.lstd
+        if (ls != null) for (w in raw.words) if (w.size == 2) {
+            val k = w[0] + "\t" + w[1]
+            for (s in ls[k] ?: emptyList()) { val l = m.getOrPut(s) { ArrayList() }; if (!l.contains(k)) l.add(k) }
+        }
+        m
+    }
 
     companion object {
         val taigiCommon: Set<String> = "阮咱恁怹伊我你佇欲咧予共佮毋袂會閣攏遮遐啥厝媠囝仔个的矣嘛猶抑煞較足誠真去來看講聽想做食飯人有無是佗遐爾按怎彼這".cps().toSet()
@@ -231,7 +254,12 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
             return t
         }
 
-        fun codesOf(key: String): String { val i = key.indexOf('\t'); return if (i < 0) "" else key.substring(i + 1) }
+        /** a key's syllables (the 輕聲 one of a pair, 的\t-- e5, without its "--") */
+        fun codesOf(key: String): String {
+            val i = key.indexOf('\t'); if (i < 0) return ""
+            val s = key.substring(i + 1)
+            return if (s.contains("--")) s.split(' ').filter { it.isNotEmpty() && it != "--" }.joinToString(" ") else s
+        }
         fun hanOf(key: String): String { val i = key.indexOf('\t'); return if (i < 0) key else key.substring(0, i) }
 
         /** pairs where the 華語 meaning matches but the words don't mean the same in a sentence */
@@ -299,12 +327,26 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         }
         for ((c, v) in raw.syl) push(plainRev, plainKey(v[1]), c)
         // words
+        val light = ArrayList<Pair<String, String>>()
         for (w in raw.words) {
             if (w.size != 2) continue
             val h = w[0]; val c = w[1]
+            // (the 輕聲 one of a pair, 的\t-- e5: a choice of the other one, below)
+            if (c.contains("--")) { light.add(h to c); continue }
             push(hanMap, h, c); push(codeMap, c, h)
             maxHan = maxOf(maxHan, h.cpCount)
             maxSyl = maxOf(maxSyl, c.split(' ').size)
+        }
+        // the 輕聲 one of a pair (的 --ê, beside 的 ê): another choice for the same characters and syllables (轉換)
+        for ((h, c) in light) {
+            val k = h + "\t" + c; val clean = codesOf(k); val plain = h + "\t" + clean
+            if (hanMap[h]?.contains(clean) == true) {
+                hanAlt.getOrPut(h) { ArrayList() }.add(Opt(h, clean.split(' '), k, "輕聲", raw.tok[k]))
+            } else {
+                push(hanMap, h, clean); push(codeMap, clean, h)
+                altParent[plain] = k
+            }
+            maxHan = maxOf(maxHan, h.cpCount)
         }
         maxHan = minOf(maxHan, 12)
         for (w in raw.words) {
@@ -352,7 +394,7 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
             if (hanMap[v] != null) continue
             for (k in keys) {
                 val tab = k.indexOf('\t'); if (tab < 0) continue
-                val c = k.substring(tab + 1)
+                val c = codesOf(k)
                 push(hanMap, v, c)
                 altParent[v + "\t" + c] = k
                 maxHan = maxOf(maxHan, v.cpCount)
@@ -923,7 +965,8 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         for (x in alsoSaid(key, place)) if (x != shown) out.add(OtherReading("也講", x, null))
         if (differsFromCommon(key, place) && !alsoSaid(key, place).contains(main)) out.add(OtherReading("通行", main, raw.tok[key]))
         for (a in raw.alt[key] ?: emptyList()) {
-            if (a.isEmpty() || a[0] == shown) continue
+            // (the same syllables in another way, 輕聲 or not: 的 --ê / ê 第5義)
+            if (a.isEmpty() || (a[0] == shown && !(a.size > 2 && a[2] != (raw.tok[key] ?: a[0])))) continue
             out.add(OtherReading(if (a.size > 1 && a[1].isNotEmpty()) a[1] else "又", a[0], if (a.size > 2) a[2] else null))
         }
         return out
@@ -980,6 +1023,60 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     }
 
     fun defText(key: String): String? = raw.defs.m[key]?.let { raw.defs.t[it] }
+
+    // MARK: 方言詞 and 各地講法
+
+    /** a 方言詞's places, short (金門, 臺南・高雄); null: not one */
+    fun placeLabel(key: String): String? = raw.loc?.get(key)?.takeIf { it.isNotEmpty() }?.let { placeNames(it) }
+    fun placeNames(ps: List<Int>, most: Int = 3): String =
+        ps.take(most).joinToString("・") { if (it < raw.places.size) com.unoki99.fangfang.tr(raw.places[it].take(2)) else "" } +
+            (if (ps.size > most) "…" else "")
+    /** words places say differently (詞彙比較): 轉換 marks them (各地講法) */
+    val sayingHans: Set<String> by lazy {
+        val s = HashSet<String>()
+        for (e in raw.cmp) { val hs = e.rows.filter { it.codes.isNotEmpty() }.map { it.han }.toSet(); if (hs.size > 1) s.addAll(hs) }
+        s
+    }
+    /** the same syllables said another way, with or without 輕聲 (的 --ê: "/ê"), each after a "/" */
+    fun otherSpellings(key: String, sys: Int, place: Int): String {
+        val c = codesOf(key)
+        val sb = StringBuilder()
+        for (a in raw.alt[key] ?: emptyList()) if (a.size > 2 && a[0] == c) sb.append("/").append(render(a[2].split(' ').filter { it.isNotEmpty() }, sys, place))
+        return sb.toString()
+    }
+    /** the keys, each 方言詞 right after the usual word it points to */
+    fun withLocal(keys: List<String>): List<String> {
+        val out = ArrayList<String>(); val seen = HashSet<String>()
+        for (k in keys) {
+            if (seen.add(k)) out.add(k)
+            for (l in localOf[k] ?: emptyList()) if (seen.add(l)) out.add(l)
+        }
+        return out
+    }
+    class Saying(val zh: String, val words: List<Pair<String, List<Int>>>)
+    /** 各地講法: for each meaning (華語) a word is compared under in 詞彙比較, the words the places say for it (the
+     *  ones most places say first), each with the places that say it */
+    fun sayings(han: String): List<Saying> {
+        val out = ArrayList<Saying>()
+        for (e in raw.cmp) {
+            if (e.rows.none { it.han == han }) continue
+            val order = ArrayList<String>(); val by = HashMap<String, MutableList<Int>>()
+            for (r in e.rows) {
+                if (r.codes.isEmpty()) continue
+                val k = keyOf(Opt(r.han, r.codes.split(' '))) ?: continue
+                if (raw.defs.m[k] == null && !baseKeys.contains(k)) continue
+                if (by[k] == null) order.add(k)
+                val l = by.getOrPut(k) { ArrayList() }
+                if (!l.contains(r.place)) l.add(r.place)
+            }
+            if (order.size <= 1) continue
+            val words = order.withIndex().sortedWith(compareBy({ -by[it.value]!!.size }, { it.index }))
+                .map { Pair(it.value, by[it.value]!!.sorted()) }
+            out.add(Saying(e.zh, words))
+            if (out.size >= 4) break
+        }
+        return out
+    }
 
     // MARK: word classes
 

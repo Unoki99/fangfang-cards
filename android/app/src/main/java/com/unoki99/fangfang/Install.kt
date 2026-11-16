@@ -37,6 +37,13 @@ object DataFiles {
     fun isBuiltIn(name: String): Boolean = try { Store.app.assets.open("$name.json").close(); true } catch (_: Exception) { false }
     fun has(name: String) = isInstalled(name) || isBuiltIn(name)
     fun size(name: String): Long = installed(name).let { if (it.exists()) it.length() else 0L }
+    /** the version of the data in the installed copy ({"v":3,… at its start; 0: none said) */
+    fun dataVersion(name: String): Int {
+        val f = installed(name)
+        if (!f.exists()) return 0
+        val head = try { f.inputStream().use { s -> val b = ByteArray(64); val n = s.read(b); if (n > 0) String(b, 0, n, Charsets.UTF_8) else "" } } catch (_: Exception) { "" }
+        return Regex("\"v\":(\\d+)").find(head)?.groupValues?.get(1)?.toIntOrNull() ?: 0
+    }
     /** the file to read line by line (the installed copy first), or null */
     fun reader(name: String): java.io.BufferedReader? {
         val f = installed(name)
@@ -67,6 +74,9 @@ class DictPack(
     val download: String,
     /** files in the app the converter reads too (argument → file in assets/install) */
     val bundled: Map<String, String> = emptyMap(),
+    /** the version of the data this app's converter makes ({"v":…} in the first output): an installed copy made by
+     *  an older converter is made again by itself (0: no version) */
+    val dataVersion: Int = 0,
 ) {
     class Source(val file: String, val url: String, val optional: Boolean = false, val arg: String? = null)
 
@@ -82,7 +92,9 @@ class DictPack(
             listOf(Source("kautian.ods", "https://sutian.moe.edu.tw/media/senn/ods/kautian.ods"),
                 Source("essay.txt", G + "rime/rime-essay/master/essay.txt")),
             "taigi", "buildTaigi", "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻", "約 15 MB",
-            bundled = mapOf("own" to "twown.json"))
+            bundled = mapOf("own" to "twown.json"),
+            // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own)
+            dataVersion = 4)
 
         val mandarin = DictPack("zh", 1, "華語", listOf("zh", "inputcodes"),
             listOf(Source("dict-csld.json", G + "g0v/moedict-data-csld/master/dict-csld.json", arg = "csld"),
@@ -182,6 +194,26 @@ object DictInstaller {
     var allRunning by mutableStateOf<Pair<Int, Int>?>(null); private set
     fun missing(): List<DictPack> = DictPack.all.filter { p -> !isInstalled(p) && !p.outputs.take(1).all { DataFiles.isBuiltIn(it) } }
     fun isInstalled(p: DictPack): Boolean = p.outputs.take(1).all { DataFiles.isInstalled(it) }
+    /** installed, but made by an older version of the app's converter */
+    fun isOutdated(p: DictPack): Boolean {
+        val main = p.outputs.firstOrNull() ?: return false
+        return p.dataVersion > 0 && DataFiles.isInstalled(main) && DataFiles.dataVersion(main) < p.dataVersion
+    }
+    /** the dictionaries made by an older version of the converter: made again, one after another (when the app
+     *  starts; the files are downloaded again) */
+    private var updating = false
+    fun updateOutdated() {
+        if (updating || busy || allRunning != null) return
+        updating = true
+        scope.launch {
+            val todo = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { DictPack.all.filter { isOutdated(it) } }
+            for (p in todo) {
+                states[p.id] = InstallState.Working(0.0, tr("下載中…"))
+                runInstall(p)
+            }
+            updating = false
+        }
+    }
     fun installAll() {
         if (allRunning != null || busy) return
         val todo = missing()

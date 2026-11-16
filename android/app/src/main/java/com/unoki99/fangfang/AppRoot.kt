@@ -30,6 +30,8 @@ import com.unoki99.fangfang.ui.*
 
 @Composable
 fun App() {
+    // (a dictionary made by an older version of the app: made again, with what's new)
+    LaunchedEffect(Unit) { DictInstaller.updateOutdated() }
     val theme = Prefs.theme.value
     // the theme's colours are read while drawing: set it first, then draw everything again
     key(theme) {

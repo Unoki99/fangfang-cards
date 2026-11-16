@@ -33,6 +33,14 @@ enum DataFiles {
         return Bundle.main.url(forResource: name, withExtension: "json")
     }
     static func isInstalled(_ name: String) -> Bool { FileManager.default.fileExists(atPath: installed(name).path) }
+    /// the version of the data in the installed copy ({"v":3,…} at its start; 0: none said)
+    static func dataVersion(_ name: String) -> Int {
+        guard let h = try? FileHandle(forReadingFrom: installed(name)) else { return 0 }
+        defer { try? h.close() }
+        let head = String(decoding: (try? h.read(upToCount: 64)) ?? Data(), as: UTF8.self)
+        guard let r = head.range(of: #""v":(\d+)"#, options: .regularExpression) else { return 0 }
+        return Int(head[r].filter { $0.isNumber }) ?? 0
+    }
     static func isBuiltIn(_ name: String) -> Bool { Bundle.main.url(forResource: name, withExtension: "json") != nil }
     static func has(_ name: String) -> Bool { isInstalled(name) || isBuiltIn(name) }
     /// the size of the installed copy
@@ -164,6 +172,9 @@ struct DictPack: Identifiable {
     let download: String
     /// files inside the app the converter reads too (argument → file name in the app)
     var bundled: [String: String] = [:]
+    /// the version of the data this app's converter makes ({"v":…} in the first output): an installed copy made by
+    /// an older converter is made again by itself (0: no version)
+    var dataVersion = 0
 
     static let essay = Source(file: "essay.txt", url: "https://raw.githubusercontent.com/rime/rime-essay/master/essay.txt", optional: true)
     static let cedict = Source(file: "cedict_ts.u8", url: "https://raw.githubusercontent.com/cschiller/zhongwen/main/data/cedict_ts.u8", optional: true)
@@ -183,7 +194,9 @@ struct DictPack: Identifiable {
                   Source(file: "essay.txt", url: "https://raw.githubusercontent.com/rime/rime-essay/master/essay.txt")],
         script: "taigi", function: "buildTaigi",
         from: "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻",
-        download: "約 15 MB", bundled: ["own": "twown.json"])
+        download: "約 15 MB", bundled: ["own": "twown.json"],
+        // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own)
+        dataVersion: 4)
 
     static let mandarin: DictPack = {
         let g = "https://raw.githubusercontent.com/"
@@ -324,6 +337,24 @@ final class DictInstaller: ObservableObject {
         }
     }
     static func isInstalled(_ p: DictPack) -> Bool { p.outputs.prefix(1).allSatisfy { DataFiles.isInstalled($0) } }
+    /// installed, but made by an older version of the app's converter
+    static func isOutdated(_ p: DictPack) -> Bool {
+        guard p.dataVersion > 0, let main = p.outputs.first, DataFiles.isInstalled(main) else { return false }
+        return DataFiles.dataVersion(main) < p.dataVersion
+    }
+    /// the dictionaries made by an older version of the converter: made again, one after another (when the app
+    /// starts; the files are downloaded again)
+    private var updating = false
+    func updateOutdated() {
+        guard !updating, !busy, allRunning == nil else { return }
+        let todo = DictPack.all.filter { Self.isOutdated($0) }
+        guard !todo.isEmpty else { return }
+        updating = true
+        Task {
+            for p in todo { await run(p) }
+            updating = false
+        }
+    }
 
     private func run(_ p: DictPack) async {
         if case .working = state(p) { return }
@@ -624,6 +655,9 @@ struct DictDataSettings: View {
                 }
             }
             Text(p.from).ffFont(.caption).foregroundStyle(T.muted)
+            if installed, DictInstaller.isOutdated(p), case .idle = installer.state(p) {
+                Text(tr("這是舊版的資料：按「重新安裝」換成新版（App 打開的時候也會自己更新）。")).ffFont(.caption).foregroundStyle(T.rustInk)
+            }
             switch installer.state(p) {
             case .working(let f, let what):
                 ProgressView(value: f) { Text(what).ffFont(.caption).foregroundStyle(T.muted) }

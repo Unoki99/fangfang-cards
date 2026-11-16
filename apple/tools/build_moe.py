@@ -9,7 +9,7 @@ OUT = sys.argv[3]
 
 PLACES = S["語音差異"][0][2:]                 # 10 places, in the file's order
 G1 = {PLACES.index(p) for p in ("宜蘭偏漳腔", "臺南混合腔", "高雄混合腔", "臺中偏漳腔")}
-TYPES = ["主詞目", "臺華共同詞", "單字不成詞者", "附錄", "近反義詞不單列詞目者", "自補"]
+TYPES = ["主詞目", "臺華共同詞", "單字不成詞者", "附錄", "近反義詞不單列詞目者", "自補", "方言詞"]
 
 used_codes = set()
 problems = collections.Counter()

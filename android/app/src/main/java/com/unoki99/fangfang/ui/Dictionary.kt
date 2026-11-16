@@ -93,7 +93,7 @@ fun DictEntryBody(d: Dict, key: String) {
                     T.olive, T.oliveEdge, T.oliveInk) { Store.toggleSaved(key) }
                 MarkButtons(key)
             }
-            val r = remember(key, tk) { d.wordText(key, rom, place).annotated() }
+            val r = remember(key, tk) { (d.wordText(key, rom, place) + styled(d.otherSpellings(key, rom, place))).annotated() }
             Txt(r, lat(22f), T.greenInk)
             val z = remember(key, tk) { d.wordText(key, 3, place).annotated() }
             Txt(z, sz(19f), T.purpleInk)
@@ -103,6 +103,7 @@ fun DictEntryBody(d: Dict, key: String) {
                 if (d.subst.contains(key)) Chip(tr("替"), T.rust, T.rustEdge, T.rustInk)
                 val t = d.raw.typ[key]; val types = d.raw.types
                 if (t != null && t > 0 && types != null && t < types.size && t != 1) Chip(types[t], T.fn, T.fnEdge, T.muted)
+                d.raw.loc?.get(key)?.takeIf { it.isNotEmpty() }?.let { PlaceChip(d.placeNames(it, 12) + tr("的講法")) }
                 if (d.own.contains(key)) Chip(tr("方方補"), T.fn, T.fnEdge, T.muted)
                 if (d.isUser(key)) OwnChip()
                 if (place >= 0 && d.differsFromCommon(key, place) && place < d.raw.places.size) {
@@ -486,9 +487,10 @@ fun DictRow(d: Dict, key: String, modifier: Modifier = Modifier, englishQuery: S
     Column(modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Txt(remember(key, tk) { d.hanText(key, place, (if (d.isUser(key)) T.ownInk else T.glyph).argbInt()).annotated() }, sz(20f, FontWeight.SemiBold))
-            Txt(remember(key, tk) { d.wordText(key, rom, place).annotated() }, lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
-            Txt(remember(key, tk) { d.wordText(key, 3, place).annotated() }, ff(FF.Footnote), T.purpleInk, Modifier.weight(1f, fill = false), maxLines = 1)
+            Txt(remember(key, tk) { (d.wordText(key, rom, place) + styled(d.otherSpellings(key, rom, place))).annotated() }, lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
+            Txt(remember(key, tk) { (d.wordText(key, 3, place) + styled(d.otherSpellings(key, 3, place))).annotated() }, ff(FF.Footnote), T.purpleInk, Modifier.weight(1f, fill = false), maxLines = 1)
             Spacer(Modifier.weight(0.01f))
+            d.placeLabel(key)?.let { PlaceChip(it) }
             if (d.isUser(key)) OwnChip()
             if (Store.isSaved(key)) Icon(Icons.Filled.Bookmark, null, tint = T.oliveInk, modifier = Modifier.size(14.dp))
             when (Store.cardStatus(key)) {

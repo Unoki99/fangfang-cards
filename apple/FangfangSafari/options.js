@@ -165,6 +165,7 @@
     row(subPart, ffT("影片上原本的字幕"), ffT("面板開著的時候"), sc("subsHideVideo", [[true, ffT("隱藏")], [false, ffT("顯示")]]));
     row(subPart, ffT("字幕的語言"), ffT("讀音、意思、聲調顏色和生詞用哪個語言的詞典。自動：跟著上面開著的那一個語言（瑞典語的話，看字幕本身的語言）"), sc("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")]]));
     row(subPart, ffT("簡體字幕"), ffT("簡體的字幕轉成繁體（照詞典的詞：头发 → 頭髮），認識的詞也照繁體認得"), sc("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")]]));
+    row(subPart, ffT("第二種語言"), ffT("每一行下面用小小的灰色字顯示另一種語言（例如英文），影片有那個語言的字幕才會出現。在字幕面板上選。"), sc("subs2", [["", ffT("不顯示")], ["en", "English"], ["zh-hant", ffT("繁體中文")], ["zh-hans", ffT("簡體中文")], ["ja", "日本語"], ["ko", "한국어"]]));
     row(subPart, ffT("面板的底"), ffT("黑色；跟著底下的畫面：用底下大部分的顏色（太亮的會調暗）；沒有底：只看得到字幕一句一句的框、按鈕和詞卡"), sc("subsBg", [["dark", ffT("黑色")], ["tint", ffT("跟著底下的畫面")], ["clear", ffT("沒有底")]]));
     row(subPart, ffT("字幕在下面橫排時的詞卡"), ffT("畫面最上面一排一樣大小的詞卡：正在說的這一句標出來的詞"), sc("subsDefs", [[true, ffT("顯示")], [false, ffT("不顯示")]]));
 
@@ -208,6 +209,7 @@
     row(subPart, ffT("意思的大小"), ffT("下面的意思和字的大小比"), sc("subsGlSize", [[0.25, ffT("最小")], [0.32, ffT("很小")], [0.4, ffT("小一點")], [0.5, ffT("中")], [0.6, ffT("大")], [0.75, ffT("更大")]]));
     const onlySw = ffSwitch(prefs, "onlyNew");
     onlySw.style.setProperty("--c", v("--subs"));
+    row(subPart, ffT("字幕的聲調顏色"), ffT("字幕裡的字和讀音用聲調顏色。和詞卡的「聲調顏色」分開設定"), sc("subsColours", [[true, ffT("開")], [false, ffT("關")]]));
     row(subPart, ffT("只替標出來的詞上色"), ffT("其他的詞不上聲調顏色（網頁上也是：只有不認識的詞有顏色）"), onlySw);
     const tools = el("div", null, "tools");
     for (const [b, t] of [[ffT("上一句"), ffT("回到上一句")], [ffT("重複"), ffT("一直重複這一句，練聽和跟讀")], [ffT("慢速"), ffT("放慢到 0.75 倍")],
@@ -358,6 +360,10 @@ async function dictPart(sec) {
                 st.textContent = p
                     ? ffT("已安裝・") + n.toLocaleString() + ffT(" 個詞・") + new Date(p.at || Date.now()).toLocaleDateString()
                     : ffT("沒有安裝・下載約 ") + dict.mb + " MB";
+                // (made by an older version of the add-on: what's new comes with installing it again)
+                const old = p && dict.ver && (p.ver || 0) < dict.ver;
+                if (old) st.textContent += ffT("・舊版的資料，請按「重新安裝」");
+                st.classList.toggle("old", !!old);
                 inst.textContent = p ? ffT("重新安裝") : ffT("安裝");
                 rm.style.display = p ? "" : "none";
                 inst.disabled = rm.disabled = busy;

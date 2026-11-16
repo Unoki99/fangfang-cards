@@ -4,11 +4,11 @@
 # Without any dictionary inside (the dictionaries' licenses don't allow sharing changed versions): it comes with the
 # app's converters (apple\FangfangCards\Install\*.js, put in install\), and its settings page (詞典) downloads the
 # dictionaries' original files and makes the lookup files in the browser. So it can be shared, and listed on
-# addons.mozilla.org for everyone. Nothing else is needed (no Python, no install.bat).
+# addons.mozilla.org for everyone. Nothing else is needed (no Python, no android-install.bat).
 #   Double-click build-firefox.bat, or in PowerShell:
 #   powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\fangfang-cards-main\build-firefox.ps1"
 #
-# withdata: with the lookup files made from the data install.bat made on this computer inside it (needs Python 3);
+# withdata: with the lookup files made from the data android-install.bat made on this computer inside it (needs Python 3);
 # fangfang-firefox-private.xpi. Only for yourself (sign it "On your own", never listed).
 #   build-firefox.bat withdata
 $ErrorActionPreference = "Stop"
@@ -26,12 +26,12 @@ $Tmp = Join-Path $env:TEMP ("fangfang-firefox-" + [guid]::NewGuid().ToString("N"
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 try {
     if ($With) {
-        # the word data install.bat made: kept in %LOCALAPPDATA%\FangfangCards\data, and in the Android app's assets
+        # the word data android-install.bat made: kept in %LOCALAPPDATA%\FangfangCards\data, and in the Android app's assets
         $Data = $null
         foreach ($d in @((Join-Path $env:LOCALAPPDATA "FangfangCards\data"), (Join-Path $Here "android\app\src\main\assets"))) {
             if ((Test-Path (Join-Path $d "dict.json")) -and (Test-Path (Join-Path $d "zh.json"))) { $Data = $d; break }
         }
-        if (-not $Data) { Fail "還沒有詞典資料：先執行一次 install.bat（它會做出資料），再執行這個。" }
+        if (-not $Data) { Fail "還沒有詞典資料：先執行一次 android-install.bat（它會做出資料），再執行這個。" }
         # Python 3 (python.org): the launcher "py" first, then "python"
         $Py = $null; $PyArgs = @()
         if (Get-Command py -ErrorAction SilentlyContinue) {

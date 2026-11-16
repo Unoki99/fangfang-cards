@@ -105,7 +105,7 @@ async function install(dict, bufs, bundled) {
     }
     const r = ffShards.build(dict.id, data);
     say(0.85, "存起來…");
-    await ffDB.putLang(dict.id, r.files, { en: r.en, meta: r.meta, at: Date.now() });
+    await ffDB.putLang(dict.id, r.files, { en: r.en, meta: r.meta, at: Date.now(), ver: dict.ver || 0 });
     say(0.95, "整理英文查詞…");
     const merged = ffShards.merge(await ffDB.parts());
     await ffDB.putMerged(merged);

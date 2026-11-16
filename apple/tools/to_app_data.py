@@ -28,7 +28,17 @@ for e in D["E"]:
     if k is None: continue
     groups.setdefault(k, []).append(e)
 merged_into = {}
+# (the same syllables, one with 輕聲 and one without, are words of their own: 的 --ê and 的 ê (我的冊); the one with
+# 輕聲 has "--" in its key, 的\t-- e5)
+def has_dash(e): return "--" in e["r"].split()
+parts = []
 for k, es in groups.items():
+    dash = [e for e in es if has_dash(e)]; plain = [e for e in es if not has_dash(e)]
+    if dash and plain:
+        for e in dash: e["_dash"] = True
+        parts += [plain, dash]
+    else: parts.append(es)
+for es in parts:
     base = es[0]
     for o in es[1:]:
         merged_into[o["i"]] = base["i"]
@@ -67,6 +77,9 @@ for e in D["E"]:
     if not c:
         key_of[e["i"]] = e["h"] + "\t"
         continue
+    # (the 輕聲 one of a pair: its "--" in its key)
+    if e.get("_dash"): c = " ".join(t.lstrip("^") for t in e["r"].split() if t == "--" or parse(t.lstrip("^")))
+    cc = " ".join(x for x in c.split() if x != "--")      # (its syllables)
     k = e["h"] + "\t" + c
     key_of[e["i"]] = k
     if k in seen:
@@ -94,19 +107,19 @@ for e in D["E"]:
     if e.get("c"): cat[k] = e["c"]
     for a, label in e.get("a", []):
         ac = codes_only(a)
-        if ac and ac != c:
+        if ac and ac != cc:
             alt.setdefault(k, []).append([ac, label] + ([a] if needs_tokens(a) else []))
             used.update(ac.split())
     for p, r in e.get("d", {}).items():
         rc = codes_only(r)
-        if rc and rc != c:
+        if rc and rc != cc:
             dia.setdefault(k, {})[p] = rc
             used.update(rc.split())
             if p in e.get("dx", []): dex[k] = dex.get(k, "") + p     # MOE states it (not worked out by rule)
     for si, v in e.get("sd", {}).items():                        # a place's reading of one meaning (足 很: tsok)
         for p, r in v.items():
             rc = codes_only(r)
-            if rc and rc != c:
+            if rc and rc != cc:
                 sdia.setdefault(k, {}).setdefault(si, {})[p] = rc
                 used.update(rc.split())
     for p, xs in e.get("dd", {}).items():                        # the place also says it these ways
@@ -176,6 +189,57 @@ def terms_of(text):
         t = t.strip().strip("「」『』（）()")
         if 1 <= len(t) <= 6 and HAN.match(t): out.append(t)
     return out
+# 方言詞: the words only some places say for a meaning (詞彙比較) and the dictionary has no entry for (柑仔得, 金門,
+# for 番茄): words of their own, marked with the places that say them (loc), each meaning pointing to the words most
+# places say (看「臭柿仔」、「柑仔蜜」; lstd)
+loc, lstd = {}, {}
+hans = {w[0] for w in words}
+first_key = {}
+for h, c in words:
+    k = h + "\t" + c
+    if h not in first_key and k in defs_m: first_key[h] = k
+add, order = {}, []
+for zh, row in cmp:
+    by_han, key_in, by_key = {}, {}, {}
+    for p, han, rc in row:
+        if not rc: continue
+        by_han.setdefault(han, set()).add(p)
+        k = han + "\t" + rc
+        if k in defs_m and han not in key_in: key_in[han] = k
+        by_key.setdefault(k, set()).add(p)
+    cand = [(h, ps) for h, ps in by_han.items() if h in hans and (h in key_in or h in first_key)]
+    cand.sort(key=lambda x: -len(x[1]))      # (stable: the order of 詞彙比較 among equals)
+    std = [key_in.get(h) or first_key[h] for h, _ in cand[:3]]
+    for k, ps in by_key.items():
+        han, rc = k.split("\t")
+        if han in hans or not HAN.match(han) or len(han) != len(rc.split()): continue
+        if k not in add: add[k] = {"places": set(), "groups": []}; order.append(k)
+        w = add[k]
+        w["places"].update(ps)
+        if not any(g[0] == zh for g in w["groups"]): w["groups"].append([zh, std])
+TYPE_LOCAL = D["types"].index("方言詞")
+for k in order:
+    w = add[k]
+    han, rc = k.split("\t")
+    lines, stds = [], []
+    for zh, std in w["groups"]:
+        t = ("看" + "、".join("「" + x.split("\t")[0] + "」" for x in std) + "。") if std else "華語：" + zh + "。"
+        if t in lines: continue
+        lines.append(t); stds.append(std)
+    words.append([han, rc]); seen.add(k)
+    used.update(rc.split())
+    defs_m[k] = len(defs_t)
+    defs_t.append(lines[0] if len(lines) == 1 else "\n".join(f"{i + 1}. {t}" for i, t in enumerate(lines)))
+    typ[k] = TYPE_LOCAL
+    loc[k] = sorted(w["places"])
+    allk = []
+    for st in stds:
+        for x in st:
+            if x not in allk: allk.append(x)
+    if allk:
+        lstd[k] = allk
+        sy[k] = {str(i): st for i, st in enumerate(stds) if st}
+
 G = collections.defaultdict(dict)
 for e in D["E"]:
     if e.get("_merged") or e["i"] not in key_of: continue
@@ -237,7 +301,7 @@ pj = {c: code_to_poj(c) for c in syl}
 HANC = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\U00020000-\U0003134f\u3007]")
 single = collections.defaultdict(set)
 for h, c in words:
-    if len(h) == 1: single[h].add(c)
+    if len(h) == 1: single[h].add(" ".join(x for x in c.split() if x != "--"))
 amb = {h for h, cs in single.items() if len(cs) > 1}
 cu, cl, cr = collections.Counter(), collections.Counter(), collections.Counter()
 for senses in ex.values():
@@ -261,12 +325,12 @@ chars = {ch for h, _ in words for ch in h}
 freq = {ch: round(math.log(counts[ch]), 1) for ch in sorted(chars) if counts[ch] > 0}
 
 out = {
-    "v": 2, "words": words, "syl": syl, "tl": tl, "pj": pj,
+    "v": 4, "words": words, "syl": syl, "tl": tl, "pj": pj,
     "defs": {"t": defs_t, "m": defs_m}, "pos": pos, "ex": ex, "reg": reg, "own": own, "au": au,
     "gl": [[k, v] for k, v in gl.items()], "freq": freq, "dex": dex, "ctx": ctx, "dia2": dia2, "sdia": sdia,
     "places": D["places"], "g1": D["g1"], "types": D["types"], "cats": D["cats"],
     "alt": alt, "dia": dia, "tok": tok, "sub": sub, "typ": typ, "cat": cat,
-    "sy": sy, "an": an, "var": var, "cmp": cmp, "names": nm, "sur": sr,
+    "sy": sy, "an": an, "var": var, "cmp": cmp, "names": nm, "sur": sr, "loc": loc, "lstd": lstd,
 }
 json.dump(out, open(OUT, "w"), ensure_ascii=False, separators=(",", ":"))
 print("words", len(words), "collisions", collisions, "syllables", len(syl))

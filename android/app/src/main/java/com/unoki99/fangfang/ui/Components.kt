@@ -54,12 +54,16 @@ fun lat(size: Float): TextStyle = TextStyle(fontSize = size.sp, fontFamily = T.l
 fun Txt(text: String, style: TextStyle, color: Color = T.glyph, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
     if (com.unoki99.fangfang.Prefs.dictFont.value > 0 && style.fontFamily == null && text.any { it.code >= 0x3000 })
         Txt(AnnotatedString(text), style, color, modifier, maxLines)
-    else Text(text, style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    else Text(text, style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = overflowFor(maxLines))
 }
+
+/** (no limit on the lines: drawn without being cut at the text's edges, so the tone colours' glow isn't cut off
+ *  above and below; a limit: … at the end) */
+fun overflowFor(maxLines: Int): TextOverflow = if (maxLines == Int.MAX_VALUE) TextOverflow.Visible else TextOverflow.Ellipsis
 
 @Composable
 fun Txt(text: AnnotatedString, style: TextStyle, color: Color = T.glyph, modifier: Modifier = Modifier, maxLines: Int = Int.MAX_VALUE) {
-    Text(kaiRuns(text, style), style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
+    Text(kaiRuns(text, style), style = style, color = color, modifier = modifier, maxLines = maxLines, overflow = overflowFor(maxLines))
 }
 
 /** (kept for the pages that used it: the font now applies everywhere) */

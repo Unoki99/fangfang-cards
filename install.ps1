@@ -1,6 +1,6 @@
 ﻿# 方方詞卡 on Windows: makes the Android app (an APK on the Desktop; onto the phone if it's plugged in), or with
 # "windows" the Windows program (installed for this user, with a shortcut in the Start menu and on the Desktop).
-#   Double-click install.bat (Android) or install-windows.bat (Windows), or in PowerShell:
+#   Double-click android-install.bat (Android) or install-windows.bat (Windows), or in PowerShell:
 #   powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\fangfang-cards-main\install.ps1" [windows]
 # (The iPhone / iPad / Mac version can only be built on a Mac: use install.sh there.)
 param([string]$What = "android")
@@ -146,6 +146,17 @@ foreach ($y in @((Join-Path $Keep "yue.json"), (Join-Path $Assets "yue.json"), (
     if (Test-Path $y) {
         $fs = [IO.File]::OpenRead($y); $buf = New-Object byte[] 80; $n = $fs.Read($buf, 0, 80); $fs.Close()
         if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":2')) { Remove-Item $y -Force }
+    }
+}
+# (台語 data made by an older version, without the 方言詞, or with 的 --ê and ê as one word: made again)
+foreach ($dir in @($Keep, $Assets, $Apd)) {
+    $dj = Join-Path $dir "dict.json"
+    if (Test-Path $dj) {
+        $fs = [IO.File]::OpenRead($dj); $buf = New-Object byte[] 64; $n = $fs.Read($buf, 0, 64); $fs.Close()
+        if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":4')) {
+            Remove-Item $dj -Force
+            Remove-Item (Join-Path $dir "cards.json") -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json", "ja.json", "shuowen.json")) {

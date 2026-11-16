@@ -1517,5 +1517,11 @@
  "顯示讀音": "Show readings",
  "HLS（一段一段送的串流）": "HLS (sent in short pieces)",
  "其他格式（Ogg、Opus、FLAC）": "Other formats (Ogg, Opus, FLAC)",
- "格式還不知道（播一次就知道）": "Format not known yet (found once it plays)"
+ "格式還不知道（播一次就知道）": "Format not known yet (found once it plays)",
+  "多數地方": "most places",
+  "的講法": " word",
+  "方言詞": "Local word",
+  "華語「{0}」": "Mandarin “{0}”",
+  "這是舊版的資料：按「重新安裝」換成新版（App 打開的時候也會自己更新）。": "This data was made by an older version: press Reinstall for the new one (the app also updates it by itself when it opens).",
+  "點一下換成這個講法": "Tap to use this word in the text instead"
 }

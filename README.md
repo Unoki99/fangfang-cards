@@ -51,12 +51,12 @@ Windows 版和 Android 版用同一份程式碼（`android/app/src/main/java`）
 ### Android 版
 
 1. 安裝 Android Studio（https://developer.android.com/studio），打開一次讓它下載 SDK。
-2. 在資料夾裡**雙擊 `install.bat`**。也可以在 PowerShell 輸入：
+2. 在資料夾裡**雙擊 `android-install.bat`**。也可以在 PowerShell 輸入：
 
        powershell -ExecutionPolicy Bypass -File "$HOME\Downloads\fangfang-cards-main\install.ps1"
 
 做好的 APK 會放在桌面（FangfangCards.apk）；手機用 USB 接著並打開「USB 偵錯」的話，會直接裝上去。
-（`install.sh` 是給 Mac 用的，Windows 的 PowerShell 沒有 bash，所以要用 `install.bat`／`install.ps1`。）
+（`install.sh` 是給 Mac 用的，Windows 的 PowerShell 沒有 bash，所以要用 `android-install.bat`／`install.ps1`。）
 
 建置失敗的話，把終端機裡的錯誤訊息傳給 Claude。
 

@@ -96,6 +96,8 @@ private fun PackRow(p: DictPack, remove: () -> Unit) {
             }
         }
         Txt(tr(p.from) + "　" + tr(p.download), ff(FF.Caption), T.muted)
+        if (st !is InstallState.Working && DictInstaller.isOutdated(p))
+            Txt(tr("這是舊版的資料：按「重新安裝」換成新版（App 打開的時候也會自己更新）。"), ff(FF.Caption), Color(0xFFFF6B6B))
         when (st) {
             is InstallState.Working -> {
                 LinearProgressIndicator(progress = { st.fraction.toFloat() }, Modifier.fillMaxWidth(), color = edge, trackColor = T.fnEdge)

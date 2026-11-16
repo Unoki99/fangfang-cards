@@ -19,6 +19,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +58,28 @@ object ConvModel {
         e.latinMode = LatinMode.of(Prefs.latin.value)
         result = e.convert(Prefs.convText.value)
         version++
+    }
+
+    /** the word of item k in the text replaced by another (各地講法: 柑仔蜜 → 柑仔得); false: not a word typed in
+     *  漢字, so not found in the text */
+    fun replaceWord(k: Int, han: String): Boolean {
+        val r = result
+        if (k !in r.items.indices) return false
+        val text = Prefs.convText.value
+        var pos = 0
+        for ((j, it) in r.items.withIndex()) {
+            val h = if (it.src == "han" && it.opts.isNotEmpty()) it.current.han else null
+            if (h.isNullOrEmpty()) { if (j == k) return false; continue }
+            val at = text.indexOf(h, pos)
+            if (at < 0) return false
+            if (j == k) {
+                Prefs.convText.value = text.substring(0, at) + han + text.substring(at + h.length)
+                run()
+                return true
+            }
+            pos = at + h.length
+        }
+        return false
     }
 
     fun choose(item: Int, opt: Int) {
@@ -244,7 +268,7 @@ private fun itemTones(d: Dict, items: List<ConvItem>, place: Int): Map<Int, Pair
     return ranges.mapValues { (_, v) -> Pair(v.first, tones.subList(v.second, v.third)) }
 }
 
-private class OutWord(val text: AnnotatedString, val item: Int?, val newLine: Boolean, val mark: Int = 0)
+private class OutWord(val text: AnnotatedString, val item: Int?, val newLine: Boolean, val mark: Int = 0, val say: Boolean = false)
 
 /** one output box: its pieces, words tappable (and slidable over) */
 @Composable
@@ -270,7 +294,7 @@ private fun OutPanel(d: Dict, mode: Int, title: String, copied: Boolean, onCopy:
             onTap = { i -> words.getOrNull(i)?.item?.let { if (it >= 0) onOpen(it) } },
         ) { i, hot ->
             Box(Modifier.swell(hot), contentAlignment = Alignment.BottomCenter) {
-                Text(words[i].text, style = style, color = ink, modifier = Modifier.padding(vertical = 4.dp))
+                Text(words[i].text, style = style, color = ink, overflow = TextOverflow.Visible, modifier = Modifier.padding(vertical = 4.dp))
                 when (words[i].mark) {
                     1 -> Box(Modifier.offset(y = 3.dp)) { ToneStar() }
                     2 -> Box(Modifier.offset(y = 3.dp)) { ToneStar(blue = true) }
@@ -308,7 +332,8 @@ private fun outWords(d: Dict, res: ConvResult, mode: Int, rom: Int, place: Int, 
             val k = d.keyOf(it.current)
             // saved or in 不熟: a star in the tone colours under it; only meanings saved: a blue one
             if (k != null) mark = if (Store.isSaved(k) || Store.cardStatus(k) == 2) 1 else if (senseKeys.contains(k)) 2 else 0
-            val deco = if (it.opts.size > 1) TextDecoration.Underline else null
+            // (a choice of readings, or other places say it differently (各地講法): the same line)
+            val deco = if (it.opts.size > 1 || it.current.han?.let { h -> d.sayingHans.contains(h) } == true) TextDecoration.Underline else null
             val bg = Color.Unspecified
             val tt = tones[i]
             if (it.current.codes == null) buildAnnotatedString { withStyle(SpanStyle(color = orange)) { append(t) } }
@@ -329,7 +354,9 @@ private fun outWords(d: Dict, res: ConvResult, mode: Int, rom: Int, place: Int, 
                 buildAnnotatedString { withStyle(SpanStyle(background = bg, textDecoration = deco)) { append(a) } }
             }
         }
-        out.add(OutWord(text, i, newLine, mark))
+        // (other places say it differently: 各地講法, a line of its own colour; not when it has readings to choose)
+        val say = i != null && i >= 0 && res.items[i].opts.size <= 1 && res.items[i].current.han?.let { d.sayingHans.contains(it) } == true
+        out.add(OutWord(text, i, newLine, mark, say))
         newLine = false
     }
     return out
@@ -397,6 +424,7 @@ fun ConvWordSheet(d: Dict, index: Int) {
                     }
                 }
             }
+            it.current.han?.let { h -> Sayings(d, h, if (it.src == "han") index else -1) }
             val k = d.keyOf(it.current)
             if (k != null && (d.baseKeys.contains(k) || d.raw.defs.m[k] != null)) DictEntryBody(d, k)
             else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -423,11 +451,46 @@ fun ConvWordSheet(d: Dict, index: Int) {
 
 private val numDot = Regex("\\d+\\.\\s*")
 
+/** 各地講法: the words the places say for the same meaning, the usual ones first and each place's own after, each
+ *  with where it's said and what it means (tap one for its entry) */
+@Composable
+private fun Sayings(d: Dict, han: String, swapItem: Int) {
+    val groups = remember(han) { d.sayings(han) }
+    if (groups.isEmpty()) return
+    val rom = Prefs.rom.value; val place = Prefs.place.value
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Txt(tr("各地講法"), ff(FF.Caption, FontWeight.Bold), T.muted)
+        for (g in groups) {
+            if (groups.size > 1) Txt(tr("華語「{0}」", g.zh), ff(FF.Caption), T.muted)
+            for ((k, ps) in g.words) {
+                // (another word: tapped, it goes in the text in place of this one; its entry: the arrow)
+                val swap = swapItem >= 0 && Dict.hanOf(k) != han
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.6f))
+                    .clickable { if (swap) ConvModel.replaceWord(swapItem, Dict.hanOf(k)) else UI.openWord(k) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Txt(Dict.hanOf(k), sz(19f, FontWeight.SemiBold), if (Dict.hanOf(k) == han) T.greenInk else T.glyph)
+                        Txt(d.wordText(k, rom.coerceIn(0, 2), place).annotated(), lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
+                        Spacer(Modifier.weight(1f))
+                        PlaceChip(if (ps.size >= 6) tr("多數地方") else d.placeNames(ps, 4))
+                    }
+                    glossKey(d, k, plain = d.raw.loc?.get(k) != null)?.let { t -> Txt(t, ff(FF.Footnote), T.glyph.copy(alpha = 0.75f), maxLines = 2) }
+                    if (swap) Txt(tr("點一下換成這個講法"), ff(FF.Caption), T.muted)
+                }
+                if (swap) IconButton(onClick = { UI.openWord(k) }) { Icon(Icons.Filled.ChevronRight, tr("詞典"), tint = T.muted) }
+                }
+            }
+        }
+    }
+}
+
 /** a short meaning for a reading choice: its 華語 words, or the start of its definition */
-private fun gloss(d: Dict, o: Opt): String? {
-    val k = d.keyOf(o) ?: return null
+private fun gloss(d: Dict, o: Opt): String? = d.keyOf(o)?.let { glossKey(d, it) }
+/** plain: the definition, not the 華語 words (a 方言詞: 看「臭柿仔」…) */
+private fun glossKey(d: Dict, k: String, plain: Boolean = false): String? {
     val pos = (d.raw.pos[k] ?: "").split("|").firstOrNull { it.isNotEmpty() } ?: ""
-    val g = d.gl[k]
+    val g = if (plain) null else d.gl[k]
     val text = if (!g.isNullOrEmpty()) g.take(5).joinToString("、") { it.t }
         else d.defText(k)?.replace(numDot, "")?.replace("\n", "／") ?: return null
     return if (pos.isEmpty()) text else "〔$pos〕$text"

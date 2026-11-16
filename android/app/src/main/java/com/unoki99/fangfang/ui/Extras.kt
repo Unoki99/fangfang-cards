@@ -132,9 +132,9 @@ fun TappableHeadword(text: AnnotatedString, targets: List<String?>, size: Float 
             if (k != null) {
                 val src = remember { MutableInteractionSource() }
                 val pressed by src.collectIsPressedAsState()
-                Text(ch, style = sz(size, FontWeight.SemiBold), color = color,
+                Text(ch, style = sz(size, FontWeight.SemiBold), color = color, overflow = TextOverflow.Visible,
                     modifier = Modifier.swell(pressed).clickable(interactionSource = src, indication = null) { onTap(k) })
-            } else Text(ch, style = sz(size, FontWeight.SemiBold), color = color)
+            } else Text(ch, style = sz(size, FontWeight.SemiBold), color = color, overflow = TextOverflow.Visible)
         }
     }
 }

@@ -320,11 +320,12 @@ final class ConvertEngine {
         }
         // which reading: the neighbours first (from the dictionary's example sentences), then your earlier
         // choice for this word, then how common each reading is in the examples
+        var byYou = Set<Int>()        // (picked as you picked before between the same neighbours: the 輕聲 rule below leaves it)
         for k in res.items.indices where res.items[k].opts.count > 1 {
             // what you picked before for this word between the same neighbours always wins
             if let want = mem[ctxMemKey(res.items, k)],
                let at = res.items[k].opts.firstIndex(where: { optID($0) == want }) {
-                res.items[k].sel = at; continue
+                res.items[k].sel = at; byYou.insert(k); continue
             }
             let guess = contextPick(res.items, k)
             defer { if let g = guess { res.items[k].likely = ConvertEngine.likely(g.share[res.items[k].sel] ?? 0) } }
@@ -335,7 +336,34 @@ final class ConvertEngine {
             }
             if let g = guess, let i = g.index { res.items[k].sel = i }
         }
+        // 的 ê or --ê (the same syllable, with 輕聲 or not): at the end of a phrase --ê (這是我的。好的。賣菜的); before
+        // a word, ê after a 代詞 or 名詞 (我的冊, 老師的車) or before one, else --ê
+        // (only words with choices: spaces and punctuation have none)
+        for k in res.items.indices where res.items[k].opts.count > 1 && !byYou.contains(k) && res.items[k].current.han == "的" {
+            let it = res.items[k]
+            guard let cs = it.current.codes, cs == ["e5"] else { continue }
+            guard let plain = it.opts.firstIndex(where: { $0.codes == ["e5"] && !($0.parent ?? "").contains("--") }),
+                  let light = it.opts.firstIndex(where: { $0.codes == ["e5"] && ($0.parent ?? "").contains("--") }) else { continue }
+            let nounish = { (j: Int?) -> Bool in
+                guard let j, let key = self.d.keyOf(res.items[j].current) else { return false }
+                let pos = (self.d.raw.pos[key] ?? "").split(separator: "|").first.map(String.init) ?? ""
+                return pos.contains("名詞") || pos.contains("代詞")
+            }
+            let next = wordNear(res.items, k, 1)
+            res.items[k].sel = next != nil && (nounish(wordNear(res.items, k, -1)) || nounish(next)) ? plain : light
+        }
         return res
+    }
+
+    /// the word next to item k (skipping spaces; nil at punctuation, a new line or the end)
+    private func wordNear(_ items: [ConvItem], _ k: Int, _ step: Int) -> Int? {
+        var j = k + step
+        while j >= 0 && j < items.count {
+            let it = items[j]
+            if it.space { j += step; continue }
+            return it.isWord && !it.opts.isEmpty && it.current.codes != nil ? j : nil
+        }
+        return nil
     }
 
     /// the 漢字 next to item k (skipping spaces and punctuation, stopping at a new line)
@@ -360,7 +388,8 @@ final class ConvertEngine {
         var best: (index: Int, score: Double, near: Int)? = nil
         var near: [Int: Int] = [:], uses: [Int: Int] = [:]
         for (j, o) in items[k].opts.enumerated() {
-            guard let cs = o.codes, cs.count == 1, o.han == h else { continue }
+            // (the 輕聲 one of a pair, 的 --ê, has 的 ê's syllable: the rule after this decides between them)
+            guard let cs = o.codes, cs.count == 1, o.han == h, !(o.parent ?? "").contains("--") else { continue }
             let c = cs[0]
             let l = prev.flatMap { ctx.l[$0 + "\t" + h + "\t" + c] } ?? 0
             let r = next.flatMap { ctx.r[h + "\t" + c + "\t" + $0] } ?? 0
@@ -398,7 +427,8 @@ final class ConvertEngine {
 
     // MARK: remembered picks
 
-    private func optID(_ o: Opt) -> String { (o.han ?? "") + "|" + (o.codes ?? []).joined(separator: " ") }
+    /// (the 輕聲 one of a pair, 的 --ê, apart from 的 ê: "|--")
+    private func optID(_ o: Opt) -> String { (o.han ?? "") + "|" + (o.codes ?? []).joined(separator: " ") + ((o.parent ?? "").contains("--") ? "|--" : "") }
     private func memKey(_ it: ConvItem) -> String {
         it.src == "han" ? "h:" + (it.opts[0].han ?? "") : "c:" + (it.opts[0].codes ?? []).joined(separator: " ") + ":" + String(it.opts.count)
     }

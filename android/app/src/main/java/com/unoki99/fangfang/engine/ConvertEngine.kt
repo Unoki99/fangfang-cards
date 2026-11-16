@@ -344,6 +344,7 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
                 is Atom.Latin -> { res.items.add(ConvItem(raw = a.w, unknownWord = true)); i++ }
             }
         }
+        val byYou = HashSet<Int>()        // (picked as you picked before between the same neighbours: the 輕聲 rule below leaves it)
         for (k in res.items.indices) {
             val it = res.items[k]
             if (it.opts.size <= 1) continue
@@ -351,7 +352,7 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
             val wantCtx = mem[ctxMemKey(res.items, k)]
             if (wantCtx != null) {
                 val at = it.opts.indexOfFirst { o -> optID(o) == wantCtx }
-                if (at >= 0) { it.sel = at; continue }
+                if (at >= 0) { it.sel = at; byYou.add(k); continue }
             }
             val guess = contextPick(res.items, k)
             if (guess != null && guess.strong && guess.index != null) {
@@ -364,7 +365,36 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
             }
             if (guess != null) it.likely = likely(guess.share[it.sel] ?: 0.0)
         }
+        // 的 ê or --ê (the same syllable, with 輕聲 or not): at the end of a phrase --ê (這是我的。好的。賣菜的); before
+        // a word, ê after a 代詞 or 名詞 (我的冊, 老師的車) or before one, else --ê
+        for (k in res.items.indices) {
+            val it = res.items[k]
+            // (only words with choices: spaces and punctuation have none)
+            if (it.opts.size < 2 || k in byYou || it.current.han != "的" || it.current.codes != listOf("e5")) continue
+            val plain = it.opts.indexOfFirst { it.codes == listOf("e5") && !(it.parent ?: "").contains("--") }
+            val light = it.opts.indexOfFirst { it.codes == listOf("e5") && (it.parent ?: "").contains("--") }
+            if (plain < 0 || light < 0) continue
+            fun nounish(j: Int?): Boolean {
+                if (j == null) return false
+                val key = d.keyOf(res.items[j].current) ?: return false
+                val pos = (d.raw.pos[key] ?: "").split("|").first()
+                return pos.contains("名詞") || pos.contains("代詞")
+            }
+            val next = wordNear(res.items, k, 1)
+            it.sel = if (next != null && (nounish(wordNear(res.items, k, -1)) || nounish(next))) plain else light
+        }
         return res
+    }
+
+    /** the word next to item k (skipping spaces; null at punctuation, a new line or the end) */
+    private fun wordNear(items: List<ConvItem>, k: Int, step: Int): Int? {
+        var j = k + step
+        while (j >= 0 && j < items.size) {
+            val it = items[j]
+            if (it.space) { j += step; continue }
+            return if (it.isWord && it.opts.isNotEmpty() && it.current.codes != null) j else null
+        }
+        return null
     }
 
     private fun neighbour(items: List<ConvItem>, k: Int, step: Int): String? {
@@ -396,7 +426,8 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
         val near = LinkedHashMap<Int, Int>(); val uses = HashMap<Int, Int>()
         for ((j, o) in items[k].opts.withIndex()) {
             val cs = o.codes ?: continue
-            if (cs.size != 1 || o.han != h) continue
+            // (the 輕聲 one of a pair, 的 --ê, has 的 ê's syllable: the rule after this decides between them)
+            if (cs.size != 1 || o.han != h || (o.parent ?: "").contains("--")) continue
             val c = cs[0]
             val l = prev?.let { ctx.l[it + "\t" + h + "\t" + c] } ?: 0
             val r = next?.let { ctx.r[h + "\t" + c + "\t" + it] } ?: 0
@@ -417,7 +448,8 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
 
     // MARK: remembered picks
 
-    private fun optID(o: Opt) = (o.han ?: "") + "|" + (o.codes ?: emptyList()).joinToString(" ")
+    /** (the 輕聲 one of a pair, 的 --ê, apart from 的 ê: "|--") */
+    private fun optID(o: Opt) = (o.han ?: "") + "|" + (o.codes ?: emptyList()).joinToString(" ") + (if ((o.parent ?: "").contains("--")) "|--" else "")
     private fun memKey(it: ConvItem) =
         if (it.src == "han") "h:" + (it.opts[0].han ?: "") else "c:" + (it.opts[0].codes ?: emptyList()).joinToString(" ") + ":" + it.opts.size
 

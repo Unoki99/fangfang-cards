@@ -339,5 +339,17 @@ var FF_EN = {
     "・": " · ",
     "、": ", ",
     "）：": "): ",
-    "中文": "中文"
+    "中文": "中文",
+    "第二種語言：小小的灰色字，在每一行下面": "A second language: small grey text under each line",
+    "第二語言：無": "2nd language: none",
+    "（這部影片沒有）": " (not in this video)",
+    "第二種語言": "Second language",
+    "每一行下面用小小的灰色字顯示另一種語言（例如英文），影片有那個語言的字幕才會出現。在字幕面板上選。": "Another language (English, say) in small grey text under each line; shown when the video has subtitles in it. Also chosen on the subtitle panel.",
+    "繁體中文": "Traditional Chinese",
+    "簡體中文": "Simplified Chinese",
+    "字幕的聲調顏色": "Tone colours in subtitles",
+    "字幕裡的字和讀音用聲調顏色。和詞卡的「聲調顏色」分開設定": "The subtitles' characters and readings in their tone colours. Set apart from the card's Tone colours",
+    "顯示按鈕": "Show the buttons",
+    "隱藏按鈕": "Hide the buttons",
+    "・舊版的資料，請按「重新安裝」": " · made by an older version: press Reinstall",
 };

@@ -27,7 +27,8 @@ var FF_DICTS = (() => {
                 ["TOCFL 詞表（ivankra/tocfl）", "", "https://github.com/ivankra/tocfl"]],
         },
         {
-            id: "tw", name: "台語", script: "taigi", fn: "buildTaigi", outs: ["dict", "cards"], mb: 11,
+            // (ver: the version of the data the converter makes; an older one installed is offered again)
+            id: "tw", name: "台語", script: "taigi", fn: "buildTaigi", outs: ["dict", "cards"], mb: 11, ver: 4,
             sources: [{ file: "kautian.ods", url: "https://sutian.moe.edu.tw/media/senn/ods/kautian.ods", arg: "ods" },
                 Object.assign({}, essay)],
             bundled: { own: "install/twown.json" },
