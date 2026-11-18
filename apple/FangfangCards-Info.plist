@@ -25,6 +25,9 @@
 			</dict>
 		</dict>
 	</dict>
+	<!-- 找歌來聽: whole songs from Apple Music (asked once; without it, 30-second previews) -->
+	<key>NSAppleMusicUsageDescription</key>
+	<string>用 Apple Music 播整首歌，歌詞跟著歌走。Plays whole songs with Apple Music so the lyrics follow them.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

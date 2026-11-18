@@ -415,15 +415,41 @@ struct ZhEntryBody: View {
                         }
                     }
                 } else {
-                HStack(alignment: .center, spacing: 12) {
-                    // tap a character to see it on its own (the entry with the same reading)
-                    TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl)) { tapped = ZhKey(k: $0) }
-                        .toneGlow()
-                    // the reading chosen (讀音 and spelling), right next to the word
-                    Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
-                    PlayButton(path: entry.audio ?? "tts:" + entry.h)
-                    Spacer()
-                    FrequencyBadge(key: entry.k)
+                // tap a character to see it on its own (the entry with the same reading); the reading chosen (讀音 and
+                // spelling) right next to the word, or under it when they don't fit side by side (a long word on a
+                // phone: the characters got squeezed and the reading broke in the middle)
+                let head = TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl)) { tapped = ZhKey(k: $0) }
+                    .toneGlow().fixedSize()
+                let reading = Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 12) {
+                        head
+                        reading.fixedSize()
+                        PlayButton(path: entry.audio ?? "tts:" + entry.h)
+                        Spacer(minLength: 0)
+                        FrequencyBadge(key: entry.k)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .center, spacing: 12) {
+                            head
+                            PlayButton(path: entry.audio ?? "tts:" + entry.h)
+                            Spacer(minLength: 0)
+                            FrequencyBadge(key: entry.k)
+                        }
+                        reading
+                    }
+                    // (a word too long even for that: the reading and the play button under it)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .center, spacing: 12) {
+                            head
+                            Spacer(minLength: 0)
+                            FrequencyBadge(key: entry.k)
+                        }
+                        HStack(alignment: .center, spacing: 12) {
+                            reading
+                            PlayButton(path: entry.audio ?? "tts:" + entry.h)
+                        }
+                    }
                 }
                 }
                 HStack(spacing: 8) {
@@ -804,9 +830,13 @@ struct ZhConvertPane: View {
     @State private var tapped: ZhKey?
     @FocusState private var focused: Bool
 
-    init(dict: ZhDict, textKey: String = "zhConvText", lyrics: Bool = false) {
+    /// the lyrics bar over the other pages: only the line being sung, in 漢字
+    var bar = false
+
+    init(dict: ZhDict, textKey: String = "zhConvText", lyrics: Bool = false, bar: Bool = false) {
         self.dict = dict
         self.lyrics = lyrics
+        self.bar = bar
         _text = AppStorage(wrappedValue: "", textKey)
     }
 
@@ -814,6 +844,23 @@ struct ZhConvertPane: View {
     private var romIndex: Int { min(max(store.zhRom, 0), 1) }
 
     var body: some View {
+        if bar { barBody } else { mainBody }
+    }
+
+    /// (the lyrics bar: the line's 漢字, the word being sung swelling; a word tapped opens its meaning)
+    private var barBody: some View {
+        let w = words
+        return SwellWords(pieces: w.map { x in (dict.sentenceHan([x.piece], store.zhPlace, base: T.glyph), x.key != nil, false, 0) },
+                          lineSpacing: 2, vPad: 2, beat: LyricsBeat.shared, beatWhole: true) { j in
+            if let k = w[j].key { tapped = ZhKey(k: k) }
+        }
+        .scaledFont(22)
+        .onAppear { run() }
+        .onChange(of: text) { run() }
+        .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }
+    }
+
+    private var mainBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if lyrics {
@@ -847,6 +894,7 @@ struct ZhConvertPane: View {
                 .overlay(alignment: .bottomTrailing) {
                     // the same as the 台語 轉換: paste, and empty it
                     HStack(spacing: 6) {
+                        GlowToggle()
                         Button {
                             if let s = UIPasteboard.general.string { text = s }
                         } label: { Image(systemName: "doc.on.clipboard") }
@@ -923,14 +971,14 @@ struct ZhConvertPane: View {
                         a.underlineStyle = line
                     }
                     return (a, x.key != nil, x.newLine, 0)
-                }, vPad: 3) { j in
+                }, vPad: 3, beat: lyrics ? LyricsBeat.shared : nil) { j in
                     if let k = w[j].key { focused = false; remember(k, j, w); tapped = ZhKey(k: k) }
                 }
                 .ffFont(.title3)
             } else if lyrics {
                 // (the 歌詞 window: the reading's words swell and open too, like the 漢字)
                 let w = words
-                SwellWords(pieces: romPieces(w, i - 1), vPad: 3) { j in
+                SwellWords(pieces: romPieces(w, i - 1), vPad: 3, beat: LyricsBeat.shared) { j in
                     if let k = w[j].key { remember(k, j, w); tapped = ZhKey(k: k) }
                 }
                 .environment(\.noToneGlow, true)      // (letters: no glow here, it got slow)

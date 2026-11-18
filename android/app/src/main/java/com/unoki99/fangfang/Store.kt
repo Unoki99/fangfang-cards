@@ -759,6 +759,44 @@ object Store {
             .sortedByDescending { groupDate(it) }
     }
     /** a word into a group (the group made when it's new) */
+    /** the browser add-on's words, all at once: one recount, one save. One by one, each word did the counts, the
+     *  lists, the 熟悉 words' characters and the widgets again, which froze the app for a while when many words came.
+     *  (groupOps: the words of the videos' 影片詞組; ops: the words to put in.) Returns the ones that wait for their
+     *  language. */
+    fun applyBrowser(groupOps: List<List<String>>, groups: Map<String, List<String>>, ops: List<List<String>>): List<List<String>> {
+        val t = now
+        var any = false
+        for (op in groupOps) if (op.size >= 4 && op[1] != "k" && op[3].isNotEmpty()) {
+            val id = op[3]; val g = groups[id] ?: emptyList()
+            if ((progress.groupTime[id] ?: -1.0) <= 0) progress.groupTime[id] = t
+            val old = progress.groupInfo[id] ?: mutableListOf()
+            progress.groupInfo[id] = mutableListOf(old.getOrNull(0) ?: (g.firstOrNull() ?: id), g.getOrNull(1) ?: "", old.getOrNull(2) ?: "")
+            val wk = id + "\u0001" + op[0]
+            if ((progress.groupWords[wk] ?: -1.0) <= 0) progress.groupWords[wk] = t + (progress.groupWords.size % 1000) / 1e6
+            any = true
+        }
+        val waiting = ArrayList<List<String>>()
+        for ((i, op) in ops.withIndex()) {
+            if (op.size < 2) continue
+            val k = op[0]
+            if (op[1] == "g") continue           // (only its group: done when it came)
+            if (op[1] == "s") {
+                if ((progress.saved[k] ?: -1.0) <= 0) { progress.saved[k] = t + (ops.size - i) * 0.001; any = true }
+                continue
+            }
+            // 認識 → 熟悉, 加到不熟 → 不熟; another language's word waits for it
+            val want = if (op[1] == "k") 1 else 2
+            if (cardFor(k) == null && Lang.kind(k) != lang) { waiting.add(op); continue }
+            if ((progress.status[k] ?: 0) == want) continue
+            progress.status[k] = want
+            progress.added[k] = t
+            if (want == 1) progress.streak.remove(k) else if (progress.streak[k] == null) progress.streak[k] = 0
+            any = true
+        }
+        if (any) { changed(); save() }
+        return waiting
+    }
+
     fun addToGroup(id: String, name: String, url: String, key: String) {
         val t = now
         if ((progress.groupTime[id] ?: -1.0) <= 0) progress.groupTime[id] = t

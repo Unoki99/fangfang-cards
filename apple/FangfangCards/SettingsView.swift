@@ -567,6 +567,7 @@ private struct SoundSettings: View {
     @AppStorage("volume") private var volume = 0.8
     @AppStorage("audioBase") private var audioBase = Audio.defaultBase
     @State private var message: String?
+    @ObservedObject private var radio = RadioPlayer.shared
 
     var body: some View {
         SettingsPage(title: tr("聲音")) {
@@ -577,6 +578,21 @@ private struct SoundSettings: View {
                     Slider(value: $volume, in: 0...1, step: 0.05)
                     Image(systemName: "speaker.wave.3.fill").foregroundStyle(T.muted)
                 }
+            } header: {
+                Text(tr("詞的發音"))
+            }
+            // 電台 音量 (the same as in the 電台 page)
+            Section {
+                HStack {
+                    Image(systemName: "speaker.fill").foregroundStyle(T.muted)
+                    Slider(value: $radio.volume, in: 0...1)
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(T.muted)
+                    Text("\(Int((radio.volume * 100).rounded()))%").monospacedDigit().foregroundStyle(T.muted).frame(minWidth: 44, alignment: .trailing)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(tr("電台音量"))
+            } header: {
+                Text(tr("電台"))
             }
             Section {
                 TextField(tr("音檔來源"), text: $audioBase)
@@ -723,64 +739,73 @@ private struct ExportSettings: View {
 
 // MARK: 用法及資料來源
 
-/// what each part of the app can do (用法, Usage.swift), then where the data comes from
+/// what each part of the app can do (用法, Usage.swift), then where the data comes from: tiles in a grid, like the
+/// add-on's settings page
 private struct AboutSettings: View {
     var body: some View {
-        SettingsPage(title: tr("用法及資料來源")) {
-            UsageSections()
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                UsageTiles()
                 Text(tr("以下是每個語言的資料從哪裡來、用什麼授權。")).ffFont(.footnote).foregroundStyle(T.muted)
-            } header: {
-                Text(tr("資料來源"))
-            }
-            Section(tr("資料來源・台語")) {
-                credit(tr("詞條、讀音、釋義、例句、音檔"), "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）。釋義、例句原文照錄，音檔未經修改；讀音依規則轉成皓羅、方音、白話字。")
-                credit(tr("推算的內容"), "辭典沒寫的腔口讀音是依規則推算的，用紅色和「推測」標示。")
-                credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》（經作者同意使用）")
-                if let c = TaigiSpeechInfo.credit { credit(tr("轉換的朗讀"), c) }
-                credit(tr("皓羅、自補詞條"), "Unoki99")
-                credit(tr("皓羅字型"), "DejaVu Sans")
-                credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（LXGW）；芫荽：Iansui（The Iansui Project Authors）。都是 SIL Open Font License 1.1。楷體：Apple 的華文楷體。")
-                credit(tr("詞頻"), "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
-                credit(tr("英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
-            }
-            Section(tr("資料來源・華語")) {
-                credit(tr("詞條、注音、釋義、例句"), "中華文化總會《兩岸常用詞典》（CC BY-NC-ND），g0v 萌典整理。拼音依注音轉寫，例句讀音依詞推算。")
-                credit(tr("漢字卡的字義"), "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄，引用的古書省略。")
-                credit(tr("漢字等級"), "HSK 3.0 漢字表、TOCFL（TBCL）漢字表")
-                credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）")
-                credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
-                credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
-                credit(tr("四川話讀音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：成都話的四川話拼音，漢字一樣、普通話讀音也一樣的詞。另外存，不改辭典的內容。")
-                credit(tr("發音"), "裝置內建的語音")
-            }
-            Section(tr("資料來源・練習")) {
-                credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
-            }
-            Section(tr("資料來源・粵語")) {
-                credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
-                credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
-                credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
-                credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
-                credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
-            }
-            Section(tr("資料來源・客語")) {
-                credit(tr("詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
-                credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
-                credit(tr("注音"), "照臺灣客家語拼音方案由拼音轉寫")
-            }
-            Section(tr("資料來源・其他")) {
-                credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")
+                    .padding(.top, 6)
+                InfoGrid(title: tr("資料來源・台語"), icon: "t.circle", tint: T.muted) {
+                    credit(tr("詞條、讀音、釋義、例句、音檔"), "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）。釋義、例句原文照錄，音檔未經修改；讀音依規則轉成皓羅、方音、白話字。")
+                    credit(tr("推算的內容"), "辭典沒寫的腔口讀音是依規則推算的，用紅色和「推測」標示。")
+                    credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》（經作者同意使用）")
+                    if let c = TaigiSpeechInfo.credit { credit(tr("轉換的朗讀"), c) }
+                    credit(tr("皓羅、自補詞條"), "Unoki99")
+                    credit(tr("皓羅字型"), "DejaVu Sans")
+                    credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（LXGW）；芫荽：Iansui（The Iansui Project Authors）。都是 SIL Open Font License 1.1。楷體：Apple 的華文楷體。")
+                    credit(tr("詞頻"), "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
+                    credit(tr("英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
+                }
+                InfoGrid(title: tr("資料來源・華語"), icon: "h.circle", tint: T.muted) {
+                    credit(tr("詞條、注音、釋義、例句"), "中華文化總會《兩岸常用詞典》（CC BY-NC-ND），g0v 萌典整理。拼音依注音轉寫，例句讀音依詞推算。")
+                    credit(tr("漢字卡的字義"), "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄，引用的古書省略。")
+                    credit(tr("漢字等級"), "HSK 3.0 漢字表、TOCFL（TBCL）漢字表")
+                    credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）")
+                    credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
+                    credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
+                    credit(tr("四川話讀音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：成都話的四川話拼音，漢字一樣、普通話讀音也一樣的詞。另外存，不改辭典的內容。")
+                    credit(tr("發音"), "裝置內建的語音")
+                }
+                InfoGrid(title: tr("資料來源・練習"), icon: "figure.run", tint: T.muted) {
+                    credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
+                }
+                InfoGrid(title: tr("資料來源・粵語"), icon: "y.circle", tint: T.muted) {
+                    credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
+                    credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
+                    credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
+                    credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
+                    credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
+                }
+                InfoGrid(title: tr("資料來源・客語"), icon: "k.circle", tint: T.muted) {
+                    credit(tr("詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
+                    credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
+                    credit(tr("注音"), "照臺灣客家語拼音方案由拼音轉寫")
+                }
+                InfoGrid(title: tr("資料來源・電台與音樂"), icon: "radio", tint: T.muted) {
+                    credit(tr("電台目錄"), "Radio Browser（radio-browser.info，公眾領域）。App 只在播放、搜尋時查詢電台的網址；廣播內容屬於各電台。")
+                    credit(tr("歌詞"), "LRCLIB（lrclib.net）。App 只在聽歌時查詢並顯示歌詞，不收錄也不散布；歌詞的著作權屬於原作者。")
+                    credit(tr("歌和試聽"), "Apple 的音樂目錄（iTunes Search API）：歌名、歌手、封面和 30 秒試聽。整首歌用裝置上的 Apple Music 播放（要自己的訂閱）。")
+                    credit(tr("自己的歌詞"), "只存在自己的裝置上（LRC 格式）。")
+                }
+                InfoGrid(title: tr("資料來源・其他"), icon: "ellipsis.circle", tint: T.muted) {
+                    credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")
+                }
                 Text(tr("本 App 與教育部無關，不是官方產品。")).ffFont(.footnote).foregroundStyle(T.muted)
             }
+            .padding()
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity)
         }
+        .appBackground()
+        .navigationTitle(tr("用法及資料來源"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func credit(_ what: String, _ who: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(what).ffFont(.caption).foregroundStyle(T.muted)
-            Text(who).ffFont(.footnote)
-        }
+        InfoTile(title: what, text: trs(who), tint: T.muted)
     }
 }
 

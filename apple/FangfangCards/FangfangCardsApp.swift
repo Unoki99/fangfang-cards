@@ -35,6 +35,8 @@ struct FangfangCardsApp: App {
                 .fontDesign((AppTheme(rawValue: theme) ?? .night).fontDesign)
                 .onAppear {
                     MacWindow.setUp()
+                    // 歌詞條: the song's line being sung, in its own window over everything (games too)
+                    DispatchQueue.main.async { LyricsOverlay.install(store) }
                     // (a dictionary made by an older version of the app: made again, with what's new)
                     DictInstaller.shared.updateOutdated()
                 }

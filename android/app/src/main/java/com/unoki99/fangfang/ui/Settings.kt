@@ -169,6 +169,15 @@ fun SettingsScreen() {
                                 Icon(Icons.Filled.VolumeUp, null, tint = T.muted)
                             }
                             RowDivider()
+                            // 電台 音量 (the same as in the 電台 page)
+                            Txt(tr("電台音量"), ff(FF.Footnote), T.muted, Modifier.padding(start = 14.dp, top = 8.dp))
+                            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Filled.VolumeMute, null, tint = T.muted)
+                                Slider(Prefs.radioVolume.value, { Prefs.radioVolume.value = it }, Modifier.weight(1f), colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
+                                Icon(Icons.Filled.VolumeUp, null, tint = T.muted)
+                                Txt("${Math.round(Prefs.radioVolume.value * 100)}%", ff(FF.Footnote), T.muted, Modifier.widthIn(min = 40.dp))
+                            }
+                            RowDivider()
                             var base by Prefs.audioBase
                             val fBase = remember { androidx.compose.ui.focus.FocusRequester() }
                             TextField(base, { base = it }, Modifier.fillMaxWidth().focusRequester(fBase), label = { Text(tr("音檔來源")) }, singleLine = true,

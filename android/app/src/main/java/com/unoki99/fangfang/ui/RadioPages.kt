@@ -123,6 +123,14 @@ private fun NowPlayingPanel() {
                 Txt(Radio.nowPlaying ?: if (Radio.state == Radio.State.CONNECTING) tr("連線中…") else tr("電台沒有送歌名"), ff(FF.Footnote), T.muted, maxLines = 2)
             }
         }
+        // 音量: the radio's own, on top of the device's
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Filled.VolumeDown, tr("電台音量"), tint = T.muted, modifier = Modifier.size(20.dp))
+            Slider(Prefs.radioVolume.value, { Prefs.radioVolume.value = it }, Modifier.weight(1f),
+                colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
+            Icon(Icons.Filled.VolumeUp, null, tint = T.muted, modifier = Modifier.size(20.dp))
+            Txt("${Math.round(Prefs.radioVolume.value * 100)}%", ff(FF.Footnote), T.muted, Modifier.widthIn(min = 40.dp))
+        }
         // 睡眠計時: stops by itself after a while
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Icon(Icons.Filled.Bedtime, null, tint = T.muted, modifier = Modifier.size(18.dp))

@@ -665,6 +665,23 @@ extension View {
     func toneGlow() -> some View { modifier(ToneGlow()) }
 }
 
+/// 轉換: the colours' glow on or off right there (the same switch as 設定 → 顏色與外觀 → 顏色光暈), for when a long
+/// text gets slow with it. Only while the tone colours are on.
+struct GlowToggle: View {
+    @AppStorage(ToneColors.key) private var system = 0
+    @AppStorage(ToneColors.glowKey) private var glow = ToneColors.glowStandard
+    var body: some View {
+        if system != 0 {
+            Button { glow.toggle() } label: {
+                Image(systemName: glow ? "sparkles" : "sparkle")
+                    .foregroundStyle(glow ? AnyShapeStyle(T.btnInk) : AnyShapeStyle(T.muted))
+            }
+            .accessibilityLabel((glow ? tr("關掉顏色光暈") : tr("打開顏色光暈")))
+            .help((glow ? tr("關掉顏色光暈") : tr("打開顏色光暈")))
+        }
+    }
+}
+
 
 // MARK: which meaning an example sentence belongs to
 

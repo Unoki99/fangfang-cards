@@ -67,6 +67,7 @@ object Radio {
     fun player(c: Context): ExoPlayer {
         player?.let { return it }
         val p = ExoPlayer.Builder(c.applicationContext).build()
+        p.volume = Prefs.radioVolume.value
         p.addListener(object : M3Player.Listener {
             override fun onMetadata(m: Metadata) {
                 for (i in 0 until m.length()) {
@@ -89,6 +90,9 @@ object Radio {
         player = p
         return p
     }
+
+    /** (電台 音量 changed, while playing) */
+    fun radioVolumeChanged() { player?.volume = Prefs.radioVolume.value }
 
     fun toggle(s: RadioStation) { if (current?.id == s.id && state != State.IDLE && state != State.FAILED) stop() else play(s) }
 

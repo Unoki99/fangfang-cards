@@ -95,8 +95,8 @@ object Radio {
         sleepJob = scope.launch { delay(minutes * 60_000L); sleepAt = null; sleepJob = null; stop() }
     }
 
-    /** (the volume set in 設定 → 聲音, while playing) */
-    fun volumeChanged() { playing?.volume = Prefs.volume.value }
+    /** (電台 音量 changed, while playing) */
+    fun radioVolumeChanged() { playing?.volume = Prefs.radioVolume.value }
 
     /** the addresses to try, in order: the station as Radio Browser lists it now, then a search by its name, then
      *  the last address that worked */
@@ -224,8 +224,8 @@ object Radio {
         }
         stream = input
         var failed = false
-        val p = if (aac) Aac.play(input, Prefs.volume.value, onError = { failed = true })
-                else Mp3.play(input, Prefs.volume.value, onError = { failed = true })
+        val p = if (aac) Aac.play(input, Prefs.radioVolume.value, onError = { failed = true })
+                else Mp3.play(input, Prefs.radioVolume.value, onError = { failed = true })
         playing = p
         for (i in 0 until 150) {
             delay(100)
@@ -242,7 +242,7 @@ object Radio {
         halt()
         var failed = false
         var found: String? = null
-        val p = Ffmpeg.play(url, Prefs.volume.value,
+        val p = Ffmpeg.play(url, Prefs.radioVolume.value,
             onFormat = { f -> found = f },
             onTitle = { t -> scope.launch { nowPlaying = t } },
             onError = { failed = true }) ?: return false

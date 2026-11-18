@@ -362,4 +362,5 @@ var FF_EN = {
     "網頁上的字": "Text on the page",
     "面板": "Panel",
     "字幕的聲調顏色在上面的「聲調顏色和標記」。": "The subtitles' tone colours are under Tone colours and marks above.",
+    "拖拉改高度（點兩下還原）": "Drag to change the height (double-click to reset)",
 };

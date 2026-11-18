@@ -253,6 +253,8 @@ struct ConvertPane: View {
     let dict: Dict
     /// the 歌詞 window: no typing, only the 漢字 (left) and the chosen spelling (right)
     let lyrics: Bool
+    /// the lyrics bar over the other pages: only the line being sung, in 漢字
+    var bar = false
     @EnvironmentObject var store: Store
     /// (歌詞: the readings side can be turned off; it takes memory and slows a long song down)
     @AppStorage(LyricsBridge.readingsKey) private var lyricsReadings = true
@@ -260,9 +262,10 @@ struct ConvertPane: View {
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @StateObject private var model: ConvModel
 
-    init(dict: Dict, textKey: String = "ff-text", lyrics: Bool = false) {
+    init(dict: Dict, textKey: String = "ff-text", lyrics: Bool = false, bar: Bool = false) {
         self.dict = dict
         self.lyrics = lyrics
+        self.bar = bar
         _model = StateObject(wrappedValue: ConvModel(key: textKey))
     }
     @AppStorage("rom") private var rom = 0
@@ -275,6 +278,40 @@ struct ConvertPane: View {
     private var hasOutput: Bool { model.result.items.contains(where: { $0.isWord }) }
 
     var body: some View {
+        if bar { barBody } else { mainBody }
+    }
+
+    /// (the lyrics bar: the line's 漢字, the word being sung swelling; a word tapped opens its meaning)
+    private var barBody: some View {
+        let pieces = model.engine?.pieces(model.result.items, mode: 0, rom: min(max(rom, 0), 2), place: place) ?? []
+        let sp = swellPieces(pieces, ink: T.glyph, mode: 0)
+        return SwellWords(pieces: sp.pieces, lineSpacing: 2, vPad: 2, beat: LyricsBeat.shared, beatWhole: true) { n in
+            if let i = sp.items[n], i >= 0 { openItem = ConvSelection(index: i) }
+        }
+        .foregroundStyle(T.glyph)
+        .scaledFont(22)
+        .onAppear { model.attach(dict) }
+        // (a word's sheet open: its line stays until it's closed, the sheet points into it)
+        .onReceive(NotificationCenter.default.publisher(for: LyricsBridge.changed)) { _ in
+            guard openItem == nil else { return }
+            let t = UserDefaults.standard.string(forKey: model.key) ?? ""
+            if t != model.text { model.text = t }
+        }
+        .onChange(of: openItem == nil) { _, closed in
+            guard closed else { return }
+            let t = UserDefaults.standard.string(forKey: model.key) ?? ""
+            if t != model.text { model.text = t }
+        }
+        .sheet(item: $openItem) { sel in
+            WordSheet(dict: dict, model: model, index: sel.index)
+                .environmentObject(store)
+                .presentationDetents([.medium, .large])
+                .presentationContentInteraction(.scrolls)
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var mainBody: some View {
         GeometryReader { geo in
             if lyrics {
                 ScrollView {
@@ -421,6 +458,7 @@ struct ConvertPane: View {
         .glassSurface(RoundedRectangle(cornerRadius: 18))
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 6) {
+                GlowToggle()
                 Button {
                     if let s = UIPasteboard.general.string { model.text = s }
                 } label: { Image(systemName: "doc.on.clipboard") }
@@ -478,7 +516,7 @@ struct ConvertPane: View {
                 .foregroundStyle(T.muted)
             }
             let sp = swellPieces(pieces, ink: ink, mode: mode)
-            SwellWords(pieces: sp.pieces, lineSpacing: 4, vPad: 3) { n in
+            SwellWords(pieces: sp.pieces, lineSpacing: 4, vPad: 3, beat: lyrics ? LyricsBeat.shared : nil) { n in
                 if let i = sp.items[n], i >= 0 {
                     focused = false
                     openItem = ConvSelection(index: i)
@@ -612,7 +650,6 @@ struct ConvertPane: View {
     private func swellPieces(_ pieces: [(text: String, item: Int?)], ink: Color, mode: Int)
         -> (pieces: [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)], items: [Int?]) {
         let texts = attributedPieces(pieces, ink: ink, mode: mode)
-        let savedSenseKeys = store.savedSenseKeys
         var out: [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)] = [], items: [Int?] = []
         var newLine = false
         for (p, a0) in zip(pieces, texts) {
@@ -624,12 +661,8 @@ struct ConvertPane: View {
                 a.removeSubrange(a.startIndex..<a.index(afterCharacter: a.startIndex))
                 if !newLine, !out.isEmpty { out[out.count - 1].text += AttributedString(" ") }
             }
-            // a little star under the word: in the tone colours when the word is saved or in 不熟,
-            // blue when only some of its meanings are saved
-            var mark = 0
-            if let i = p.item, i >= 0, model.result.items.indices.contains(i), let k = dict.keyOf(model.result.items[i].current) {
-                mark = store.isSaved(k) || store.cardStatus(k) == 2 ? 1 : (savedSenseKeys.contains(k) ? 2 : 0)
-            }
+            // (no star under saved words any more: taken away on request)
+            let mark = 0
             out.append((a, tap, newLine, mark)); items.append(p.item)
             newLine = false
         }
@@ -975,16 +1008,41 @@ struct DictEntryBody: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
-                // tap a character to see it on its own (the entry with the same reading)
-                TappableHeadword(text: dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph),
-                                 targets: charKeys) { tapped = DictKey(k: $0) }
-                    .toneGlow()
-                // the reading of the 腔口 chosen, in the spelling chosen, right next to the word
-                Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
-                if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
-                Spacer()
-                FrequencyBadge(key: key)
+            // tap a character to see it on its own (the entry with the same reading); the reading of the 腔口 chosen, in
+            // the spelling chosen, right next to the word, or under it when they don't fit side by side (a long word
+            // on a phone: the characters got squeezed and the reading broke in the middle)
+            let head = TappableHeadword(text: dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph),
+                                        targets: charKeys) { tapped = DictKey(k: $0) }
+                .toneGlow().fixedSize()
+            let reading = Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    head
+                    reading.fixedSize()
+                    if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
+                    Spacer(minLength: 0)
+                    FrequencyBadge(key: key)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 12) {
+                        head
+                        if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
+                        Spacer(minLength: 0)
+                        FrequencyBadge(key: key)
+                    }
+                    reading
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 12) {
+                        head
+                        Spacer(minLength: 0)
+                        FrequencyBadge(key: key)
+                    }
+                    HStack(alignment: .center, spacing: 12) {
+                        reading
+                        if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
+                    }
+                }
             }
             HStack(spacing: 8) {
                 saveButton
@@ -1253,6 +1311,9 @@ struct SwellWords: View {
     var vPad: CGFloat = 4
     /// room on each side of a word (例句的詞分開一點)
     var hPad: CGFloat = 0
+    /// 歌詞 that follow the song: the word being sung swells (beatWhole: all of it is the line being sung, the bar's)
+    var beat: LyricsBeat? = nil
+    var beatWhole = false
     let onTap: (Int) -> Void
     @State private var frames: [Int: CGRect] = [:]
     /// which word is swollen: kept in its own object, so only the words notice when it changes
@@ -1260,7 +1321,31 @@ struct SwellWords: View {
     @StateObject private var sw = SwellState()
     @State private var space = UUID()
 
+    /// each piece's line (counting the lines with words) and where it is in it by length (0…1)
+    private var beatMap: [(line: Int, f0: Double, f1: Double)] {
+        guard beat != nil else { return [] }
+        var groups: [[Int]] = [[]]
+        for i in pieces.indices {
+            if pieces[i].newLine && !groups[groups.count - 1].isEmpty { groups.append([]) }
+            groups[groups.count - 1].append(i)
+        }
+        var map = Array(repeating: (line: -1, f0: 0.0, f1: 0.0), count: pieces.count)
+        for (l, ids) in groups.enumerated() {
+            let lens = ids.map { i -> Double in
+                pieces[i].tap ? Double(String(pieces[i].text.characters).trimmingCharacters(in: .whitespaces).count) : 0
+            }
+            let total = max(1, lens.reduce(0, +))
+            var acc = 0.0
+            for (j, i) in ids.enumerated() {
+                map[i] = (beatWhole ? -2 : l, acc / total, (acc + lens[j]) / total)
+                acc += lens[j]
+            }
+        }
+        return map
+    }
+
     var body: some View {
+        let bm = beatMap
         let flow = FlowLayout(spacing: 0, lineSpacing: lineSpacing) {
             ForEach(pieces.indices, id: \.self) { i in
                 let p = pieces[i]
@@ -1281,6 +1366,8 @@ struct SwellWords: View {
                         Text(p.text).toneGlow().padding(.vertical, vPad).padding(.horizontal, hPad)
                     }
                 }
+                .modifier(BeatSwell(beat: beat ?? LyricsBeat.idle, line: bm.isEmpty ? -1 : bm[i].line,
+                                    f0: bm.isEmpty ? 0 : bm[i].f0, f1: bm.isEmpty ? 0 : bm[i].f1))
                 .layoutValue(key: FlowBreak.self, value: p.newLine)
             }
         }

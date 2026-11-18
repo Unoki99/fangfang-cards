@@ -38,6 +38,8 @@
         subsMark: "new", subsRare: 3000,
         // subsFlow: the subtitles in one row at the bottom, flowing sideways (always so when the video is full screen)
         subsFlow: false,
+        // that row's height as dragged by its top edge (0 = as its words need); it keeps the whole width, centred
+        subsFlowH: 0,
         // over / under the words you don't know in the subtitles: their reading, and their meaning (English or 中文, as 英文 is set)
         subsRd: true, subsGl: true,
         // the reading's size, against the characters'
@@ -2161,6 +2163,7 @@
         if (!box) {
             box = document.createElement("div");
             box.id = "ff-defs";
+            if (/Firefox\//.test(navigator.userAgent)) box.classList.add("fx");
             box.addEventListener("pointerdown", e => e.stopPropagation());
             st.defsAt = null;
         }
@@ -2551,6 +2554,7 @@
   border: 1px solid rgba(255,255,255,0.10); border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);
   color: #e9eaf2; font: 18px/1.55 -apple-system, "PingFang TC", "Heiti TC", system-ui, sans-serif; overflow: hidden;
   transition: opacity .3s ease, transform .35s cubic-bezier(.2,.9,.3,1), background-color 1.2s ease; }
+#ff-subs.fx, #ff-defs.fx { -webkit-backdrop-filter: none; backdrop-filter: none; }
 #ff-subs.wide { top: 72px; right: 12px; bottom: 12px; width: min(380px, 34vw); }
 #ff-subs.narrow { left: 8px; right: 8px; bottom: 8px; height: 40vh; }
 /* (no background: only the lines, the buttons and the cards, each in a box of its own) */
@@ -2628,12 +2632,27 @@
 #ff-subs.bare .gear:hover { opacity: 1; }
 #ff-subs .empty { display: block; padding: 18px; color: #8b90a8; font-size: 14px; }
 #ff-subs.flow { left: 12px; right: 12px; bottom: 12px; top: auto; width: auto; height: 116px; }
-#ff-subs.flow .view { -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%);
-  mask-image: linear-gradient(90deg, transparent 0, #000 10%, #000 90%, transparent 100%); }
+/* (橫排: the edges faded by the panel's own colour laid over them, not by a mask: a masked box with a moving row in
+   it made Safari sometimes drop the row's left part while it was still on the screen) */
+#ff-subs.flow .view { -webkit-mask-image: none; mask-image: none; }
+#ff-subs.flow .view::before, #ff-subs.flow .view::after { content: ""; position: absolute; top: 0; bottom: 0; width: 10%; z-index: 2;
+  pointer-events: none; }
+#ff-subs.flow .view::before { left: 0; background: linear-gradient(90deg, var(--ff-bg, rgba(0, 0, 0, 0.88)), transparent); }
+#ff-subs.flow .view::after { right: 0; background: linear-gradient(270deg, var(--ff-bg, rgba(0, 0, 0, 0.88)), transparent); }
+#ff-subs.flow.clear .view::before, #ff-subs.flow.clear .view::after { display: none; }
+#ff-subs.air.flow .view::before { background: linear-gradient(90deg, #000, transparent); }
+#ff-subs.air.flow .view::after { background: linear-gradient(270deg, #000, transparent); }
 #ff-subs.flow .rail { display: flex; flex-wrap: nowrap; align-items: center; height: 100%; padding: 0; gap: 4px;
-  white-space: nowrap; transition: none; }
+  white-space: nowrap; transition: none; right: auto; width: max-content; }
+#ff-subs.flow .line.far { display: none; }
 #ff-subs.flow .line { flex: none; margin: 0; padding: 8px 14px; }
 #ff-subs.mini { height: 38px !important; }
+#ff-subs .vgrip { display: none; }
+#ff-subs.flow:not(.mini):not(.air) .vgrip { display: block; position: absolute; z-index: 4; top: 0; left: 50%; transform: translateX(-50%);
+  width: 72px; height: 16px; cursor: ns-resize; touch-action: none; }
+#ff-subs .vgrip::after { content: ""; position: absolute; left: 18px; right: 18px; top: 5px; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.28); }
+#ff-subs .vgrip:hover::after { background: rgba(255,255,255,0.55); }
 #ff-subs.air { left: 0 !important; right: 0 !important; top: 0 !important; bottom: 0 !important; width: auto !important;
   height: auto !important; border-radius: 0; border: none; background: #000 !important; }
 #ff-subs.air.mini { top: auto !important; height: 38px !important; }
@@ -2672,6 +2691,9 @@
         const p = document.createElement("div");
         p.id = "ff-subs";
         p.className = "hidden";
+        // (Firefox: no blur of the video behind the panel. Firefox blurs it again on every frame of the video, which
+        // with the row moving made the moving words stutter; the panel's colour is nearly opaque, so it looks the same)
+        if (/Firefox\//.test(navigator.userAgent)) p.classList.add("fx");
         const top = document.createElement("div"); top.className = "top";
         const view = document.createElement("div"); view.className = "view";
         const rail = document.createElement("div"); rail.className = "rail";
@@ -2682,7 +2704,37 @@
         const gear = document.createElement("div"); gear.className = "gear";
         gear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17.47 10.78 L19.14 11.07 L19.14 12.93 L17.47 13.22 L16.73 15.00 L17.71 16.39 L16.39 17.71 L15.00 16.73 L13.22 17.47 L12.93 19.14 L11.07 19.14 L10.78 17.47 L9.00 16.73 L7.61 17.71 L6.29 16.39 L7.27 15.00 L6.53 13.22 L4.86 12.93 L4.86 11.07 L6.53 10.78 L7.27 9.00 L6.29 7.61 L7.61 6.29 L9.00 7.27 L10.78 6.53 L11.07 4.86 L12.93 4.86 L13.22 6.53 L15.00 7.27 L16.39 6.29 L17.71 7.61 L16.73 9.00 Z M12 9.6 A2.4 2.4 0 1 0 12 14.4 A2.4 2.4 0 1 0 12 9.6 Z"/></svg>';
         gear.addEventListener("click", e => { e.stopPropagation(); prefs.subsBar = prefs.subsBar === false; savePrefs(); subsLayout(); });
-        p.append(top, study, view, gear);
+        // 橫排: its top edge dragged up or down makes the row taller or lower (the width stays the screen's, centred);
+        // a double click (or double tap) back to the height its words need
+        const vgrip = document.createElement("div"); vgrip.className = "vgrip";
+        vgrip.title = ffT("拖拉改高度（點兩下還原）");
+        let hDrag = null, hRaf = 0;
+        vgrip.addEventListener("pointerdown", e => {
+            e.preventDefault(); e.stopPropagation();
+            hDrag = { y: e.clientY, h: p.getBoundingClientRect().height };
+            vgrip.setPointerCapture(e.pointerId);
+        });
+        vgrip.addEventListener("pointermove", e => {
+            if (!hDrag) return;
+            prefs.subsFlowH = Math.max(1, Math.round(hDrag.h - (e.clientY - hDrag.y)));
+            if (!hRaf) hRaf = requestAnimationFrame(() => { hRaf = 0; subsLayout(); });
+        });
+        let hTap = 0;
+        const hEnd = e => {
+            if (!hDrag) return;
+            const moved = Math.abs(e.clientY - hDrag.y) > 4;
+            hDrag = null;
+            // (a double tap: a finger has no double click)
+            if (!moved && e.pointerType !== "mouse") {
+                if (Date.now() - hTap < 400) { prefs.subsFlowH = 0; hTap = 0; } else hTap = Date.now();
+            }
+            savePrefs(); subsLayout();
+        };
+        vgrip.addEventListener("pointerup", hEnd);
+        vgrip.addEventListener("pointercancel", hEnd);
+        vgrip.addEventListener("dblclick", e => { e.stopPropagation(); prefs.subsFlowH = 0; savePrefs(); subsLayout(); });
+        vgrip.addEventListener("click", e => e.stopPropagation());
+        p.append(top, study, view, gear, vgrip);
         st.study = study; st.gear = gear;
         document.documentElement.appendChild(p);
         st.panel = p; st.rail = rail; st.view = view; st.top = top;
@@ -2771,7 +2823,10 @@
         const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl || st.hasEn;
         // (the second language: a smaller line under each one)
         const two = st.sec && st.sec.cues.length ? fs * 0.58 * 1.3 * 2 + 3 : 0;
-        st.panel.style.height = flow && !st.collapsed && !air ? Math.round((bare ? 0 : 38) + two + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3))) + "px" : "";
+        const autoH = Math.round((bare ? 0 : 38) + two + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3)));
+        // (dragged taller or lower by its top edge: as dragged, between a little room for one line and most of the screen)
+        const flowH = prefs.subsFlowH > 0 ? Math.round(Math.min(Math.max(prefs.subsFlowH, (bare ? 0 : 38) + 44), window.innerHeight * 0.85)) : autoH;
+        st.panel.style.height = flow && !st.collapsed && !air ? flowH + "px" : "";
         const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
@@ -3435,7 +3490,7 @@
         if (st.manualUntil && Date.now() > st.manualUntil) { st.manualUntil = 0; st.manual = 0; subsPlace(true); }
         if (st.slow && v.playbackRate !== 0.75) v.playbackRate = 0.75;
         // (the row at the bottom: moving all the time, at the pace of the lines)
-        if (st.flow && !st.manualUntil) subsFlowAt(t, at);
+        if (st.flow && !st.manualUntil) subsFlowAt(smoothTime(v), at);
         // 重複: back to the line's start when it's over
         if (st.loop >= 0 && st.cues[st.loop]) {
             const c = st.cues[st.loop], end = subsEnd(st.loop);
@@ -3475,6 +3530,20 @@
             watchCache[day] = (watchCache[day] || 0) + add / 60;
             store.set({ ffWatch: watchCache }).catch(() => {});
         }
+    }
+
+    // (the video's time for the moving row, every frame: browsers tell the time only now and then, Firefox about as
+    // often as the video's own frames, so the row moved in little steps on a fast screen. Between those, the time
+    // goes on by the clock; it never goes back a little, and a jump (a seek) is followed at once)
+    let smooth = { ct: -1, at: 0, out: 0 };
+    function smoothTime(v) {
+        const now = performance.now(), ct = v.currentTime;
+        if (v.paused || v.seeking || v.ended || !(v.playbackRate > 0)) { smooth = { ct, at: now, out: ct }; return ct; }
+        if (ct !== smooth.ct) { smooth.ct = ct; smooth.at = now; }
+        let t = smooth.ct + Math.min(0.5, (now - smooth.at) / 1000) * v.playbackRate;
+        if (Math.abs(t - smooth.out) > 0.6) smooth.out = t;          // (a jump)
+        else smooth.out = Math.max(smooth.out, t);
+        return smooth.out;
     }
 
     /// where a line ends: its own end, or the next line's start when that comes first
@@ -3741,7 +3810,19 @@
     // where each line's middle is (the row at the bottom), measured once its words are drawn
     function subsMeasure() {
         const st = subs;
+        // (measured with every line there: the ones far away are put back first, see flowTo)
+        flowAll();
         st.centers = st.flow ? st.lines.map(l => l.offsetLeft + l.offsetWidth / 2) : [];
+        st.lineL = st.flow ? st.lines.map(l => l.offsetLeft) : null;
+        st.lineR = st.flow ? st.lines.map(l => l.offsetLeft + l.offsetWidth) : null;
+    }
+    // (every line of the row back, after flowTo left the far ones out)
+    function flowAll() {
+        const st = subs;
+        if (!st.win) return;
+        for (const l of st.lines) l.classList.remove("far");
+        st.rail.style.left = "";
+        st.win = null;
     }
     // the row at the bottom: the line being said is in the middle halfway through it (it comes in from the right as
     // it starts, and moves on to the left as it ends), and the row moves on steadily from line to line (so it flows
@@ -3766,8 +3847,28 @@
             const f = Math.min(1, Math.max(0, (t - m0) / Math.max(0.3, m1 - m0)));
             x = c[k] + (c[k + 1] - c[k]) * f;
         }
-        const y = st.view.clientWidth / 2 - x + st.manual;
-        st.rail.style.transform = `translateX(${y.toFixed(1)}px)`;
+        flowTo(st.view.clientWidth / 2 - x + st.manual);
+    }
+
+    // (橫排: the row moved smoothly by a transform, with only the lines near the screen in it. With every line of
+    // the video in it, the row was one very wide layer, which Safari draws in tiles; it sometimes dropped the tiles on
+    // the left while they were still on the screen, and the words there vanished. The lines further than a screen
+    // away are left out, and the row starts where the first line left in was)
+    function flowTo(x) {
+        const st = subs;
+        const L = st.lineL, R = st.lineR, n = st.lines.length;
+        if (L && R && L.length === n && n) {
+            const W = st.view.clientWidth || 1;
+            const need0 = -x - W * 0.5, need1 = -x + W * 1.5;
+            if (!st.win || L[st.win[0]] > need0 || R[st.win[1]] < need1) {
+                let a = 0; while (a < n - 1 && R[a] < -x - W) a++;
+                let b = a; while (b < n - 1 && L[b + 1] < -x + 2 * W) b++;
+                for (let i = 0; i < n; i++) st.lines[i].classList.toggle("far", i < a || i > b);
+                st.rail.style.left = L[a].toFixed(1) + "px";
+                st.win = [a, b];
+            }
+        }
+        st.rail.style.transform = `translate3d(${x.toFixed(2)}px,0,0)`;
     }
 
     function subsPlace(glide) {
@@ -3778,7 +3879,7 @@
             if (st.manualUntil) {
                 const c = st.centers.length ? st.centers : (subsMeasure(), st.centers);
                 const i = Math.max(0, st.now);
-                if (c[i] != null) st.rail.style.transform = `translateX(${(st.view.clientWidth / 2 - c[i] + st.manual).toFixed(1)}px)`;
+                if (c[i] != null) flowTo(st.view.clientWidth / 2 - c[i] + st.manual);
             } else if (v) subsFlowAt(v.currentTime, st.now);
             return;
         }
@@ -3787,6 +3888,7 @@
         const line = st.lines[i];
         if (!line) return;
         const y = h * 0.34 - (line.offsetTop + line.offsetHeight / 2) + st.manual;
+        flowAll();
         st.rail.style.transition = glide ? "" : "none";
         st.rail.style.transform = `translateY(${Math.round(y)}px)`;
         if (!glide) { void st.rail.offsetHeight; st.rail.style.transition = ""; }
