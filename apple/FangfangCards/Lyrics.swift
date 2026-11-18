@@ -252,7 +252,8 @@ final class LyricsBridge: ObservableObject {
 
     /// (every few hundredths of a second: the line and the place in it)
     private func tick() {
-        guard timed, let pos = songPos else { return }
+        // (歌詞對時 open: the lyrics behind it don't follow the song meanwhile; less to draw, less heat)
+        guard timed, !SongPlayer.shared.editing, let pos = songPos else { return }
         var lo = 0, hi = cues.count - 1, k = -1
         while lo <= hi { let m = (lo + hi) / 2; if cues[m].t <= pos { k = m; lo = m + 1 } else { hi = m - 1 } }
         let line = k >= 0 ? cues[k].line : -1
@@ -371,7 +372,8 @@ final class LyricsBridge: ObservableObject {
         guard let text = h.text else { return }
         let simp = UserDefaults.standard.bool(forKey: Simp.key)
         var t = text
-        if Lang.current <= 3, !simp, !keepSimplified, let trad = LyricsSource.traditional(text) { t = trad }
+        // (華語, 粵語, 客語 only: 台語 writes some words with characters that look simplified, and keeps them)
+        if (1...3).contains(Lang.current), !simp, !keepSimplified, let trad = LyricsSource.traditional(text) { t = trad }
         UserDefaults.standard.set(t, forKey: Self.textKey)
         // (the same song again, 簡 ⇄ 繁: it goes on where it was)
         if song?.id != h.id || started == nil { follow(h, text: t, from: from ?? Date()) }
@@ -393,7 +395,7 @@ final class LyricsBridge: ObservableObject {
 
     /// the lyrics are simplified characters the app shows as 繁體
     var canSwitchScript: Bool {
-        guard let t = song?.text, Lang.current <= 3, !UserDefaults.standard.bool(forKey: Simp.key) else { return false }
+        guard let t = song?.text, (1...3).contains(Lang.current), !UserDefaults.standard.bool(forKey: Simp.key) else { return false }
         return LyricsSource.traditional(t) != nil
     }
 }
@@ -404,10 +406,14 @@ struct LyricsWindow: View {
     /// (轉換's 歌詞 section: the page's own top bar has the spelling menu)
     var inConvert = false
     @ObservedObject private var lyrics = LyricsBridge.shared
+    @ObservedObject private var songs = SongPlayer.shared
     @ObservedObject private var radio = RadioPlayer.shared
     @EnvironmentObject var store: Store
     @State private var picking = false
     @State private var lineList = false
+    /// (how tall the controls over the lyrics are: the words start under them)
+    @State private var headerHeight: CGFloat = 110
+    @Environment(\.horizontalSizeClass) private var hSize
     @AppStorage(LyricsBridge.readingsKey) private var readings = true
     @AppStorage(LyricsBridge.glowKey) private var lyricsGlow = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -417,8 +423,8 @@ struct LyricsWindow: View {
         SongPlayerBar()
         Group {
             if let h = lyrics.song {
-                VStack(spacing: 0) {
-                    header(h)
+                // (the controls float over the lyrics: the words scroll on under them, seen through the glass)
+                ZStack(alignment: .top) {
                     // a new song: the old words burst into sparkles of their colours, the new ones fade in
                     ZStack {
                         words.id("\(lyrics.version)-\(store.lang)")
@@ -426,7 +432,10 @@ struct LyricsWindow: View {
                             .transition(LyricsDissolve.transition(reduceMotion))
                     }
                     .frame(maxHeight: .infinity)
+                    .contentMargins(.top, headerHeight, for: .scrollContent)
                     .animation(.linear(duration: LyricsDissolve.length), value: lyrics.version)
+                    header(h)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                 }
             } else if lyrics.looking {
                 VStack(spacing: 12) {
@@ -457,45 +466,67 @@ struct LyricsWindow: View {
         }
     }
 
+    /// the song (only when 音樂's player isn't showing it above), the lyrics' tools on glass, 對時 under them
     private func header(_ h: LyricHit) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "music.note").foregroundStyle(T.btnInk)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(h.trackName).ffFont(.headline).lineLimit(1)
-                Text(h.artistName).ffFont(.subheadline).foregroundStyle(T.muted).lineLimit(1)
+        // (iPad, Mac: 對時 and the tools side by side; iPhone: 對時 above the tools)
+        let wide = hSize == .regular
+        let layout = wide ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(spacing: 8))
+        return layout {
+            // (timed lyrics: 對時, when the words come too early or too late for the radio)
+            if lyrics.timed { LyricsNudge() }
+            HStack(spacing: 10) {
+                if !songs.active {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(h.trackName).ffFont(.subheadline, .semibold).lineLimit(1)
+                        Text(h.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
+                    }
+                    .layoutPriority(1)
+                    Spacer(minLength: 4)
+                }
+                ViewThatFits(in: .horizontal) {
+                    tools(h)
+                    ScrollView(.horizontal, showsIndicators: false) { tools(h) }
+                }
+                .frame(maxWidth: songs.active && !wide ? .infinity : nil, alignment: .trailing)
             }
-            Spacer(minLength: 4)
+            .layoutPriority(wide ? 1 : 0)
+        }
+        .padding(.horizontal).padding(.vertical, 8)
+    }
+
+    /// 繁／簡, 讀音, 光暈, 自己的歌詞, 跳到哪一行, 存這首歌, 找別的歌詞: small round buttons on one strip of glass
+    private func tools(_ h: LyricHit) -> some View {
+        HStack(spacing: 2) {
             if lyrics.canSwitchScript {
-                Button { lyrics.keepSimplified.toggle() } label: { Text(lyrics.keepSimplified ? "簡" : "繁").ffFont(.subheadline, .bold) }
-                    .softButton()
-                    .accessibilityLabel(tr("簡體或繁體"))
+                Button { lyrics.keepSimplified.toggle() } label: {
+                    Text(lyrics.keepSimplified ? "簡" : "繁").ffFont(.subheadline, .bold).toolCircle()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tr("簡體或繁體"))
             }
             // (the readings side: off makes a long song lighter on memory)
             Button { readings.toggle() } label: {
-                Text(tr("讀音")).ffFont(.subheadline, .semibold).opacity(readings ? 1 : 0.4)
+                Text(tr("讀音")).ffFont(.caption, .semibold).opacity(readings ? 1 : 0.4)
+                    .padding(.horizontal, 8).frame(minHeight: 34).contentShape(Rectangle())
             }
-            .softButton()
+            .buttonStyle(.plain)
             .accessibilityLabel(readings ? tr("關掉讀音那一邊") : tr("打開讀音那一邊"))
-            LyricsGlowToggle().softButton()
+            LyricsGlowToggle(circle: true).buttonStyle(.plain)
             // (the song playing in 音樂: lyrics of your own, or these timed again)
-            LyricsEditButton()
+            LyricsEditButton(plain: true)
             if lyrics.timed {
-                Button { lineList = true } label: { Image(systemName: "list.number") }
-                    .softButton()
+                Button { lineList = true } label: { Image(systemName: "list.number").toolCircle() }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(tr("跳到哪一行"))
             }
-            SaveSongButton(size: 18, song: h)
-                .padding(.horizontal, 4)
-            Button { picking = true } label: { Image(systemName: "magnifyingglass") }
-                .softButton()
+            SaveSongButton(size: 16, song: h).toolCircle()
+            Button { picking = true } label: { Image(systemName: "text.magnifyingglass").toolCircle() }
+                .buttonStyle(.plain)
                 .accessibilityLabel(tr("找別的歌詞"))
         }
-        .padding(.horizontal).padding(.vertical, 8)
-        .overlay(alignment: .bottom) {
-            // (timed lyrics: 對時, when the words come too early or too late for the radio)
-            if lyrics.timed { LyricsNudge().padding(.bottom, -34) }
-        }
-        .padding(.bottom, lyrics.timed ? 34 : 0)
+        .foregroundStyle(T.btnInk)
+        .padding(.horizontal, 6)
+        .liquidGlass(Capsule())
     }
 
     /// the language's 轉換, in its 歌詞 form (no typing)
@@ -951,29 +982,26 @@ private struct SparkleDust: View {
 struct LyricsNudge: View {
     @ObservedObject private var lyrics = LyricsBridge.shared
     var body: some View {
-        HStack(spacing: 6) {
-            Button { lyrics.skipLine(-1) } label: {
-                Image(systemName: "backward.end").ffFont(.subheadline, .semibold).frame(minWidth: 30, minHeight: 28)
-            }
-            .softButton()
-            .accessibilityLabel(tr("跳到上一行"))
+        HStack(spacing: 0) {
+            icon("backward.end", tr("跳到上一行")) { lyrics.skipLine(-1) }
             step("−1", -1, tr("歌詞晚一秒"))
             step("−¼", -0.25, tr("歌詞晚四分之一秒"))
             Button { lyrics.resetOffset() } label: {
                 Text(lyrics.offset == 0 ? tr("對時") : Self.shown(lyrics.offset))
                     .monospacedDigit().ffFont(.caption, .semibold).foregroundStyle(lyrics.offset == 0 ? T.muted : T.btnInk)
-                    .frame(minWidth: 56)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(minWidth: 50, maxWidth: .infinity, minHeight: 34)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(tr("對時還原"))
             step("+¼", 0.25, tr("歌詞早四分之一秒"))
             step("+1", 1, tr("歌詞早一秒"))
-            Button { lyrics.skipLine(1) } label: {
-                Image(systemName: "forward.end").ffFont(.subheadline, .semibold).frame(minWidth: 30, minHeight: 28)
-            }
-            .softButton()
-            .accessibilityLabel(tr("跳到下一行"))
+            icon("forward.end", tr("跳到下一行")) { lyrics.skipLine(1) }
         }
+        .padding(.horizontal, 6)
+        .frame(maxWidth: 480)
+        .liquidGlass(Capsule())
     }
     /// +0.25 s, −1.5 s, +2 s (no zeros at the end)
     static func shown(_ o: Double) -> String {
@@ -984,11 +1012,37 @@ struct LyricsNudge: View {
     }
     private func step(_ label: String, _ s: Double, _ name: String) -> some View {
         Button { lyrics.nudge(s) } label: {
-            Text(label).ffFont(.subheadline, .semibold).monospacedDigit().frame(minWidth: 34, minHeight: 28)
+            Text(label).ffFont(.subheadline, .semibold).monospacedDigit().foregroundStyle(T.glyph)
+                .frame(minWidth: 34, maxWidth: .infinity, minHeight: 34)
+                .contentShape(Rectangle())
         }
-        .softButton()
+        .buttonStyle(.plain)
         .accessibilityLabel(name)
     }
+    private func icon(_ name: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name).ffFont(.subheadline, .semibold).foregroundStyle(T.btnInk)
+                .frame(minWidth: 34, maxWidth: .infinity, minHeight: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// the lyrics' controls: see-through panels, no blur (blurring the glowing words under them every frame made
+/// scrolling lag)
+struct LiquidGlass<S: Shape>: ViewModifier {
+    let shape: S
+    func body(content: Content) -> some View {
+        content
+            .background(shape.fill(T.fn.opacity(0.82)))
+            .overlay(shape.stroke(T.fnEdge.opacity(0.9), lineWidth: 1))
+    }
+}
+
+extension View {
+    func liquidGlass<S: Shape>(_ shape: S) -> some View { modifier(LiquidGlass(shape: shape)) }
 }
 
 /// a word of the lyrics swells while it's sung (its line's words are spread over the time to the next line, by
@@ -1026,7 +1080,7 @@ struct LyricsFloat: View {
     @ObservedObject private var songs = SongPlayer.shared
 
     var body: some View {
-        if on, lyrics.timed, radio.isOn || songs.active, let h = lyrics.song, lyrics.barHiddenFor != h.id,
+        if on, lyrics.timed, radio.isOn || songs.active, !songs.editing, let h = lyrics.song, lyrics.barHiddenFor != h.id,
            !(router.tab == 3 && convertTab == 2 && !lyrics.appCovered), !radio.sheetOpen {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
@@ -1165,11 +1219,15 @@ struct LyricsGlowToggle: View {
     @AppStorage(ToneColors.key) private var system = 0
     @AppStorage(ToneColors.glowKey) private var glow = ToneColors.glowStandard
     @AppStorage(LyricsBridge.glowKey) private var lyricsGlow = true
+    /// (the lyrics' tools strip: a round button)
+    var circle = false
     var body: some View {
         if system != 0 && glow {
             Button { lyricsGlow.toggle() } label: {
                 Image(systemName: lyricsGlow ? "sparkles" : "sparkle")
                     .foregroundStyle(lyricsGlow ? AnyShapeStyle(T.btnInk) : AnyShapeStyle(T.muted))
+                    .frame(width: circle ? 34 : nil, height: circle ? 34 : nil)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel(lyricsGlow ? tr("關掉歌詞的顏色光暈") : tr("打開歌詞的顏色光暈"))
             .help(lyricsGlow ? tr("關掉歌詞的顏色光暈") : tr("打開歌詞的顏色光暈"))
@@ -1297,5 +1355,13 @@ private struct BarLine: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+
+extension View {
+    /// (the lyrics' tools: each a round 34-point button)
+    func toolCircle() -> some View {
+        frame(width: 34, height: 34).contentShape(Circle())
     }
 }

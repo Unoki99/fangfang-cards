@@ -1,8 +1,8 @@
 import Foundation
 import SwiftUI
 import AVFoundation
-#if !targetEnvironment(macCatalyst)
 import MediaPlayer
+#if !targetEnvironment(macCatalyst)
 import StoreKit
 #endif
 
@@ -83,7 +83,10 @@ final class SongPlayer: ObservableObject {
     @Published private(set) var mode: Mode = .preview
     @Published private(set) var playing = false
     /// where the song is (seconds), for the bar under the cover
-    @Published private(set) var time: Double = 0
+    var time: Double {
+        get { SongClock.shared.time }
+        set { if SongClock.shared.time != newValue { SongClock.shared.time = newValue } }
+    }
     /// Apple Music can play whole songs here (nil: not asked yet)
     @Published private(set) var canFull: Bool?
     /// why it's only the preview (shown under the song), and whether 設定 can change it
@@ -242,7 +245,7 @@ final class SongPlayer: ObservableObject {
     }
 
     /// 歌詞對時 open: the song stays when it ends (the next one doesn't start)
-    var editing = false
+    @Published var editing = false
 
     private func start(_ h: SongHit) {
         if RadioPlayer.shared.isOn { RadioPlayer.shared.stop() }
@@ -315,6 +318,20 @@ final class SongPlayer: ObservableObject {
         }
         p.play()
         hookLyricsClock()
+        nowPlaying()
+    }
+
+    /// the preview in iOS's "now playing" (the Dynamic Island, the lock screen)
+    private func nowPlaying() {
+        guard mode == .preview, let s = song, av != nil else { return }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: s.trackName,
+            MPMediaItemPropertyArtist: s.artistName,
+            MPNowPlayingInfoPropertyPlaybackRate: playing ? 1.0 : 0.0,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: position ?? 0,
+        ]
+        info[MPMediaItemPropertyPlaybackDuration] = length
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     /// the lyrics follow the player: its time, and 跳到 moves the song itself (the preview: the lyrics instead)
@@ -435,7 +452,7 @@ final class SongPlayer: ObservableObject {
             #endif
         case .preview: now = av?.timeControlStatus == .playing
         }
-        if now != playing { playing = now }
+        if now != playing { playing = now; nowPlaying() }
         #if !targetEnvironment(macCatalyst)
         // (the whole song: Apple Music stops at its end; near the end, or nothing left playing → the next one)
         if mode == .full, song != nil, wasPlaying, !now, !userPaused {
@@ -644,7 +661,8 @@ struct SongPlayerBar: View {
                             .disabled(!player.hasNext)
                             .accessibilityLabel(tr("下一首"))
                     }
-                    Button { searching = true } label: { Image(systemName: "magnifyingglass") }
+                    // (another song: a note with a list, not a magnifying glass, so it isn't taken for 找別的歌詞)
+                    Button { searching = true } label: { Image(systemName: "music.note.list") }
                         .softButton()
                         .accessibilityLabel(tr("找歌來聽"))
                     Button { player.stop() } label: { Image(systemName: "xmark") }
@@ -660,14 +678,7 @@ struct SongPlayerBar: View {
                         }
                     }
                 }
-                let len = max(1, player.length)
-                HStack(spacing: 8) {
-                    Text(Self.clock(dragging ?? player.time)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
-                    Slider(value: Binding(get: { min(len, dragging ?? player.time) }, set: { dragging = $0 }), in: 0...len, onEditingChanged: { editing in
-                        if !editing, let d = dragging { player.seek(d); dragging = nil }
-                    })
-                    Text(Self.clock(len)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
-                }
+                SongProgress()
             }
             .padding(.horizontal).padding(.vertical, 8)
             .background(T.fn.opacity(0.6))
@@ -683,5 +694,36 @@ struct SongPlayerBar: View {
     static func clock(_ t: Double) -> String {
         let s = Int(max(0, t.isFinite ? t : 0))
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+
+/// where the song is, four times a second: apart from SongPlayer, so only what shows it is redrawn that often (with
+/// it inside SongPlayer every view watching the player, the lyrics page and the editor's whole page among them, was
+/// drawn again four times a second, even paused)
+@MainActor
+final class SongClock: ObservableObject {
+    static let shared = SongClock()
+    @Published var time: Double = 0
+}
+
+/// the time, a bar to drag anywhere in the song, the length
+struct SongProgress: View {
+    var precise = false
+    @ObservedObject private var clock = SongClock.shared
+    @State private var dragging: Double?
+    private var player: SongPlayer { SongPlayer.shared }
+    var body: some View {
+        let len = max(1, player.length)
+        HStack(spacing: 8) {
+            Text(precise ? LRC.shown(dragging ?? clock.time) : SongPlayerBar.clock(dragging ?? clock.time))
+                .ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
+                .frame(minWidth: precise ? 52 : nil, alignment: .leading)
+            Slider(value: Binding(get: { min(len, dragging ?? clock.time) }, set: { dragging = $0 }), in: 0...len,
+                   onEditingChanged: { editing in
+                if !editing, let d = dragging { player.seek(d); dragging = nil }
+            })
+            Text(SongPlayerBar.clock(len)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
+        }
     }
 }

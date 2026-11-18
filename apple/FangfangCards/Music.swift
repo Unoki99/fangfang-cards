@@ -234,14 +234,7 @@ struct MusicView: View {
                     Spacer()
                 }
                 .buttonStyle(.plain).foregroundStyle(T.btnInk)
-                let len = max(1, player.length)
-                HStack(spacing: 8) {
-                    Text(SongPlayerBar.clock(dragging ?? player.time)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
-                    Slider(value: Binding(get: { min(len, dragging ?? player.time) }, set: { dragging = $0 }), in: 0...len, onEditingChanged: { editing in
-                        if !editing, let d = dragging { player.seek(d); dragging = nil }
-                    })
-                    Text(SongPlayerBar.clock(len)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
-                }
+                SongProgress()
                 if player.mode == .preview, let w = player.why {
                     Text(w).ffFont(.caption).foregroundStyle(T.muted)
                 }

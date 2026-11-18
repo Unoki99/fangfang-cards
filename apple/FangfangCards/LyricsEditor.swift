@@ -1,5 +1,7 @@
 import Foundation
 import SwiftUI
+import Combine
+import UniformTypeIdentifiers
 
 // 自己的歌詞: type or paste a song's lyrics, then time them while the song plays: one tap as each line starts.
 // Kept on this device as LRC (the same timed format LRCLIB uses) and used whenever that song plays, before LRCLIB's.
@@ -40,12 +42,140 @@ final class OwnLyrics: ObservableObject {
 
     func get(_ trackId: Int) -> OwnLyric? { items[trackId] }
 
-    func set(_ x: OwnLyric) { items[x.trackId] = x; write() }
+    func set(_ x: OwnLyric) {
+        items[x.trackId] = x
+        deleted.remove(x.trackId)
+        write()
+    }
 
-    func remove(_ trackId: Int) { items[trackId] = nil; write() }
+    func remove(_ trackId: Int) {
+        items[trackId] = nil
+        deleted.insert(trackId)
+        write()
+    }
 
     private func write() {
         if let d = try? JSONEncoder().encode(Array(items.values)) { try? d.write(to: file, options: .atomic) }
+    }
+
+    // MARK: 歌詞 folder (in the backup folder: every device's lyrics of your own, one .lrc file a song)
+
+    static let folderName = "歌詞"
+    /// (lyrics deleted here since the last sync: their file goes, and a mark so the other devices delete theirs)
+    private var deleted: Set<Int> {
+        get { Set(UserDefaults.standard.array(forKey: "ownLyricsDeleted") as? [Int] ?? []) }
+        set { UserDefaults.standard.set(Array(newValue), forKey: "ownLyricsDeleted") }
+    }
+
+    /// "繁華夢 - 黃齡 [1234567].lrc" (the number: the song in Apple's catalogue)
+    static func fileName(_ x: OwnLyric) -> String {
+        let bad = CharacterSet(charactersIn: "/\\:*?\"<>|\n\r")
+        let clean = { (s: String) in s.components(separatedBy: bad).joined(separator: " ").trimmingCharacters(in: .whitespaces) }
+        return clean(x.trackName) + " - " + clean(x.artistName) + " [\(x.trackId)].lrc"
+    }
+
+    private static func trackId(of name: String) -> Int? {
+        guard name.hasSuffix(".lrc"), let open = name.lastIndex(of: "["), let close = name.lastIndex(of: "]"), open < close else { return nil }
+        return Int(name[name.index(after: open)..<close])
+    }
+
+    /// an LRC file as lyrics of your own ([ti:], [ar:] and [length:] give the song's name, singer and length)
+    static func fromLRC(_ text: String, trackId: Int, date: Date) -> OwnLyric {
+        func tag(_ k: String) -> String? {
+            guard let r = text.range(of: "[" + k + ":") else { return nil }
+            let rest = text[r.upperBound...]
+            guard let end = rest.firstIndex(of: "]") else { return nil }
+            return String(rest[..<end]).trimmingCharacters(in: .whitespaces)
+        }
+        var length: Double?
+        if let l = tag("length") {
+            let p = l.split(separator: ":").compactMap { Double($0) }
+            if p.count == 2 { length = p[0] * 60 + p[1] }
+        }
+        return OwnLyric(trackId: trackId, trackName: tag("ti") ?? "", artistName: tag("ar") ?? "", duration: length, lrc: text, date: date)
+    }
+
+    /// (called by the backup's sync, with the folder open) lyrics newer in the folder come in, ours go out, deleted ones
+    /// go everywhere; returns how many came in
+    func sync(in folder: URL) -> Int {
+        let fm = FileManager.default
+        let dir = folder.appendingPathComponent(Self.folderName, isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let names = (try? fm.contentsOfDirectory(atPath: dir.path)) ?? []
+        var files: [Int: (url: URL, date: Date)] = [:]
+        var marks: [Int: Date] = [:]
+        for n in names {
+            let u = dir.appendingPathComponent(n)
+            if n.hasPrefix(".") && n.hasSuffix(".icloud") {
+                // (not downloaded yet: fetched for next time)
+                try? fm.startDownloadingUbiquitousItem(at: dir.appendingPathComponent(String(n.dropFirst().dropLast(".icloud".count))))
+                continue
+            }
+            let date = ((try? fm.attributesOfItem(atPath: u.path))?[.modificationDate] as? Date) ?? .distantPast
+            if n.hasSuffix(".deleted"), let id = Int(n.dropLast(".deleted".count)) { marks[id] = date; continue }
+            if let id = Self.trackId(of: n) { files[id] = (u, date) }
+        }
+        var came = 0, changed = false
+        // deleted here: the file goes, a mark stays for the others
+        for id in deleted {
+            if let f = files[id] { try? fm.removeItem(at: f.url); files[id] = nil }
+            try? Data().write(to: dir.appendingPathComponent("\(id).deleted"))
+        }
+        deleted = []
+        // deleted on another device after we last changed it: ours goes too
+        for (id, when) in marks {
+            if let x = items[id], x.date < when { items[id] = nil; changed = true; came += 1 }
+        }
+        // in the folder, newer than ours (or not here): in
+        for (id, f) in files where marks[id].map({ $0 < f.date }) ?? true {
+            guard let d = Self.read(f.url), let text = String(data: d, encoding: .utf8) else { continue }
+            if let x = items[id] {
+                if x.lrc == text || x.date >= f.date.addingTimeInterval(-1) { continue }
+            }
+            var x = Self.fromLRC(text, trackId: id, date: f.date)
+            if let old = items[id] {
+                if x.trackName.isEmpty { x.trackName = old.trackName }
+                if x.artistName.isEmpty { x.artistName = old.artistName }
+            }
+            items[id] = x
+            changed = true
+            came += 1
+        }
+        // ours, not in the folder or newer: out (the file then dated as ours, so it isn't taken back in)
+        for (id, x) in items {
+            if let f = files[id], let d = Self.read(f.url), String(data: d, encoding: .utf8) == x.lrc { continue }
+            if let f = files[id], f.date > x.date.addingTimeInterval(1) { continue }
+            if let f = files[id], f.url.lastPathComponent != Self.fileName(x) { try? fm.removeItem(at: f.url) }
+            let u = dir.appendingPathComponent(Self.fileName(x))
+            if Self.write(Data(x.lrc.utf8), to: u) {
+                try? fm.setAttributes([.modificationDate: x.date], ofItemAtPath: u.path)
+            }
+            try? fm.removeItem(at: dir.appendingPathComponent("\(id).deleted"))
+        }
+        if changed {
+            write()
+            // (the song playing has new lyrics of its own: shown)
+            if let s = SongPlayer.shared.song, items[s.id]?.lrc != LyricsBridge.shared.song.flatMap({ $0.id == -s.id ? $0.syncedLyrics : nil }) {
+                SongPlayer.shared.reloadLyrics()
+            }
+        }
+        return came
+    }
+
+    private static func read(_ url: URL) -> Data? {
+        var out: Data?
+        var err: NSError?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &err) { u in out = try? Data(contentsOf: u) }
+        return out
+    }
+
+    private static func write(_ data: Data, to url: URL) -> Bool {
+        var ok = false
+        var err: NSError?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &err) { u in
+            ok = (try? data.write(to: u, options: .atomic)) != nil
+        }
+        return ok
     }
 }
 
@@ -114,129 +244,305 @@ enum LRC {
             if s.isEmpty && (out.isEmpty || out.last?.text.isEmpty == true) { continue }
             out.append(TimedLine(text: s, t: nil))
         }
-        while out.last?.text.isEmpty == true { out.removeLast() }
+        // (an empty line at the very end stays: where the last line stops being sung)
         for i in out.indices where i < old.count && old[i].text == out[i].text { out[i].t = old[i].t }
         return out
     }
 }
 
-/// 歌詞對時: ① the words (type, paste, or LRCLIB's to fix), ② tap along with the song, ③ save
+/// what both of 歌詞對時's pages work on: the words, their times, where the next tap goes, the line being sung
+@MainActor
+final class LyricsEditModel: ObservableObject {
+    @Published var text = ""
+    @Published var lines: [TimedLine] = [] { didSet { updateSung(SongPlayer.shared.time) } }
+    /// the line the next tap times
+    @Published var cursor = 0
+    /// the line tapped in the list (空行 goes under it while the song is paused)
+    @Published var focus: Int?
+    /// the line being sung now, by the times given so far (changes only when the line does: the list isn't
+    /// redrawn four times a second)
+    @Published private(set) var sung: Int?
+    private var sub: AnyCancellable?
+
+    init() {
+        sub = SongClock.shared.$time.sink { [weak self] t in
+            Task { @MainActor in self?.updateSung(t) }
+        }
+    }
+
+    /// kept as this song's own lyrics; playing now: the lyrics follow the new times right away
+    func save(_ song: SongHit) {
+        let lrc = LRC.make(lines, title: song.trackName, artist: song.artistName, length: song.seconds)
+        let x = OwnLyric(trackId: song.id, trackName: song.trackName, artistName: song.artistName, duration: song.seconds, lrc: lrc)
+        OwnLyrics.shared.set(x)
+        if SongPlayer.shared.song?.id == song.id { LyricsBridge.shared.put(x.hit) }
+    }
+
+    func updateSung(_ t: Double) {
+        var best: Int?
+        for (i, l) in lines.enumerated() {
+            if let lt = l.t, lt <= t, best.map({ (lines[$0].t ?? 0) <= lt }) ?? true { best = i }
+        }
+        if best != sung { sung = best }
+    }
+}
+
+/// 歌詞對時: a page of its own over the whole app, with two parts picked at the top: 歌詞 (type, paste, or LRCLIB's
+/// to fix) and 對時間 (tap along). The song's player above both.
 struct LyricsEditor: View {
     let song: SongHit
-    @ObservedObject private var player = SongPlayer.shared
     @ObservedObject private var own = OwnLyrics.shared
+    @StateObject private var m = LyricsEditModel()
     @Environment(\.dismiss) private var dismiss
-    /// how much earlier than the tap the line starts (people tap a little late)
-    @AppStorage("lrcReaction") private var reaction = 0.15
-    @State private var step = 0
-    @State private var text = ""
-    @State private var lines: [TimedLine] = []
-    /// the line the next tap times
-    @State private var cursor = 0
-    /// the line the ± buttons move (the one just timed, or one tapped in the list)
-    @State private var focus: Int?
+    /// 0 歌詞, 1 對時間
+    @State private var page = 0
+    @State private var loaded = false
+
     @State private var confirmDelete = false
-    @State private var saved = false
+    @State private var importing = false
 
     var body: some View {
-        Group {
-            if step == 0 { textStep } else { timingStep }
-        }
-        .appBackground()
-        .navigationTitle(step == 0 ? tr("歌詞") : tr("對時間"))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) { Button(tr("取消")) { dismiss() } }
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if step == 0 {
-                    Button(tr("下一步")) { toTiming() }
-                        .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        // (no navigation bar: its buttons were made again every time anything on the page moved, the 時間 bar four
+        // times a second, and the ⋯ menu flickered with it)
+        VStack(spacing: 10) {
+                topBar
+                Picker("", selection: $page) {
+                    Text(tr("歌詞")).tag(0)
+                    Text(tr("對時間")).tag(1)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 420)
+                .padding(.horizontal)
+                EditorPlayer(song: song).padding(.horizontal)
+                if page == 0 {
+                    words
                 } else {
-                    Menu {
-                        Picker(tr("按的時候提早"), selection: $reaction) {
-                            Text(tr("不提早")).tag(0.0)
-                            Text("0.1 s").tag(0.1)
-                            Text("0.15 s").tag(0.15)
-                            Text("0.2 s").tag(0.2)
-                            Text("0.3 s").tag(0.3)
-                        }
-                        Button { clearTimes() } label: { Label(tr("全部重新對時"), systemImage: "arrow.counterclockwise") }
-                        ShareLink(item: lrc, preview: SharePreview(song.trackName + ".lrc")) {
-                            Label(tr("分享 LRC"), systemImage: "square.and.arrow.up")
-                        }
-                        if own.get(song.id) != nil {
-                            Button(role: .destructive) { confirmDelete = true } label: { Label(tr("刪除自己的歌詞"), systemImage: "trash") }
-                        }
-                    } label: { Image(systemName: "ellipsis.circle") }
-                    Button { text = lines.map(\.text).joined(separator: "\n"); step = 0 } label: { Image(systemName: "text.cursor") }
-                        .accessibilityLabel(tr("改歌詞的字"))
-                    Button(tr("儲存")) { save() }.fontWeight(.semibold)
+                    LyricsTimingPage(song: song, m: m) { dismiss() }
                 }
             }
-        }
+            .padding(.top, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .appBackground()
+            .modifier(LRCOpener(open: $importing, song: song, m: m))
         .confirmationDialog(tr("刪除自己的歌詞？之後會用 LRCLIB 的歌詞。"), isPresented: $confirmDelete, titleVisibility: .visible) {
             Button(tr("刪除"), role: .destructive) {
                 own.remove(song.id)
-                if player.song?.id == song.id { player.reloadLyrics() }
+                if SongPlayer.shared.song?.id == song.id { SongPlayer.shared.reloadLyrics() }
                 dismiss()
             }
         }
+        .onChange(of: page) { _, p in
+            // (the words become the lines to time, times kept for lines that didn't change; and back)
+            if p == 1 { toLines() } else { m.text = m.lines.map(\.text).joined(separator: "\n") }
+        }
         .onAppear(perform: load)
-        .onAppear { player.editing = true }
-        .onDisappear { player.editing = false }
+        .onAppear { SongPlayer.shared.editing = true }
+        .onDisappear { SongPlayer.shared.editing = false }
     }
 
-    // MARK: ① the words
+    /// 取消 · 自己的歌詞 · ⋯ 儲存
+    private var topBar: some View {
+        ZStack {
+            Text(tr("自己的歌詞")).ffFont(.headline)
+            HStack(spacing: 12) {
+                Button(tr("取消")) { dismiss() }
+                Spacer()
+                // (all the file things and the timing settings in one place: ⋯)
+                EditorMenu(song: song, m: m, page: page, open: { importing = true }) { confirmDelete = true }
+                Button(tr("儲存")) {
+                    if page == 0 { toLines() }
+                    m.save(song)
+                    dismiss()
+                }
+                .fontWeight(.semibold)
+                .disabled(page == 0 ? m.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : m.lines.isEmpty)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.top, 4)
+    }
 
-    private var textStep: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    /// ① the words: the whole page to type in
+    private var words: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(tr("一行一句。空一行是間奏（可以不對時間）。寫好到「對時間」，一邊放歌，一邊在每一句開始唱的時候按一下。"))
+                    .ffFont(.footnote).foregroundStyle(T.muted)
+                Spacer(minLength: 8)
+                Button {
+                    if let s = UIPasteboard.general.string { m.text = s }
+                } label: { Label(tr("貼上"), systemImage: "doc.on.clipboard") }
+                .softButton()
+            }
+            TextEditor(text: $m.text)
+                .scaledFont(17)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
+        }
+        .padding([.horizontal, .bottom])
+    }
+
+    private func toLines() {
+        m.lines = LRC.lines(fromText: m.text, keeping: m.lines)
+        m.cursor = m.lines.firstIndex(where: { $0.t == nil }) ?? m.lines.count
+        m.focus = nil
+    }
+
+    private func load() {
+        guard !loaded else { return }
+        loaded = true
+        let player = SongPlayer.shared
+        if let o = own.get(song.id) {
+            m.lines = LRC.lines(from: o.hit)
+        } else if player.song?.id == song.id, let h = LyricsBridge.shared.song {
+            // (LRCLIB's: to fix or time)
+            m.lines = LRC.lines(from: h)
+        }
+        m.text = m.lines.map(\.text).joined(separator: "\n")
+        // (already timed: the timing first)
+        if !m.lines.isEmpty && m.lines.contains(where: { $0.t != nil }) {
+            m.cursor = m.lines.firstIndex(where: { $0.t == nil }) ?? m.lines.count
+            page = 1
+        }
+    }
+}
+
+/// ⋯: the lyrics' files (open an .lrc file, share as one), then the timing (how early a tap counts, time everything
+/// again), then delete
+private struct EditorMenu: View {
+    let song: SongHit
+    @ObservedObject var m: LyricsEditModel
+    let page: Int
+    let open: () -> Void
+    let delete: () -> Void
+    @ObservedObject private var own = OwnLyrics.shared
+    @AppStorage("lrcReaction") private var reaction = 0.15
+    @State private var share: ShareItem?
+    var body: some View {
+        Menu {
+            Section(tr("LRC 檔")) {
+                Button { open() } label: { Label(tr("打開 LRC"), systemImage: "doc.badge.arrow.up") }
+                // (the file made only when asked for, not every time the menu is drawn)
+                Button { share = ShareItem(url: lrcFile) } label: { Label(tr("分享 LRC"), systemImage: "square.and.arrow.up") }
+            }
+            if page == 1 {
+                Section(tr("對時間")) {
+                    Picker(tr("按的時候提早"), selection: $reaction) {
+                        Text(tr("不提早")).tag(0.0)
+                        Text("0.1 s").tag(0.1)
+                        Text("0.15 s").tag(0.15)
+                        Text("0.2 s").tag(0.2)
+                        Text("0.3 s").tag(0.3)
+                    }
+                    Button {
+                        for i in m.lines.indices { m.lines[i].t = nil }
+                        m.cursor = 0
+                        m.focus = nil
+                        SongPlayer.shared.seek(0)
+                    } label: { Label(tr("全部重新對時"), systemImage: "arrow.counterclockwise") }
+                }
+            }
+            if own.get(song.id) != nil {
+                Button(role: .destructive) { delete() } label: { Label(tr("刪除自己的歌詞"), systemImage: "trash") }
+            }
+        } label: { Image(systemName: "ellipsis.circle").font(.system(size: 20)) }
+        .sheet(item: $share) { ShareSheet(url: $0.url) }
+    }
+
+    /// the lyrics as an .lrc file, named the way the 歌詞 folder names them (so it can be put there); on the 歌詞
+    /// part, from the words as typed
+    private var lrcFile: URL {
+        let lines = page == 0 ? LRC.lines(fromText: m.text, keeping: m.lines) : m.lines
+        let x = OwnLyric(trackId: song.id, trackName: song.trackName, artistName: song.artistName, duration: song.seconds,
+                         lrc: LRC.make(lines, title: song.trackName, artist: song.artistName, length: song.seconds))
+        let u = FileManager.default.temporaryDirectory.appendingPathComponent(OwnLyrics.fileName(x))
+        try? Data(x.lrc.utf8).write(to: u, options: .atomic)
+        return u
+    }
+}
+
+/// 打開 LRC: an .lrc file's words and times into the editor
+private struct LRCOpener: ViewModifier {
+    @Binding var open: Bool
+    let song: SongHit
+    let m: LyricsEditModel
+    func body(content: Content) -> some View {
+        content.fileImporter(isPresented: $open, allowedContentTypes: [UTType(filenameExtension: "lrc") ?? .plainText, .plainText, .text]) { r in
+            guard case .success(let url) = r else { return }
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let d = try? Data(contentsOf: url), let text = String(data: d, encoding: .utf8) else { return }
+            let x = OwnLyrics.fromLRC(text, trackId: song.id, date: Date())
+            m.lines = LRC.lines(from: x.hit)
+            m.text = m.lines.map(\.text).joined(separator: "\n")
+        }
+    }
+}
+
+/// the song in the editor: cover, name, play / pause, back 5 s, and a bar to drag anywhere in the song
+private struct EditorPlayer: View {
+    let song: SongHit
+    @ObservedObject private var player = SongPlayer.shared
+    @State private var dragging: Double?
+
+    var body: some View {
+        VStack(spacing: 6) {
             HStack(spacing: 10) {
                 SongArt(url: song.art, size: 40)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(song.trackName).ffFont(.subheadline, .semibold).lineLimit(1)
                     Text(song.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
                 }
-                Spacer()
-                Button {
-                    if let s = UIPasteboard.general.string { text = s }
-                } label: { Label(tr("貼上"), systemImage: "doc.on.clipboard") }
+                Spacer(minLength: 8)
+                Button { player.seek(max(0, (player.position ?? 0) - 5)) } label: { Text("−5 s").monospacedDigit() }
+                    .softButton().accessibilityLabel(tr("倒退五秒"))
+                Button { player.togglePause() } label: {
+                    Image(systemName: player.playing ? "pause.fill" : "play.fill").frame(width: 30, height: 26)
+                }
                 .softButton()
+                .disabled(player.song?.id != song.id)
+                .accessibilityLabel(player.playing ? tr("暫停") : tr("播放"))
             }
-            TextEditor(text: $text)
-                .scaledFont(17)
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
-            Text(tr("一行一句。空一行是間奏（可以不對時間）。下一步一邊放歌，一邊在每一句開始唱的時候按一下。"))
-                .ffFont(.footnote).foregroundStyle(T.muted)
+            if player.song?.id != song.id {
+                Text(tr("這首歌沒有在放。到「音樂」放這首歌再來對時間。")).ffFont(.footnote).foregroundStyle(T.muted)
+            } else {
+                SongProgress(precise: true)
+                if player.mode == .preview {
+                    Text(tr("只有 30 秒的試聽：整首歌要有 Apple Music 才能對時間。")).ffFont(.caption).foregroundStyle(T.muted)
+                }
+            }
         }
-        .padding()
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.7)))
     }
+}
 
-    private func toTiming() {
-        lines = LRC.lines(fromText: text, keeping: lines)
-        cursor = lines.firstIndex(where: { $0.t == nil }) ?? lines.count
-        focus = nil
-        step = 1
-        if player.song?.id == song.id && !player.playing && cursor == 0 { player.seek(0) }
-    }
+/// 歌詞對時, ② the timing: its own page. The player on top; every line with its time and −¼ / +¼ beside it; the
+/// line being sung lit; at the bottom 退一行 · 這一句開始 · 空行 · 跳過
+private struct LyricsTimingPage: View {
+    let song: SongHit
+    @ObservedObject var m: LyricsEditModel
+    let close: () -> Void
+    @ObservedObject private var own = OwnLyrics.shared
+    @Environment(\.dismiss) private var back
+    /// how much earlier than the tap the line starts (people tap a little late)
+    @AppStorage("lrcReaction") private var reaction = 0.15
+    @State private var confirmDelete = false
 
-    // MARK: ② tap along
+    private var player: SongPlayer { SongPlayer.shared }
 
-    private var timingStep: some View {
+    var body: some View {
         VStack(spacing: 0) {
-            controls
             ScrollViewReader { proxy in
                 List {
-                    ForEach(lines.indices, id: \.self) { i in
+                    ForEach(m.lines.indices, id: \.self) { i in
                         row(i)
                             .id(i)
-                            .listRowBackground(i == cursor ? T.btnEdge.opacity(0.28) : (i == focus ? T.fn.opacity(0.9) : Color.clear))
-                            .contentShape(Rectangle())
-                            .onTapGesture { pick(i) }
+                            .listRowBackground(i == m.cursor ? T.btnEdge.opacity(0.28) : (i == m.focus ? T.fn.opacity(0.9) : Color.clear))
                             .swipeActions {
-                                Button { lines[i].t = nil; if i < cursor { cursor = i } } label: { Label(tr("清掉時間"), systemImage: "clock.badge.xmark") }
-                                if lines[i].text.isEmpty {
+                                Button { m.lines[i].t = nil; if i < m.cursor { m.cursor = i } } label: { Label(tr("清掉時間"), systemImage: "clock.badge.xmark") }
+                                if m.lines[i].text.isEmpty {
                                     Button(role: .destructive) { removeLine(i) } label: { Label(tr("刪除"), systemImage: "trash") }
                                 }
                             }
@@ -244,109 +550,86 @@ struct LyricsEditor: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .onChange(of: cursor) { _, c in withAnimation { proxy.scrollTo(min(c, max(0, lines.count - 1)), anchor: .center) } }
+                .onChange(of: m.cursor) { _, c in withAnimation { proxy.scrollTo(min(c, max(0, m.lines.count - 1)), anchor: .center) } }
+                .onChange(of: m.sung) { _, s in
+                    // (playing through lines already timed: the list follows the song)
+                    if let s, player.playing, m.cursor >= m.lines.count || s >= m.cursor { withAnimation { proxy.scrollTo(s, anchor: .center) } }
+                }
             }
             tapBar
         }
     }
 
-    /// the song: where it is, back a little, play / pause
-    private var controls: some View {
-        VStack(spacing: 6) {
-            if player.song?.id != song.id {
-                Text(tr("這首歌沒有在放。到「音樂」放這首歌再來對時間。")).ffFont(.footnote).foregroundStyle(T.muted)
-            }
-            HStack(spacing: 12) {
-                Text(LRC.shown(player.time)).ffFont(.title3, .semibold).monospacedDigit()
-                    .frame(minWidth: 74, alignment: .leading)
-                Spacer()
-                Button { player.seek(max(0, (player.position ?? 0) - 5)) } label: { Text("−5 s").monospacedDigit() }
-                    .softButton().accessibilityLabel(tr("倒退五秒"))
-                Button { player.seek(max(0, (player.position ?? 0) - 2)) } label: { Text("−2 s").monospacedDigit() }
-                    .softButton().accessibilityLabel(tr("倒退兩秒"))
-                Button { player.togglePause() } label: {
-                    Image(systemName: player.playing ? "pause.fill" : "play.fill").frame(width: 28)
-                }
-                .softButton()
-                .accessibilityLabel(player.playing ? tr("暫停") : tr("播放"))
-            }
-            if player.mode == .preview {
-                Text(tr("只有 30 秒的試聽：整首歌要有 Apple Music 才能對時間。")).ffFont(.caption).foregroundStyle(T.muted)
-            }
-        }
-        .padding(.horizontal).padding(.vertical, 8)
-        .background(T.fn.opacity(0.6))
-    }
-
     private func row(_ i: Int) -> some View {
-        let l = lines[i]
-        let sung = nowLine == i
-        return HStack(alignment: .firstTextBaseline, spacing: 10) {
+        let l = m.lines[i]
+        let sung = m.sung == i
+        return HStack(spacing: 8) {
             Text(l.t.map(LRC.shown) ?? "–")
                 .ffFont(.caption).monospacedDigit()
                 .foregroundStyle(l.t == nil ? T.muted.opacity(0.6) : T.muted)
                 .frame(minWidth: 52, alignment: .leading)
-            if l.text.isEmpty {
-                Text(tr("（間奏）")).foregroundStyle(T.muted).italic()
-            } else {
-                Text(l.text)
-                    .foregroundStyle(sung ? T.btnInk : (l.t == nil ? T.glyph.opacity(0.6) : T.glyph))
-                    .fontWeight(sung ? .semibold : .regular)
+            Group {
+                if l.text.isEmpty {
+                    Text(tr("（間奏）")).foregroundStyle(T.muted).italic()
+                } else {
+                    Text(l.text)
+                        .foregroundStyle(sung ? T.btnInk : (l.t == nil ? T.glyph.opacity(0.6) : T.glyph))
+                        .fontWeight(sung ? .semibold : .regular)
+                }
             }
-            Spacer(minLength: 0)
-            if i == cursor { Image(systemName: "hand.tap").foregroundStyle(T.btnInk).ffFont(.caption) }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture { pick(i) }
+            if i == m.cursor { Image(systemName: "hand.tap").foregroundStyle(T.btnInk).ffFont(.caption) }
+            // −¼ / +¼: this line a quarter of a second earlier or later (the song goes back to just before it)
+            if l.t != nil {
+                Button { move(i, -0.25) } label: { Text("−¼").monospacedDigit().frame(minWidth: 34, minHeight: 30) }
+                    .softButton()
+                    .accessibilityLabel(tr("這一行早四分之一秒"))
+                Button { move(i, 0.25) } label: { Text("+¼").monospacedDigit().frame(minWidth: 34, minHeight: 30) }
+                    .softButton()
+                    .accessibilityLabel(tr("這一行晚四分之一秒"))
+            }
         }
         .padding(.vertical, 2)
     }
 
-    /// the line being sung now, by the times given so far
-    private var nowLine: Int? {
-        let t = player.time
-        var best: Int?
-        for (i, l) in lines.enumerated() { if let lt = l.t, lt <= t, best.map({ (lines[$0].t ?? 0) <= lt }) ?? true { best = i } }
-        return best
+    private func move(_ i: Int, _ d: Double) {
+        guard let t = m.lines[i].t else { return }
+        m.lines[i].t = max(0, ((t + d) * 100).rounded() / 100)
+        m.focus = i
+        player.seek(max(0, (m.lines[i].t ?? 0) - 1.5))
     }
 
     /// a line tapped: time again from there (the song goes back to a little before it)
     private func pick(_ i: Int) {
-        cursor = i
-        focus = lines[i].t != nil ? i : nil
-        let back = (i > 0 ? lines[i - 1].t : nil) ?? lines[i].t.map { $0 - 3 }
+        m.cursor = i
+        m.focus = i
+        let back = (i > 0 ? m.lines[i - 1].t : nil) ?? m.lines[i].t.map { $0 - 3 }
         if let b = back { player.seek(max(0, b - 1)) }
     }
 
     private var tapBar: some View {
         VStack(spacing: 8) {
-            if let f = focus, lines.indices.contains(f), lines[f].t != nil {
-                HStack(spacing: 8) {
-                    Text(lines[f].text.isEmpty ? trs("（間奏）") : lines[f].text).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
-                    Spacer(minLength: 4)
-                    nudge("−0.1", -0.1)
-                    nudge("−0.05", -0.05)
-                    nudge("+0.05", 0.05)
-                    nudge("+0.1", 0.1)
-                }
-            }
             HStack(spacing: 10) {
                 Button { undo() } label: {
                     Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 52)
                 }
                 .softButton()
-                .disabled(cursor == 0)
+                .disabled(m.cursor == 0)
                 .accessibilityLabel(tr("退一行"))
                 Button { tap() } label: {
                     VStack(spacing: 2) {
-                        Text(cursor < lines.count ? tr("這一句開始") : tr("對好了")).ffFont(.headline)
-                        if cursor < lines.count {
-                            Text(lines[cursor].text.isEmpty ? trs("（間奏）") : lines[cursor].text)
+                        Text(m.cursor < m.lines.count ? tr("這一句開始") : tr("對好了")).ffFont(.headline)
+                        if m.cursor < m.lines.count {
+                            Text(m.lines[m.cursor].text.isEmpty ? trs("（間奏）") : m.lines[m.cursor].text)
                                 .ffFont(.caption).lineLimit(1).opacity(0.8)
                         }
                     }
                     .frame(maxWidth: .infinity, minHeight: 52)
                 }
                 .softButton()
-                .disabled(cursor >= lines.count || player.song?.id != song.id)
-                // 空行: a blank line under the line you're on, to time as the next one (where a line stops being sung)
+                .disabled(m.cursor >= m.lines.count || player.song?.id != song.id)
                 Button { addBreak() } label: {
                     VStack(spacing: 2) {
                         Image(systemName: "return")
@@ -355,106 +638,92 @@ struct LyricsEditor: View {
                     .frame(width: 48, height: 52)
                 }
                 .softButton()
-                .disabled(lines.isEmpty)
+                .disabled(m.lines.isEmpty)
                 .accessibilityLabel(tr("在這一行下面加一個空行"))
                 Button { skip() } label: {
                     Image(systemName: "forward.end").frame(width: 44, height: 52)
                 }
                 .softButton()
-                .disabled(cursor >= lines.count)
+                .disabled(m.cursor >= m.lines.count)
                 .accessibilityLabel(tr("跳過這一行"))
             }
-            Text(tr("每一句開始唱的時候按「這一句開始」。按錯了：退一行，或點那一行從那裡重新對。點過的那一行可以用 ± 微調。"))
+            Text(tr("每一句開始唱的時候按「這一句開始」。放歌的時候按「空行」：唱著的那一行在這裡結束。點一行從那裡重新對；−¼／+¼ 微調那一行。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
+        .frame(maxWidth: 900)
         .padding()
+        .frame(maxWidth: .infinity)
         .background(T.fn.opacity(0.6))
     }
 
-    private func nudge(_ label: String, _ d: Double) -> some View {
-        Button {
-            if let f = focus, let t = lines[f].t {
-                lines[f].t = max(0, ((t + d) * 100).rounded() / 100)
-                player.seek(max(0, (lines[f].t ?? 0) - 1.5))
-            }
-        } label: { Text(label).ffFont(.caption, .semibold).monospacedDigit().frame(minWidth: 40, minHeight: 26) }
-        .softButton()
-    }
-
     private func tap() {
-        guard cursor < lines.count, let now = player.position else { return }
-        lines[cursor].t = max(0, ((now - reaction) * 100).rounded() / 100)
-        focus = cursor
-        cursor += 1
+        guard m.cursor < m.lines.count, let now = player.position else { return }
+        m.lines[m.cursor].t = max(0, ((now - reaction) * 100).rounded() / 100)
+        m.focus = m.cursor
+        m.cursor += 1
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     private func undo() {
-        guard cursor > 0 else { return }
-        cursor -= 1
-        lines[cursor].t = nil
-        focus = nil
-        player.seek(max(0, ((cursor > 0 ? lines[cursor - 1].t : nil) ?? 0) - 1))
+        guard m.cursor > 0 else { return }
+        m.cursor -= 1
+        m.lines[m.cursor].t = nil
+        m.focus = nil
+        player.seek(max(0, ((m.cursor > 0 ? m.lines[m.cursor - 1].t : nil) ?? 0) - 1))
     }
 
-    /// the line you're on: the one just timed (or tapped in the list); before any, the first
-    private var currentLine: Int { focus ?? max(0, cursor - 1) }
-
-    /// a blank line right under the line you're on; the next tap times it
+    /// 空行. While the song plays: the line being sung ends now (a timed blank line right under it). Paused: a
+    /// blank line under the line tapped (or the one just timed), timed by the next tap.
     private func addBreak() {
-        guard !lines.isEmpty else { return }
-        let at = min(lines.count, currentLine + 1)
+        guard !m.lines.isEmpty else { return }
+        if player.playing, let now = player.position {
+            let t = max(0, ((now - reaction) * 100).rounded() / 100)
+            // (the line being sung: by the times, or the one just timed)
+            let on = m.sung ?? max(0, m.cursor - 1)
+            let at = min(m.lines.count, on + 1)
+            if at < m.lines.count && m.lines[at].text.isEmpty {
+                m.lines[at].t = t
+            } else {
+                m.lines.insert(TimedLine(text: "", t: t), at: at)
+                if m.cursor >= at { m.cursor += 1 }
+                if let f = m.focus, f >= at { m.focus = f + 1 }
+            }
+            if m.cursor == at { m.cursor += 1 }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
+        let on = m.focus ?? max(0, m.cursor - 1)
+        let at = min(m.lines.count, on + 1)
         // (already a blank line there, not timed yet: that one)
-        if at < lines.count && lines[at].text.isEmpty && lines[at].t == nil { cursor = at; return }
-        lines.insert(TimedLine(text: "", t: nil), at: at)
-        if let f = focus, f >= at { focus = f + 1 }
-        cursor = at
+        if at < m.lines.count && m.lines[at].text.isEmpty && m.lines[at].t == nil { m.cursor = at; return }
+        m.lines.insert(TimedLine(text: "", t: nil), at: at)
+        if let f = m.focus, f >= at { m.focus = f + 1 }
+        m.cursor = at
     }
 
     private func removeLine(_ i: Int) {
-        lines.remove(at: i)
-        if cursor > i { cursor -= 1 }
-        if let f = focus { focus = f == i ? nil : (f > i ? f - 1 : f) }
+        m.lines.remove(at: i)
+        if m.cursor > i { m.cursor -= 1 }
+        if let f = m.focus { m.focus = f == i ? nil : (f > i ? f - 1 : f) }
     }
 
     private func skip() {
-        guard cursor < lines.count else { return }
-        cursor += 1
+        guard m.cursor < m.lines.count else { return }
+        m.cursor += 1
     }
 
     private func clearTimes() {
-        for i in lines.indices { lines[i].t = nil }
-        cursor = 0
-        focus = nil
+        for i in m.lines.indices { m.lines[i].t = nil }
+        m.cursor = 0
+        m.focus = nil
         player.seek(0)
     }
 
-    // MARK: ③ saving
-
-    private var lrc: String { LRC.make(lines, title: song.trackName, artist: song.artistName, length: song.seconds) }
+    private var lrc: String { LRC.make(m.lines, title: song.trackName, artist: song.artistName, length: song.seconds) }
 
     private func save() {
-        let x = OwnLyric(trackId: song.id, trackName: song.trackName, artistName: song.artistName, duration: song.seconds, lrc: lrc)
-        own.set(x)
-        // (playing now: the lyrics follow the new times right away)
-        if player.song?.id == song.id { LyricsBridge.shared.put(x.hit) }
-        dismiss()
-    }
-
-    private func load() {
-        guard lines.isEmpty && text.isEmpty else { return }
-        if let o = own.get(song.id) {
-            lines = LRC.lines(from: o.hit)
-        } else if player.song?.id == song.id, let h = LyricsBridge.shared.song {
-            // (LRCLIB's: to fix or time)
-            lines = LRC.lines(from: h)
-        }
-        text = lines.map(\.text).joined(separator: "\n")
-        // (already timed: straight to the times)
-        if !lines.isEmpty && lines.contains(where: { $0.t != nil }) {
-            step = 1
-            cursor = lines.firstIndex(where: { $0.t == nil }) ?? lines.count
-        }
+        m.save(song)
+        close()
     }
 }
 
@@ -463,6 +732,8 @@ struct LyricsEditButton: View {
     @ObservedObject private var player = SongPlayer.shared
     @ObservedObject private var own = OwnLyrics.shared
     var label = false
+    /// (the lyrics' tools strip: a plain round button)
+    var plain = false
     @State private var open = false
     var body: some View {
         if let s = player.song {
@@ -471,18 +742,21 @@ struct LyricsEditButton: View {
                     Button { open = true } label: {
                         Label(own.get(s.id) != nil ? tr("改自己的歌詞") : tr("自己打歌詞、對時間"), systemImage: "pencil.and.list.clipboard")
                     }
+                } else if plain {
+                    Button { open = true } label: { Image(systemName: "pencil.and.list.clipboard").toolCircle() }
+                        .buttonStyle(.plain)
                 } else {
                     Button { open = true } label: { Image(systemName: "pencil.and.list.clipboard") }
                         .softButton()
                 }
             }
             .accessibilityLabel(tr("自己打歌詞、對時間"))
-            .sheet(isPresented: $open) {
-                NavigationStack { LyricsEditor(song: s) }
+            // (a page of its own over the whole app: nothing else is drawn or moving behind it)
+            .fullScreenCover(isPresented: $open) {
+                LyricsEditor(song: s)
                     .environmentObject(Store.shared)
                     .preferredColorScheme(.dark)
                     .tint(AppTint.accent)
-                    .interactiveDismissDisabled()
             }
         }
     }

@@ -534,46 +534,7 @@ struct ConvertPane: View {
     /// 聲調顏色 in 轉換: the tone of every syllable of every word, working through the whole text
     /// (punctuation and line ends close a tone group). item index -> (tokens, tones)
     private func itemTones() -> [Int: (tokens: [String], tones: [Int])] {
-        let items = model.result.items
-        var units: [ToneUnit] = []
-        var ranges: [Int: (tokens: [String], from: Int, to: Int)] = [:]
-        var prevKey: String? = nil
-        func endPhrase() { if !units.isEmpty { units[units.count - 1].phraseEnd = true } }
-        // the word right after each word (not across punctuation or a line end): to tell a 量詞 (這款種)
-        var nextKeyOf: [Int: String] = [:]
-        var upcoming: String? = nil
-        for i in items.indices.reversed() {
-            let it = items[i]
-            if it.space { continue }
-            if it.newline || it.raw != nil || it.current.codes == nil { upcoming = nil; continue }
-            if let up = upcoming { nextKeyOf[i] = up }
-            upcoming = dict.keyOf(it.current)
-        }
-        for (i, it) in items.enumerated() {
-            if it.newline { endPhrase(); prevKey = nil; continue }
-            if it.space { continue }
-            if let raw = it.raw {
-                if ConvertEngine.isPunct(raw) && !ConvertEngine.openers.contains(raw) { endPhrase() }
-                prevKey = nil
-                continue
-            }
-            guard let codes = it.current.codes else { endPhrase(); prevKey = nil; continue }
-            let key = dict.keyOf(it.current)
-            let tokens: [String]
-            if let key, dict.baseKeys.contains(key), it.current.parent == nil { tokens = dict.tokensFor(key, place) }
-            else { tokens = (it.current.tokens ?? codes.joined(separator: " ")).split(separator: " ").map(String.init) }
-            let u = dict.toneUnits(tokens: tokens, key: key, after: prevKey, before: nextKeyOf[i])
-            prevKey = key
-            // a word that starts with "--" (--ah): the syllable before it keeps its tone
-            if tokens.first == "--", !units.isEmpty { units[units.count - 1].beforeLight = true }
-            // a word that starts with 仔: 仔-sandhi on the syllable before it
-            if it.current.han?.first == "仔", !units.isEmpty { units[units.count - 1].beforeA = true }
-            ranges[i] = (tokens, units.count, units.count + u.count)
-            units += u
-        }
-        endPhrase()
-        let tones = dict.realizedTones(units, place)
-        return ranges.mapValues { (tokens: $0.tokens, tones: Array(tones[$0.from..<$0.to])) }
+        dict.convItemTones(model.result.items, place)
     }
 
     /// the output piece by piece (a piece's leading space included), ready to show; tappable words carry a link
@@ -1358,6 +1319,8 @@ struct SwellWords: View {
                                 }
                         }
                         .buttonStyle(SwellButtonStyle())
+                        // (no iPad pointer highlight: scrolling with a trackpad ran it on every word passing under the pointer)
+                        .hoverEffectDisabled()
                         .swellHot(sw, i)
                         .background(GeometryReader { g in
                             Color.clear.preference(key: WordFramesKey.self, value: [i: g.frame(in: .named(space))])
@@ -1376,9 +1339,11 @@ struct SwellWords: View {
             .onPreferenceChange(WordFramesKey.self) { frames = $0 }
             // one pointer tracker for the whole text, instead of one per word: with one per word, the Mac
             // checked every word on every mouse move (slow, and late to react)
+            .onContinuousHover(coordinateSpace: .global) { sw.noteGlobal($0) }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in
+                // (only when the pointer itself moves: not while a trackpad scrolls the words under it)
                 var hit: Int? = nil
-                if case .active(let p) = phase { hit = frames.first { $0.value.contains(p) }?.key }
+                if case .active(let p) = phase, sw.pointerMoving { hit = frames.first { $0.value.contains(p) }?.key }
                 if hit != sw.hover { sw.hover = hit }
             }
         #if targetEnvironment(macCatalyst)
@@ -2178,6 +2143,8 @@ struct ExampleBlock: View {
                         wordLabel(colored(i, p.swapped ? T.swapInk : T.glyph), line: T.swapInk.opacity(0.8))
                     }
                     .buttonStyle(SwellButtonStyle())
+                        // (no iPad pointer highlight: scrolling with a trackpad ran it on every word passing under the pointer)
+                        .hoverEffectDisabled()
                     .swellHot(sw, i)
                     .background(frameReader(i))
                 } else if let k = p.key, k != own {
@@ -2185,6 +2152,8 @@ struct ExampleBlock: View {
                         wordLabel(colored(i, T.blueInk), line: T.blueInk.opacity(0.45))
                     }
                     .buttonStyle(SwellButtonStyle())
+                        // (no iPad pointer highlight: scrolling with a trackpad ran it on every word passing under the pointer)
+                        .hoverEffectDisabled()
                     .swellHot(sw, i)
                     .background(frameReader(i))
                 } else {
@@ -2198,9 +2167,10 @@ struct ExampleBlock: View {
             .coordinateSpace(name: scrubSpace)
             .onPreferenceChange(WordFramesKey.self) { wordFrames = $0 }
             // one pointer tracker for the whole sentence (see SwellWords)
+            .onContinuousHover(coordinateSpace: .global) { sw.noteGlobal($0) }
             .onContinuousHover(coordinateSpace: .named(scrubSpace)) { phase in
                 var hit: Int? = nil
-                if case .active(let p) = phase { hit = wordFrames.first { $0.value.contains(p) }?.key }
+                if case .active(let p) = phase, sw.pointerMoving { hit = wordFrames.first { $0.value.contains(p) }?.key }
                 if hit != sw.hover { sw.hover = hit }
             }
         #if targetEnvironment(macCatalyst)
@@ -2854,6 +2824,19 @@ final class SwellState: ObservableObject {
     @Published var hover: Int?
     @Published var scrub: Int?
     var scrubbing = false
+    /// (the pointer on the screen, and when it last moved: scrolling with a trackpad moves the words under a
+    /// pointer that stays still, and swelling every word passed then made scrolling lag)
+    private var lastGlobal: CGPoint?
+    private var movedAt = Date.distantPast
+    var pointerMoving: Bool { Date().timeIntervalSince(movedAt) < 0.15 }
+    func noteGlobal(_ phase: HoverPhase) {
+        // (the pointer gone for a moment, as iPad hides it while two fingers scroll: where it was is kept, so its
+        // coming back in the same place isn't taken for a move)
+        guard case .active(let p) = phase else { return }
+        if let l = lastGlobal, abs(l.x - p.x) < 2, abs(l.y - p.y) < 2 { return }
+        lastGlobal = p
+        movedAt = Date()
+    }
 }
 
 private struct SwellHotKey: EnvironmentKey { static let defaultValue = false }
@@ -3514,5 +3497,52 @@ struct TwPlaceRows: View {
                 }
             }
         }
+    }
+}
+
+
+extension Dict {
+    /// 聲調顏色 in 轉換: the tone of every syllable of every word, working through the whole text
+    /// (punctuation and line ends close a tone group). item index -> (tokens, tones)
+    func convItemTones(_ items: [ConvItem], _ place: Int) -> [Int: (tokens: [String], tones: [Int])] {
+        var units: [ToneUnit] = []
+        var ranges: [Int: (tokens: [String], from: Int, to: Int)] = [:]
+        var prevKey: String? = nil
+        func endPhrase() { if !units.isEmpty { units[units.count - 1].phraseEnd = true } }
+        // the word right after each word (not across punctuation or a line end): to tell a 量詞 (這款種)
+        var nextKeyOf: [Int: String] = [:]
+        var upcoming: String? = nil
+        for i in items.indices.reversed() {
+            let it = items[i]
+            if it.space { continue }
+            if it.newline || it.raw != nil || it.current.codes == nil { upcoming = nil; continue }
+            if let up = upcoming { nextKeyOf[i] = up }
+            upcoming = keyOf(it.current)
+        }
+        for (i, it) in items.enumerated() {
+            if it.newline { endPhrase(); prevKey = nil; continue }
+            if it.space { continue }
+            if let raw = it.raw {
+                if ConvertEngine.isPunct(raw) && !ConvertEngine.openers.contains(raw) { endPhrase() }
+                prevKey = nil
+                continue
+            }
+            guard let codes = it.current.codes else { endPhrase(); prevKey = nil; continue }
+            let key = keyOf(it.current)
+            let tokens: [String]
+            if let key, baseKeys.contains(key), it.current.parent == nil { tokens = tokensFor(key, place) }
+            else { tokens = (it.current.tokens ?? codes.joined(separator: " ")).split(separator: " ").map(String.init) }
+            let u = toneUnits(tokens: tokens, key: key, after: prevKey, before: nextKeyOf[i])
+            prevKey = key
+            // a word that starts with "--" (--ah): the syllable before it keeps its tone
+            if tokens.first == "--", !units.isEmpty { units[units.count - 1].beforeLight = true }
+            // a word that starts with 仔: 仔-sandhi on the syllable before it
+            if it.current.han?.first == "仔", !units.isEmpty { units[units.count - 1].beforeA = true }
+            ranges[i] = (tokens, units.count, units.count + u.count)
+            units += u
+        }
+        endPhrase()
+        let tones = realizedTones(units, place)
+        return ranges.mapValues { (tokens: $0.tokens, tones: Array(tones[$0.from..<$0.to])) }
     }
 }

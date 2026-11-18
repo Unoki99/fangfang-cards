@@ -30,8 +30,8 @@ bash ~/Downloads/fangfang-cards-main/install.sh
 它會自動建置 App，安裝到所有找得到的 iPhone／iPad，**也會裝一份到 Mac**（「應用程式」資料夾裡的「方方詞卡」）。
 
 - 只裝手機／平板：`install.sh ios`；只裝 Mac：`install.sh mac`
-- Apple 晶片（M1 以後）的 Mac：第一次會問你要裝 **iPad 版**（建議）還是 **Mac 版**，之後會記住。想換：`install.sh ipad` 或 `install.sh catalyst`。Intel Mac 一律裝 Mac 版。
-- 免費 Apple ID：**7 天後再執行一次同一個指令**就好（資料不會不見）。（用 `install.sh catalyst` 裝的 Mac 版不會過期。）
+- Mac：裝的是 **iPad 版**（跟 iPad 上的一模一樣），要 Apple 晶片（M1 以後）的 Mac；Intel Mac 不能執行 iPad App，所以不裝。在 Xcode 裡要選「My Mac (Designed for iPad)」來建置。
+- 免費 Apple ID：**7 天後再執行一次同一個指令**就好（資料不會不見）。
 - **App 裡面沒有內建任何詞典。** 第一次打開 App 選語言的時候，App 會自己下載那個語言的詞典，在 iPhone／iPad／Mac 上整理好（要網路，大概一兩分鐘）；其他語言的在「設定 → 詞典資料」安裝。
 - Safari 查詞的延伸功能看不到 App 下載的詞典（要 App Group，用 Sideloadly 裝通常沒有），所以 install.sh 會在你的 Mac 上建立詞典資料（放在 `~/FangfangCards/data`，不會放進 App），只把查詞要的詞放進延伸功能。第一次要幾分鐘。不要 Safari 查詞的話，在指令最後加上 `nosafari`（例如 `install.sh ipa nosafari`）。
 - App 的 ID 會用你自己的開發者團隊產生（`com.fangfangcards.你的團隊ID`），因為每個 ID 只能有一個人用。想用別的 ID：`FANGFANG_ID=com.你的名字.fangfang bash …/install.sh`。
@@ -52,14 +52,9 @@ bash ~/Downloads/fangfang-cards-main/install.sh
 
 ### Mac 版
 
-Apple 晶片（M1 以後）的 Mac 有兩種可以選（安裝時會問）：
+在 Mac 上裝的是 iPad App 本身（要 Apple 晶片，M1 以後），跟 iPad 上的完全一樣。視窗就像一台大 iPad；鍵盤 **←**（不熟）、**→**（認識）一樣可以用，文字大小也可以調。免費 Apple ID 的話 7 天後要重新執行安裝指令。第一次打開時 Mac 可能會要你到「系統設定 → 隱私權與安全性」按「強制打開」。在 Xcode 裡自己建置的話，目的地選「My Mac (Designed for iPad)」。Intel Mac 不能執行 iPad App，所以沒有 Mac 版。
 
-- **iPad 版（建議）**：就是 iPad App 本身，跟 iPad 上的完全一樣，比較順，聲調光暈也一樣漂亮。視窗就像一台大 iPad；鍵盤 **←**（不熟）、**→**（認識）一樣可以用，文字大小也可以調。免費 Apple ID 的話 7 天後要重新執行安裝指令。第一次打開時 Mac 可能會要你到「系統設定 → 隱私權與安全性」按「強制打開」。
-- **Mac 版**（Mac Catalyst）：分頁變成側邊欄，「轉換」在寬的視窗分成左右兩欄，有選單列。不會過期。滑鼠移過去放大字比較不順，所以聲調光暈用比較簡單的畫法。
-
-Intel Mac 不能執行 iPad App，一律裝 Mac 版。
-
-**文字大小**（iPad、Mac）：設定 → 顯示 → 文字大小（100%–310%），或接鍵盤用 **⌘+**／**⌘−**／**⌘0**。iPad 預設 100%（跟原本一樣），Mac 版預設 135%。iPhone 跟著系統的文字大小。
+**文字大小**（iPad、Mac）：設定 → 顯示 → 文字大小（100%–310%），或接鍵盤用 **⌘+**／**⌘−**／**⌘0**。iPad 預設 100%（跟原本一樣）。iPhone 跟著系統的文字大小。
 
 ### 詞典資料
 
