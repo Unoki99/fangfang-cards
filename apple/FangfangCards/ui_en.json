@@ -1709,5 +1709,6 @@
   "打開 LRC": "Open LRC",
   "已同步，從其他裝置更新了 {0} 首歌的歌詞。": "Synced: lyrics of {0} songs updated from other devices.",
   "沒有歌詞或時間不對的歌：自己打（或貼上、或改 LRCLIB 的），再一邊放歌一邊在每一句開始的時候按一下來對時間。可以退一行、點一行重新對、±0.05／0.1 秒微調、加空行；存在裝置上，之後放這首歌都用，也可以分享成 .lrc 檔、或打開 .lrc 檔；有備份資料夾的話，放在裡面的「歌詞」資料夾，各個裝置一起用。": "A song without lyrics or with wrong timing: type them (paste them, or fix LRCLIB’s), then play the song and tap as each line starts. Go back a line, tap a line to time again from there, fine-tune by ±0.05/0.1 s, add blank lines; kept on the device and used whenever the song plays, can be shared as an .lrc file or opened from one; with a backup folder, they're kept in its “歌詞” folder and shared by all your devices.",
-  "LRC 檔": "LRC file"
+  "LRC 檔": "LRC file",
+  "正在唱的詞變亮": "Word being sung gets brighter"
 }

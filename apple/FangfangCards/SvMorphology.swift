@@ -917,7 +917,8 @@ struct SvConvertPane: View {
 
     private var coloured: some View {
         box(trs("瑞典文"), copy: 0) {
-            SwellWords(pieces: words.map { (ink($0, hyphens: false) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3) { j in
+            SwellWords(pieces: words.map { (ink($0, hyphens: false) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3,
+                       beat: lyrics ? LyricsBeat.shared : nil) { j in
                 if let k = words[j].key { focused = false; remember(k, j); tapped = ZhKey(k: k) }
                 else if !words[j].parts.isEmpty { focused = false; compound = SvWordRef(id: words[j].core) }
             }
@@ -931,7 +932,8 @@ struct SvConvertPane: View {
         box(trs("詞素"), copy: 1) {
             if lyrics {
                 // (the 歌詞 window: these words swell and open too)
-                SwellWords(pieces: words.map { (ink($0, hyphens: true) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3) { j in
+                SwellWords(pieces: words.map { (ink($0, hyphens: true) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3,
+                           beat: LyricsBeat.shared) { j in
                     if let k = words[j].key { remember(k, j); tapped = ZhKey(k: k) }
                     else if !words[j].parts.isEmpty { compound = SvWordRef(id: words[j].core) }
                 }

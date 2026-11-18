@@ -504,7 +504,7 @@ final class SongPlayer: ObservableObject {
 // MARK: - 找歌來聽
 
 struct SongSearchView: View {
-    /// (from 轉換's 歌詞: the song chosen opens there; from 音樂: it stays here)
+    /// (the song chosen: its lyrics open, 轉換 → 歌詞)
     var jumpToLyrics = true
     @ObservedObject private var player = SongPlayer.shared
     @ObservedObject private var library = MusicLibrary.shared
@@ -661,10 +661,13 @@ struct SongPlayerBar: View {
                             .disabled(!player.hasNext)
                             .accessibilityLabel(tr("下一首"))
                     }
-                    // (another song: a note with a list, not a magnifying glass, so it isn't taken for 找別的歌詞)
-                    Button { searching = true } label: { Image(systemName: "music.note.list") }
+                    // (音樂: the radio button's window, on its 音樂 side: other songs, 收藏, 歌單)
+                    Button {
+                        UserDefaults.standard.set(1, forKey: "mediaTab")
+                        RadioPlayer.shared.sheetOpen = true
+                    } label: { Image(systemName: "music.note.list") }
                         .softButton()
-                        .accessibilityLabel(tr("找歌來聽"))
+                        .accessibilityLabel(tr("音樂"))
                     Button { player.stop() } label: { Image(systemName: "xmark") }
                         .buttonStyle(.plain).foregroundStyle(T.muted)
                         .accessibilityLabel(tr("停止播放"))

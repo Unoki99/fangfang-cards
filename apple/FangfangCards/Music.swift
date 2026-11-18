@@ -190,7 +190,7 @@ struct MusicView: View {
         }
         #endif
         .sheet(isPresented: $searching) {
-            NavigationStack { SongSearchView(jumpToLyrics: false) }
+            NavigationStack { SongSearchView() }
                 .environmentObject(Store.shared)
                 .preferredColorScheme(.dark)
                 .tint(AppTint.accent)
@@ -298,16 +298,16 @@ struct SongListView: View {
             } else {
                 Section {
                     Button {
-                        if let f = songs.first { player.play(f, in: songs) }
+                        if let f = songs.first { player.play(f, in: songs); LyricsBridge.showInConvert() }
                     } label: { Label(tr("全部播放"), systemImage: "play.fill") }
                     Button {
                         let mixed = songs.shuffled()
-                        if let f = mixed.first { player.play(f, in: mixed) }
+                        if let f = mixed.first { player.play(f, in: mixed); LyricsBridge.showInConvert() }
                     } label: { Label(tr("隨機播放"), systemImage: "shuffle") }
                 }
                 Section {
                     ForEach(songs) { h in
-                        Button { player.play(h, in: songs) } label: { SongRow(song: h) }
+                        Button { player.play(h, in: songs); LyricsBridge.showInConvert() } label: { SongRow(song: h) }
                             .contextMenu { SongMenuItems(song: h) { namingSong = h; naming = true } }
                     }
                     .onDelete { offs in

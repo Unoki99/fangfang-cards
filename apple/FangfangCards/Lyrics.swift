@@ -165,6 +165,8 @@ final class LyricsBridge: ObservableObject {
     static let floatKey = "lyricsFloat"
     /// the colours' glow in the lyrics (the page and the bar), apart from the rest of the app; on by default
     static let glowKey = "lyricsGlow"
+    /// the word being sung also brighter; off by default
+    static let brightKey = "lyricsBright"
 
     // ── following the song (timed lyrics): the song started when the station said so (or when it was chosen),
     // and the lines come at their times from then on; 對時 moves them earlier or later ──
@@ -414,6 +416,8 @@ struct LyricsWindow: View {
     /// (how tall the controls over the lyrics are: the words start under them)
     @State private var headerHeight: CGFloat = 110
     @Environment(\.horizontalSizeClass) private var hSize
+    /// (iPhone: which bar shows above the lyrics, 對時 or the tools)
+    @AppStorage("lyricsBarPage") private var barPage = 0
     @AppStorage(LyricsBridge.readingsKey) private var readings = true
     @AppStorage(LyricsBridge.glowKey) private var lyricsGlow = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -467,31 +471,54 @@ struct LyricsWindow: View {
     }
 
     /// the song (only when 音樂's player isn't showing it above), the lyrics' tools on glass, 對時 under them
-    private func header(_ h: LyricHit) -> some View {
-        // (iPad, Mac: 對時 and the tools side by side; iPhone: 對時 above the tools)
-        let wide = hSize == .regular
-        let layout = wide ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(spacing: 8))
-        return layout {
-            // (timed lyrics: 對時, when the words come too early or too late for the radio)
-            if lyrics.timed { LyricsNudge() }
-            HStack(spacing: 10) {
-                if !songs.active {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(h.trackName).ffFont(.subheadline, .semibold).lineLimit(1)
-                        Text(h.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
-                    }
-                    .layoutPriority(1)
-                    Spacer(minLength: 4)
-                }
-                ViewThatFits(in: .horizontal) {
-                    tools(h)
-                    ScrollView(.horizontal, showsIndicators: false) { tools(h) }
-                }
-                .frame(maxWidth: songs.active && !wide ? .infinity : nil, alignment: .trailing)
+    @ViewBuilder private func header(_ h: LyricHit) -> some View {
+        if hSize == .regular {
+            // (iPad, Mac: 對時 and the tools side by side)
+            HStack(spacing: 12) {
+                if lyrics.timed { LyricsNudge() }
+                toolsRow(h, wide: true).layoutPriority(1)
             }
-            .layoutPriority(wide ? 1 : 0)
+            .padding(.horizontal).padding(.vertical, 8)
+        } else if lyrics.timed {
+            // (iPhone: one bar at a time, swiped sideways between 對時 and the tools, two dots under them)
+            VStack(spacing: 5) {
+                TabView(selection: $barPage) {
+                    LyricsNudge().padding(.horizontal).tag(0)
+                    toolsRow(h, wide: false).padding(.horizontal).tag(1)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 46)
+                HStack(spacing: 6) {
+                    ForEach(0..<2, id: \.self) { i in
+                        Circle().fill(i == barPage ? T.btnInk : T.muted.opacity(0.45)).frame(width: 6, height: 6)
+                            .onTapGesture { withAnimation { barPage = i } }
+                    }
+                }
+                .accessibilityHidden(true)
+            }
+            .padding(.vertical, 6)
+        } else {
+            toolsRow(h, wide: false).padding(.horizontal).padding(.vertical, 8)
         }
-        .padding(.horizontal).padding(.vertical, 8)
+    }
+
+    /// the song (only when 音樂's player isn't showing it above) and the tools
+    private func toolsRow(_ h: LyricHit, wide: Bool) -> some View {
+        HStack(spacing: 10) {
+            if !songs.active {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(h.trackName).ffFont(.subheadline, .semibold).lineLimit(1)
+                    Text(h.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
+                }
+                .layoutPriority(1)
+                Spacer(minLength: 4)
+            }
+            ViewThatFits(in: .horizontal) {
+                tools(h)
+                ScrollView(.horizontal, showsIndicators: false) { tools(h) }
+            }
+            .frame(maxWidth: songs.active && !wide ? .infinity : nil, alignment: songs.active && !wide ? .center : .trailing)
+        }
     }
 
     /// 繁／簡, 讀音, 光暈, 自己的歌詞, 跳到哪一行, 存這首歌, 找別的歌詞: small round buttons on one strip of glass
@@ -551,6 +578,7 @@ struct LyricsPage: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage(LyricsBridge.autoKey) private var auto = true
     @AppStorage(LyricsBridge.floatKey) private var float = true
+    @AppStorage(LyricsBridge.brightKey) private var bright = false
     @State private var query = ""
     @State private var hits: [LyricHit] = []
     @State private var busy = false
@@ -586,6 +614,7 @@ struct LyricsPage: View {
                 }
                 Toggle(tr("換歌的時候自己找歌詞"), isOn: $auto)
                 Toggle(tr("在其他頁面顯示歌詞條"), isOn: $float)
+                Toggle(tr("正在唱的詞變亮"), isOn: $bright)
             } footer: {
                 Text(tr("電台有送歌名的話會自己找。沒有的話可以自己打歌名（控制中心的「音樂辨識」可以聽出手機正在放的歌）。歌詞來自 LRCLIB（lrclib.net）。有時間的歌詞會跟著歌走，正在唱的詞會變大；跟電台對不上的話，用「對時」的按鈕往前或往後調。"))
                     .ffFont(.footnote)
@@ -1052,11 +1081,15 @@ struct BeatSwell: ViewModifier {
     /// the word's line (-2: always the line being sung, the bar's)
     let line: Int
     let f0: Double, f1: Double
+    /// 設定: the word being sung also grows brighter (gently, as it swells)
+    @AppStorage(LyricsBridge.brightKey) private var bright = false
     func body(content: Content) -> some View {
         let mine = line == -2 ? beat.line : line
         let inLine = beat.line >= 0 && beat.line == mine
         let on = inLine && f1 > f0 && beat.frac >= f0 && (beat.frac < f1 || f1 >= 0.999)
         content
+            .brightness(bright && on ? 0.3 : 0)
+            .animation(.easeInOut(duration: 0.28), value: on)
             .scaleEffect(on ? 1.3 : 1, anchor: .bottom)
             .opacity(beat === LyricsBeat.idle || beat.line < 0 || inLine ? 1 : 0.6)
             .zIndex(on ? 1 : 0)

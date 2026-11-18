@@ -1292,8 +1292,9 @@ struct SwellWords: View {
         }
         var map = Array(repeating: (line: -1, f0: 0.0, f1: 0.0), count: pieces.count)
         for (l, ids) in groups.enumerated() {
+            // (every word's letters count, in the dictionary or not: a Swedish word it doesn't know is still sung)
             let lens = ids.map { i -> Double in
-                pieces[i].tap ? Double(String(pieces[i].text.characters).trimmingCharacters(in: .whitespaces).count) : 0
+                Double(pieces[i].text.characters.filter { $0.isLetter || $0.isNumber }.count)
             }
             let total = max(1, lens.reduce(0, +))
             var acc = 0.0
