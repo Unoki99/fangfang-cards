@@ -1240,6 +1240,17 @@ final class ZhDict: @unchecked Sendable {
     /// (四川話's own words only when 讀音 = 四川話)
     func search(_ q0: String, place: Int = 0) -> Found {
         var f = search0(q0, place: place)
+        // the core order of what's found in the meanings: the more common the higher, the longer the meaning that
+        // matched the lower
+        do {
+            let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+            let core: (String, Int) -> Double = { _, i in
+                let e = self.entries[i]
+                let len = (e.senses.first { $0.text.contains(q) }?.text.count) ?? 20
+                return log2(Double(i) + 2) + 0.15 * Double(len)
+            }
+            if !q.isEmpty { f.defs = SearchOrder.sort(f.defs, ["c"], core) }
+        }
         // (設定 → 詞典 → 搜尋結果的順序: 自己排)
         let keys = SearchOrder.chosen
         if !keys.isEmpty {

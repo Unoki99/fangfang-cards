@@ -162,6 +162,9 @@ struct Progress: Codable {
     var groupTime: [String: Double] = [:]
     var groupInfo: [String: [String]] = [:]
     var groupWords: [String: Double] = [:]
+    /// 影片懂多少: how much of a video's words you knew when you last watched it with Safari 查詞's subtitle panel
+    /// (its 懂 %): the video's id (as a 影片詞組's) → [%, when in seconds]; its name and address in groupInfo
+    var seen: [String: [Double]] = [:]
 
     init() {}
     init(from decoder: Decoder) throws {
@@ -183,6 +186,7 @@ struct Progress: Codable {
         groupInfo = try c.decodeIfPresent([String: [String]].self, forKey: .groupInfo) ?? [:]
         groupWords = try c.decodeIfPresent([String: Double].self, forKey: .groupWords) ?? [:]
         ownInfo = try c.decodeIfPresent([String: [String]].self, forKey: .ownInfo) ?? [:]
+        seen = try c.decodeIfPresent([String: [Double]].self, forKey: .seen) ?? [:]
     }
 }
 

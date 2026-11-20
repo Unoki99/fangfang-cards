@@ -52,7 +52,7 @@ struct MeaningsOverview: View {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(zh, id: \.n) { x in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        if zh.count > 1 { Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit() }
+                        Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit()
                         Text(x.t).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9)).textSelection(.enabled)
                     }
                 }
@@ -81,7 +81,7 @@ struct ZhEnglishList: View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(Array(shown.enumerated()), id: \.offset) { i, t in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if items.count > 1 { EnNum(n: i + 1) }
+                    EnNum(n: i + 1)
                     Text(t).ffFont(font).foregroundStyle(T.glyph.opacity(0.9)).lineLimit(lineLimit).textSelection(.enabled)
                 }
             }

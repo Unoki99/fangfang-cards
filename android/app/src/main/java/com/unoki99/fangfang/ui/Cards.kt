@@ -456,7 +456,7 @@ fun WordRow(card: Card, streak: Int? = null, goal: Int = 3) {
                 Txt(remember(card.k, tk, dict) { Store.cardRom(card, rom, place).annotated() }, lat(16f), T.greenInk, maxLines = 1)
                 Txt(remember(card.k, tk, dict) { Store.cardZy(card, place).annotated() }, ff(FF.Footnote), T.purpleInk, maxLines = 1)
             }
-            Txt(card.firstMeaning, ff(FF.Footnote), T.muted, maxLines = 1)
+            Txt(Store.practiceMeaning(card).second, ff(FF.Footnote), T.muted, maxLines = 1)   // (主要解釋 = 英文: the English here too)
         }
         if (streak != null) Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             for (i in 0 until goal) Box(Modifier.size(7.dp).background(if (i < streak) T.greenInk else T.fnEdge, CircleShape))
@@ -491,30 +491,51 @@ fun UnknownTab() {
                     class PT(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val enabled: Boolean, val p: Practice)
                     PracticeScopeMenu()
                     ReviewBar(due.size) { UI.practice = Practice.STATS }
+                    // 開始練習 and the handwriting ones here; every game behind one button (遊戲), chosen from a grid with
+                    // what each does; 遊戲 and 怎麼練習 across the whole width
                     val tiles = listOfNotNull(
                         PT(tr("開始練習"), Icons.Filled.School, all.isNotEmpty() || due.isNotEmpty(), Practice.STUDY),
-                        PT(tr("滑卡練習"), Icons.Filled.Swipe, all.isNotEmpty() || due.isNotEmpty(), Practice.SWIPE),
-                        PT(tr("例句填空"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
-                        PT(tr("排句子"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
-                        PT(tr("看字排讀音"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
-                        // (客語: no voice to listen to; 日語: no tones, 助詞練習 instead)
-                        if (Store.isJa) PT(tr("助詞練習"), Icons.Filled.Extension, true, Practice.JA_PARTICLES)
-                        else PT(tr("聲調練習"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),
-                        // (every syllable's tone, in its colour: a game)
-                        if (Store.isJa) null else PT(tr("聲調色球"), Icons.Filled.BubbleChart, true, Practice.TONE_GAME),
-                        PT(tr("翻牌配對"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
                         PT(tr("自由寫字"), Icons.Filled.GridOn, true, Practice.FREE_WRITING),
                         // (華語: 四字格 from their meaning)
                         if (Store.lang == 1) PT(tr("四字格手寫"), Icons.Filled.Apps, Store.zh != null, Practice.IDIOM_WRITE) else null,
-                        PT(tr("遊戲"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
                     )
-                    // the last tile: 怎麼練習, what each way of practising does
+                    class G(val title: String, val text: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val enabled: Boolean, val p: Practice)
+                    val games = listOfNotNull(
+                        G(tr("滑卡練習"), tr("像「新詞」一樣滑卡片：往右是會，往左是不會。"), Icons.Filled.Swipe, all.isNotEmpty() || due.isNotEmpty(), Practice.SWIPE),
+                        G(tr("例句填空"), tr("看例句，把空著的詞選回去。"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
+                        G(tr("排句子"), tr("例句被打亂了，照意思把詞排回去。"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
+                        G(tr("看字排讀音"), tr("只看漢字，把讀音照順序排。"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
+                        if (Store.isJa) G(tr("助詞練習"), tr("選句子裡缺的助詞。"), Icons.Filled.Extension, true, Practice.JA_PARTICLES)
+                        else G(tr("聲調練習"), tr("聽發音，選聲調對的拼法。"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),
+                        if (Store.isJa) null else G(tr("聲調色球"), tr("聽一個詞，照每個字的聲調點顏色球。"), Icons.Filled.BubbleChart, true, Practice.TONE_GAME),
+                        G(tr("翻牌配對"), tr("一次翻兩張牌，把漢字和它的讀音配起來。"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
+                        G(tr("掉下來的字"), tr("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
+                    )
                     var help by remember { mutableStateOf(false) }
-                    TileGrid(tiles.size + 1) { i, m ->
-                        if (i == tiles.size) PracticeTile(tr("怎麼練習"), Icons.Filled.HelpOutline, true, m) { help = true }
-                        else { val t = tiles[i]; PracticeTile(t.title, t.icon, t.enabled, m) { UI.practice = t.p } }
-                    }
+                    var gamesOpen by remember { mutableStateOf(false) }
+                    TileGrid(tiles.size) { i, m -> val t = tiles[i]; PracticeTile(t.title, t.icon, t.enabled, m) { UI.practice = t.p } }
+                    PracticeTile(tr("遊戲"), Icons.Filled.SportsEsports, true, Modifier.fillMaxWidth()) { gamesOpen = true }
+                    PracticeTile(tr("怎麼練習"), Icons.Filled.HelpOutline, true, Modifier.fillMaxWidth()) { help = true }
+                    if (gamesOpen) AlertDialog(onDismissRequest = { gamesOpen = false }, containerColor = T.bg,
+                        confirmButton = { TextButton(onClick = { gamesOpen = false }) { Text(tr("完成"), color = T.btnInk) } },
+                        title = { Txt(tr("遊戲"), ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
+                        text = {
+                            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                for (row in games.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.height(IntrinsicSize.Max)) {
+                                    for (g in row) Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(14.dp))
+                                        .background(if (g.enabled) T.btn else T.fn.copy(alpha = 0.6f))
+                                        .border(1.5.dp, if (g.enabled) T.btnEdge else T.fnEdge, RoundedCornerShape(14.dp))
+                                        .clickable(enabled = g.enabled) { gamesOpen = false; UI.practice = g.p }.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Icon(g.icon, null, tint = if (g.enabled) T.btnInk else T.muted)
+                                        Txt(g.title, ff(FF.Headline, FontWeight.SemiBold), if (g.enabled) T.glyph else T.muted)
+                                        Txt(g.text, ff(FF.Caption), T.muted)
+                                    }
+                                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        })
                     if (help) PracticeHelp(goal) { help = false }
                     SearchField(query, { query = it }, tr("漢字、羅馬字或意思"), fontSize = androidx.compose.ui.unit.TextUnit(16f, androidx.compose.ui.unit.TextUnitType.Sp))
                     SectionTitle(if (Store.practiceName == tr("全部不熟的詞")) tr("不熟的詞（{0}）", Store.unknownCount)

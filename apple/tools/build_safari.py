@@ -531,6 +531,16 @@ with open(os.path.join(OUT, "d-s2t.json"), "w", encoding="utf-8") as f:
     json.dump({"m": s2t, "s": "".join(strict)}, f, ensure_ascii=False, separators=(",", ":"))
 print(f"簡體 → 繁體: {len(s2t)} characters", file=sys.stderr)
 meta["s2t"] = len(s2t)
+# (HSK 3.0 (x) and TOCFL (y) levels of the 華語 words, for the settings' 認識的詞 → HSK／TOCFL 懂多少)
+if zh:
+    lx, ly = {}, {}
+    for e in zh.get("e", []):
+        h = e.get("h")
+        if not h: continue
+        if e.get("x") and not (h in lx and lx[h] <= e["x"]): lx[h] = e["x"]
+        if e.get("y") and not (h in ly and ly[h] <= e["y"]): ly[h] = e["y"]
+    with open(os.path.join(OUT, "d-levels.json"), "w", encoding="utf-8") as f:
+        json.dump({"x": lx, "y": ly}, f, ensure_ascii=False, separators=(",", ":"))
 meta["en"] = len(EN)
 meta["zh"] = zh_count
 meta["tw"] = tw_count

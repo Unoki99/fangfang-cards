@@ -142,6 +142,40 @@ if (-not $Win) {
 # (their licences don't allow sharing the made files; the Apple and Android versions use the same files)
 $Assets = Join-Path $A "app\src\main\assets"
 New-Item -ItemType Directory -Force -Path $Assets | Out-Null
+# the dictionaries' original files: first from the copies in this project's data repository on GitHub
+# (unoki99/fangfang-data, the same as the app and the Mac install use), then from where they're published
+$Mirror = "https://raw.githubusercontent.com/unoki99/fangfang-data/main"
+$MirrorOf = @{
+    "kautian.ods" = "tw/kautian.ods"; "essay.txt" = "common/essay.txt"; "cedict_ts.u8" = "common/cedict_ts.u8"
+    "dict-csld.json" = "zh/dict-csld.json"; "dict-revised.json.xz" = "zh/dict-revised.json.xz"
+    "hsk30.csv" = "zh/hsk30.csv"; "hsk30-chars.csv" = "zh/hsk30-chars.csv"; "ids.txt" = "zh/ids.txt"
+    "cj.yaml" = "zh/cj.yaml"; "cjx.yaml" = "zh/cjx.yaml"; "wb.yaml" = "zh/wb.yaml"
+    "CC-CANTO.txt" = "yue/CC-CANTO.txt"; "READINGS.txt" = "yue/READINGS.txt"; "yyzd.txt" = "yue/yyzd.txt"
+    "jyut6ping3.words.dict.yaml" = "yue/jyut6ping3.words.dict.yaml"; "jyut6ping3.chars.dict.yaml" = "yue/jyut6ping3.chars.dict.yaml"
+    "essay-cantonese.txt" = "yue/essay-cantonese.txt"
+}
+# Get-Mirrored <path in fangfang-data, or $null> <the original's address> <file>: $true when it was downloaded
+# (each file says where it came from: fangfang-data, or the place it's published, or neither)
+function Get-Mirrored($path, $url, $dest) {
+    $label = Split-Path $dest -Leaf
+    if ($path) {
+        $enc = ($path -split "/" | ForEach-Object { [uri]::EscapeDataString($_) }) -join "/"
+        try {
+            Invoke-WebRequest -Uri "$Mirror/$enc" -OutFile $dest -UseBasicParsing -ErrorAction Stop
+            Write-Host "  $label  ← fangfang-data（$Mirror/$path）"
+            return $true
+        } catch { }
+    }
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop
+        $why = if ($path) { "fangfang-data 沒有這個檔案，" } else { "" }
+        Write-Host "  $label  ← 原本發布的地方（$($why)$url）"
+        return $true
+    } catch {
+        Write-Host "  $label  ✗ 下載不到（試過：$(if ($path) { "fangfang-data、" })$url）"
+        return $false
+    }
+}
 $Apd = Join-Path $Here "apple\FangfangCards"
 # the data made once is kept in %LOCALAPPDATA%\FangfangCards\data, so a new download of the project, put over the
 # old one, doesn't have to make it again
@@ -154,12 +188,15 @@ foreach ($y in @((Join-Path $Keep "yue.json"), (Join-Path $Assets "yue.json"), (
         if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":2')) { Remove-Item $y -Force }
     }
 }
-# (台語 data made by an older version, without the 方言詞, or with 的 --ê and ê as one word: made again)
+# (台語 data made by an older version: made again. The version is tools/to_app_data.py's "v", the same as
+# taigi.js's and the apps' dataVersion)
+$TwVersion = 7
 foreach ($dir in @($Keep, $Assets, $Apd)) {
     $dj = Join-Path $dir "dict.json"
     if (Test-Path $dj) {
         $fs = [IO.File]::OpenRead($dj); $buf = New-Object byte[] 64; $n = $fs.Read($buf, 0, 64); $fs.Close()
-        if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":5')) {
+        if (-not ([Text.Encoding]::UTF8.GetString($buf, 0, $n)).Contains('"v":' + $TwVersion)) {
+            Write-Host "台語資料是舊版的，重新做：$dj"
             Remove-Item $dj -Force
             Remove-Item (Join-Path $dir "cards.json") -Force -ErrorAction SilentlyContinue
         }
@@ -178,6 +215,21 @@ foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json")) {
 # (粵語 already in the project, when it's on GitHub)
 $yue = Join-Path $Apd "yue.json"
 if ((Test-Path $yue) -and -not (Test-Path (Join-Path $Assets "yue.json"))) { Copy-Item $yue (Join-Path $Assets "yue.json") -Force }
+# what's made already, and where it was found: that isn't downloaded again
+$names = @{ "dict.json" = "台語詞典"; "cards.json" = "台語詞卡"; "zh.json" = "華語"; "inputcodes.json" = "輸入法拆碼"; "yue.json" = "粵語";
+    "hak.json" = "客語"; "tw_en.json" = "台語的英文解釋"; "ja.json" = "日語"; "shuowen.json" = "說文解字" }
+$found = @()
+foreach ($f in @("dict.json", "cards.json", "zh.json", "inputcodes.json", "yue.json", "hak.json", "tw_en.json", "ja.json", "shuowen.json")) {
+    $where = @($Keep, $Apd, $Assets) | Where-Object { Test-Path (Join-Path $_ $f) }
+    if ($where) { $found += "  $($names[$f])（$f）：$(($where | ForEach-Object { Join-Path $_ $f }) -join '、')" }
+}
+if ($found.Count -gt 0) {
+    Write-Host "這些詞典資料之前已經做好了，這次不重新下載："
+    $found | ForEach-Object { Write-Host $_ }
+    Write-Host "（要全部重新下載、重做：刪掉上面列的檔案，再執行一次。）"
+} else {
+    Write-Host "還沒有做好的詞典資料：全部下載（先從 fangfang-data：$Mirror，那裡沒有的才從原本發布的地方）。"
+}
 # (客語 and the 台語 words' English too: each step below only makes what isn't there)
 $need = @("dict.json", "cards.json", "zh.json", "yue.json", "hak.json", "tw_en.json") | Where-Object { -not (Test-Path (Join-Path $Assets $_)) }
 if ($need) {
@@ -203,11 +255,10 @@ if ($need) {
     New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
     function Get-File($url, $name, [switch]$Optional) {
         $dest = Join-Path $Tmp $name
-        try { Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing -ErrorAction Stop; return $dest }
-        catch {
-            if ($Optional) { return "-" }
-            Fail "下載失敗：$url（$($_.Exception.Message)）"
-        }
+        # (the copy in fangfang-data first, then where it's published)
+        if (Get-Mirrored $MirrorOf[$name] $url $dest) { return $dest }
+        if ($Optional) { return "-" }
+        Fail "下載失敗：$url"
     }
     $PyLog = Join-Path $Tmp "py.log"
     function Run-Py([string[]]$scriptArgs) {
@@ -218,6 +269,9 @@ if ($need) {
         }
     }
     $raw = "https://raw.githubusercontent.com"
+    # (維基詞典's Chinese pages, for 粵語 and 台語's English: tools\wikt_lines.py reads this project's copy in
+    # fangfang-data\common on GitHub, downloaded once into the temporary folder for both, else kaikki.org)
+    $env:FANGFANG_WIKT_CACHE = Join-Path $Tmp "wiktionary-zh.jsonl.gz"
     Push-Location $Tools
     if (-not (Test-Path (Join-Path $Apd "dict.json")) -or -not (Test-Path (Join-Path $Apd "cards.json"))) {
         Write-Host "下載教育部《臺灣台語常用詞辭典》資料（kautian.ods）…"
@@ -273,8 +327,8 @@ if ($need) {
             if ($LASTEXITCODE -ne 0) { Write-Host "（沒辦法建立輸入法拆碼，先跳過）" }
         } else { Write-Host "（沒辦法下載輸入法碼表，先跳過）" }
     }
-    # 粵語: CC-CEDICT + CC-Canto, rime-cantonese, 開放粵語字典, and Wiktionary (kaikki.org) when its file is in
-    # Downloads or on the Desktop
+    # 粵語: CC-CEDICT + CC-Canto, rime-cantonese, 開放粵語字典, and Wiktionary (kaikki.org's file in Downloads or on
+    # the Desktop, else this project's copy, else kaikki.org)
     if (-not (Test-Path (Join-Path $Apd "yue.json")) -and -not (Test-Path (Join-Path $Assets "yue.json"))) {
         Write-Host "下載粵語資料（CC-CEDICT、CC-Canto、rime-cantonese、開放粵語字典）…"
         $ok = $true
@@ -293,10 +347,11 @@ if ($need) {
         foreach ($c in @((Join-Path $env:USERPROFILE "Downloads\kaikki.org-dictionary-Chinese.jsonl"), (Join-Path $env:USERPROFILE "Desktop\kaikki.org-dictionary-Chinese.jsonl"))) {
             if ($kk -eq "-" -and (Test-Path $c)) { $kk = $c }
         }
-        if ($kk -eq "-") { Write-Host "（找不到維基詞典的檔案 kaikki.org-dictionary-Chinese.jsonl：粵語先不用它，沒有例句和華語對照）" }
+        if ($kk -eq "-") { Write-Host "下載維基詞典的中文資料（這個專案在 GitHub 上的副本，下載不到才從 kaikki.org）…" }
         if ($ok) {
             Write-Host "整理粵語資料中…（有維基詞典的話要幾分鐘）"
             & $Py @PyArgs "build_cantonese.py" $Tmp (Join-Path $Apd "yue.json") $kk *> $PyLog
+            Select-String -Path $PyLog -Pattern "維基詞典 ←" | ForEach-Object { Write-Host ("  " + $_.Line.Trim()) }
             if ($LASTEXITCODE -ne 0) { Get-Content $PyLog -Tail 8 | Write-Host; Write-Host "（沒辦法建立粵語資料，先跳過）" }
         } else { Write-Host "（下載不到粵語資料，先跳過：App 裡的粵語會打不開）" }
     }
@@ -309,8 +364,9 @@ if ($need) {
         $hakOk = $true
         foreach ($acc in @("四縣", "海陸", "大埔", "饒平", "詔安", "南四縣")) {
             $name = $acc + "腔詞條詞目文字.ods"
-            try { Invoke-WebRequest -Uri ("$hb/" + [uri]::EscapeDataString($name)) -OutFile (Join-Path $HakDir $name) -UseBasicParsing -ErrorAction Stop }
-            catch { if ($acc -eq "四縣") { $hakOk = $false }; Write-Host "  （下載不到$($acc)腔，先跳過）" }
+            if (-not (Get-Mirrored ("hak/" + $name) ("$hb/" + [uri]::EscapeDataString($name)) (Join-Path $HakDir $name))) {
+                if ($acc -eq "四縣") { $hakOk = $false }; Write-Host "  （下載不到$($acc)腔，先跳過）"
+            }
         }
         if ($hakOk) {
             $es = if (Test-Path (Join-Path $Tmp "essay.txt")) { Join-Path $Tmp "essay.txt" } else { Get-File "$raw/rime/rime-essay/master/essay.txt" "essay.txt" -Optional }
@@ -328,9 +384,10 @@ if ($need) {
         foreach ($c in @((Join-Path $env:USERPROFILE "Downloads\kaikki.org-dictionary-Chinese.jsonl"), (Join-Path $env:USERPROFILE "Desktop\kaikki.org-dictionary-Chinese.jsonl"))) {
             if ($kk -eq "-" -and (Test-Path $c)) { $kk = $c }
         }
-        if ($kk -eq "-") { Write-Host "從 kaikki.org 讀維基詞典的中文資料（檔案很大，要等一陣子；不會存到電腦裡）…" }
+        if ($kk -eq "-" -and -not (Test-Path $env:FANGFANG_WIKT_CACHE)) { Write-Host "下載維基詞典的中文資料（這個專案在 GitHub 上的副本，下載不到才從 kaikki.org）…" }
         Write-Host "整理台語詞的英文解釋（維基詞典）…"
         & $Py @PyArgs "build_tw_english.py" $dj (Join-Path $Apd "tw_en.json") $kk *> $PyLog
+        Select-String -Path $PyLog -Pattern "維基詞典 ←" | ForEach-Object { Write-Host ("  " + $_.Line.Trim()) }
         if ($LASTEXITCODE -ne 0) { Get-Content $PyLog -Tail 8 | Write-Host; Write-Host "（沒辦法建立台語詞的英文解釋，先跳過）" }
     }
     Pop-Location
@@ -380,8 +437,8 @@ if ($needJs) {
             $jm = Join-Path $JTmp "JMdict_e_examp.gz"
             $kd = Join-Path $JTmp "kanjidic2.xml.gz"
             try {
-                Invoke-WebRequest -Uri "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz" -OutFile $jm -UseBasicParsing -ErrorAction Stop
-                try { Invoke-WebRequest -Uri "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz" -OutFile $kd -UseBasicParsing -ErrorAction Stop } catch { $kd = "-" }
+                if (-not (Get-Mirrored "ja/JMdict_e_examp.gz" "http://ftp.edrdg.org/pub/Nihongo/JMdict_e_examp.gz" $jm)) { throw "JMdict_e_examp.gz" }
+                if (-not (Get-Mirrored "ja/kanjidic2.xml.gz" "http://ftp.edrdg.org/pub/Nihongo/kanjidic2.xml.gz" $kd)) { $kd = "-" }
                 Write-Host "整理日語資料中…（幾分鐘）"
                 & $Node "--max-old-space-size=6144" $Conv japanese $jm $kd (Join-Path $Assets "ja.json") *> $JLog
                 if ($LASTEXITCODE -ne 0) { Get-Content $JLog -Tail 8 | Write-Host; Remove-Item (Join-Path $Assets "ja.json") -Force -ErrorAction SilentlyContinue; Write-Host "（沒辦法建立日語資料，先跳過）" }
@@ -391,7 +448,7 @@ if ($needJs) {
             Write-Host "下載《說文解字注》（cjkvi-dict）…"
             $sw = Join-Path $JTmp "swjz.xml"
             try {
-                Invoke-WebRequest -Uri "https://raw.githubusercontent.com/cjkvi/cjkvi-dict/master/swjz.xml" -OutFile $sw -UseBasicParsing -ErrorAction Stop
+                if (-not (Get-Mirrored "sw/swjz.xml" "https://raw.githubusercontent.com/cjkvi/cjkvi-dict/master/swjz.xml" $sw)) { throw "swjz.xml" }
                 & $Node "--max-old-space-size=4096" $Conv shuowen $sw (Join-Path $Assets "shuowen.json") *> $JLog
                 if ($LASTEXITCODE -ne 0) { Get-Content $JLog -Tail 8 | Write-Host; Remove-Item (Join-Path $Assets "shuowen.json") -Force -ErrorAction SilentlyContinue; Write-Host "（沒辦法建立說文解字，先跳過）" }
             } catch { Write-Host "（下載不到說文解字，先跳過：$($_.Exception.Message)）" }
@@ -458,10 +515,20 @@ if ($Win) {
         Write-Host "下載 FFmpeg（電台播各種格式用，只有第一次，大概 90 MB）…"
         $fzip = Join-Path $env:TEMP "fangfang-ffmpeg.zip"
         $got = $false
-        foreach ($u in @("https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
-                         "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip")) {
-            try { Invoke-WebRequest -Uri $u -OutFile $fzip -UseBasicParsing -ErrorAction Stop; $got = $true; break }
-            catch { Write-Host "（下載失敗：$u）" }
+        # (GitHub first: fast. With Windows' own curl.exe: a progress bar, and a place that stays slow (under 200 kB/s
+        # for 30 seconds) is given up for the next one, instead of looking stuck. Without curl.exe: at most 10 minutes)
+        $curl = Get-Command curl.exe -ErrorAction SilentlyContinue
+        foreach ($u in @("https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip",
+                         "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip")) {
+            Write-Host "  ← $u"
+            Remove-Item $fzip -Force -ErrorAction SilentlyContinue
+            if ($curl) {
+                & $curl.Source -fL --progress-bar --connect-timeout 20 --speed-limit 200000 --speed-time 30 -o $fzip $u
+                if ($LASTEXITCODE -eq 0 -and (Test-Path $fzip)) { $got = $true; break }
+            } else {
+                try { Invoke-WebRequest -Uri $u -OutFile $fzip -UseBasicParsing -TimeoutSec 600 -ErrorAction Stop; $got = $true; break } catch { }
+            }
+            Write-Host "  （這裡下載失敗或太慢，換下一個）"
         }
         if ($got) {
             try {

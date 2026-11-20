@@ -25,7 +25,7 @@
     // on: the pop-up on at all (its button in Safari's toolbar); font: the size of the letters (1 = normal);
     // yue / hak: 粵語 and 客語 (hakAcc: the accent, hakRom: 0 拼音 / 1 注音); ring: a rainbow around the words saved
     // here when they're on a page; tint: the characters of saved words in their tone colours on the page
-    const DEFAULTS = { on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
+    const DEFAULTS = { pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
         yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
         // 影片字幕 (YouTube, Viki): the panel on; the video stops while a word is looked up in it; the subtitles on
         // the video itself hidden while the panel shows them
@@ -123,7 +123,9 @@
     }
     const store = browser.storage && browser.storage.local;
     if (store) {
-        store.get(["ffPrefs", "ffQueue", "ffSaved", "ffKnown", "ffWatch", "ffKnownLocal", "ffGrouped"]).then(r => {
+        store.get(["ffPrefs", "ffQueue", "ffSaved", "ffKnown", "ffWatch", "ffKnownLocal", "ffGrouped", "ffSeen", "ffSeenAll"]).then(r => {
+            seenCache = r.ffSeen || {};
+            seenAll = r.ffSeenAll || {};
             localKnown = new Set(r.ffKnownLocal || []);
             grouped = new Set(r.ffGrouped || []);
             watchCache = r.ffWatch || {};
@@ -141,8 +143,10 @@
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
             if (ch.ffSaved) saved = ch.ffSaved.newValue || [];
             if (ch.ffWatch) watchCache = ch.ffWatch.newValue || {};
+            if (ch.ffSeen) seenCache = ch.ffSeen.newValue || {};
+            if (ch.ffSeenAll) seenAll = ch.ffSeenAll.newValue || {};
             if (ch.ffKnownLocal) { localKnown = new Set(ch.ffKnownLocal.newValue || []); pageMarks(); if (subs && subs.key) subsColour(subs.key); }
-            if (ch.ffKnown) { setKnown(ch.ffKnown.newValue); if (subs && subs.key) subsColour(subs.key); }
+            if (ch.ffKnown) { setKnown(ch.ffKnown.newValue); if (subs && subs.key) subsColour(subs.key); pageMarks(); }
             if (ch.ffPrefs || ch.ffSaved) { if (!prefs.on && !(subs && subs.pausedBy) && !subsCard()) hide(); pageMarks(); }
             if (ch.ffPrefs && subs && subs.panel) {
                 const o = ch.ffPrefs.oldValue || {}, n = ch.ffPrefs.newValue || {};
@@ -1087,6 +1091,7 @@
         ringTimer = setTimeout(drawPageMarks, 250);
     }
     function drawPageMarks() {
+        pageAnno();
         if (ringBox) { ringBox.remove(); ringBox = null; }
         if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-tone-")) CSS.highlights.delete(k);
         if (prefs.on && prefs.tint === "all" && document.body) { tintAll(); if (!prefs.ring) return; }
@@ -1206,8 +1211,122 @@
         }
         setToneHighlights(tones);
     }
+    // 網頁上不認識的詞: like the subtitles, the words you don't know (by 字幕 → 標哪些詞: not known, rarer, or both)
+    // get their reading over them in the tone colours and a short meaning under them, and the tone colours on the
+    // word itself; in the language that's on. Drawn in a layer of their own over the page (the page itself isn't
+    // changed), placed in the page so they scroll with it, and made again when the page stops scrolling.
+    let annoBox = null, annoRun = 0;
+    async function pageAnno() {
+        const run = ++annoRun;
+        const clear = () => {
+            if (annoBox) { annoBox.remove(); annoBox = null; }
+            if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-anno-")) CSS.highlights.delete(k);
+        };
+        const L = ["zh", "tw", "yue", "hak"].find(l => prefs[l]);
+        if (!prefs.on || !prefs.pageAnno || !L || !document.body) { clear(); return; }
+        const meta = await getMeta();
+        if (!meta || run !== annoRun) return;
+        const vh = window.innerHeight, vw = window.innerWidth;
+        const nodes = textNodesInView().filter(n => {
+            if (n.parentElement && n.parentElement.closest("#ff-subs,#ff-anno")) return false;
+            const r = document.createRange(); r.selectNodeContents(n);
+            const b = r.getBoundingClientRect();
+            return b.bottom > -80 && b.top < vh + 80 && b.width > 0;
+        }).slice(0, 300);
+        const shardOf = cp => `d-${L}-${String(cp % (meta.shards || 256)).padStart(3, "0")}.json`;
+        const cps = new Set();
+        for (const n of nodes) for (const ch of n.nodeValue) { const c = ch.codePointAt(0); if (isHan(c)) cps.add(shardOf(c)); }
+        const files = new Map();
+        await Promise.all([...cps].slice(0, 160).map(async nm => files.set(nm, await getFile(nm))));
+        if (run !== annoRun) return;
+        const rd = prefs.pageAnno !== "gl", gl = prefs.pageAnno !== "rd";
+        const box = document.createElement("div");
+        box.id = "ff-anno";
+        box.style.cssText = "position:absolute;left:0;top:0;width:0;height:0;overflow:visible;z-index:2147483644;pointer-events:none;";
+        const sx = window.scrollX, sy = window.scrollY;
+        const tones = {};
+        const label = (x, y, up, size, parts) => {
+            const d = document.createElement("div");
+            d.style.cssText = `position:absolute;left:${x}px;top:${y}px;transform:translate(-50%,${up ? "-100%" : "0"});white-space:nowrap;` +
+                `font:600 ${size}px/1.15 -apple-system,"PingFang TC",sans-serif;color:#eef0f6;background:rgba(22,23,28,.82);` +
+                "padding:0 3px;border-radius:4px;letter-spacing:0;";
+            for (const p of parts) { const sp = document.createElement("span"); sp.textContent = p.t; if (p.c) sp.style.color = "#" + p.c; d.appendChild(sp); }
+            box.appendChild(d);
+        };
+        let n = 0;
+        for (const node of nodes) {
+            const chars = [...node.nodeValue];
+            let i = 0, pos = 0;
+            while (i < chars.length && n < 250) {
+                const cp = chars[i].codePointAt(0);
+                if (!isHan(cp)) { pos += chars[i].length; i++; continue; }
+                const sh = files.get(shardOf(cp));
+                let entry = null, len = 1;
+                if (sh) for (let k = Math.min(meta.max || 12, chars.length - i); k >= 1; k--) {
+                    const w = chars.slice(i, i + k).join("");
+                    if (sh[w]) { len = k; entry = subsEntry(sh[w], L) || sh[w][0]; break; }
+                }
+                const word = chars.slice(i, i + len).join("");
+                const wlen = word.length;
+                if (entry) {
+                    const head = entry.k ? entry.k.split("\t")[0] : word;
+                    const known = isKnownIn(word, L) || (head !== word && isKnownIn(head, L));
+                    const rare = entry.f == null || entry.f >= (prefs.subsRare || 3000);
+                    const mode = prefs.subsMark || "new";
+                    const marked = mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known;
+                    if (marked) {
+                        const r = document.createRange();
+                        r.setStart(node, pos); r.setEnd(node, pos + wlen);
+                        const rects = r.getClientRects();
+                        const b = r.getBoundingClientRect();
+                        // (on one line, on screen)
+                        if (rects.length === 1 && b.width > 0 && b.bottom > -40 && b.top < vh + 40 && b.right > 0 && b.left < vw) {
+                            n++;
+                            let parts = {};
+                            try { parts = subsParts(entry, L, meta) || {}; } catch (err) { parts = {}; }
+                            const cx = b.left + b.width / 2 + sx;
+                            if (rd && parts.r && parts.r.length) {
+                                label(cx, b.top + sy - 1, true, Math.max(9, Math.round(b.height * 0.48)),
+                                    parts.r.map((sg, j) => ({ t: j && L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t, c: sg.c })));
+                            }
+                            if (gl) {
+                                const g = subsGloss(entry);
+                                if (g) label(cx, b.bottom + sy + 1, false, Math.max(9, Math.round(b.height * 0.42)), [{ t: g }]);
+                            }
+                            // (the word's characters in their tone colours)
+                            const cols = (parts.h || []).flatMap(sg => [...sg.t].map(() => sg.c || null));
+                            let p2 = pos;
+                            for (let j = 0; j < len; j++) {
+                                const ch = chars[i + j];
+                                if (cols[j]) { const rr = document.createRange(); rr.setStart(node, p2); rr.setEnd(node, p2 + ch.length); (tones[cols[j]] = tones[cols[j]] || []).push(rr); }
+                                p2 += ch.length;
+                            }
+                        }
+                    }
+                }
+                pos += wlen;
+                i += len;
+            }
+        }
+        if (run !== annoRun) return;
+        clear();
+        document.documentElement.appendChild(box);
+        annoBox = box;
+        if (window.CSS && CSS.highlights && window.Highlight) {
+            let style = document.getElementById("ff-anno-style");
+            if (!style) { style = document.createElement("style"); style.id = "ff-anno-style"; (document.head || document.documentElement).appendChild(style); }
+            let css = "";
+            for (const [c, ranges] of Object.entries(tones)) {
+                CSS.highlights.set("ff-anno-" + c, new Highlight(...ranges));
+                css += `::highlight(ff-anno-${c}) { color: #${c}; }\n`;
+            }
+            style.textContent = css;
+        }
+    }
     window.addEventListener("scroll", pageMarks, { passive: true });
     window.addEventListener("resize", pageMarks, { passive: true });
+    // (a part of the page that scrolls on its own)
+    document.addEventListener("scroll", e => { if (e.target !== document && prefs.pageAnno) pageMarks(); }, { passive: true, capture: true });
 
     // ── the card ────────────────────────────────────────────────────────────────────────────
     const CSS_TEXT = `
@@ -1470,6 +1589,8 @@
         // (kept in memory too, so the app opens straight from the tap: Safari only opens it from a tap)
         let w = "";
         if (Object.keys(watchCache).length) { w = "&w=" + pack(watchCache); watchCache = {}; if (store) store.set({ ffWatch: {} }).catch(() => {}); }
+        // (and each video's 懂 %, for the app's 影片懂多少)
+        if (Object.keys(seenCache).length) { w += "&vk=" + pack(seenCache); seenCache = {}; if (store) store.set({ ffSeen: {} }).catch(() => {}); }
         const a = document.createElement("a");
         // (on Android, Firefox hands an intent:// link to the app)
         a.href = /Android/i.test(navigator.userAgent) ? "intent://safari?ops=" + pack(ops) + w + "#Intent;scheme=fangfangcards;end"
@@ -3351,6 +3472,7 @@
         });
         // 懂 %: the words of the video you know
         st.known = knownSet && total ? Math.round(100 * knownN / total) : null;
+        noteSeen(st);
         subsRegroup(st);
         subsStudy();
         subsSpread();
@@ -3515,6 +3637,22 @@
         if (at >= 0 && st.lines[at]) st.lines[at].classList.add("now");
         if (!st.manualUntil) subsPlace(true);
         subsDefs(false);
+    }
+
+    // 影片懂多少 in the app: each video's 懂 % as it was last (video id → [its name, address, %, when in seconds]),
+    // sent with 傳到 App (ffSeen, then emptied) and kept for the sync folder's file (ffSeenAll, the newest 300)
+    let seenCache = {}, seenAll = {};
+    function noteSeen(st) {
+        if (st.known == null || !store) return;
+        const g = videoGroup();
+        if (!g) return;
+        const now = Date.now() / 1000, old = seenAll[g.id];
+        if (old && old[2] === st.known && now - old[3] < 600) return;
+        const v = [g.name, g.u, st.known, now];
+        seenCache[g.id] = v; seenAll[g.id] = v;
+        const ids = Object.keys(seenAll);
+        if (ids.length > 300) for (const id of ids.sort((a, b) => seenAll[a][3] - seenAll[b][3]).slice(0, ids.length - 300)) delete seenAll[id];
+        store.set({ ffSeen: seenCache, ffSeenAll: seenAll }).catch(() => {});
     }
 
     // 練習統計 in the app: the time watched with the subtitle panel (playing, the panel open), kept by day and sent

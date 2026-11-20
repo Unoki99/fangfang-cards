@@ -45,6 +45,8 @@ final class Store: ObservableObject {
     @Published private(set) var freqTopics: [Topic] = []
     private var freqTopic: [String: Int] = [:]
     private var rank: [String: Int] = [:]
+    /// 台語 words by how common they are (the 台語 deck's order), for 搜尋結果的順序's 常用的詞先
+    var taigiRank: [String: Int] { lang == 0 ? rank : (other?.kind == 0 ? other?.rank ?? [:] : [:]) }
     private var pools: [Int: [Card]] = [:]          // common words by syllable count, for wrong answers
     private var undoStack: [(key: String, status: Int?, added: Double?, streak: Int?)] = []
 
@@ -556,9 +558,11 @@ final class Store: ObservableObject {
         return c
     }
 
-    /// a word of either language (for syncing: the other language's words are kept too)
+    /// a word of either language (for syncing: the other language's words are kept too; a 台語 dictionary word that
+    /// isn't one of the cards too, as one Safari 查詞 marked, like 傳到 App takes it)
     private func isWord(_ k: String) -> Bool {
         byKey[k] != nil || other?.byKey[k] != nil
+            || (Lang.kind(k) == 0 && dict?.raw.defs.m[k] != nil)
             || (Lang.isZhKey(k) && (zh == nil || Lang.kind(k) != zhKind || zh?.index[k] != nil || Lang.charOf(k).map { zh?.charIndex[$0] != nil } == true))
     }
 
@@ -768,6 +772,13 @@ final class Store: ObservableObject {
 
     /// next unseen words, most common first
     private var queueTopic = -1
+    /// a 台語 word or reading only some places say (方言詞, 醫院 i-īnn): not swiped unless it's said where the 腔口
+    /// chosen in 設定 is (on 通行, none)
+    private func localOnlyElsewhere(_ k: String) -> Bool {
+        guard !isZh, let ps = dict?.raw.loc?[k], !ps.isEmpty else { return false }
+        let place = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
+        return !ps.contains(place)
+    }
     /// next unseen words, most common first; topic = a 分類 index or -1 for everything
     func newQueue(_ n: Int, topic: Int = -1) -> [Card] {
         if topic != queueTopic { queueTopic = topic; newStart = 0 }
@@ -788,7 +799,7 @@ final class Store: ObservableObject {
             } else {
                 let end = min(hi, cards.count)
                 while i < end && out.count < n {
-                    if (progress.status[cards[i].k] ?? 0) == 0 { if first == nil { first = i }; out.append(cards[i]) }
+                    if (progress.status[cards[i].k] ?? 0) == 0 && !localOnlyElsewhere(cards[i].k) { if first == nil { first = i }; out.append(cards[i]) }
                     i += 1
                 }
                 newStart = first ?? end
@@ -799,7 +810,7 @@ final class Store: ObservableObject {
         var i = newStart
         var first: Int?
         while i < cards.count && out.count < n {
-            if (progress.status[cards[i].k] ?? 0) == 0 && (topic < 0 || (Lang.isFreqTopic(topic) ? inTopic(cards[i], topic) : cards[i].cats?.contains(topic) == true)) {
+            if (progress.status[cards[i].k] ?? 0) == 0 && !localOnlyElsewhere(cards[i].k) && (topic < 0 || (Lang.isFreqTopic(topic) ? inTopic(cards[i], topic) : cards[i].cats?.contains(topic) == true)) {
                 if first == nil { first = i }
                 out.append(cards[i])
             }
@@ -884,6 +895,13 @@ final class Store: ObservableObject {
     }
     func isGroup(_ id: String) -> Bool { (progress.groupTime[id] ?? -1) > 0 }
     func groupName(_ id: String) -> String { progress.groupInfo[id]?.first ?? id }
+    /// Safari 查詞's 懂 % of a video when it was last watched (and its name and address, if the app has none yet)
+    func noteSeen(_ id: String, name: String, url: String, pct: Double, at t: Double) {
+        guard !id.isEmpty, t > (progress.seen[id].flatMap { $0.count >= 2 ? $0[1] : nil } ?? 0) else { return }
+        progress.seen[id] = [pct, t]
+        if progress.groupInfo[id] == nil { progress.groupInfo[id] = [name.isEmpty ? id : name, url, ""] }
+        save()
+    }
     func groupURL(_ id: String) -> URL? { (progress.groupInfo[id]?.dropFirst().first).flatMap { URL(string: $0) } }
     func groupDate(_ id: String) -> Date { Date(timeIntervalSince1970: abs(progress.groupTime[id] ?? 0)) }
     /// a group's words, in the order they were chosen
@@ -1689,6 +1707,10 @@ final class Store: ObservableObject {
                 if let i = gi[k] { p.groupInfo[k] = i }
             }
             for (k, i) in gi where p.groupInfo[k] == nil { p.groupInfo[k] = i }
+            // 影片懂多少: each video's newest
+            for (k, v) in obj["seen"] as? [String: [Double]] ?? [:] where v.count >= 2 && v[1] > (p.seen[k].flatMap { $0.count >= 2 ? $0[1] : nil } ?? 0) {
+                p.seen[k] = Array(v.prefix(2))
+            }
             for (k, t) in obj["groupWords"] as? [String: Double] ?? [:] where abs(t) > abs(p.groupWords[k] ?? 0) {
                 p.groupWords[k] = t
             }
@@ -1766,6 +1788,7 @@ final class Store: ObservableObject {
             "week": progress.week, "weekStart": progress.weekStart,
             "srs": progress.srs, "log": progress.log,
             "groupTime": progress.groupTime, "groupInfo": progress.groupInfo, "groupWords": progress.groupWords,
+            "seen": progress.seen,
         ]
         return (try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])) ?? Data()
     }

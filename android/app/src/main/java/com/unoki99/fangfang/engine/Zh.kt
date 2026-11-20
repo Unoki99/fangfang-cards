@@ -902,7 +902,29 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
     fun toneDigits(e: ZhEntry, place: Int): String =
         e.syl(place).filter { it != "-" && it != "_" }.joinToString("") { Zhuyin.tone(it).toString() }
 
+    /** (設定 → 詞典 → 搜尋結果的順序: 自己排) */
     fun search(q0: String, place: Int = 0): Found {
+        val f = search0(q0, place)
+        if (EngineSettings.searchOrder.isEmpty()) return f
+        val q = q0.trim()
+        val m: (String, Int) -> Double = { k, i ->
+            val e = entries[i]
+            when (k) {
+                "freq" -> i.toDouble()
+                "exact" -> if (e.h == q || e.alt == q || (e.senses.firstOrNull()?.text?.substringBefore("。") ?: "") == q) 0.0 else 1.0
+                "short" -> e.h.codePointCount(0, e.h.length).toDouble()
+                "level" -> { val l = if (EngineSettings.zhList == 1) e.tocfl else e.hsk; if (l > 0) l.toDouble() else 99.0 }
+                else -> 0.0
+            }
+        }
+        for (list in listOf(f.words, f.starts, f.contains, f.defs, f.english, f.mandarin)) {
+            val sorted = SearchOrder.sort(list.toList(), m)
+            list.clear(); list.addAll(sorted)
+        }
+        return f
+    }
+
+    private fun search0(q0: String, place: Int = 0): Found {
         val q = q0.trim()
         val f = Found()
         if (q.isEmpty()) return f

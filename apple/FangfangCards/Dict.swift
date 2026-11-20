@@ -463,20 +463,33 @@ final class Dict: @unchecked Sendable {
             guard !x.isEmpty else { return }
             if let l = out.last, l.mark == m { out[out.count - 1].text += x } else { out.append((x, m)) }
         }
+        var light = false, prevRaw = "", started = false
         while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
-            put(String(rest[..<open]), 0)
+            var lit = String(rest[..<open])
+            if sys == 3 && started { lit = hongimJoin(lit, prevRaw: prevRaw, light: &light) }
+            put(lit, 0)
             var c = String(rest[rest.index(after: open)..<close])
             let cap = c.hasPrefix("^")
             if cap { c.removeFirst() }
             var m = 0
             if c.hasPrefix("?") { m = 1; c.removeFirst() } else if c.hasPrefix("!") { m = 2; c.removeFirst() }
             var s = isCode(c) ? syl(c, sys, place) : c
+            if sys == 3 && isCode(c) { prevRaw = raw.syl[c]?.first ?? ""; if light { s = HongimTone1.light(s) }; started = true }
             if cap { s = s.prefix(1).uppercased() + s.dropFirst() }
             put(s, m)
             rest = rest[rest.index(after: close)...]
         }
         put(String(rest), 0)
         return out
+    }
+
+    /// 方音 has no "-": what's between two syllables of an example. "-" → nothing (a space when asked), "--" → the
+    /// same, and the syllables after it in the light tone (˙ before them); anything else stays and ends the light tone
+    func hongimJoin(_ lit: String, prevRaw: String, light: inout Bool) -> String {
+        if lit == "-" { return HongimTone1.gap(after: prevRaw) }
+        if lit == "--" { light = true; return HongimTone1.gap(after: prevRaw) }
+        light = false
+        return lit
     }
 
     // MARK: words each place says differently (各地講法)

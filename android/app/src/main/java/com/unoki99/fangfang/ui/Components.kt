@@ -198,7 +198,7 @@ fun PlayButton(path: String, size: Dp = 34.dp) {
 
 @Composable
 fun Modifier.swell(big: Boolean): Modifier {
-    // 設定 → 畫成圖再放大: off = words don't swell
+    // 設定 → 指到的字放大: off = words don't swell
     val on = Prefs.swellAnim.value
     val target = if (big && on) 1.16f else 1f
     val s by animateFloatAsState(target, spring(dampingRatio = 0.8f, stiffness = 900f), label = "swell")

@@ -172,10 +172,14 @@ enum TwRom {
 }
 
 /// the 方音 line under a 台語 reading: left out when 方音 is the only spelling (it's the main line then)
+/// a 方音 line under the romanization: gone when 方音 is the only spelling (it's there already), and when
+/// 設定 → 台語 → 顯示方音 is off
 struct HongimLine: ViewModifier {
     @AppStorage("rom") private var rom = 0
+    @AppStorage(HongimLine.showKey) private var show = true
+    static let showKey = "showHongim"
     @ViewBuilder func body(content: Content) -> some View {
-        if rom != 3 { content }
+        if rom != 3 && show { content }
     }
 }
 extension View {
@@ -374,7 +378,7 @@ struct CompactReadingMenu: View {
                     .pickerStyle(.inline)
                 } else {
                     Picker(tr("拼寫"), selection: $rom) {
-                        ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0] == "方音" ? "只用方音" : ROM_NAMES[$0])).tag($0) }
+                        ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0])).tag($0) }
                     }
                     .pickerStyle(.inline)
                 }

@@ -530,30 +530,35 @@ struct ProfileView: View {
         }
     }
 
-    // ── videos: of the words you picked from each video (影片詞組), how many you know now; oldest first ──
+    // ── videos: how much of each one's words you knew when you watched it (Safari 查詞's 懂 %), and of the words
+    // you picked from it (影片詞組), how many you know now; oldest first ──
     private var videoTile: some View {
         var words: [String: [String]] = [:]
         for (wk, t) in store.progress.groupWords where t > 0 {
             guard let r = wk.range(of: "\u{1}") else { continue }
             words[String(wk[..<r.lowerBound]), default: []].append(String(wk[r.upperBound...]))
         }
-        let groups = store.progress.groupTime.filter { $0.value > 0 && !(words[$0.key] ?? []).isEmpty }.sorted { $0.value < $1.value }
-        let rows = groups.map { g -> (name: String, pct: Double, n: Int, date: Date) in
-            let ws = words[g.key] ?? []
+        let seen = store.progress.seen.filter { $0.value.count >= 2 }
+        var ids = Set(seen.keys)
+        for (id, t) in store.progress.groupTime where t > 0 && !(words[id] ?? []).isEmpty { ids.insert(id) }
+        let rows = ids.map { id -> (name: String, pct: Double?, k: Int, n: Int, date: Date) in
+            let ws = words[id] ?? []
             let k = ws.filter { store.progress.status[$0] == 1 }.count
-            return (store.groupName(g.key), Double(k) / Double(max(1, ws.count)), ws.count, Date(timeIntervalSince1970: g.value))
-        }
+            let t = seen[id]?[1] ?? abs(store.progress.groupTime[id] ?? 0)
+            return (store.groupName(id), seen[id].map { $0[0] / 100 }, k, ws.count, Date(timeIntervalSince1970: t))
+        }.sorted { $0.date < $1.date }
         return VStack(alignment: .leading, spacing: 8) {
             if rows.isEmpty {
-                Text(tr("還沒有影片詞組。用查詞看影片字幕、把詞加到不熟，就會有一個影片的詞組。")).ffFont(.footnote).foregroundStyle(T.muted)
+                Text(tr("還沒有影片。用查詞看影片字幕，再按「傳到 App」（或同步），就會有每個影片你懂多少。")).ffFont(.footnote).foregroundStyle(T.muted)
             } else {
-                // (each video a dot: when it was watched, and how much of its words you know now)
+                // (each video a bar: how much of it you understood; one with only picked words: how many of those you know, paler)
                 let last = Array(rows.suffix(40))
                 HStack(alignment: .bottom, spacing: 3) {
                     ForEach(last.indices, id: \.self) { i in
                         let r = last[i]
-                        RoundedRectangle(cornerRadius: 2).fill(levelColor(Int(r.pct * 7) + 1))
-                            .frame(maxWidth: .infinity).frame(height: max(3, 70 * r.pct))
+                        let v = r.pct ?? Double(r.k) / Double(max(1, r.n))
+                        RoundedRectangle(cornerRadius: 2).fill(levelColor(Int(v * 7) + 1)).opacity(r.pct == nil ? 0.45 : 1)
+                            .frame(maxWidth: .infinity).frame(height: max(3, 70 * v))
                     }
                 }
                 .frame(height: 70, alignment: .bottom)
@@ -561,11 +566,14 @@ struct ProfileView: View {
                     HStack {
                         Text(r.name).ffFont(.caption).lineLimit(1)
                         Spacer()
-                        Text("\(Int((r.pct * 100).rounded()))%").ffFont(.caption, .semibold).monospacedDigit()
+                        if r.n > 0 {
+                            Text(trs("選的詞") + " \(r.k)/\(r.n)").ffFont(.caption2).foregroundStyle(T.muted).monospacedDigit()
+                        }
+                        Text(r.pct.map { trs("懂") + " \(Int(($0 * 100).rounded()))%" } ?? "—").ffFont(.caption, .semibold).monospacedDigit()
                         Text(r.date.formatted(date: .abbreviated, time: .omitted)).ffFont(.caption2).foregroundStyle(T.muted)
                     }
                 }
-                Text(tr("每一條是一個影片：你從那裡選的詞，現在認識多少（從左到右，舊到新）。")).ffFont(.caption2).foregroundStyle(T.muted)
+                Text(tr("每一條是一個影片（從左到右，舊到新）：懂 = 看的時候字幕裡的詞你認識多少；選的詞 = 你從那裡選的詞，現在認識幾個。")).ffFont(.caption2).foregroundStyle(T.muted)
             }
         }
     }

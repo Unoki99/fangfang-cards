@@ -464,7 +464,7 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     fun syl(c: String, sys: Int, place: Int): String {
         val s = raw.syl[c] ?: return c
         return when (sys) {
-            3 -> EngineSettings.hongim(if (place >= 0 && c.contains("ø") && !orPlaces.contains(place)) s[0].replace("ㄜ", "ㄛ") else s[0])
+            3 -> EngineSettings.hongimSyllable(if (place >= 0 && c.contains("ø") && !orPlaces.contains(place)) s[0].replace("ㄜ", "ㄛ") else s[0])
             1 -> raw.tl[c]?.firstOrNull() ?: s[1]
             2 -> raw.pj[c] ?: s[1]
             else -> s[1]
@@ -498,18 +498,20 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
 
     fun render(tokens: List<String>, sys: Int, place: Int): String {
         val out = StringBuilder()
-        var prevCode = false
+        var prevCode = false; var prevRaw = ""; var light = false
         for (t in tokens) {
             val cap = t.startsWith("^"); val c = if (cap) t.drop(1) else t
             if (isCode(c)) {
-                if (sys != 3 && prevCode) out.append("-")
+                // (方音: no "-" between syllables; a space when asked; the light tone with ˙ before it)
+                if (prevCode) out.append(if (sys == 3) EngineSettings.hongimGap(prevRaw) else "-")
                 var s = syl(c, sys, place)
+                if (sys == 3) { prevRaw = raw.syl[c]?.firstOrNull() ?: ""; if (light) s = EngineSettings.hongimLight(s) }
                 if (cap && sys != 3) s = cap1(s)
                 out.append(s); prevCode = true
-            } else if (t == "--") { if (sys != 3) out.append("--"); prevCode = false }
-            else if (t == "_") { out.append(" "); prevCode = false }
-            else if (t.startsWith("~")) { out.append(t.drop(1)); prevCode = false }
-            else { out.append(t); prevCode = false }
+            } else if (t == "--") { if (sys != 3) { out.append("--"); prevCode = false }; light = true }
+            else if (t == "_") { out.append(" "); prevCode = false; light = false }
+            else if (t.startsWith("~")) { out.append(t.drop(1)); prevCode = false; light = false }
+            else { out.append(t); prevCode = false; light = false }
         }
         return out.toString()
     }
@@ -545,18 +547,19 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
             val l = out.lastOrNull()
             if (l != null && l.second == guessed) out[out.size - 1] = Pair(l.first + t, guessed) else out.add(Pair(t, guessed))
         }
-        var prevCode = false; var n = 0
+        var prevCode = false; var n = 0; var prevRaw = ""; var light = false
         for (t in tokensFor(key, place)) {
             val cap = t.startsWith("^"); val c = if (cap) t.drop(1) else t
             if (isCode(c)) {
-                if (sys != 3 && prevCode) put("-", false)
+                if (prevCode) put(if (sys == 3) EngineSettings.hongimGap(prevRaw) else "-", false)
                 var s = syl(c, sys, place)
+                if (sys == 3) { prevRaw = raw.syl[c]?.firstOrNull() ?: ""; if (light) s = EngineSettings.hongimLight(s) }
                 if (cap && sys != 3) s = cap1(s)
                 put(s, g.contains(n)); n++; prevCode = true
-            } else if (t == "--") { if (sys != 3) put("--", false); prevCode = false }
-            else if (t == "_") { put(" ", false); prevCode = false }
-            else if (t.startsWith("~")) { put(t.drop(1), false); prevCode = false }
-            else { put(t, false); prevCode = false }
+            } else if (t == "--") { if (sys != 3) { put("--", false); prevCode = false }; light = true }
+            else if (t == "_") { put(" ", false); prevCode = false; light = false }
+            else if (t.startsWith("~")) { put(t.drop(1), false); prevCode = false; light = false }
+            else { put(t, false); prevCode = false; light = false }
         }
         return out
     }
@@ -1025,6 +1028,17 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         }
     }
 
+    /** (word -> the words whose meanings list it as 近義 / 反義: the word, which meaning, 近 or 反) */
+    data class BackLink(val key: String, val sense: Int, val syn: Boolean)
+    private val backLinks: Map<String, List<BackLink>> by lazy {
+        val idx = HashMap<String, MutableList<BackLink>>()
+        for ((src, m) in raw.sy) for ((s, list) in m) for (t in list) idx.getOrPut(t) { ArrayList() }.add(BackLink(src, s.toIntOrNull() ?: -1, true))
+        for ((src, m) in raw.an) for ((s, list) in m) for (t in list) idx.getOrPut(t) { ArrayList() }.add(BackLink(src, s.toIntOrNull() ?: -1, false))
+        idx.mapValues { (_, v) -> v.sortedWith(compareBy({ if (it.syn) 0 else 1 }, { it.key })) }
+    }
+    /** a word the dictionary lists only as another word's 近義 or 反義, with no meaning of its own (光龐龐) */
+    fun linkedFrom(key: String): List<BackLink> = backLinks[key] ?: emptyList()
+
     fun wordLinks(key: String): Pair<List<String>, List<String>> {
         fun pick(m: Map<String, List<String>>?): List<String> {
             if (m == null) return emptyList()
@@ -1040,6 +1054,10 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
 
     /** a 方言詞's places, short (金門, 臺南・高雄); null: not one */
     fun placeLabel(key: String): String? = raw.loc?.get(key)?.takeIf { it.isNotEmpty() }?.let { placeNames(it) }
+    /** a reading with fewer syllables than the word has characters: a 合音 (佗位 tuē) */
+    fun isContraction(codes: String, key: String): Boolean =
+        codes.split(' ').count { isCode(it) } < Dict.hanOf(key).codePointCount(0, Dict.hanOf(key).length)
+
     fun placeNames(ps: List<Int>, most: Int = 3): String =
         ps.take(most).joinToString("・") { if (it < raw.places.size) com.unoki99.fangfang.tr(raw.places[it].take(2)) else "" } +
             (if (ps.size > most) "…" else "")

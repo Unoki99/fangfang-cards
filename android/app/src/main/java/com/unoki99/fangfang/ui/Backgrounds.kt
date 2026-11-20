@@ -50,9 +50,14 @@ private fun drift(label: String, from: Float, to: Float, ms: Int): Float {
 private fun WinterBackground() {
     val moving = com.unoki99.fangfang.Prefs.themeMotion.value
     var time by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    if (moving) androidx.compose.runtime.LaunchedEffect(Unit) {
+    val saver = com.unoki99.fangfang.Prefs.motionSaver.value
+    // (30 times a second, or 12 with 省電動畫: not every frame the screen can draw)
+    if (moving) androidx.compose.runtime.LaunchedEffect(saver) {
         val start = androidx.compose.runtime.withFrameNanos { it }
-        while (true) androidx.compose.runtime.withFrameNanos { time = (it - start) / 1e9f }
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { time = (it - start) / 1e9f }
+            kotlinx.coroutines.delay(if (saver) 80L else 30L)
+        }
     }
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height; val d = density
@@ -291,9 +296,14 @@ private fun DrawScope.drawLeaf(c: Offset, r: Float, deg: Float, col: Color) {
 private fun FallingThingsBackground(sakura: Boolean) {
     val moving = com.unoki99.fangfang.Prefs.themeMotion.value
     var time by androidx.compose.runtime.remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    if (moving) androidx.compose.runtime.LaunchedEffect(Unit) {
+    val saver = com.unoki99.fangfang.Prefs.motionSaver.value
+    // (30 times a second, or 12 with 省電動畫: not every frame the screen can draw)
+    if (moving) androidx.compose.runtime.LaunchedEffect(saver) {
         val start = androidx.compose.runtime.withFrameNanos { it }
-        while (true) androidx.compose.runtime.withFrameNanos { time = (it - start) / 1e9f }
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { time = (it - start) / 1e9f }
+            kotlinx.coroutines.delay(if (saver) 80L else 30L)
+        }
     }
     Canvas(Modifier.fillMaxSize()) {
         val w = size.width; val h = size.height; val d = density

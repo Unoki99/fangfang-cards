@@ -259,11 +259,12 @@ object Store {
         // from one of the other languages to another: the new language shown at once (its page says it's being
         // read), and the old one's deck let go meanwhile (two big dictionaries and their decks at once don't fit in
         // the phone's memory); the 台語 deck waiting stays
-        if (lang != 0) {
-            use(Deck(kind = want))
-            placeholder = true
-            shown(want)
-        }
+        // (also from 台語, and when the app opens in the language used last: shown at once, usable meanwhile, its
+        // deck filled in once read; the 台語 deck waits, ready to switch back)
+        if (lang == 0) other = Deck(cards, byKeyMutable, rank, pools, topics, 0)
+        use(Deck(kind = want))
+        placeholder = true
+        shown(want)
         // (a language waiting in the background that isn't the one wanted: let go too)
         if (otherKind > 0 && otherKind != want) other = null
         switching = true

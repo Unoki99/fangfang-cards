@@ -352,6 +352,7 @@ private struct LanguageSettings: View {
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
     @AppStorage(HongimTone1.allKey) private var hongimAll = false
+    @AppStorage(HongimLine.showKey) private var showHongim = true
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
@@ -382,7 +383,7 @@ private struct LanguageSettings: View {
             }
             Section(tr("台語")) {
                 Picker(tr("拼寫"), selection: $rom) {
-                    ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0] == "方音" ? "只用方音" : ROM_NAMES[$0])).tag($0) }
+                    ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0])).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 Picker(tr("腔口"), selection: $place) {
@@ -396,6 +397,8 @@ private struct LanguageSettings: View {
                 Toggle(tr("第一聲的地方空一格"), isOn: $hongimTone1Space)
                     .disabled(hongimTone1)
                     .onChange(of: hongimTone1Space) { store.objectWillChange.send() }
+                // (the 方音 line under the romanization everywhere: off for those who don't read it)
+                Toggle(tr("顯示方音"), isOn: $showHongim)
                 // (ㄉㄧㄠˋ ㄧˉ: never two spaces with the one above)
                 Toggle(tr("方音每個音節中間空一格"), isOn: $hongimAll)
                     .onChange(of: hongimAll) { store.objectWillChange.send() }

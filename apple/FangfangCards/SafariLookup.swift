@@ -11,6 +11,7 @@ import SwiftUI
 //     (a fourth: the 影片詞組 the word was chosen in, its id in gr)
 //     &w=<base64url of {"2026-11-14": minutes watched with the subtitle panel, …}> (optional)
 //     &gr=<base64url of {"yt:abc123": [the video's name, its address], …}> (optional: 影片詞組)
+//     &vk=<base64url of {"yt:abc123": [the video's name, its address, 懂 %, when], …}> (optional: 影片懂多少)
 // A word of a language the app can't open right now (a 華語 word while 台語 is on show) waits until it can.
 
 @MainActor
@@ -31,6 +32,14 @@ enum SafariImport {
         if let w = items.first(where: { $0.name == "w" })?.value, let d = unpack(w),
            let days = try? JSONSerialization.jsonObject(with: d) as? [String: Double] {
             for (day, m) in days { store.addListening(day: day, m, kind: 1) }
+        }
+        // (影片懂多少: each video's 懂 %, {"yt:abc123": [its name, address, %, when in seconds], …})
+        if let vk = items.first(where: { $0.name == "vk" })?.value, let d = unpack(vk),
+           let vids = try? JSONSerialization.jsonObject(with: d) as? [String: [Any]] {
+            for (id, v) in vids where v.count >= 4 {
+                store.noteSeen(id, name: v[0] as? String ?? "", url: v[1] as? String ?? "",
+                               pct: (v[2] as? NSNumber)?.doubleValue ?? 0, at: (v[3] as? NSNumber)?.doubleValue ?? 0)
+            }
         }
         guard let q = items.first(where: { $0.name == "ops" })?.value, let data = unpack(q),
               let ops = try? JSONSerialization.jsonObject(with: data) as? [[String]] else { return 0 }

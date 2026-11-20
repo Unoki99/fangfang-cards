@@ -193,11 +193,44 @@ def terms_of(text):
 # for 番茄): words of their own, marked with the places that say them (loc), each meaning pointing to the words most
 # places say (看「臭柿仔」、「柑仔蜜」; lstd)
 loc, lstd = {}, {}
+PLACES_SHORT = [x[:2] for x in D["places"]]
 hans = {w[0] for w in words}
 first_key = {}
 for h, c in words:
     k = h + "\t" + c
     if h not in first_key and k in defs_m: first_key[h] = k
+# (which of the dictionary's entries a row's word is. A word of one character only when its reading or its
+# meaning says so: 呼牛快跑's 喝 há is not 喝 huah "大聲喊叫", and 哈 ha̍h not 哈 ha "笑聲". Its own readings are
+# MOE's, its 又音 and its places' (語音差異), not the ones 詞彙比較 itself gave; tones and the places' vowels
+# (ɵ, ə, ɨ) aside. Longer words are the same word whatever the reading: 茶葉 tê-hiɵ̍h.)
+own_r = collections.defaultdict(set)              # key -> its readings
+own_t = collections.defaultdict(list)             # key -> its meanings
+sound = set()                                     # (sound words, 哈 ha "笑聲": the tone tells them apart too)
+for e in D["E"]:
+    k = key_of.get(e["i"])
+    if not k or k.endswith("\t") or k not in defs_m: continue
+    for x in [e.get("r", "")] + [a[0] for a in e.get("a", [])] + \
+             [f for pl, fs in e.get("sf", {}).items() if pl not in e.get("vx", []) for f in fs]:
+        c = codes_only(x)
+        if c: own_r[k].add(c)
+    own_t[k] += [m.get("t", "") for m in e.get("m", [])]
+    if any(m.get("p") in ("擬聲詞", "嘆詞") for m in e.get("m", [])): sound.add(k)
+def loose(c, tone=False):
+    return " ".join(re.sub(r"\d", ("C" if s[-1:] in "48" else "O") if tone else "", s)
+                    .replace("ɵ", "ø").replace("ə", "e").replace("ɨ", "i") for s in c.split())
+keys_of = collections.defaultdict(list)
+for h, c in words:
+    if h + "\t" + c in defs_m: keys_of[h].append(h + "\t" + c)
+def entry_of(h, rcs, zh, key_in):
+    if h in key_in: return key_in[h]
+    for k in keys_of[h]:
+        t = k in sound
+        if any(loose(x, t) in {loose(r, t) for r in rcs} for x in own_r[k]): return k
+    if len(h) > 1: return first_key.get(h)
+    for k in keys_of[h]:
+        if any(zh in [w.strip("「」『』（）() ") for w in re.split(r"[、，,；;。：:]", t)] for t in own_t[k]): return k
+    return None
+def tl_of(rc): return "-".join(code_to_tl(c) for c in rc.split())
 add, order = {}, []
 for zh, row in cmp:
     by_han, key_in, by_key = {}, {}, {}
@@ -207,16 +240,32 @@ for zh, row in cmp:
         k = han + "\t" + rc
         if k in defs_m and han not in key_in: key_in[han] = k
         by_key.setdefault(k, set()).add(p)
-    cand = [(h, ps) for h, ps in by_han.items() if h in hans and (h in key_in or h in first_key)]
-    cand.sort(key=lambda x: -len(x[1]))      # (stable: the order of 詞彙比較 among equals)
-    std = [key_in.get(h) or first_key[h] for h, _ in cand[:3]]
-    for k, ps in by_key.items():
-        han, rc = k.split("\t")
-        if han in hans or not HAN.match(han) or len(han) != len(rc.split()): continue
+    cand = sorted(((h, ps) for h, ps in by_han.items() if h in hans), key=lambda x: -len(x[1]))   # (stable)
+    std = []
+    for h, _ in cand:
+        k = entry_of(h, {rc for _, hh, rc in row if hh == h and rc}, zh, key_in)
+        if k and k not in std: std.append(k)
+        if len(std) == 3: break
+    news = [k for k in by_key
+            if not (k.split("\t")[0] in hans or not HAN.match(k.split("\t")[0]) or len(k.split("\t")[0]) != len(k.split("\t")[1].split()))]
+    for k in news:
+        ps = by_key[k]
         if k not in add: add[k] = {"places": set(), "groups": []}; order.append(k)
         w = add[k]
         w["places"].update(ps)
-        if not any(g[0] == zh for g in w["groups"]): w["groups"].append([zh, std])
+        if not any(g[0] == zh for g in w["groups"]):
+            # (no usual word for it: what each place says, 臺北 喝 há, 臺南 嘵叱叱, and the others' 方言詞 as 近義)
+            say = []
+            if not std:
+                by_w = collections.OrderedDict()           # word -> {reading: places}
+                for p, hh, rc in row:
+                    if rc and hh != k.split("\t")[0]: by_w.setdefault(hh, collections.OrderedDict()).setdefault(rc, set()).add(p)
+                for hh, rs in by_w.items():
+                    pl = set().union(*rs.values())
+                    top = sorted(rs, key=lambda r: -len(rs[r]))[:3]       # (stable)
+                    say.append(hh + " " + "/".join(tl_of(r) for r in top) + ("…" if len(rs) > 3 else "") +
+                               "（" + ("各地" if len(pl) == len(PLACES_SHORT) else "、".join(PLACES_SHORT[x] for x in sorted(pl))) + "）")
+            w["groups"].append([zh, std, say, [x for x in news if x != k] if not std else []])
 # (one 方言詞 said differently in different places, 天遮: one entry, its reading the one most places say, the
 # others as those places' readings)
 by_h = collections.OrderedDict()
@@ -241,15 +290,18 @@ for han, ks in by_h.items():
         for g in o["groups"]:
             if not any(x[0] == g[0] for x in w["groups"]): w["groups"].append(g)
 order = order2
+main_of = {k: max(ks, key=lambda x: len(add[x]["places"])) for ks in by_h.values() for k in ks}
 TYPE_LOCAL = D["types"].index("方言詞")
 for k in order:
     w = add[k]
     han, rc = k.split("\t")
-    lines, stds = [], []
-    for zh, std in w["groups"]:
-        t = ("看" + "、".join("「" + x.split("\t")[0] + "」" for x in std) + "。") if std else "華語：" + zh + "。"
+    lines, stds, sibs = [], [], []
+    for zh, std, say, sib in w["groups"]:
+        t = ("看" + "、".join("「" + x.split("\t")[0] + "」" for x in std) + "。") if std else \
+            "華語：" + zh + "。" + ("各地講法：" + "、".join(say) + "。" if say else "")
         if t in lines: continue
         lines.append(t); stds.append(std)
+        sibs.append([] if std else list(dict.fromkeys(main_of[x] for x in sib if main_of[x] != k)))
     words.append([han, rc]); seen.add(k)
     used.update(rc.split())
     defs_m[k] = len(defs_t)
@@ -260,9 +312,10 @@ for k in order:
     for st in stds:
         for x in st:
             if x not in allk: allk.append(x)
+    rec = {str(i): st or sb for i, (st, sb) in enumerate(zip(stds, sibs)) if st or sb}
+    if rec: sy[k] = rec
     if allk:
         lstd[k] = allk
-        sy[k] = {str(i): st for i, st in enumerate(stds) if st}
         # (and the other way: the usual word lists it as a 近義 of its own, with the places that say it)
         for x in allk:
             back = sy.setdefault(x, {}).setdefault("e", [])
@@ -391,7 +444,7 @@ chars = {ch for h, _ in words for ch in h}
 freq = {ch: round(math.log(counts[ch]), 1) for ch in sorted(chars) if counts[ch] > 0}
 
 out = {
-    "v": 6, "words": words, "syl": syl, "tl": tl, "pj": pj,
+    "v": 7, "words": words, "syl": syl, "tl": tl, "pj": pj,
     "defs": {"t": defs_t, "m": defs_m}, "pos": pos, "ex": ex, "reg": reg, "own": own, "au": au,
     "gl": [[k, v] for k, v in gl.items()], "freq": freq, "dex": dex, "ctx": ctx, "dia2": dia2, "sdia": sdia,
     "places": D["places"], "g1": D["g1"], "types": D["types"], "cats": D["cats"],

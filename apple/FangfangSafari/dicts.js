@@ -1,7 +1,7 @@
 // 方方詞卡 查詞: the dictionaries the add-on can install by itself (設定 → 詞典), the same ones and the same original
 // files as the app's 設定 → 詞典資料 (FangfangCards/DictInstall.swift). The dictionaries' licenses don't allow
 // sharing changed versions, so the add-on has none inside it: it downloads the original, unchanged files (first
-// from the copies in this project's GitHub repository, fangfang-sources/, else from where they're published), the
+// from the copies in this project's data repository on GitHub, unoki99/fangfang-data, else from where they're published), the
 // app's own converters (install/*.js, copied from FangfangCards/Install when the add-on is built) make the app's
 // data from them, and shards.js the lookup files, all in the browser (install-worker.js), kept in its storage.
 "use strict";
@@ -28,7 +28,7 @@ var FF_DICTS = (() => {
         },
         {
             // (ver: the version of the data the converter makes; an older one installed is offered again)
-            id: "tw", name: "台語", script: "taigi", fn: "buildTaigi", outs: ["dict", "cards"], mb: 11, ver: 6,
+            id: "tw", name: "台語", script: "taigi", fn: "buildTaigi", outs: ["dict", "cards"], mb: 11, ver: 7,
             sources: [{ file: "kautian.ods", url: "https://sutian.moe.edu.tw/media/senn/ods/kautian.ods", arg: "ods" },
                 Object.assign({}, essay)],
             bundled: { own: "install/twown.json" },
@@ -75,7 +75,7 @@ var FF_DICTS = (() => {
 })();
 /// the copies of the original files, unchanged, in this project's GitHub repository (one folder per dictionary, and
 /// common/ for the files more than one uses)
-const FF_MIRROR = "https://raw.githubusercontent.com/unoki99/fangfang-cards/main/fangfang-sources/";
+const FF_MIRROR = "https://raw.githubusercontent.com/unoki99/fangfang-data/main/";
 function ffMirrorURL(dict, s) {
     return s.noMirror ? null : FF_MIRROR + (s.shared ? "common" : dict.id) + "/" + encodeURIComponent(s.file);
 }

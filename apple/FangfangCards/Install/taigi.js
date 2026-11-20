@@ -820,10 +820,42 @@ function buildTaigi(a) {
         const hans = new Set(words.map(w => w[0]));
         const firstKey = new Map();     // han → its first entry's key (the dictionary's own words)
         for (const [h, c] of words) { const k = h + "\t" + c; if (!firstKey.has(h) && k in defsM) firstKey.set(h, k); }
-        const add = new Map();      // key → {places: Set, groups: [[zh, [std keys]]]}
+        // (which of the dictionary's entries a row's word is. A word of one character only when its reading or its
+        // meaning says so: 呼牛快跑's 喝 há is not 喝 huah "大聲喊叫", and 哈 ha̍h not 哈 ha "笑聲". Its own readings
+        // are MOE's, its 又音 and its places' (語音差異), not the ones 詞彙比較 itself gave; tones and the places'
+        // vowels (ɵ, ə, ɨ) aside, but not for sound words. Longer words are the same word whatever the reading.)
+        const ownR = new Map(), ownT = new Map(), sound = new Set();
+        for (const e of D.E) {
+            const k = keyOf.get(e.i);
+            if (!k || k.endsWith("\t") || !(k in defsM)) continue;
+            if (!ownR.has(k)) { ownR.set(k, new Set()); ownT.set(k, []); }
+            const xs = [e.r || ""].concat((e.a || []).map(a => a[0]));
+            if (e.sf) for (const [pl, fs] of e.sf) if (!(e.vx || []).includes(pl)) xs.push(...fs);
+            for (const x of xs) { const c = codesOnlyApp(x); if (c) ownR.get(k).add(c); }
+            for (const m of e.m || []) ownT.get(k).push(m.t || "");
+            if ((e.m || []).some(m => m.p === "擬聲詞" || m.p === "嘆詞")) sound.add(k);
+        }
+        const loose = (c, tone) => split(c).map(x => x.replace(/\d/g, tone ? (/[48]$/.test(x) ? "C" : "O") : "")
+            .replace(/ɵ/g, "ø").replace(/ə/g, "e").replace(/ɨ/g, "i")).join(" ");
+        const keysOf = new Map();
+        for (const [h, c] of words) { const k = h + "\t" + c; if (k in defsM) { if (!keysOf.has(h)) keysOf.set(h, []); keysOf.get(h).push(k); } }
+        const entryOf = (h, rcs, zh, keyIn) => {
+            if (keyIn.has(h)) return keyIn.get(h);
+            for (const k of keysOf.get(h) || []) {
+                const t = sound.has(k), ls = new Set(Array.from(rcs).map(r => loose(r, t)));
+                for (const x of ownR.get(k) || []) if (ls.has(loose(x, t))) return k;
+            }
+            if (cpLen(h) > 1) return firstKey.get(h) || null;
+            for (const k of keysOf.get(h) || [])
+                if ((ownT.get(k) || []).some(t => t.split(/[、，,；;。：:]/).map(w => w.replace(/^[「」『』（）() ]+|[「」『』（）() ]+$/g, "")).includes(zh))) return k;
+            return null;
+        };
+        const tlOf = rc => split(rc).map(c => toTl(c)).join("-");
+        const SHORT = PLACES.map(x => Array.from(x).slice(0, 2).join(""));
+        const add = new Map();      // key → {places: Set, groups: [[zh, [std keys], [各地講法], [近義 方言詞]]]}
         const order = [];
         for (const [zh, row] of cmp) {
-            // the words the dictionary has for this meaning, the ones most places say first (whatever the reading)
+            // the words the dictionary has for this meaning, the ones most places say first
             const byHan = new Map(), keyIn = new Map(), byKey = new Map();
             for (const [p, han, rc] of row) {
                 if (!rc) continue;
@@ -834,16 +866,42 @@ function buildTaigi(a) {
                 if (!byKey.has(k)) byKey.set(k, new Set());
                 byKey.get(k).add(p);
             }
-            const std = Array.from(byHan).filter(([h]) => hans.has(h) && (keyIn.has(h) || firstKey.has(h)))
-                .sort((x, y) => y[1].size - x[1].size).slice(0, 3).map(([h]) => keyIn.get(h) || firstKey.get(h));
-            for (const [k, ps] of byKey) {
+            const std = [];
+            for (const [h] of Array.from(byHan).filter(([h]) => hans.has(h)).sort((x, y) => y[1].size - x[1].size)) {
+                const k = entryOf(h, new Set(row.filter(r => r[1] === h && r[2]).map(r => r[2])), zh, keyIn);
+                if (k && !std.includes(k)) std.push(k);
+                if (std.length === 3) break;
+            }
+            const news = Array.from(byKey.keys()).filter(k => {
                 const [han, rc] = k.split("\t");
-                if (hans.has(han) || !HAN.test(han) || cpLen(han) !== split(rc).length) continue;
-                if (!split(rc).every(c => parse(c))) continue;
+                return !(hans.has(han) || !HAN.test(han) || cpLen(han) !== split(rc).length) && split(rc).every(c => parse(c));
+            });
+            for (const k of news) {
+                const ps = byKey.get(k);
                 if (!add.has(k)) { add.set(k, { places: new Set(), groups: [] }); order.push(k); }
                 const w = add.get(k);
                 for (const p of ps) w.places.add(p);
-                if (!w.groups.some(g => g[0] === zh)) w.groups.push([zh, std]);
+                if (w.groups.some(g => g[0] === zh)) continue;
+                // (no usual word for it: what each place says, 臺北 喝 há, 臺南 嘵叱叱, and the others' 方言詞 as 近義)
+                const say = [];
+                if (!std.length) {
+                    const byW = new Map();          // word → Map(reading → Set(places))
+                    for (const [p, hh, rc] of row) {
+                        if (!rc || hh === k.split("\t")[0]) continue;
+                        if (!byW.has(hh)) byW.set(hh, new Map());
+                        const rs = byW.get(hh);
+                        if (!rs.has(rc)) rs.set(rc, new Set());
+                        rs.get(rc).add(p);
+                    }
+                    for (const [hh, rs] of byW) {
+                        const pl = new Set();
+                        for (const v of rs.values()) for (const x of v) pl.add(x);
+                        const top = Array.from(rs.keys()).sort((a, b) => rs.get(b).size - rs.get(a).size).slice(0, 3);
+                        say.push(hh + " " + top.map(tlOf).join("/") + (rs.size > 3 ? "…" : "") + "（" +
+                            (pl.size === SHORT.length ? "各地" : Array.from(pl).sort((a, b) => a - b).map(x => SHORT[x]).join("、")) + "）");
+                    }
+                }
+                w.groups.push([zh, std, say, std.length ? [] : news.filter(x => x !== k)]);
             }
         }
         // (one 方言詞 said differently in different places, 天遮: one entry, its reading the one most places say,
@@ -874,16 +932,26 @@ function buildTaigi(a) {
                 for (const g of o.groups) if (!w.groups.some(x => x[0] === g[0])) w.groups.push(g);
             }
         }
+        const mainOf = new Map();
+        for (const ks of byH.values()) {
+            let main = ks[0];
+            for (const k of ks) if (add.get(k).places.size > add.get(main).places.size) main = k;
+            for (const k of ks) mainOf.set(k, main);
+        }
         order.length = 0; order.push(...order2);
         for (const k of order) {
             const w = add.get(k);
             const [han, rc] = k.split("\t");
-            // (a meaning each: 看 the usual words; none in the dictionary: its 華語)
-            const lines = [], stds = [];
-            for (const [zh, std] of w.groups) {
-                const t = std.length ? "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。" : "華語：" + zh + "。";
+            // (a meaning each: 看 the usual words; none in the dictionary: its 華語 and what the places say)
+            const lines = [], stds = [], sibs = [];
+            for (const [zh, std, say, sib] of w.groups) {
+                const t = std.length ? "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。"
+                    : "華語：" + zh + "。" + (say.length ? "各地講法：" + say.join("、") + "。" : "");
                 if (lines.includes(t)) continue;
                 lines.push(t); stds.push(std);
+                const sb = [];
+                if (!std.length) for (const x of sib) { const m = mainOf.get(x); if (m !== k && !sb.includes(m)) sb.push(m); }
+                sibs.push(sb);
             }
             words.push([han, rc]);
             seen.add(k);
@@ -894,11 +962,11 @@ function buildTaigi(a) {
             loc[k] = Array.from(w.places).sort((x, y) => x - y);
             const all = [];
             for (const st of stds) for (const x of st) if (!all.includes(x)) all.push(x);
+            const rec = {};
+            stds.forEach((st, i) => { if (st.length) rec[String(i)] = st; else if (sibs[i].length) rec[String(i)] = sibs[i]; });
+            if (Object.keys(rec).length) sy[k] = rec;
             if (all.length) {
                 lstd[k] = all;
-                const rec = {};
-                stds.forEach((st, i) => { if (st.length) rec[String(i)] = st; });
-                sy[k] = rec;
                 // (and the other way: the usual word lists it as a 近義 of its own, with the places that say it)
                 for (const x of all) {
                     const r = sy[x] || (sy[x] = {});
@@ -1044,7 +1112,7 @@ function buildTaigi(a) {
     }
     const mapObj = m => { const o = {}; for (const [k, v] of m) o[k] = v; return o; };
     const dict = {
-        v: 6, words, syl: sylT, tl, pj,
+        v: 7, words, syl: sylT, tl, pj,
         defs: { t: defsT, m: defsM }, pos: posM, ex, reg, own, au,
         gl: Array.from(gl), freq, dex, ctx, dia2, sdia,
         places: D.places, g1: D.g1, types: D.types, cats: D.cats,

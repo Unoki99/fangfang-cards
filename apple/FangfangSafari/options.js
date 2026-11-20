@@ -146,6 +146,8 @@
     tile(clG, ffT("卡片"), ffT("跳出來的卡片裡的字和讀音"), choice("colours", onOff, cc));
     needSubs.push(tile(clG, ffT("字幕"), ffT("字幕面板裡的字和讀音"), choice("subsColours", onOff, cc)));
     needWeb.push(tile(clG, ffT("網頁上的字"), ffT("網頁上的中文字照聲調上色"), choice("tint", [[false, ffT("不上色")], ["saved", ffT("收藏的詞")], ["all", ffT("全部（華語）")]], cc)));
+    needWeb.push(tile(clG, ffT("網頁上不認識的詞"), ffT("像字幕一樣：不認識的詞上面標讀音、下面標意思，字照聲調上色（哪些詞照「字幕 → 標哪些詞」）"),
+        choice("pageAnno", [[false, ffT("不標")], ["both", ffT("讀音和意思")], ["rd", ffT("只有讀音")], ["gl", ffT("只有意思")]], cc)));
     const onlySw = ffSwitch(prefs, "onlyNew");
     onlySw.style.setProperty("--c", cc);
     tile(clG, ffT("只替標出來的詞上色"), ffT("其他的詞不上聲調顏色（網頁上也是：只有不認識的詞有顏色）"), onlySw);
@@ -298,10 +300,14 @@
 
     // HSK／TOCFL 懂多少: each level of the word list, how many of its words are 認識 and 不熟 (from the app's words,
     // and the ones marked 認識 here)
-    const lv = await ffDB.get("d-levels.json").catch(() => null);
+    // (installed here, or, in Safari, made with the app on the Mac and inside the add-on)
+    let lv = await ffDB.get("d-levels.json").catch(() => null);
+    if (!lv) lv = await fetch(browser.runtime.getURL("d-levels.json")).then(r => r.ok ? r.json() : null, () => null).catch(() => null);
+    const fromMac = !(await fetch(browser.runtime.getURL("install/common.js")).then(r => r.ok, () => false));
     kn.appendChild(el("h3", ffT("HSK／TOCFL 懂多少"), "sub"));
     if (!lv) {
-        kn.appendChild(el("p", ffT("要先安裝（或重新安裝）「詞典」裡的華語，才看得到每一級的詞。"), "lead"));
+        kn.appendChild(el("p", fromMac ? ffT("要在 Mac 上重新執行一次安裝（install.sh），查詞裡才會有每一級的詞。")
+            : ffT("要先安裝（或重新安裝）「詞典」裡的華語，才看得到每一級的詞。"), "lead"));
     } else {
         const local = (await ffStore.get(["ffKnownLocal"]).catch(() => ({}))).ffKnownLocal || [];
         const knownZh = new Set([...((k && k.k && k.k.zh) || []), ...local.filter(x => !/^[a-z]+:/.test(x) || x.startsWith("zh:")).map(x => x.replace(/^zh:/, ""))]);
@@ -359,12 +365,12 @@
     const q = d.queue;
     const mins = Object.values(d.watch).reduce((a, x) => a + x, 0);
     // (the buttons first, the words under them)
-    if (q.length || mins >= 1) {
+    if (q.length || mins >= 1 || Object.keys(d.seen).length) {
         const b = el("div", null, "btns");
         const send = el("button", ffT("傳到 App"), "act main");
         send.style.setProperty("--c", v("--send"));
         send.addEventListener("click", async () => {
-            const url = await ffSend(q, d.watch);
+            const url = await ffSend(q, d.watch, d.seen);
             send.textContent = ffT("傳了");
             // (the words are kept in this link: if the app didn't open, tapping it opens it)
             const a = el("a", ffT("App 沒有打開？點這裡"));
@@ -395,36 +401,19 @@
     // ── 資料夾同步 ──
     const fo = part("folder", ffT("資料夾同步"), v("--send"),
         ffT("和 App 用同一個備份資料夾（iCloud Drive、OneDrive、Google 雲端硬碟…）：讀所有裝置的備份，你在每個裝置認識和不熟的詞這裡都會用；這裡選的詞也可以存一個檔案到那個資料夾，App 同步的時候會讀進去。"));
-    const pick = el("input");
-    pick.type = "file"; pick.multiple = true; pick.webkitdirectory = true; pick.style.display = "none";
-    const fb = el("div", null, "btns");
-    const readB = el("button", ffT("讀資料夾"), "act main");
-    readB.style.setProperty("--c", v("--send"));
-    const saveB = el("button", ffT("把這裡選的詞存到資料夾"), "act");
-    const said = el("p", "", "lead");
-    readB.addEventListener("click", () => pick.click());
-    pick.addEventListener("change", async () => {
-        said.textContent = ffT("讀取中…");
-        try {
-            const r = await ffReadFolder([...pick.files]);
-            said.textContent = r.files ? ffT("讀了 ") + r.files + ffT(" 個裝置的備份：認識的詞 ") + r.known + ffT(" 個、不熟的詞 ") + r.unknown + ffT(" 個。")
-                : ffT("這個資料夾裡沒有方方詞卡的備份（方方詞卡-….json）。");
-        } catch (e) { said.textContent = ffT("讀不到這個資料夾。"); }
-        pick.value = "";
-    });
-    saveB.addEventListener("click", async () => {
-        const r = await ffFolderFile(d.queue);
-        said.textContent = ffT("存了 ") + r.n + ffT(" 個詞：") + r.name;
-    });
-    fb.append(readB, saveB, pick);
-    fo.appendChild(fb);
-    fo.appendChild(said);
+    const { safari, direct, sb, fb, said } = await ffSyncControls(d, v("--send"), "lead");
+    fo.append(sb, fb, said);
     if (d.known && d.known.from === "folder" && d.known.at) {
         fo.appendChild(el("p", ffT("上次讀資料夾：") + new Date(d.known.at).toLocaleString(), "lead"));
     }
+    tip(fo, "how", ffIOS ? ffT("按「立刻同步」，在「檔案」打開 App 的備份資料夾，按「選擇」→「全選」→「打開」：查詞把所有裝置的詞合起來（每個詞以最後改的為準）。再按「存回資料夾」→「儲存到檔案」→ 選同一個資料夾 →「儲存」，問的時候按「取代」。")
+        : safari ? ffT("按「立刻同步」，選 App 的備份資料夾裡所有的方方詞卡檔案：查詞把所有裝置的詞合起來（每個詞以最後改的為準），再下載自己的檔案（方方詞卡-查詞-Safari-….json）。")
+        : direct ? ffT("「立刻同步」第一次會問要用哪個資料夾：選 App 的備份資料夾，按「允許」讓它讀寫。之後按一下就會讀所有裝置的備份，再把這裡選的詞存進去。")
+        : ffT("「立刻同步」會先讀資料夾（選 App 的備份資料夾），再存這裡選的詞（瀏覽器問存在哪裡的時候選同一個資料夾）。"));
+    if (safari && !ffIOS) tip(fo, "good", ffT("讓下載的檔案直接進備份資料夾：Safari 設定 → 一般 → 檔案下載位置 → 選 App 的備份資料夾。App 同步的時候會讀它，同一個查詞存了好幾個的話只留最新的。"));
     tip(fo, "how", ffT("按「讀資料夾」，選 App 的備份資料夾（App 的 設定 → 備份 裡選的那一個），瀏覽器會問可不可以讀：按「上傳」或「允許」（檔案不會離開你的電腦）。"));
     tip(fo, "good", ffT("要讓「存到資料夾」直接存在那個資料夾：在瀏覽器的設定把下載改成「每次都問要存在哪裡」，存的時候選那個資料夾。之後存一樣的檔名就會蓋過舊的。"));
-    tip(fo, "warn", ffT("存的檔案只有還沒傳到 App 的詞；傳到 App 或在 App 同步以後，這些詞就在 App 的備份裡了。"));
+    tip(fo, "warn", ffT("存的檔案有在這裡標過的所有詞（傳到 App 以後也還在），每個詞記著是什麼時候標的，所以每個裝置同步的時候都以最後改的為準。"));
 })();
 
 /// 設定 → 詞典: each dictionary, installed or not, and its 安裝 / 移除 (one at a time)

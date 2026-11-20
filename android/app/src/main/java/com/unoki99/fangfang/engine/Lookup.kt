@@ -52,6 +52,31 @@ object ZhSynonyms {
     }
 }
 
+/** 設定 → 詞典 → 搜尋結果的順序: 標準, or up to three things to sort by, the first one first */
+object SearchOrder {
+    val all = listOf("freq" to "常用的詞先", "exact" to "和查的詞一模一樣的先", "place" to "方言的講法先（選的腔口）",
+        "short" to "字少的先", "level" to "HSK／TOCFL 等級低的先")
+    fun <T> sort(xs: List<T>, metric: (String, T) -> Double): List<T> {
+        val keys = EngineSettings.searchOrder
+        if (keys.isEmpty() || xs.size < 2) return xs
+        return xs.withIndex().sortedWith { a, b ->
+            for (k in keys) { val x = metric(k, a.value); val y = metric(k, b.value); if (x != y) return@sortedWith x.compareTo(y) }
+            a.index.compareTo(b.index)
+        }.map { it.value }
+    }
+    /** 台語: a word's value for one of them (smaller first) */
+    fun metric(d: Dict, k: String, key: String, q: String, place: Int): Double {
+        val han = Dict.hanOf(key)
+        return when (k) {
+            "freq" -> { val cs = han.codePoints().toArray(); if (cs.isEmpty()) 0.0 else -cs.sumOf { d.raw.freq[String(Character.toChars(it))] ?: 0.0 } / cs.size }
+            "exact" -> if (han == q || (d.gl[key] ?: emptyList()).any { it.t == q }) 0.0 else 1.0
+            "place" -> if (place < 0) (if (d.raw.loc?.get(key) != null) 0.0 else 1.0) else d.raw.loc?.get(key)?.let { if (place in it) 0.0 else 2.0 } ?: (if (d.isStated(key, place)) 0.5 else 1.0)
+            "short" -> han.codePointCount(0, han.length).toDouble()
+            else -> 0.0
+        }
+    }
+}
+
 object Lookup {
     private val rankCmp = { d: Dict -> compareBy<String>({ Dict.hanOf(it).cpCount }, { -d.score(Dict.hanOf(it), Dict.codesOf(it)) }) }
 
@@ -138,7 +163,19 @@ object Lookup {
 
     private val toneRe = Regex("^[1-9](?:[-\\s]?[1-9]){0,7}$")
 
+    /** the search, its lists in the order chosen in 設定 → 詞典 → 搜尋結果的順序 (標準: as they come) */
     fun run(d: Dict, q0: String, place: Int, prefs: KeyValue, split: Boolean = true): LookupResult {
+        val r = run0(d, q0, place, prefs, split)
+        if (EngineSettings.searchOrder.isEmpty()) return r
+        val q = q0.trim()
+        val m: (String, String) -> Double = { k, key -> SearchOrder.metric(d, k, key, q, place) }
+        r.exact = SearchOrder.sort(r.exact, m); r.taigi = SearchOrder.sort(r.taigi, m); r.contains = SearchOrder.sort(r.contains, m)
+        r.gloss = SearchOrder.sort(r.gloss, m); r.synonyms = SearchOrder.sort(r.synonyms, m); r.synWords = SearchOrder.sort(r.synWords, m)
+        r.defs = SearchOrder.sort(r.defs, m); r.english = SearchOrder.sort(r.english, m); r.tones = SearchOrder.sort(r.tones, m)
+        return r
+    }
+
+    private fun run0(d: Dict, q0: String, place: Int, prefs: KeyValue, split: Boolean = true): LookupResult {
         val q = q0.trim()
         val r = LookupResult()
         if (q.isEmpty()) return r

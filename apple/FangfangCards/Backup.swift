@@ -86,6 +86,19 @@ extension Store {
                 }
             }
             if changed > 0 { save() }
+            // (Safari 查詞 saves its file as a download: where one of that name is there already, Safari keeps both,
+            // 方方詞卡-查詞-Safari-AB12-1.json. Merged above; only the newest of each add-on is kept)
+            var addOn: [String: [(URL, Date)]] = [:]
+            for u in items {
+                let name = u.lastPathComponent
+                guard name.hasPrefix(Self.prefix + "查詞-"), name.hasSuffix(".json"),
+                      let m = name.range(of: #"^方方詞卡-查詞-[^-]+-[0-9A-F]{4}"#, options: .regularExpression) else { continue }
+                let t = (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                addOn[String(name[m]), default: []].append((u, t))
+            }
+            for (_, fs) in addOn where fs.count > 1 {
+                for (u, _) in fs.sorted(by: { $0.1 > $1.1 }).dropFirst() { try? fm.removeItem(at: u) }
+            }
         }
         // 自己的歌詞: the 歌詞 folder beside the backups
         let lyricsIn = OwnLyrics.shared.sync(in: folder)

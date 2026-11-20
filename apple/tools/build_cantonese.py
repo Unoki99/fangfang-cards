@@ -14,7 +14,8 @@
 #                         (the Jyutping one: dist/tsv/繁體/粵語字典_(粵拼).txt)
 # optional: Wiktionary's Chinese entries as extracted by kaikki.org (wiktextract, CC BY-SA 4.0):
 #   https://kaikki.org/dictionary/Chinese/kaikki.org-dictionary-Chinese.jsonl
-#   for Cantonese meanings, example sentences with translations and the Mandarin word with the same meaning.
+#   for Cantonese meanings, example sentences with translations and the Mandarin word with the same meaning
+#   ("-": this project's copy in fangfang-data/common, else kaikki.org: wikt_lines.py; neither: without).
 #
 # The output, one entry per word and reading:
 #   {"h": 繁體, "s": 簡體 (if different), "j": "jyut6 ping3", "en": [English meanings], "yue": 1 if a Cantonese
@@ -23,6 +24,8 @@
 #    "au": a recording (Wikimedia Commons), "zh": [Mandarin words with the same meaning]}
 # and "chars": {字: [[jyutping, 中文 meaning, words], ...]} with the usual reading first.
 import json, os, re, sys, collections
+sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
+import wikt_lines
 
 SRC, OUT = sys.argv[1], sys.argv[2]
 KAIKKI = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "-" else None
@@ -168,8 +171,14 @@ LABEL_SKIP = {"Cantonese", "Guangzhou", "Hong-Kong", "Hong Kong", "Macau", "Hong
 zh_of = collections.defaultdict(collections.Counter)    # Cantonese word -> Mandarin words (dialect tables)
 moved_wk = []           # (字, its first reading, the reading a meaning was moved to, the meanings)
 def is_han(ch): return "㐀" <= ch <= "鿿" or "\U00020000" <= ch <= "\U0003ffff" or "豈" <= ch <= "﫿"
-if KAIKKI:
-    for line in open(KAIKKI, encoding="utf-8-sig"):
+# (the file given, else this project's copy in fangfang-data, else kaikki.org: wikt_lines.py; none of them: without)
+try:
+    WIKT = wikt_lines.lines(KAIKKI)
+except Exception as err:
+    print(f"（讀不到維基詞典，先不用：{err}）", file=sys.stderr)
+    WIKT = None
+if WIKT:
+    for line in WIKT:
         try: w = json.loads(line)
         except ValueError: continue
         if w.get("lang_code") != "zh": continue
@@ -516,4 +525,4 @@ print(f"{len(out)} words ({sum(1 for e in out if e.get('yue'))} Cantonese words,
       f"{sum(1 for e in out if e['f'] > 0)} found in the Cantonese text), {len(chars)} characters")
 print(f"CC-CEDICT words without a Cantonese reading (left out): {no_reading}; CC-Canto lines: {canto}; "
       f"readings set by rime-cantonese: {fixed}; words only rime-cantonese has: {only_rime}")
-if KAIKKI: print(f"Wiktionary: {wikt} words with meanings, {wikt_ex} examples, {wikt_au} recordings, {wikt_zh} words with a Mandarin equivalent")
+if WIKT: print(f"Wiktionary: {wikt} words with meanings, {wikt_ex} examples, {wikt_au} recordings, {wikt_zh} words with a Mandarin equivalent")

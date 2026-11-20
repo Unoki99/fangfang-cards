@@ -58,7 +58,7 @@ fun DictDataPage() {
             key(p.id, v) { PackRow(p) { confirmRemove = p } }
         }
     }
-    Txt(tr("詞典的授權不允許分享改過的版本，所以 App 下載原本的檔案（先從方方詞卡的 GitHub 儲存庫裡的 fangfang-sources，那裡沒有才從原本發布的地方），在這台裝置上自己整理（要網路，大概一兩分鐘）。不熟、熟悉和收藏的詞不會因為移除詞典而不見。"),
+    Txt(tr("詞典的授權不允許分享改過的版本，所以 App 下載原本的檔案（先從方方詞卡在 GitHub 上的資料儲存庫 fangfang-data，那裡沒有才從原本發布的地方），在這台裝置上自己整理（要網路，大概一兩分鐘）。不熟、熟悉和收藏的詞不會因為移除詞典而不見。"),
         ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
     Spacer(Modifier.height(6.dp))
     Txt(tr("App 裡面沒有內建任何詞典：第一次選語言的時候會自動下載安裝，之後在這裡安裝其他語言的。維基詞典的資料（粵語的例句和錄音、台語詞的英文、華語的四川話讀音）檔案太大（2.5 GB），不在手機上整理。"),

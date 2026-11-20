@@ -235,8 +235,12 @@ final class ConvModel: ObservableObject {
         }
     }
 
+    /// 歌詞: the song the text is the lyrics of (its picked readings are kept for it)
+    var songKey: (@MainActor () -> String?)?
+
     func run() {
         guard let engine else { return }
+        engine.songKey = songKey?()
         result = engine.convert(text)
         UserDefaults.standard.set(text, forKey: key)
     }
@@ -270,7 +274,9 @@ struct ConvertPane: View {
         self.dict = dict
         self.lyrics = lyrics
         self.bar = bar
-        _model = StateObject(wrappedValue: ConvModel(key: textKey))
+        let m = ConvModel(key: textKey)
+        if lyrics || bar { m.songKey = { LyricsBridge.shared.song.map { SongLanguage.songKey($0.trackName, $0.artistName) } } }
+        _model = StateObject(wrappedValue: m)
     }
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
@@ -749,6 +755,7 @@ struct WordSheet: View {
                                             .latFont(20).foregroundStyle(T.greenInk)
                                         Text(optText(it.current, 2))
                                             .foregroundStyle(T.purpleInk)
+                                            .hongimLine()
                                     }
                                     if let k = dict.keyOf(it.current), dict.isUser(k) {
                                         HStack(spacing: 8) {
@@ -815,7 +822,7 @@ struct WordSheet: View {
                                         .foregroundStyle(Dict.hanOf(w.key) == han ? T.greenInk : T.glyph)
                                     Text(dict.wordText(w.key, min(max(rom, 0), 2), place)).latFont(16).foregroundStyle(T.greenInk)
                                     Spacer(minLength: 0)
-                                    PlaceChip(text: w.places.count >= 6 ? trs("多數地方") : dict.placeNames(w.places, most: 4))
+                                    PlaceChip(text: w.places.count >= 6 ? trs("多數地方") : dict.placeNames(w.places, most: 4), on: place >= 0 && w.places.contains(place))
                                 }
                                 if let g = glossKey(w.key, plain: dict.raw.loc?[w.key] != nil) {
                                     Text(g).ffFont(.footnote).foregroundStyle(T.glyph.opacity(0.75))
@@ -892,6 +899,7 @@ struct WordSheet: View {
                                         .latFont(17).foregroundStyle(T.greenInk)
                                     Text(optText(o, 2))
                                         .ffFont(.footnote).foregroundStyle(T.purpleInk)
+                                        .hongimLine()
                                 }
                                 if let l = o.label { Chip(text: l) }
                                 if let k = dict.keyOf(o), let r = dict.raw.reg[k] { RegChip(reg: r) }
@@ -1044,7 +1052,7 @@ struct DictEntryBody: View {
                 if let t = dict.raw.typ[key], t > 0, let types = dict.raw.types, t < types.count, t != 1 {
                     InfoChip.grey(types[t])
                 }
-                if let ps = dict.raw.loc?[key], !ps.isEmpty { PlaceChip(text: dict.placeNames(ps, most: 12) + trs("的講法")) }
+                if let ps = dict.raw.loc?[key], !ps.isEmpty { PlaceChip(text: dict.placeNames(ps, most: 12) + trs("的講法"), on: place >= 0 && ps.contains(place)) }
                 if dict.own.contains(key) { InfoChip.grey(tr("方方補")) }
                 if dict.isUser(key) { OwnChip() }
             }
@@ -1242,7 +1250,7 @@ struct DictEntryBody: View {
         let zhCol = VStack(alignment: .leading, spacing: 5) {
             ForEach(zh, id: \.n) { x in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if zh.count > 1 { Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit() }
+                    Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit()
                     Text(x.t).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9)).textSelection(.enabled)
                 }
             }
@@ -1529,6 +1537,8 @@ enum SearchOrder {
         ("freq", "常用的詞先"), ("exact", "和查的詞一模一樣的先"), ("place", "方言的講法先（選的腔口）"),
         ("short", "字少的先"), ("level", "HSK／TOCFL 等級低的先"),
     ]
+    /// (the 台語 deck's order, set before a search: 常用的詞先)
+    nonisolated(unsafe) static var twRank: [String: Int] = [:]
     static var chosen: [String] {
         (UserDefaults.standard.string(forKey: key) ?? "").split(separator: ",").map(String.init).filter { id in all.contains { $0.id == id } }
     }
@@ -1542,20 +1552,64 @@ enum SearchOrder {
             return a.offset < b.offset
         }.map(\.element)
     }
+    /// how common a 台語 word is, as a number that grows as it gets rarer: from the 台語 deck's order (the words
+    /// counted in real text), else from how common its characters are
+    static func rarity(_ d: Dict, _ k: String) -> Double {
+        if let n = twRank[k] { return log2(Double(n) + 2) }
+        let cs = Array(Dict.hanOf(k))
+        let f = cs.isEmpty ? 0 : cs.reduce(0) { $0 + (d.raw.freq[String($1)] ?? 0) } / Double(cs.count)
+        return 15 + max(0, 12 - f) * 0.4
+    }
+
+    /// the core order (smaller first). Two groups:
+    /// 1. the word written exactly as searched, and words whose meaning *is* the search word (食 = 吃。, 媠 = 漂亮的。):
+    ///    by how common they are (the exact word with a head start, so a rare literary 說 sueh doesn't beat 講)
+    /// 2. the rest, found inside a meaning: how common, plus a penalty for the meaning's length, more when the search
+    ///    word is only part of a longer phrase (第一人稱單數) than when it's one of a short list (很、非常) or a short
+    ///    word (吃喝), and a little for each later meaning
+    static func core(_ d: Dict, _ k: String, q: String) -> Double {
+        let r = rarity(d, k)
+        if Dict.hanOf(k) == q { return 100 + r - 2 }
+        func trim(_ x: String) -> String {
+            var t = x.trimmingCharacters(in: CharacterSet(charactersIn: "「」『』 "))
+            if t.count > 1, let l = t.last, l == "的" || l == "地" { t.removeLast() }
+            return t
+        }
+        var best: Double?
+        for (i, sense) in d.senses(k).enumerated() {
+            let text = sense.text.components(separatedBy: "\n").first ?? sense.text
+            guard text.contains(q) else { continue }
+            var body = text
+            while let l = body.last, l == "。" { body.removeLast() }
+            body = trim(body)
+            let parts = body.components(separatedBy: CharacterSet(charactersIn: "、，,；;。：:")).map(trim).filter { !$0.isEmpty }
+            let score: Double
+            if body == q || parts == [q] {
+                score = 100 + r + 0.6 * Double(i)
+            } else {
+                let item = parts.filter { $0.contains(q) }.min { $0.count < $1.count } ?? body
+                var pen = item == q ? 0 : (item.count <= q.count + 1 ? 1.5 : 6)
+                if !(parts.count <= 4 && parts.allSatisfy { $0.count <= 4 }) { pen += 1 }
+                score = 200 + r + 0.15 * Double(text.count) + pen + 0.6 * Double(i)
+            }
+            if best == nil || score < best! { best = score }
+        }
+        return best ?? (200 + r + 9)
+    }
+
     /// 台語: a word's value for one of them (smaller first)
     static func metric(_ d: Dict, _ k: String, _ key: String, q: String, place: Int) -> Double {
         let han = Dict.hanOf(key)
         switch k {
         case "freq":
-            let cs = Array(han)
-            guard !cs.isEmpty else { return 0 }
-            return -cs.reduce(0) { $0 + (d.raw.freq[String($1)] ?? 0) } / Double(cs.count)
+            // (the 台語 deck's order, how common a word is; else its characters')
+            return rarity(d, key)
         case "exact":
             if han == q { return 0 }
             return (d.gl[key] ?? []).contains { $0.t == q } ? 0 : 1
         case "place":
-            // (通行: the words only some places say, 方言詞, first)
-            guard place >= 0 else { return d.raw.loc?[key] != nil ? 0 : 1 }
+            // (通行: the words only some places say, 方言詞, last)
+            guard place >= 0 else { return d.raw.loc?[key] != nil ? 1 : 0 }
             if let ps = d.raw.loc?[key] { return ps.contains(place) ? 0 : 2 }
             return d.isStated(key, place) ? 0.5 : 1
         case "short": return Double(han.count)
@@ -1683,6 +1737,21 @@ enum Lookup {
     /// the search, its lists in the order chosen in 設定 → 詞典 → 搜尋結果的順序 (標準: as they come)
     static func run(_ d: Dict, _ q0: String, place: Int = -1, split: Bool = true) -> LookupResult {
         var r = run0(d, q0, place: place, split: split)
+        // the core order of the words found by their meaning: (1) the more common, the higher; (2) the longer the
+        // meaning that matched, the lower (人: the word 人 itself first, not 影 or 幹 because a meaning of theirs
+        // begins with 人、…)
+        let q1 = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+        let core: (String) -> Double = { k in SearchOrder.core(d, k, q: q1) }
+        let cs: ([String]) -> [String] = { SearchOrder.sort($0, ["c"]) { _, k in core(k) } }
+        r.exact = cs(r.exact); r.gloss = cs(r.gloss); r.synonyms = cs(r.synonyms); r.defs = cs(r.defs)
+        // 方言詞 (words only some places say): below the others; with a 腔口 on, that place's own ones first
+        let local: (String) -> Double = { k in
+            guard let ps = d.raw.loc?[k] else { return 0 }
+            return place >= 0 && ps.contains(place) ? -1 : 1
+        }
+        let dl: ([String]) -> [String] = { SearchOrder.sort($0, ["d"]) { _, k in local(k) } }
+        r.exact = dl(r.exact); r.taigi = dl(r.taigi); r.contains = dl(r.contains); r.gloss = dl(r.gloss)
+        r.synonyms = dl(r.synonyms); r.english = dl(r.english); r.tones = dl(r.tones); r.defs = dl(r.defs)
         let keys = SearchOrder.chosen
         guard !keys.isEmpty else { return r }
         let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1833,6 +1902,7 @@ struct LookupPane: View {
     @AppStorage("lookupQuery") private var query = ""
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
+    @AppStorage(SearchOrder.key) private var searchOrder = ""
     @State private var result = LookupResult()
     /// what `result` was searched for ("找不到" only once the search for what's typed has finished)
     @State private var searched = ""
@@ -1940,6 +2010,8 @@ struct LookupPane: View {
         }
         .onChange(of: query) { picked = nil; search() }
         .onChange(of: place) { search() }
+        // (設定 → 搜尋結果的順序 changed: the results again in the new order)
+        .onChange(of: searchOrder) { search() }
     }
 
     /// everything else, as a short list of pages right under 台語講法 (less to scroll)
@@ -1995,6 +2067,7 @@ struct LookupPane: View {
     private func search() {
         task?.cancel()
         let q = query, d = dict, pl = place
+        if SearchOrder.twRank.isEmpty { SearchOrder.twRank = store.taigiRank }
         task = Task {
             try? await Task.sleep(nanoseconds: 200_000_000)
             guard !Task.isCancelled else { return }
@@ -2707,7 +2780,12 @@ struct DictRow: View {
                 Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(16).foregroundStyle(T.greenInk)
                 Text(dict.wordText(key, 3, place) + AttributedString(dict.otherSpellings(key, 3, place))).toneGlow().ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                 Spacer(minLength: 0)
-                if let p = dict.placeLabel(key) { PlaceChip(text: p) }
+                // (白 / 文 / 俗 / 替 where the places are marked; a 方言詞's places green only when your 腔口 is one)
+                if let r = dict.raw.reg[key] { RegChip(reg: r) }
+                if dict.subst.contains(key) { Chip(text: tr("替"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk) }
+                if let ps = dict.raw.loc?[key], !ps.isEmpty {
+                    PlaceChip(text: dict.placeNames(ps), on: place >= 0 && ps.contains(place))
+                }
                 if dict.isUser(key) { OwnChip() }
                 if store.isSaved(key) { Image(systemName: "bookmark.fill").ffFont(.caption).foregroundStyle(T.oliveInk) }
                 switch store.cardStatus(key) {
@@ -2772,7 +2850,12 @@ extension Dict {
 /// where a word is said (a 方言詞's places, 各地講法)
 struct PlaceChip: View {
     let text: String
-    var body: some View { Chip(text: text, fill: T.twFill, edge: T.twEdge, ink: T.twInk) }
+    /// green: the place is the 腔口 chosen (else grey)
+    var on = true
+    var body: some View {
+        if on { Chip(text: text, fill: T.twFill, edge: T.twEdge, ink: T.twInk) }
+        else { Chip(text: text, fill: T.fn, edge: T.fnEdge, ink: T.muted) }
+    }
 }
 
 /// shown under examples when some readings in them are guessed
@@ -3689,7 +3772,7 @@ struct TwPlaceRows: View {
                 if guessed { Text(tr("推測")).ffFont(.caption2).foregroundStyle(T.muted) }
             }
             Text(dict.wordText(key, rom, p)).latFont(15).foregroundStyle(T.greenInk)
-            if rom != 3 { Text(dict.wordText(key, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk) }
+            Text(dict.wordText(key, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk).hongimLine()
             if p >= 0 {
                 ForEach(dict.alsoSaid(key, p), id: \.self) { x in
                     Text(tr("也講") + " " + dict.codes(x, rom, p) + (dict.isContraction(x, key) ? trs("（合音）") : "")).ffFont(.caption2).foregroundStyle(T.muted)

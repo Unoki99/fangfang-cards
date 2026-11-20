@@ -1490,7 +1490,7 @@ final class SongLanguage: ObservableObject {
         tags = UserDefaults.standard.dictionary(forKey: Self.key) as? [String: Int] ?? [:]
     }
 
-    static func songKey(_ title: String, _ artist: String) -> String {
+    nonisolated static func songKey(_ title: String, _ artist: String) -> String {
         (title + "|" + artist).folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
             .trimmingCharacters(in: .whitespaces)
     }

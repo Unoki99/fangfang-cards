@@ -93,8 +93,8 @@ class DictPack(
                 Source("essay.txt", G + "rime/rime-essay/master/essay.txt")),
             "taigi", "buildTaigi", "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻", "約 15 MB",
             bundled = mapOf("own" to "twown.json"),
-            // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own)
-            dataVersion = 5)
+            // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own; 6: local readings told apart by meaning, 合音 entries)
+            dataVersion = 7)
 
         val mandarin = DictPack("zh", 1, "華語", listOf("zh", "inputcodes"),
             listOf(Source("dict-csld.json", G + "g0v/moedict-data-csld/master/dict-csld.json", arg = "csld"),
@@ -146,10 +146,10 @@ class DictPack(
 
         val all = listOf(taigi, mandarin, cantonese, hakka, japanese, shuowen)
 
-        /** the copies of the original files in the fangfang-sources folder of this project's GitHub repository
+        /** the copies of the original files in this project's data repository on GitHub, unoki99/fangfang-data
          *  (unchanged, one folder per dictionary, and common for files more than one uses), the same as the iPhone
          *  app's: a file is downloaded from there first, and from where it's published when it isn't there */
-        const val MIRROR = "https://raw.githubusercontent.com/unoki99/fangfang-cards/main/fangfang-sources/"
+        const val MIRROR = "https://raw.githubusercontent.com/unoki99/fangfang-data/main/"
         /** (files that can't be shared) */
         private val notMirrored = setOf("tocfl.csv", "tbcl-chars.csv", "folkets_kth.xml")
         private val sharedFiles = setOf("essay.txt", "cedict_ts.u8")
@@ -240,7 +240,7 @@ object DictInstaller {
                     states[p.id] = InstallState.Working(0.3 * i / maxOf(p.sources.size, 1), tr("下載 {0}…", s.file))
                     try {
                         val dest = File(work, s.file)
-                        // (the copy on GitHub (fangfang-sources) first; where it's published when the copy isn't there)
+                        // (the copy on GitHub (fangfang-data) first; where it's published when the copy isn't there)
                         withContext(Dispatchers.IO) {
                             val m = p.mirrorURL(s)
                             val got = m != null && try { download(m, dest); true } catch (_: Exception) { false }

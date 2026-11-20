@@ -57,6 +57,7 @@ object Prefs : KeyValue {
     val hongimTone1 = Pref("hongimTone1", true)
     /** …and, left out, a space in its place */
     val hongimTone1Space = Pref("hongimTone1Space", false)
+    val hongimSpaceAll = Pref("hongimSpaceAll", false)
     val toneGlow = Pref("toneGlow", true)
     val hideMeaning = Pref("hideMeaning", false)
     val autoPlay = Pref("autoPlay", false)
@@ -67,7 +68,7 @@ object Prefs : KeyValue {
     val sessionSize = Pref("sessionSize", 10)
     val audioBase = Pref("audioBase", "https://unoki99.github.io/fangfang/")
     val theme = Pref("appTheme", "night")
-    /** 設定 → 畫成圖再放大: tappable words swell when pressed (off = they don't) */
+    /** 設定 → 指到的字放大: tappable words swell when pressed (off = they don't) */
     val swellAnim = Pref("swellOn", true)
     val widgetBG = Pref("widgetBG", 0.45f)
     val textSize = Pref("textSize", 0)
@@ -131,6 +132,8 @@ object Prefs : KeyValue {
     val practiceWrite = Pref("practiceWrite", true)
     /** the themes' backgrounds and the potions move (off: less power) */
     val themeMotion = Pref("themeMotion", true)
+    /** 省電動畫: the background drawn 12 times a second instead of 30 */
+    val motionSaver = Pref("themeMotionSaver", false)
     /** 華語's own copy layout */
     val zhCopyTpl = Pref("zh.senseCopyTpl", com.unoki99.fangfang.engine.SenseCopy.zhPresets[0].tpl)
     val zhCopyEx = Pref("zh.senseCopyExTpl", com.unoki99.fangfang.engine.SenseCopy.zhPresets[0].ex)
@@ -212,11 +215,11 @@ object Prefs : KeyValue {
     /** 本週學習 → 選詞: the 分類 the words are picked from (-1 = 不熟) */
     val weekPickTopic = Pref("weekPickTopic", -1)
 
-    private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, hongimTone1, hongimTone1Space, toneGlow, hideMeaning, autoPlay, volume, radioVolume, goal, sessionSize,
+    private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, hongimTone1, hongimTone1Space, hongimSpaceAll, toneGlow, hideMeaning, autoPlay, volume, radioVolume, goal, sessionSize,
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
-        copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion,
+        copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
         zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
 
     fun init(ctx: Context) {
@@ -231,6 +234,7 @@ object Prefs : KeyValue {
         radioVolume.onChange = { Radio.radioVolumeChanged() }
         hongimTone1.onChange = { syncEngine() }
         hongimTone1Space.onChange = { syncEngine() }
+        hongimSpaceAll.onChange = { syncEngine() }
         com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value, toneColorsHak.value)
         simplified.onChange = { syncEngine() }
         loadJaColors()
@@ -245,6 +249,7 @@ object Prefs : KeyValue {
         EngineSettings.toneMarks = toneMarks.value
         EngineSettings.hongimTone1 = hongimTone1.value
         EngineSettings.hongimTone1Space = hongimTone1Space.value
+        EngineSettings.hongimSpaceAll = hongimSpaceAll.value
         EngineSettings.simplified = simplified.value
         EngineSettings.hakAccent = hakAccent.value.coerceIn(0, 5)
     }

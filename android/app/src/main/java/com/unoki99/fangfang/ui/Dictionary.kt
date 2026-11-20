@@ -37,7 +37,7 @@ import kotlinx.coroutines.withContext
 
 /** what the texts depend on: redraw (and work out again) when one of these changes */
 @Composable
-fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value, Prefs.toneGlow.value, Prefs.theme.value,
+fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value, Prefs.hongimSpaceAll.value, Prefs.toneGlow.value, Prefs.theme.value,
     Prefs.zhRom.value, Prefs.zhPlace.value)
 
 // MARK: - entry
@@ -118,13 +118,6 @@ fun DictEntryBody(d: Dict, key: String) {
         if (oth.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             for (o in oth) OtherRow(o.label, d.codes(o.codes, rom, -1, o.tokens), d.codes(o.codes, 3, if (o.label == "通行") -1 else place, o.tokens))
         }
-        // names
-        if (han.cpCount == 1) {
-            fun part(lab: String, list: List<List<String>>?): String? =
-                if (list.isNullOrEmpty()) null else lab + "：" + list.take(4).joinToString("、") { d.codes(it[0], rom, -1) }
-            val s = listOfNotNull(part("人名", d.raw.names[han]), part("姓", d.raw.sur[han])).joinToString("　")
-            if (s.isNotEmpty()) Txt(s, lat(14f), T.muted)
-        }
         // 異用字
         val vs = remember(key) { d.raw.variants.filter { it.value.contains(key) }.keys.sorted() }
         if (vs.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -167,23 +160,64 @@ fun DictEntryBody(d: Dict, key: String) {
                 }
             }
         }
-        d.gl[key]?.takeIf { it.isNotEmpty() }?.let { g ->
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip(tr("華語"), T.fn, T.fnEdge, T.muted)
-                Txt(g.joinToString("、") { it.t }, ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
+        // 華語 and 英: side by side when there's room (one under the other on a phone), each numbered. The 華語 numbers
+        // are the meanings' own, the same as the numbered meanings and their example sentences below
+        val zhShort = remember(key) {
+            val ss = d.senses(key)
+            val out = ss.mapNotNull { s ->
+                var t = s.text.substringBefore("\n").substringBefore("。").trim()
+                if (t.length > 28) t = t.take(27) + "…"
+                if (t.isEmpty()) null else s.n to t
+            }
+            if (out.isNotEmpty()) out else (d.gl[key] ?: emptyList()).mapIndexed { i, g -> (i + 1) to g.t }
+        }
+        val en = remember(key) { TwEnglish.meanings(key) }
+        @Composable fun zhCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Chip(tr("華"), T.fn, T.fnEdge, T.muted)
+            Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                for ((n, t) in zhShort) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (zhShort.size > 1) Chip("$n", T.olive, T.oliveEdge, T.oliveInk)
+                    Txt(t, ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
+                }
             }
         }
-        // English from Wiktionary (a file of its own: the dictionary's own meanings below stay as they are)
-        val en = remember(key) { TwEnglish.meanings(key) }
-        if (en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        @Composable fun enCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Chip(tr("英"), T.fn, T.fnEdge, T.muted)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                EnglishList(en, max = 6)
+                EnglishList(en, max = 8)
                 Txt(tr("英文解釋：維基詞典（CC BY-SA）"), ff(FF.Caption2), T.muted)
+            }
+        }
+        if (zhShort.isNotEmpty() || en.isNotEmpty()) androidx.compose.foundation.layout.BoxWithConstraints {
+            if (zhShort.isNotEmpty() && en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                zhCol(Modifier.weight(1f)); enCol(Modifier.weight(1f))
+            } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (zhShort.isNotEmpty()) zhCol(Modifier)
+                if (en.isNotEmpty()) enCol(Modifier)
             }
         }
         val senses = remember(key) { d.senses(key) }
         for (s in senses) SenseBlock(d, key, s)
+        // a word with no meaning of its own, only listed as another word's 近義 / 反義 (光龐龐)
+        if (senses.isEmpty()) {
+            val back = remember(key) { d.linkedFrom(key) }
+            if (back.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Txt(tr("辭典沒有另外解釋這個詞，只把它列做下面這些詞的近義詞或反義詞："), ff(FF.Caption), T.muted)
+                for (b in back) {
+                    val ss = d.senses(b.key)
+                    val s = ss.getOrNull(b.sense) ?: ss.firstOrNull()
+                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f))
+                        .clickable { nav.push(Route.Entry(b.key)) }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            if (b.syn) Chip(tr("近"), T.blue, T.blueEdge, T.blueInk) else Chip(tr("反"), T.rust, T.rustEdge, T.rustInk)
+                            Txt(Dict.hanOf(b.key), ff(FF.Headline), T.glyph)
+                            Txt(d.wordText(b.key, rom.coerceIn(0, 2), place).annotated(), lat(15f), T.greenInk)
+                        }
+                        if (s != null) Txt((if (b.syn) "" else tr("（反義）")) + s.text, ff(FF.Body), T.glyph.copy(alpha = 0.9f))
+                    }
+                }
+            }
+        }
         // a single character: 說文解字 (when installed)
         if (han.cpCount == 1) ShuowenBlock(han)
         if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()
@@ -193,6 +227,13 @@ fun DictEntryBody(d: Dict, key: String) {
             LinkChips(d, tr("反"), wl.second, T.rust, T.rustEdge, T.rustInk)
         }
         if (d.raw.typ[key] == 1) Txt(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。"), ff(FF.Caption), T.muted)
+        // names (last: the least needed)
+        if (han.cpCount == 1) {
+            fun part(lab: String, list: List<List<String>>?): String? =
+                if (list.isNullOrEmpty()) null else lab + "：" + list.take(4).joinToString("、") { d.codes(it[0], rom, -1) }
+            val s = listOfNotNull(part("人名", d.raw.names[han]), part("姓", d.raw.sur[han])).joinToString("　")
+            if (s.isNotEmpty()) Txt(s, lat(14f), T.muted)
+        }
     }
 }
 
@@ -259,6 +300,8 @@ private fun LinkChips(d: Dict, name: String, keys: List<String>, fill: Color, ed
                     .padding(horizontal = 8.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(Dict.hanOf(k), ff(FF.Subheadline), T.glyph)
                     Txt(d.wordText(k, rom, place).annotated(ink), lat(13f), ink)
+                    // (a word only some places say: which)
+                    d.raw.loc?.get(k)?.takeIf { it.isNotEmpty() }?.let { Txt(d.placeNames(it), ff(FF.Caption2), T.muted) }
                 }
             }
         }
@@ -434,20 +477,36 @@ fun TwPlaceRows(d: Dict, key: String) {
     val place = Prefs.place.value
     val tk = textKey()
     val local = d.raw.loc?.get(key)?.filter { it < d.raw.places.size }
-    val cells = if (local != null) local else listOf(-1) + d.raw.places.indices.toList()
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        for (p in cells) {
-            val mine = p == place
-            val guessed = p >= 0 && d.guessedSyllables(key, p).isNotEmpty()
-            val name = if (p < 0) tr("通行") else tr(d.raw.places[p].take(2))
-            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
-                    if (guessed) Txt(tr("推測"), ff(FF.Caption2), T.muted)
+    val all = local ?: d.raw.places.indices.toList()
+    @Composable fun cell(p: Int, m: Modifier = Modifier) {
+        val mine = p == place
+        val guessed = p >= 0 && d.guessedSyllables(key, p).isNotEmpty()
+        val name = if (p < 0) tr("通行") else tr(d.raw.places[p].take(2))
+        Column(m, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+                Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
+                if (guessed) Txt(tr("推測"), ff(FF.Caption2), T.muted)
+            }
+            Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk)
+            Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk)
+            if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p) + (if (d.isContraction(x, key)) tr("（合音）") else ""), ff(FF.Caption2), T.muted)
+        }
+    }
+    // 通行 first; then the places by 腔 (偏泉腔, 混合腔, 偏漳腔), three to a row (two when the readings are long)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (local == null) cell(-1)
+        for (k in listOf("泉", "混", "漳")) {
+            val ps = all.filter { d.raw.places[it].contains(k) }
+            if (ps.isEmpty()) continue
+            val long = ps.any { d.wordText(key, rom, it).plain().length > 10 }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(Modifier.size(24.dp).background(T.fn.copy(alpha = 0.7f), CircleShape), contentAlignment = Alignment.Center) {
+                    Txt(tr(k), ff(FF.Caption), T.muted)
                 }
-                Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk)
-                Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk)
-                if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p), ff(FF.Caption2), T.muted)
+                // (as many on a line as fit: 4 or 5 on a wide screen, fewer on a phone)
+                FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (p in ps) cell(p, Modifier.widthIn(min = if (long) 120.dp else 78.dp))
+                }
             }
         }
     }
@@ -496,7 +555,7 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
                 }
                 val also = g.places.flatMap { d.alsoSaid(key, it) }.toSet().sorted()
                 for (x in also) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    PlaceChip(tr("也講"))
+                    PlaceChip(if (d.isContraction(x, key)) tr("合音") else tr("也講"))
                     Txt(d.codes(x, rom, g.places[0]), lat(15f), T.greenInk)
                     Txt(d.codes(x, 3, g.places[0]), ff(FF.Footnote), T.purpleInk)
                     val who = g.places.filter { d.alsoSaid(key, it).contains(x) }

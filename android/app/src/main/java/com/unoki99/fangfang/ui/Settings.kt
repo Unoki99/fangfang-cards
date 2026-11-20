@@ -328,6 +328,7 @@ private fun LookPage(openJa: () -> Unit, openColors: () -> Unit) {
         var theme by Prefs.theme
         MenuRow(tr("主題"), tr(AppTheme.of(theme).title), AppTheme.entries.map { it.raw to tr(it.title) }) { theme = it }
         RowDivider(); SwitchRow(tr("主題動畫"), Prefs.themeMotion)
+        RowDivider(); SwitchRow(tr("省電動畫"), Prefs.motionSaver, enabled = Prefs.themeMotion.value)
         RowDivider()
         val ts = Prefs.toneSys.value
         MenuRow(tr("聲調顏色"), when (ts) { 7 -> "七聲"; 5 -> "五聲"; else -> "關" }, listOf(0 to "關", 7 to "七聲", 5 to "五聲")) { Prefs.toneSys.value = it }
@@ -353,13 +354,23 @@ private fun LookPage(openJa: () -> Unit, openColors: () -> Unit) {
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted)
         }
-        RowDivider(); SwitchRow(tr("畫成圖再放大"), Prefs.swellAnim)
+        RowDivider(); SwitchRow(tr("指到的字放大"), Prefs.swellAnim)
         RowDivider()
         Column(Modifier.padding(14.dp)) {
-            val lvl = Prefs.textSize.value
+            // (while the slider moves only the sample grows; the whole app follows when it's let go)
+            var draft by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
+            val lvl = draft?.let { Math.round(it) } ?: Prefs.textSize.value
             Row { Txt(tr("文字大小"), ff(FF.Body), modifier = Modifier.weight(1f)); Txt(TextSize.names[lvl.coerceIn(0, TextSize.names.size - 1)], ff(FF.Body), T.muted) }
-            Slider(lvl.toFloat(), { Prefs.textSize.value = Math.round(it) }, valueRange = 0f..(TextSize.names.size - 1).toFloat(),
+            Slider(draft ?: lvl.toFloat(), { draft = it }, valueRange = 0f..(TextSize.names.size - 1).toFloat(),
+                onValueChangeFinished = { draft?.let { Prefs.textSize.value = Math.round(it) }; draft = null },
                 steps = TextSize.names.size - 2, colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(Modifier.size(96.dp).clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.7f)).border(1.dp, T.fnEdge, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Text("字", color = T.glyph, fontSize = androidx.compose.ui.unit.TextUnit(22f * TextSize.factor(lvl), androidx.compose.ui.unit.TextUnitType.Sp))
+                }
+                Txt(tr("拖的時候這裡先變大；放開以後整個 App 才跟著變。"), ff(FF.Footnote), T.muted, modifier = Modifier.weight(1f))
+            }
             Txt(tr("也會跟著手機的字型大小。"), ff(FF.Footnote), T.muted)
         }
     }
@@ -410,6 +421,7 @@ private fun LanguagePage() {
         RowDivider(); SwitchRow(tr("方音標第一聲（ˉ）"), Prefs.hongimTone1)
         // (only when the mark is left out: a space in its place)
         RowDivider(); SwitchRow(tr("第一聲的地方空一格"), Prefs.hongimTone1Space, enabled = !Prefs.hongimTone1.value)
+        RowDivider(); SwitchRow(tr("方音每個音節中間空一格"), Prefs.hongimSpaceAll)
     }
     SectionTitle(tr("字形"))
     Group {

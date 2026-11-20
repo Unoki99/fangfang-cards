@@ -26,7 +26,40 @@ object EngineSettings {
     @Volatile var hongimTone1Space = false
 
     /** a 方音 reading with or without the first-tone mark, as chosen */
-    fun hongim(s: String): String = if (hongimTone1 || !s.contains('ˉ')) s else s.replace("ˉ", if (hongimTone1Space) " " else "")
+    /** 設定 → 詞典 → 搜尋結果的順序: empty = 標準; else up to three of SearchOrder's ids, the first counts first */
+    @Volatile var searchOrder: List<String> = emptyList()
+    /** the 華語 word list chosen (0 HSK, 1 TOCFL), for 「等級低的先」 */
+    @Volatile var zhList = 0
+    /** a space between every syllable (ㄉㄧㄠˋ ㄧˉ) */
+    @Volatile var hongimSpaceAll = false
+
+    /** one syllable: the first-tone mark left out when asked (the space for it comes from hongimGap) */
+    fun hongimSyllable(s: String): String = if (hongimTone1) s else s.replace("ˉ", "")
+    /** between two syllables of a word: a space between all of them, or after one whose ˉ was left out (never two) */
+    fun hongimGap(prev: String): String = if (hongimSpaceAll || (!hongimTone1 && hongimTone1Space && prev.contains('ˉ'))) " " else ""
+    private val marks = setOf('ˉ', 'ˋ', 'ˊ', '˪', '˫', '\uA715', '\uA718', '\u0307', '˙')
+    private val stops = setOf('ㆴ', 'ㆵ', 'ㆶ', 'ㆷ')
+    private fun isZy(c: Char) = c in '\u3105'..'\u312F' || c in '\u31A0'..'\u31BF'
+    /** a syllable in the light tone (after "--"): ˙ before it, as 注音 writes 輕聲, its own tone mark left out */
+    fun hongimLight(s: String): String = "˙" + s.filter { it !in marks }
+
+    /** a whole 方音 reading written out already: the syllables spaced (when asked) and the first-tone mark */
+    fun hongim(s: String): String {
+        var out = s
+        if (hongimSpaceAll) {
+            val b = StringBuilder()
+            for (i in s.indices) {
+                b.append(s[i])
+                if (i + 1 >= s.length) break
+                val n = s[i + 1]
+                if ((s[i] in marks && s[i] != '˙' && (isZy(n) || n == '˙')) || (s[i] in stops && isZy(n))) b.append(' ')
+            }
+            out = b.toString()
+        }
+        if (hongimTone1 || !out.contains('ˉ')) return out
+        if (hongimTone1Space && !hongimSpaceAll) out = out.replace(Regex("ˉ(?=[\\u3105-\\u312F\\u31A0-\\u31BF˙])"), " ")
+        return out.replace("ˉ", "")
+    }
     /** 粵語 shown (Store) */
     @Volatile var yue = false
     /** 客語 shown (Store) */
@@ -255,6 +288,14 @@ fun Dict.keepsLastTone(key: String?, prev: String? = null, next: String? = null,
             val nounHere = pp.contains("代詞") || pp.contains("數詞") || pp.contains("量詞")
             if (!nounHere) main = "動詞"
         }
+        // a one-syllable word that is both a 名詞 and a 副詞 (閣 koh: 樓閣, and 閣【替】 又、還): the 副詞 when a
+        // verb, adjective or adverb comes next (閣不止仔媠), unless it's after 這 / 彼 / a number / a 量詞
+        if (main.contains("名詞") && pos.contains("副詞") && !Dict.codesOf(key).contains(" ")) {
+            val pp = prev?.let { raw.pos[it] } ?: ""
+            val np = next?.let { raw.pos[it] }?.split("|")?.get(0) ?: ""
+            val nounHere = pp.contains("代詞") || pp.contains("數詞") || pp.contains("量詞")
+            if (!nounHere && (np.contains("動詞") || np.contains("形容詞") || np.contains("副詞"))) main = "副詞"
+        }
     }
     if (main.contains("時間詞")) return true
     if (main.contains("名詞")) return true
@@ -301,20 +342,21 @@ private fun cap1(s: String): String = if (s.isEmpty()) s else {
 /** a reading drawn syllable by syllable in its tone colours (same text as render) */
 fun Dict.toneText(tokens: List<String>, sys: Int, place: Int, tones: List<Int>, system: Int): Styled {
     val b = StyledBuilder()
-    var prevCode = false; var n = 0
+    var prevCode = false; var n = 0; var prevRaw = ""; var light = false
     for (t in tokens) {
         val cap = t.startsWith("^"); val c = if (cap) t.drop(1) else t
         if (isCode(c)) {
-            if (sys != 3 && prevCode) b.add("-")
+            if (prevCode) b.add(if (sys == 3) EngineSettings.hongimGap(prevRaw) else "-")
             val shown = if (EngineSettings.toneMarks && n < tones.size) sandhiCode(c, tones[n]) else c
             var s = syl(shown, sys, place)
+            if (sys == 3) { prevRaw = raw.syl[shown]?.firstOrNull() ?: ""; if (light) s = EngineSettings.hongimLight(s) }
             if (cap && sys != 3) s = cap1(s)
             b.add(s, if (n < tones.size) ToneColors.color(tones[n], system) else null)
             n++; prevCode = true
-        } else if (t == "--") { if (sys != 3) b.add("--"); prevCode = false }
-        else if (t == "_") { b.add(" "); prevCode = false }
-        else if (t.startsWith("~")) { b.add(t.drop(1)); prevCode = false }
-        else { b.add(t); prevCode = false }
+        } else if (t == "--") { if (sys != 3) { b.add("--"); prevCode = false }; light = true }
+        else if (t == "_") { b.add(" "); prevCode = false; light = false }
+        else if (t.startsWith("~")) { b.add(t.drop(1)); prevCode = false; light = false }
+        else { b.add(t); prevCode = false; light = false }
     }
     return b.build()
 }

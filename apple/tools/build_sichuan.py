@@ -3,12 +3,14 @@
 # into a file of its own (FangfangCards/zh_sc.json). The dictionary (zh.json) isn't changed: the app shows these
 # readings when 讀音 = 四川話, and the 普通話 reading for a word Wiktionary has no 四川話 reading for.
 #   python3 build_sichuan.py zh.json OUT [kaikki.org-dictionary-Chinese.jsonl]
-#   (without the Wiktionary file it's read straight from kaikki.org, without saving it)
+#   (without the Wiktionary file: this project's copy in fangfang-data/common, else kaikki.org: wikt_lines.py)
 #
 # A Wiktionary page counts for a word only when it has the same 漢字 and its 普通話 reading (拼音, without the
 # tones) is the word's: 行 xíng and 行 háng don't get each other's 四川話 reading. The readings are in 四川話拼音
 # with the tone as a number: 1 陰平, 2 陽平, 3 上聲, 4 去聲 (the same four categories as 普通話's).
 import collections, io, json, re, sys, unicodedata, urllib.request
+sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
+import wikt_lines
 
 ZH, OUT = sys.argv[1], sys.argv[2]
 KAIKKI = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "-" else None
@@ -67,10 +69,8 @@ def sichuan(p):
 
 
 def lines():
-    if KAIKKI:
-        return open(KAIKKI, encoding="utf-8-sig")
-    print("reading Wiktionary from kaikki.org…", file=sys.stderr)
-    return io.TextIOWrapper(urllib.request.urlopen(URL), encoding="utf-8")
+    # (the file given, else this project's copy in fangfang-data, else kaikki.org: wikt_lines.py)
+    return wikt_lines.lines(KAIKKI)
 
 
 # 四川話's own words (not in the 華語 dictionary): pages with meanings marked Sichuanese, and the words the

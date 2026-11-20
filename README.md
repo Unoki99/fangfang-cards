@@ -29,7 +29,7 @@ iPhone／iPad 要用 USB 接上 Mac（第一次要在手機上按「信任」）
 做好的 APK 會放在桌面（FangfangCards.apk），傳到手機上點它安裝；手機用 USB 接著並打開「USB 偵錯」的話，會直接裝上去。
 詳細說明在 `android/README.md`。
 
-**詞典資料**：教育部和中華文化總會的詞典授權不允許散布整理過的資料檔，所以這裡沒有那些檔案。`fangfang-sources` 資料夾裡是詞典**原始檔案未經修改的副本**（App 和安裝程式先從這裡下載，下載不到才去原本的網站），每個檔案依照它自己的授權（見 `fangfang-sources/README.md`），**不在本專案的 MIT 授權範圍內**。第一次安裝的時候，`install.sh` 會在你自己的電腦上從原始的詞典檔案產生（要網路，幾分鐘；需要 Mac 內建的 Python 3）。Apple 版和 Android 版用同一份資料。Android 版的詞典（台語、華語、粵語、客語、日語、說文解字）都在電腦上做好、放進 App 裡（在手機上做大的詞典會記憶體不足）；日語和說文解字用 Node.js 做，沒有的話安裝程式會自己下載一個（只有第一次）。資料來源和授權見 `apple/README.md` 的「資料來源與授權」。
+**詞典資料**：教育部和中華文化總會的詞典授權不允許散布整理過的資料檔，所以這裡沒有那些檔案。詞典**原始檔案的副本**在另一個儲存庫 [unoki99/fangfang-data](https://github.com/unoki99/fangfang-data)（App 和安裝程式先從那裡下載，下載不到才去原本的網站），每個檔案依照它自己的授權（見那裡的 README.md），**不在本專案的 MIT 授權範圍內**。第一次安裝的時候，`install.sh` 會在你自己的電腦上從原始的詞典檔案產生（要網路，幾分鐘；需要 Mac 內建的 Python 3）。Apple 版和 Android 版用同一份資料。Android 版的詞典（台語、華語、粵語、客語、日語、說文解字）都在電腦上做好、放進 App 裡（在手機上做大的詞典會記憶體不足）；日語和說文解字用 Node.js 做，沒有的話安裝程式會自己下載一個（只有第一次）。資料來源和授權見 `apple/README.md` 的「資料來源與授權」。
 
 ## Windows
 
@@ -62,14 +62,9 @@ Windows 版和 Android 版用同一份程式碼（`android/app/src/main/java`）
 
 ### 查詞的附加元件給 Firefox（電腦和 Android）
 
-Safari 查詞（網頁查詞、影片字幕）也可以裝在 Firefox，包括 Android 手機上的 Firefox。不用先做詞典資料：
+Safari 查詞（網頁查詞、影片字幕）也可以裝在 Firefox，包括 Android 手機上的 Firefox。Firefox 的版本是另外一個檔案（`fangfang-firefox.zip`），不在這個儲存庫裡；也可以在 Firefox 的附加元件頁找「方方詞卡 查詞」安裝。
 
-- **Windows**：在資料夾裡**雙擊 `build-firefox.bat`**。
-- **Mac**：在終端機執行 `bash ~/Desktop/fangfang-cards-main/apple/tools/build_firefox.sh`。
-
-桌面會多一個 `fangfang-firefox.xpi`。**裡面沒有任何詞典**（詞典的授權不允許散布改過的版本）：裝好以後打開它的設定頁，在「詞典」選語言按「安裝」，它會下載詞典原本的檔案，在瀏覽器裡整理好。所以這個版本可以公開：在 addons.mozilla.org/developers 第一次按「Submit a New Add-on」，之後在「My Add-ons」打開它按「Upload New Version」，都選「On this site」，審核通過以後大家都能在 Firefox 的附加元件頁找到、安裝。（要先自己試的話：上傳時選「On your own」，下載簽好的檔案，在 Firefox 從檔案安裝；Android：設定 → 關於 Firefox → 連點標誌 5 次 → 回到設定 → 從檔案安裝附加元件。）
-
-只給自己用、把做好的資料直接放進去的版本：`build-firefox.bat withdata`（Mac：`build_firefox.sh withdata`，要先照上面做出詞典資料），做出 `fangfang-firefox-private.xpi`。這個版本有改過的詞典資料，只能選「On your own」，不能公開。
+**裡面沒有任何詞典**（詞典的授權不允許散布改過的版本）：裝好以後打開它的設定頁，在「詞典」選語言按「安裝」，它會下載詞典原本的檔案（先從 [fangfang-data](https://github.com/unoki99/fangfang-data)），在瀏覽器裡整理好。所以這個版本可以公開：在 addons.mozilla.org/developers 第一次按「Submit a New Add-on」，之後在「My Add-ons」打開它按「Upload New Version」，都選「On this site」，審核通過以後大家都能在 Firefox 的附加元件頁找到、安裝。（要先自己試的話：Firefox 網址列打 about:debugging → 這個 Firefox → 載入暫時的附加元件 → 選這個檔案；或上傳時選「On your own」，下載簽好的檔案，在 Firefox 從檔案安裝；Android：設定 → 關於 Firefox → 連點標誌 5 次 → 回到設定 → 從檔案安裝附加元件。）
 
 ---
 

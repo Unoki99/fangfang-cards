@@ -292,6 +292,14 @@ private struct SplitPotionLiquid: View, Animatable {
 }
 
 /// 熟悉 → 學習進度: for each level of the word list, how much of it you know (blue) and don't know yet (orange)
+/// a level's word list, or 認識的漢字, opened from 學習進度: links that only carry this, with the page they open
+/// attached outside the lazy list (a link that holds its page itself is dropped when the list is made again, as
+/// it is when a word's status changes, and you were sent back to the list)
+enum LevelRoute: Hashable {
+    case level(Int, String)
+    case chars
+}
+
 struct HSKProgressView: View {
     @EnvironmentObject var store: Store
     var body: some View {
@@ -306,7 +314,7 @@ struct HSKProgressView: View {
                     .disabled(store.switching)
                 }
                 if store.isZh {
-                    NavigationLink { ZhCharListView() } label: { charMeter }
+                    NavigationLink(value: LevelRoute.chars) { charMeter }
                         .buttonStyle(.plain)
                 }
                 // 台語: 常用詞 and 常用字, 500 a group
@@ -324,7 +332,7 @@ struct HSKProgressView: View {
                     let p = all[t.id] ?? (0, 0, 0)
                     let k = p.total > 0 ? Double(p.known) / Double(p.total) : 0
                     let u = p.total > 0 ? Double(p.unknown) / Double(p.total) : 0
-                    NavigationLink { LevelWordsView(level: t.id, name: t.name) } label: {
+                    NavigationLink(value: LevelRoute.level(t.id, t.name)) {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline) {
                             Image(systemName: "chevron.right").ffFont(.caption).foregroundStyle(T.muted)
@@ -355,6 +363,12 @@ struct HSKProgressView: View {
             .padding()
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
+        }
+        .navigationDestination(for: LevelRoute.self) { r in
+            switch r {
+            case .level(let id, let name): LevelWordsView(level: id, name: name)
+            case .chars: ZhCharListView()
+            }
         }
     }
     private func pct(_ v: Double) -> String { "\(Int((v * 100).rounded()))%" }

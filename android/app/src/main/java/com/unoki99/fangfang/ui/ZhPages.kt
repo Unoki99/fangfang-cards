@@ -321,9 +321,10 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             }
             if (!z.isJa) InputCodesRow(e.h)
             // the English meanings, one per line (日語: the meanings are English already)
-            if (e.enList.isNotEmpty() && !z.isJa) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Chip(tr("英"), T.fn, T.fnEdge, T.muted)
-                EnglishList(e.enList)
+            // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
+            if (!z.isJa) {
+                val zhShort = if (z.isYue || z.lang == 5) emptyList() else e.senses.mapNotNull { s -> shortMeaning(s.text).takeIf { it.isNotEmpty() }?.let { s.n to it } }
+                MeaningsOverview(zhShort, if (z.isHak) tr("客") else tr("華"), e.enList)
             }
             // 粵語: the 華語 word(s) with the same meaning
             if (e.eq.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -675,6 +676,8 @@ fun HSKProgressList() {
     val all = Store.allTopicProgress()
     val firstChar = Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // 華語: the word list switched right here too (HSK 3.0 ⇄ TOCFL), not only in 新詞
+        if (Store.lang == 1) item { Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.zhList.value, { Store.setZhList(it) }) }
         if (zh) item { CharMeter { nav.push(Route.ZhChars) } }
         items(list, key = { "h|" + it.id }) { t ->
             if (zh && t.id == firstChar) Txt(tr("漢字卡"), ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))

@@ -83,6 +83,7 @@ struct ZhDictTabs: View {
 // MARK: 查詞
 
 struct ZhLookupPane: View {
+    @AppStorage(SearchOrder.key) private var searchOrder = ""
     let dict: ZhDict
     @EnvironmentObject var store: Store
     // (the same search text as the 台語 dictionary's: a word looked up stays when the language is switched)
@@ -201,6 +202,7 @@ struct ZhLookupPane: View {
             Task.detached(priority: .utility) { d.warmEnglish() }
         }
         .onChange(of: query) { search() }
+        .onChange(of: searchOrder) { search() }
         .onChange(of: store.zhPlace) { search() }
     }
 

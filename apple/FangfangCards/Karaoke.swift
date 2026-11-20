@@ -28,6 +28,8 @@ private enum KaraokeLines {
         let l = SongLanguage.shared.lang(LyricsBridge.shared.song, store)
         if l == 0, let d = store.dict {
             let e = ConvertEngine(dict: d)
+            // (the readings picked for this song in its lyrics)
+            e.songKey = LyricsBridge.shared.song.map { SongLanguage.songKey($0.trackName, $0.artistName) }
             let place = UserDefaults.standard.object(forKey: "place") as? Int ?? -1
             let rom = min(max(UserDefaults.standard.integer(forKey: "rom"), 0), 3)
             return lines.map { line in

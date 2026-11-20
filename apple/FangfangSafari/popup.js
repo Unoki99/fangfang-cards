@@ -10,14 +10,14 @@
     // 1. 傳到 App first (no scrolling past the words to reach it)
     const q = d.queue, mins = Object.values(d.watch).reduce((a, x) => a + x, 0);
     let words = null;
-    if (q.length || mins >= 1) {
+    if (q.length || mins >= 1 || Object.keys(d.seen).length) {
         const s = el("div", null, "card");
         s.appendChild(el("div", (q.length ? ffT("選好 ") + q.length + ffT(" 個詞") : "") + (q.length && mins >= 1 ? ffT("・") : "") +
             (mins >= 1 ? ffT("看影片字幕 ") + Math.round(mins) + ffT(" 分鐘") : ""), "note"));
         const b = el("div", null, "btns");
         const send = el("button", ffT("傳到 App"), "act main");
         send.addEventListener("click", async () => {
-            const url = await ffSend(q, d.watch);
+            const url = await ffSend(q, d.watch, d.seen);
             s.replaceChildren(el("div", ffT("已經傳到方方詞卡。"), "note"));
             // (the words are kept in this link: if the app didn't open, tapping it opens it)
             const a = el("a", ffT("App 沒有打開？點這裡"), "act main");
@@ -58,7 +58,16 @@
     }
     main.appendChild(box);
 
-    // 3. the whole settings page
+    // 3. 資料夾同步's 立刻同步
+    {
+        const sc = el("div", null, "card");
+        sc.appendChild(el("div", ffT("資料夾同步：讀所有裝置的備份，再把這裡標的詞存回去。"), "note"));
+        const { sb, said } = await ffSyncControls(d, "#ff8cc6", "note");
+        sc.append(sb, said);
+        main.appendChild(sc);
+    }
+
+    // 4. the whole settings page
     const all = el("button", ffT("所有設定"), "act wide");
     all.addEventListener("click", async () => {
         // (a tab of its own: the whole screen, also on an iPad, where the extension's own settings would be a small sheet)
@@ -69,7 +78,7 @@
     main.appendChild(all);
     main.appendChild(el("div", ffT("語言、拼寫、卡片、字幕和認識的詞，都在「所有設定」。"), "note"));
 
-    // 4. the words chosen, last (a long list doesn't push the buttons away)
+    // 5. the words chosen, last (a long list doesn't push the buttons away)
     if (q.length) {
         words = el("div", null, "card");
         // (by 影片詞組: the words of one video together, as the app will keep them)

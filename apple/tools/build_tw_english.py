@@ -3,12 +3,14 @@
 # its own (FangfangCards/tw_en.json). The dictionary's own data (dict.json) isn't changed: the app only adds the
 # English to a word's page and an English section to the search.
 #   python3 build_tw_english.py dict.json OUT [kaikki.org-dictionary-Chinese.jsonl]
-#   (without the Wiktionary file it's read straight from kaikki.org, without saving it)
+#   (without the Wiktionary file: this project's copy in fangfang-data/common, else kaikki.org: wikt_lines.py)
 #
 # A Wiktionary page counts for a word only when it has the same 漢字 and gives a Hokkien reading (Tâi-lô) that is
 # the dictionary's reading without the tones: 行 kiânn and 行 hâng don't get each other's English. The meanings
 # Wiktionary marks as Hokkien come first; meanings marked as another variety's (Cantonese, Mandarin…) are left out.
 import io, json, re, sys, unicodedata, urllib.request
+sys.path.insert(0, __import__('os').path.dirname(__import__('os').path.abspath(__file__)))
+import wikt_lines
 
 DICT, OUT = sys.argv[1], sys.argv[2]
 KAIKKI = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "-" else None
@@ -69,10 +71,8 @@ def clean(g):
 
 
 def lines():
-    if KAIKKI:
-        return open(KAIKKI, encoding="utf-8-sig")
-    print("reading Wiktionary from kaikki.org…", file=sys.stderr)
-    return io.TextIOWrapper(urllib.request.urlopen(URL), encoding="utf-8")
+    # (the file given, else this project's copy in fangfang-data, else kaikki.org: wikt_lines.py)
+    return wikt_lines.lines(KAIKKI)
 
 
 english = {}                  # key → (Hokkien glosses, other glosses)

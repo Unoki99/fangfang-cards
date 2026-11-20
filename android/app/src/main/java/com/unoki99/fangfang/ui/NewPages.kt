@@ -84,6 +84,44 @@ fun EnglishList(items: List<String>, max: Int = 0, maxLines: Int = Int.MAX_VALUE
     }
 }
 
+/** a word's meanings at a glance: its own language's, short and numbered as its meanings below (whose example sentences
+ *  go with those numbers), beside the English ones; one under the other when there's no room */
+@Composable
+fun MeaningsOverview(zh: List<Pair<Int, String>>, zhLabel: String, en: List<String>, enNote: String? = null) {
+    if (zh.isEmpty() && en.isEmpty()) return
+    @Composable fun zhCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip(zhLabel, T.fn, T.fnEdge, T.muted)
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            for ((n, t) in zh) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (zh.size > 1) Chip("$n", T.olive, T.oliveEdge, T.oliveInk)
+                Txt(t, ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
+            }
+        }
+    }
+    @Composable fun enCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip(tr("英"), T.fn, T.fnEdge, T.muted)
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            EnglishList(en)
+            if (enNote != null) Txt(enNote, ff(FF.Caption2), T.muted)
+        }
+    }
+    BoxWithConstraints {
+        if (zh.isNotEmpty() && en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            zhCol(Modifier.weight(1f)); enCol(Modifier.weight(1f))
+        } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (zh.isNotEmpty()) zhCol(Modifier)
+            if (en.isNotEmpty()) enCol(Modifier)
+        }
+    }
+}
+
+/** a meaning's first phrase, short (for MeaningsOverview) */
+fun shortMeaning(text: String): String {
+    var t = text.substringBefore("\n").substringBefore("。").trim()
+    if (t.length > 28) t = t.take(27) + "…"
+    return t
+}
+
 // MARK: - 部首查字
 
 /** the forms radicals take at the side of a character */

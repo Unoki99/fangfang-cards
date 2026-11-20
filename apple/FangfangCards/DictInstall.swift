@@ -196,7 +196,7 @@ struct DictPack: Identifiable {
         from: "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻",
         download: "約 15 MB", bundled: ["own": "twown.json"],
         // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own; 6: local readings told apart by meaning, 合音 entries)
-        dataVersion: 6)
+        dataVersion: 7)
 
     static let mandarin: DictPack = {
         let g = "https://raw.githubusercontent.com/"
@@ -273,10 +273,10 @@ struct DictPack: Identifiable {
 
     // MARK: where the files come from first
 
-    /// the copies of the original files in the fangfang-sources folder of this project's GitHub repository (unchanged,
+    /// the copies of the original files in this project's data repository on GitHub, unoki99/fangfang-data (unchanged,
     /// one folder per dictionary: tw, zh, yue, hak, ja, sv, sw, and common for files more than one uses). A file is downloaded from
     /// here first, and from where it's published (Source.url) when it isn't here or can't be reached.
-    static let mirror = "https://raw.githubusercontent.com/unoki99/fangfang-cards/main/fangfang-sources/"
+    static let mirror = "https://raw.githubusercontent.com/unoki99/fangfang-data/main/"
     /// (files that can't be shared, and a second place for a file the copy has under its first name)
     static let notMirrored: Set<String> = ["tocfl.csv", "tbcl-chars.csv", "folkets_kth.xml"]
     static let sharedFiles: Set<String> = ["essay.txt", "cedict_ts.u8"]

@@ -3,7 +3,7 @@
 # Ministry of Education's 臺灣台語常用詞辭典 file (kautian.ods). The data isn't stored in this
 # repository: the dictionary's license (CC BY-ND 3.0 TW) doesn't allow sharing changed versions,
 # so everyone builds their own copy from the original file.
-#   bash build-data.sh                 (downloads kautian.ods: from this project's fangfang-sources copy, else the MOE website)
+#   bash build-data.sh                 (downloads kautian.ods: from this project's copy in unoki99/fangfang-data, else the MOE website)
 #   bash build-data.sh ~/Downloads/kautian.ods
 #   bash build-data.sh zh              (only the 華語 data, FangfangCards/zh.json)
 #   bash build-data.sh ime             (only the input method codes, FangfangCards/inputcodes.json)
@@ -21,20 +21,29 @@ trap 'rm -rf "$TMP"' EXIT
 ODS="$1"
 ONLY_ZH=""
 # the dictionaries' original files: first from the unchanged copies in this project's GitHub repository
-# (fangfang-sources/, the same as the app uses), then from where they're published
-MIRROR="${FANGFANG_MIRROR:-https://raw.githubusercontent.com/unoki99/fangfang-cards/main/fangfang-sources}"
-# fetch <file> <path in fangfang-sources, or -> <the original's address> [big]
+# (unoki99/fangfang-data, the same as the app uses), then from where they're published
+MIRROR="${FANGFANG_MIRROR:-https://raw.githubusercontent.com/unoki99/fangfang-data/main}"
+# (維基詞典's Chinese pages, for 粵語, 台語's English and 四川話: tools/wikt_lines.py reads this project's copy in
+# fangfang-data/common, downloaded once into the temporary folder for all three, else kaikki.org)
+export FANGFANG_MIRROR="$MIRROR"
+export FANGFANG_WIKT_CACHE="$TMP/wiktionary-zh.jsonl.gz"
+# fetch <file> <path in fangfang-data, or -> <the original's address> [big]
+# (each file says where it came from: fangfang-data, or the place it's published, or neither)
 fetch() {
-  local dest="$1" m="$2" url="$3" opt="-fsSL"
+  local dest="$1" m="$2" url="$3" opt="-fsSL" name
+  name="$(basename "$dest")"
   [ "$4" = "big" ] && opt="-fL --progress-bar"
   if [ "$m" != "-" ]; then
     local q
     q=$(/usr/bin/env python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1]))' "$m")
-    if [ "$4" = "big" ]; then curl $opt -o "$dest" "$MIRROR/$q" && return 0
-    else curl $opt -o "$dest" "$MIRROR/$q" 2>/dev/null && return 0; fi
+    if curl $opt -o "$dest" "$MIRROR/$q" 2>/dev/null; then echo "  $name  ← fangfang-data（$MIRROR/$m）"; return 0; fi
     rm -f "$dest"
   fi
-  curl $opt -o "$dest" "$url"
+  if curl $opt -o "$dest" "$url"; then
+    echo "  $name  ← 原本發布的地方（$([ "$m" != "-" ] && echo "fangfang-data 沒有這個檔案，")$url）"; return 0
+  fi
+  echo "  $name  ✗ 下載不到（試過：$([ "$m" != "-" ] && echo "fangfang-data、")$url）"
+  return 1
 }
 [ "$ODS" = "zh" ] && { ONLY_ZH=1; ODS=""; }
 # 輸入法拆碼: 倉頡 and 五筆 from Rime (LGPL-3.0); 無蝦米 only from your own table (tools/*.cin)
@@ -62,28 +71,22 @@ build_yue() {
     fetch "$D/$f" "yue/$f" "$G/rime/rime-cantonese/main/$f"
   done
   fetch "$D/yyzd.txt" yue/yyzd.txt "$G/kfcd/yyzd/master/dist/tsv/%E7%B9%81%E9%AB%94/%E7%B2%B5%E8%AA%9E%E5%AD%97%E5%85%B8_%28%E7%B2%B5%E6%8B%BC%29.txt"
-  # Wiktionary (kaikki.org): the file given, or one in Downloads / on the Desktop, or downloaded (large)
+  # Wiktionary: the file given, or kaikki.org's in Downloads / on the Desktop, else this project's copy (fangfang-data),
+  # else kaikki.org (tools/wikt_lines.py)
   K="${1:-}"
   for c in "$HOME/Downloads/kaikki.org-dictionary-Chinese.jsonl" "$HOME/Desktop/kaikki.org-dictionary-Chinese.jsonl"; do
     [ -z "$K" ] && [ -f "$c" ] && K="$c"
   done
-  if [ -z "$K" ]; then
-    echo "下載維基詞典的中文資料（kaikki.org，檔案很大，要等一下）…"
-    if curl -fL --progress-bar -o "$D/kaikki.jsonl" "https://kaikki.org/dictionary/Chinese/kaikki.org-dictionary-Chinese.jsonl"; then
-      K="$D/kaikki.jsonl"
-    else
-      echo "（下載不到維基詞典的資料，先不用：沒有例句和華語對照）"; K="-"
-    fi
-  fi
+  if [ -z "$K" ]; then echo "下載維基詞典的中文資料（這個專案在 GitHub 上的副本，下載不到才從 kaikki.org）…"; K="-"; fi
   echo "整理粵語資料中…（大概一兩分鐘）"
   /usr/bin/env python3 "$HERE/tools/build_cantonese.py" "$D" "$HERE/FangfangCards/yue.json" "$K"
   # (the same Wiktionary file: the 台語 words' English too)
-  if [ "$K" != "-" ] && [ -f "$HERE/FangfangCards/dict.json" ]; then
+  if [ -f "$HERE/FangfangCards/dict.json" ]; then
     echo "整理台語詞的英文解釋（維基詞典）…"
     /usr/bin/env python3 "$HERE/tools/build_tw_english.py" "$HERE/FangfangCards/dict.json" "$HERE/FangfangCards/tw_en.json" "$K" || true
   fi
   # (and the 華語 words' 四川話 readings)
-  if [ "$K" != "-" ] && [ -f "$HERE/FangfangCards/zh.json" ]; then
+  if [ -f "$HERE/FangfangCards/zh.json" ]; then
     echo "整理華語詞的四川話讀音（維基詞典）…"
     /usr/bin/env python3 "$HERE/tools/build_sichuan.py" "$HERE/FangfangCards/zh.json" "$HERE/FangfangCards/zh_sc.json" "$K" || true
   fi
@@ -95,7 +98,7 @@ build_twen() {
   for c in "$HOME/Downloads/kaikki.org-dictionary-Chinese.jsonl" "$HOME/Desktop/kaikki.org-dictionary-Chinese.jsonl"; do
     [ -z "$K" ] && [ -f "$c" ] && K="$c"
   done
-  if [ -z "$K" ]; then echo "從 kaikki.org 讀維基詞典的中文資料（檔案很大，要等一陣子；不會存到電腦裡）…"; K="-"; fi
+  if [ -z "$K" ]; then echo "下載維基詞典的中文資料（這個專案在 GitHub 上的副本，下載不到才從 kaikki.org）…"; K="-"; fi
   echo "整理台語詞的英文解釋（維基詞典）…"
   /usr/bin/env python3 "$HERE/tools/build_tw_english.py" "$HERE/FangfangCards/dict.json" "$HERE/FangfangCards/tw_en.json" "$K"
 }
@@ -107,7 +110,7 @@ build_sc() {
   for c in "$HOME/Downloads/kaikki.org-dictionary-Chinese.jsonl" "$HOME/Desktop/kaikki.org-dictionary-Chinese.jsonl"; do
     [ -z "$K" ] && [ -f "$c" ] && K="$c"
   done
-  if [ -z "$K" ]; then echo "從 kaikki.org 讀維基詞典的中文資料（檔案很大，要等一陣子；不會存到電腦裡）…"; K="-"; fi
+  if [ -z "$K" ]; then echo "下載維基詞典的中文資料（這個專案在 GitHub 上的副本，下載不到才從 kaikki.org）…"; K="-"; fi
   echo "整理華語詞的四川話讀音（維基詞典）…"
   /usr/bin/env python3 "$HERE/tools/build_sichuan.py" "$HERE/FangfangCards/zh.json" "$HERE/FangfangCards/zh_sc.json" "$K"
 }

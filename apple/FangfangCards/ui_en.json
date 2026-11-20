@@ -1781,5 +1781,10 @@
  "不要重複": "Stop repeating",
  "方言的講法先（選的腔口）": "Dialect words first (your accent)",
  "標準：照方方原本的順序。自己排：最多選三個，第一個最重要，一樣的時候再看第二個、第三個。例如查「非常」的時候，「常用的詞先」會把比較常用的詞排在前面，「方言的講法先」會先列你選的腔口（在上面的腔口選單選）的方言詞和讀音。「HSK／TOCFL 等級低的先」只用在華語。": "Standard: Fangfang's own order. Your own: choose up to three; the first counts most, the second and third break ties. Searching 非常, for example, Common words first puts the more common words on top, and Dialect words first lists the local words and readings of the accent chosen in the accent menu first. Lower HSK/TOCFL level first is for Mandarin only.",
- "拖字中間的線：唱得快的地方字就窄，歌詞變大的時候就照這個走。一模一樣的句子還沒有自己的時間的，會跟著一起改。": "Drag the lines between the words: where it's sung fast the words get narrow, and the swelling lyrics follow that. The same line sung again gets the same timing, unless it has its own already."
+ "拖字中間的線：唱得快的地方字就窄，歌詞變大的時候就照這個走。一模一樣的句子還沒有自己的時間的，會跟著一起改。": "Drag the lines between the words: where it's sung fast the words get narrow, and the swelling lyrics follow that. The same line sung again gets the same timing, unless it has its own already.",
+ "顯示方音": "Show 方音 (hongim)",
+ "選的詞": "Picked",
+ "懂": "Understood",
+ "還沒有影片。用查詞看影片字幕，再按「傳到 App」（或同步），就會有每個影片你懂多少。": "No videos yet. Watch a video with the add-on's subtitles, then tap 傳到 App (or sync), and each video shows how much you understood.",
+ "每一條是一個影片（從左到右，舊到新）：懂 = 看的時候字幕裡的詞你認識多少；選的詞 = 你從那裡選的詞，現在認識幾個。": "Each bar is a video (left to right, oldest to newest). Understood: how many of the subtitles' words you knew while watching. Picked: of the words you chose from it, how many you know now."
 }

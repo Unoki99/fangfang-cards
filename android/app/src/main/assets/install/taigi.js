@@ -347,13 +347,19 @@ function buildTaigi(a) {
     const byHan = new Map();
     for (const e of E) if ("r" in e) { if (!byHan.has(e.h)) byHan.set(e.h, []); byHan.get(e.h).push(e); }
     const said = new Map();     // han \u0001 place → [readings]
+    const saidZh = new Map();   // han \u0001 place → the 華語 words it's given for
     for (const r of rows("詞彙比較")) {
         if (r.length < 5 || !PLACES.includes(r[2]) || !pyStrip(r[4])) continue;
         const k = r[3] + "\u0001" + String(PLACES.indexOf(r[2]));
         const rs = rstr(reading(r[4]));
         if (!said.has(k)) said.set(k, []);
         if (!said.get(k).includes(rs)) said.get(k).push(rs);
+        if (!saidZh.has(k)) saidZh.set(k, new Set());
+        saidZh.get(k).add(r[1]);
     }
+    // each entry's meanings (for telling two entries with the same characters apart by what they mean)
+    const senseTexts = new Map();
+    for (const r of rows("義項")) { if (!senseTexts.has(r[0])) senseTexts.set(r[0], []); senseTexts.get(r[0]).push(r.length > 3 ? r[3] : ""); }
     const allForms = new Map();
     for (const [k, forms] of said) {
         const han = k.split("\u0001")[0];
@@ -373,11 +379,58 @@ function buildTaigi(a) {
         const top = cands.filter(e => overlap(e) === best);
         return top.length === 1 ? top[0] : null;
     }
+    // When the readings can't tell (金門 佗 tio̍h for 華語「哪裡」: 佗 tó "which" and 佗 toh "where"), the meaning
+    // can: the one entry with a meaning that has the 華語 word as one of its own words (toh: 何處、哪裡). No such
+    // entry, or more than one, and the row is left out as before. → [entry, the meanings that have it]
+    function entryByMeaning(han, n, zhs) {
+        const cands = (byHan.get(han) || []).filter(e => codesOnly(split(e.r)).length === n);
+        if (cands.length < 2) return [null, []];
+        const hits = [];
+        for (const e of cands) {
+            const ix = [];
+            (senseTexts.get(String(e.i)) || []).forEach((t, i) => {
+                const ws = t.split(/[、，,；;。：:]/).map(w => w.replace(/^[「」『』（）() ]+|[「」『』（）() ]+$/g, ""));
+                if ([...zhs].some(z => z && ws.includes(z))) ix.push(i);
+            });
+            if (ix.length) hits.push([e, ix]);
+        }
+        return hits.length === 1 ? hits[0] : [null, []];
+    }
+    const isHanCp = c => { const v = c.codePointAt(0); return (v >= 0x3400 && v <= 0x9FFF) || (v >= 0xF900 && v <= 0xFAFF) || v >= 0x20000; };
+    const meaningOnly = new Set();        // (entry, place) said so for one meaning: not carried into other words
     for (const [k, forms] of said) {
         const [han, pl] = k.split("\u0001");
         const fc = forms.map(f => codesOnly(split(f)));
-        const e = entryFor(han, fc[0].length);
-        if (e === null) continue;
+        // (the readings with one syllable for each character tell the entry; 合音, 佗位 tuē, are fewer)
+        const hl = cpLen(han), hanzi = [...han].every(isHanCp);
+        const n = hanzi && (fc.some(f => f.length === hl) || fc.every(f => f.length < hl)) ? hl : fc[0].length;
+        let e = entryFor(han, n);
+        if (e === null) {
+            const [m, senses] = entryByMeaning(han, n, saidZh.get(k) || new Set());
+            // (a place MOE already states for that entry stays exactly as it was)
+            if (m === null || explicit.has(ek(m.i, pl))) continue;
+            e = m;
+            meaningOnly.add(ek(e.i, pl));
+            if (senses.length < (senseTexts.get(String(e.i)) || []).length) {
+                // only some of its meanings: the place's reading goes on those meanings only
+                const f0 = forms.find(f => codesOnly(split(f)).length === n);
+                if (f0 && !eqList(codesOnly(split(f0)), codesOnly(split(e.r)))) {
+                    const sd = mget(e, "sd");
+                    for (const i of senses) {
+                        if (!sd.has(String(i))) sd.set(String(i), new Map());
+                        sd.get(String(i)).set(pl, f0);
+                    }
+                }
+                continue;
+            }
+        }
+        // 合音 only (新竹 佗位 tuē, tueh): the place's other ways of saying it; the word's own reading stays
+        if (hanzi && fc.every(f => f.length < n)) {
+            const dd = mget(e, "dd");
+            if (!dd.has(pl)) dd.set(pl, []);
+            for (const f of forms) if (!dd.get(pl).includes(f)) dd.get(pl).push(f);
+            continue;
+        }
         const main = codesOnly(split(e.r));
         let stated = [];
         if (explicit.has(ek(e.i, pl))) stated = e.sf.get(pl).slice();
@@ -397,9 +450,7 @@ function buildTaigi(a) {
     }
     for (const e of E) for (const p of e.dx || []) explicit.add(ek(e.i, p));
 
-    const senseTexts = new Map();
-    for (const r of rows("義項")) { if (!senseTexts.has(r[0])) senseTexts.set(r[0], []); senseTexts.get(r[0]).push(r.length > 3 ? r[3] : ""); }
-    const oneMeaning = new Set();
+    const oneMeaning = new Set(meaningOnly);
     const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     for (const e of E) {
         if (cpLen(e.h) !== 1 || !e.d) continue;
@@ -769,10 +820,42 @@ function buildTaigi(a) {
         const hans = new Set(words.map(w => w[0]));
         const firstKey = new Map();     // han → its first entry's key (the dictionary's own words)
         for (const [h, c] of words) { const k = h + "\t" + c; if (!firstKey.has(h) && k in defsM) firstKey.set(h, k); }
-        const add = new Map();      // key → {places: Set, groups: [[zh, [std keys]]]}
+        // (which of the dictionary's entries a row's word is. A word of one character only when its reading or its
+        // meaning says so: 呼牛快跑's 喝 há is not 喝 huah "大聲喊叫", and 哈 ha̍h not 哈 ha "笑聲". Its own readings
+        // are MOE's, its 又音 and its places' (語音差異), not the ones 詞彙比較 itself gave; tones and the places'
+        // vowels (ɵ, ə, ɨ) aside, but not for sound words. Longer words are the same word whatever the reading.)
+        const ownR = new Map(), ownT = new Map(), sound = new Set();
+        for (const e of D.E) {
+            const k = keyOf.get(e.i);
+            if (!k || k.endsWith("\t") || !(k in defsM)) continue;
+            if (!ownR.has(k)) { ownR.set(k, new Set()); ownT.set(k, []); }
+            const xs = [e.r || ""].concat((e.a || []).map(a => a[0]));
+            if (e.sf) for (const [pl, fs] of e.sf) if (!(e.vx || []).includes(pl)) xs.push(...fs);
+            for (const x of xs) { const c = codesOnlyApp(x); if (c) ownR.get(k).add(c); }
+            for (const m of e.m || []) ownT.get(k).push(m.t || "");
+            if ((e.m || []).some(m => m.p === "擬聲詞" || m.p === "嘆詞")) sound.add(k);
+        }
+        const loose = (c, tone) => split(c).map(x => x.replace(/\d/g, tone ? (/[48]$/.test(x) ? "C" : "O") : "")
+            .replace(/ɵ/g, "ø").replace(/ə/g, "e").replace(/ɨ/g, "i")).join(" ");
+        const keysOf = new Map();
+        for (const [h, c] of words) { const k = h + "\t" + c; if (k in defsM) { if (!keysOf.has(h)) keysOf.set(h, []); keysOf.get(h).push(k); } }
+        const entryOf = (h, rcs, zh, keyIn) => {
+            if (keyIn.has(h)) return keyIn.get(h);
+            for (const k of keysOf.get(h) || []) {
+                const t = sound.has(k), ls = new Set(Array.from(rcs).map(r => loose(r, t)));
+                for (const x of ownR.get(k) || []) if (ls.has(loose(x, t))) return k;
+            }
+            if (cpLen(h) > 1) return firstKey.get(h) || null;
+            for (const k of keysOf.get(h) || [])
+                if ((ownT.get(k) || []).some(t => t.split(/[、，,；;。：:]/).map(w => w.replace(/^[「」『』（）() ]+|[「」『』（）() ]+$/g, "")).includes(zh))) return k;
+            return null;
+        };
+        const tlOf = rc => split(rc).map(c => toTl(c)).join("-");
+        const SHORT = PLACES.map(x => Array.from(x).slice(0, 2).join(""));
+        const add = new Map();      // key → {places: Set, groups: [[zh, [std keys], [各地講法], [近義 方言詞]]]}
         const order = [];
         for (const [zh, row] of cmp) {
-            // the words the dictionary has for this meaning, the ones most places say first (whatever the reading)
+            // the words the dictionary has for this meaning, the ones most places say first
             const byHan = new Map(), keyIn = new Map(), byKey = new Map();
             for (const [p, han, rc] of row) {
                 if (!rc) continue;
@@ -783,16 +866,42 @@ function buildTaigi(a) {
                 if (!byKey.has(k)) byKey.set(k, new Set());
                 byKey.get(k).add(p);
             }
-            const std = Array.from(byHan).filter(([h]) => hans.has(h) && (keyIn.has(h) || firstKey.has(h)))
-                .sort((x, y) => y[1].size - x[1].size).slice(0, 3).map(([h]) => keyIn.get(h) || firstKey.get(h));
-            for (const [k, ps] of byKey) {
+            const std = [];
+            for (const [h] of Array.from(byHan).filter(([h]) => hans.has(h)).sort((x, y) => y[1].size - x[1].size)) {
+                const k = entryOf(h, new Set(row.filter(r => r[1] === h && r[2]).map(r => r[2])), zh, keyIn);
+                if (k && !std.includes(k)) std.push(k);
+                if (std.length === 3) break;
+            }
+            const news = Array.from(byKey.keys()).filter(k => {
                 const [han, rc] = k.split("\t");
-                if (hans.has(han) || !HAN.test(han) || cpLen(han) !== split(rc).length) continue;
-                if (!split(rc).every(c => parse(c))) continue;
+                return !(hans.has(han) || !HAN.test(han) || cpLen(han) !== split(rc).length) && split(rc).every(c => parse(c));
+            });
+            for (const k of news) {
+                const ps = byKey.get(k);
                 if (!add.has(k)) { add.set(k, { places: new Set(), groups: [] }); order.push(k); }
                 const w = add.get(k);
                 for (const p of ps) w.places.add(p);
-                if (!w.groups.some(g => g[0] === zh)) w.groups.push([zh, std]);
+                if (w.groups.some(g => g[0] === zh)) continue;
+                // (no usual word for it: what each place says, 臺北 喝 há, 臺南 嘵叱叱, and the others' 方言詞 as 近義)
+                const say = [];
+                if (!std.length) {
+                    const byW = new Map();          // word → Map(reading → Set(places))
+                    for (const [p, hh, rc] of row) {
+                        if (!rc || hh === k.split("\t")[0]) continue;
+                        if (!byW.has(hh)) byW.set(hh, new Map());
+                        const rs = byW.get(hh);
+                        if (!rs.has(rc)) rs.set(rc, new Set());
+                        rs.get(rc).add(p);
+                    }
+                    for (const [hh, rs] of byW) {
+                        const pl = new Set();
+                        for (const v of rs.values()) for (const x of v) pl.add(x);
+                        const top = Array.from(rs.keys()).sort((a, b) => rs.get(b).size - rs.get(a).size).slice(0, 3);
+                        say.push(hh + " " + top.map(tlOf).join("/") + (rs.size > 3 ? "…" : "") + "（" +
+                            (pl.size === SHORT.length ? "各地" : Array.from(pl).sort((a, b) => a - b).map(x => SHORT[x]).join("、")) + "）");
+                    }
+                }
+                w.groups.push([zh, std, say, std.length ? [] : news.filter(x => x !== k)]);
             }
         }
         // (one 方言詞 said differently in different places, 天遮: one entry, its reading the one most places say,
@@ -823,16 +932,26 @@ function buildTaigi(a) {
                 for (const g of o.groups) if (!w.groups.some(x => x[0] === g[0])) w.groups.push(g);
             }
         }
+        const mainOf = new Map();
+        for (const ks of byH.values()) {
+            let main = ks[0];
+            for (const k of ks) if (add.get(k).places.size > add.get(main).places.size) main = k;
+            for (const k of ks) mainOf.set(k, main);
+        }
         order.length = 0; order.push(...order2);
         for (const k of order) {
             const w = add.get(k);
             const [han, rc] = k.split("\t");
-            // (a meaning each: 看 the usual words; none in the dictionary: its 華語)
-            const lines = [], stds = [];
-            for (const [zh, std] of w.groups) {
-                const t = std.length ? "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。" : "華語：" + zh + "。";
+            // (a meaning each: 看 the usual words; none in the dictionary: its 華語 and what the places say)
+            const lines = [], stds = [], sibs = [];
+            for (const [zh, std, say, sib] of w.groups) {
+                const t = std.length ? "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。"
+                    : "華語：" + zh + "。" + (say.length ? "各地講法：" + say.join("、") + "。" : "");
                 if (lines.includes(t)) continue;
                 lines.push(t); stds.push(std);
+                const sb = [];
+                if (!std.length) for (const x of sib) { const m = mainOf.get(x); if (m !== k && !sb.includes(m)) sb.push(m); }
+                sibs.push(sb);
             }
             words.push([han, rc]);
             seen.add(k);
@@ -843,12 +962,55 @@ function buildTaigi(a) {
             loc[k] = Array.from(w.places).sort((x, y) => x - y);
             const all = [];
             for (const st of stds) for (const x of st) if (!all.includes(x)) all.push(x);
+            const rec = {};
+            stds.forEach((st, i) => { if (st.length) rec[String(i)] = st; else if (sibs[i].length) rec[String(i)] = sibs[i]; });
+            if (Object.keys(rec).length) sy[k] = rec;
             if (all.length) {
                 lstd[k] = all;
-                const rec = {};
-                stds.forEach((st, i) => { if (st.length) rec[String(i)] = st; });
-                sy[k] = rec;
+                // (and the other way: the usual word lists it as a 近義 of its own, with the places that say it)
+                for (const x of all) {
+                    const r = sy[x] || (sy[x] = {});
+                    const back = r.e || (r.e = []);
+                    if (!back.includes(k)) back.push(k);
+                }
             }
+        }
+        // 合音: a word some places say in fewer syllables (佗位: 宜蘭, 臺南, 新竹… tuē, tueh) is an entry of its own
+        // too, marked with those places and pointing to the word it's the 合音 of
+        const rawTok = new Map();       // 漢字 \t codes → the reading as written (with "--")
+        for (const [, items] of D.cmp) for (const [, han, r] of items) {
+            const c = r ? codesOnlyApp(r) : null;
+            if (c && !rawTok.has(han + "\t" + c)) rawTok.set(han + "\t" + c, r);
+        }
+        const psAll = (han, rc) => { const s = new Set(); for (const [, row] of cmp) for (const [p, h, r] of row) if (h === han && r === rc) s.add(p); return s; };
+        const cont = new Map();
+        for (const [, row] of cmp) for (const [p, han, rc] of row) {
+            if (!rc || !HAN.test(han) || !firstKey.has(han)) continue;
+            if (split(rc).length >= cpLen(han) || !split(rc).every(c => parse(c))) continue;
+            const main = firstKey.get(han);
+            // (MOE gives it already, for everyone, 下昏 合音唸作 i̋ng: not a word of some places)
+            if ((alt[main] || []).some(a => a[0] === rc && a[1] === "合") && psAll(han, rc).size >= 10) continue;
+            const k = han + "\t" + rc;
+            if (seen.has(k) && !cont.has(k)) continue;
+            if (!cont.has(k)) cont.set(k, new Set());
+            cont.get(k).add(p);
+            const raw = rawTok.get(k);
+            if (raw && needsTokens(raw)) tok[k] = raw;          // (硩落去 te--loih: its light tone)
+        }
+        for (const [k, ps] of cont) {
+            const [han, rc] = k.split("\t");
+            const main = firstKey.get(han);
+            words.push([han, rc]); seen.add(k);
+            for (const y of split(rc)) used.add(y);
+            defsM[k] = defsT.length;
+            defsT.push("「" + han + "」的合音。看「" + han + "」。");
+            typ[k] = TYPES.indexOf("方言詞");
+            loc[k] = Array.from(ps).sort((x, y) => x - y);
+            lstd[k] = [main];
+            sy[k] = { "0": [main] };
+            const r = sy[main] || (sy[main] = {});
+            const back = r.e || (r.e = []);
+            if (!back.includes(k)) back.push(k);
         }
     }
     function termsOf(text) {
@@ -950,7 +1112,7 @@ function buildTaigi(a) {
     }
     const mapObj = m => { const o = {}; for (const [k, v] of m) o[k] = v; return o; };
     const dict = {
-        v: 5, words, syl: sylT, tl, pj,
+        v: 7, words, syl: sylT, tl, pj,
         defs: { t: defsT, m: defsM }, pos: posM, ex, reg, own, au,
         gl: Array.from(gl), freq, dex, ctx, dia2, sdia,
         places: D.places, g1: D.g1, types: D.types, cats: D.cats,

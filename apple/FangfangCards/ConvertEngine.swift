@@ -41,6 +41,9 @@ final class ConvertEngine {
     let d: Dict
     var latinMode: LatinMode = .auto
     private var mem: [String: String]
+    /// 歌詞: the song (title|singer) the text is the lyrics of. A reading picked in it is kept for that song and
+    /// always used in it, wherever its lyrics show (the page, the bar, 卡拉 OK)
+    var songKey: String?
 
     init(dict: Dict) {
         d = dict
@@ -291,6 +294,8 @@ final class ConvertEngine {
     }
 
     func convert(_ text: String) -> ConvResult {
+        // (picks made elsewhere since — another 轉換, the lyrics bar — count here too)
+        mem = (UserDefaults.standard.dictionary(forKey: "ff-picks") as? [String: String]) ?? mem
         var res = ConvResult()
         let atoms = atomize(text, into: &res)
         var i = 0
@@ -322,6 +327,11 @@ final class ConvertEngine {
         // choice for this word, then how common each reading is in the examples
         var byYou = Set<Int>()        // (picked as you picked before between the same neighbours: the 輕聲 rule below leaves it)
         for k in res.items.indices where res.items[k].opts.count > 1 {
+            // (歌詞: what you picked for this word in this song, first of all)
+            if let s = songKey, let want = mem["s:" + s + "|" + memKey(res.items[k])],
+               let at = res.items[k].opts.firstIndex(where: { optID($0) == want }) {
+                res.items[k].sel = at; byYou.insert(k); continue
+            }
             // what you picked before for this word between the same neighbours always wins
             if let want = mem[ctxMemKey(res.items, k)],
                let at = res.items[k].opts.firstIndex(where: { optID($0) == want }) {
@@ -437,6 +447,7 @@ final class ConvertEngine {
         let it = items[k]
         mem[memKey(it)] = optID(it.current)
         mem[ctxMemKey(items, k)] = optID(it.current)
+        if let s = songKey { mem["s:" + s + "|" + memKey(it)] = optID(it.current) }
         UserDefaults.standard.set(mem, forKey: "ff-picks")
     }
 

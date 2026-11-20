@@ -512,14 +512,18 @@ extension Dict {
         let ex = exampleTones(han, tpl, place: place, zh: zh)
         var out = AttributedString()
         var rest = Substring(ex.tpl), n = 0
+        var light = false, prevRaw = "", started = false
         while let open = rest.firstIndex(of: "{"), let close = rest[open...].firstIndex(of: "}") {
-            out += AttributedString(String(rest[..<open]))
+            var lit = String(rest[..<open])
+            if sys == 3 && started { lit = hongimJoin(lit, prevRaw: prevRaw, light: &light) }
+            out += AttributedString(lit)
             var c = String(rest[rest.index(after: open)..<close])
             let cap = c.hasPrefix("^")
             if cap { c.removeFirst() }
             if c.hasPrefix("?") || c.hasPrefix("!") { c.removeFirst() }
             if ToneColors.marks, n < ex.tones.count, isCode(c) { c = sandhiCode(c, ex.tones[n]) }
             var s = isCode(c) ? syl(c, sys, place) : c
+            if sys == 3 && isCode(c) { prevRaw = raw.syl[c]?.first ?? ""; if light { s = HongimTone1.light(s) }; started = true }
             if cap { s = s.prefix(1).uppercased() + s.dropFirst() }
             var a = AttributedString(s)
             if n < ex.tones.count, let col = ToneColors.color(ex.tones[n], system) { a.swiftUI.foregroundColor = col }
