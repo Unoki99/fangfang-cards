@@ -3,8 +3,8 @@ import SwiftUI
 import AppIntents
 import ActivityKit
 
-// 動態島 (iPhone): one of your 不熟 words while you're away from the app. Small: the word on the left, its reading
-// on the right (its meaning when held open). Pressed and held: the word bigger, 下一個, and a button for each language
+// 動態島 (iPhone): one of your 不熟 words while you're away from the app. Small: the word and its reading on the
+// left, its meaning on the right. Pressed and held: the word bigger, 下一個, and a button for each language
 // chosen in the app's 設定 → 詞典資料 → 動態島, opening that language's dictionary. In the app's theme colours.
 
 struct IslandLiveActivity: Widget {
@@ -17,17 +17,21 @@ struct IslandLiveActivity: Widget {
         } dynamicIsland: { ctx in
             let s = ctx.state, th = IslandTheme(s)
             return DynamicIsland {
+                // (the word and its reading on the left, the meaning on the right, as wide as the island goes)
                 DynamicIslandExpandedRegion(.leading) {
-                    IslandText.colored(s.word, ink: th.text, size: 30, weight: .semibold)
-                        .lineLimit(1).minimumScaleFactor(0.5)
-                        .padding(.leading, 6)
+                    VStack(alignment: .leading, spacing: 2) {
+                        IslandText.colored(s.word, ink: th.text, size: 30, weight: .semibold)
+                            .lineLimit(1).minimumScaleFactor(0.5)
+                        IslandText.colored(s.reading, ink: th.accent, size: 14, weight: .medium).lineLimit(1).minimumScaleFactor(0.6)
+                    }
+                    .padding(.leading, 6)
+                    .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        IslandText.colored(s.reading, ink: th.accent, size: 14, weight: .medium).lineLimit(1).minimumScaleFactor(0.6)
-                        Text(s.meaning).font(.system(size: 12)).foregroundStyle(th.muted).lineLimit(2).multilineTextAlignment(.trailing)
-                    }
-                    .padding(.trailing, 6)
+                    Text(s.meaning).font(.system(size: 13)).foregroundStyle(th.muted).lineLimit(3).multilineTextAlignment(.trailing)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .padding(.trailing, 6)
+                        .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(spacing: 8) {
@@ -61,13 +65,19 @@ struct IslandLiveActivity: Widget {
                     .padding(.top, 2)
                 }
             } compactLeading: {
-                IslandText.colored(s.word, ink: th.text, size: 15, weight: .semibold)
-                    .lineLimit(1).minimumScaleFactor(0.5)
+                // (the word and its reading on the left of the camera, the meaning on the right; iOS decides how
+                // wide the small island may get, so long ones shrink)
+                HStack(spacing: 4) {
+                    IslandText.colored(s.word, ink: th.text, size: 15, weight: .semibold)
+                        .lineLimit(1).minimumScaleFactor(0.5)
+                    IslandText.colored(s.reading, ink: th.accent, size: 11, weight: .medium)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                }
+                .frame(maxWidth: 120, alignment: .leading)
             } compactTrailing: {
-                // (only the reading: the meaning shows when the island is held open)
-                IslandText.colored(s.reading, ink: th.accent, size: 12, weight: .medium)
-                    .lineLimit(1).minimumScaleFactor(0.6)
-                    .frame(maxWidth: 92, alignment: .leading)
+                Text(s.meaning).font(.system(size: 11)).foregroundStyle(th.muted)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                    .frame(maxWidth: 110, alignment: .trailing)
             } minimal: {
                 IslandText.colored(Array(s.word.prefix(1)).map { WSeg(t: String($0.t.prefix(1)), c: $0.c) }, ink: th.text, size: 13, weight: .semibold)
             }

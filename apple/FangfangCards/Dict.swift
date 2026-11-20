@@ -335,7 +335,7 @@ final class Dict: @unchecked Sendable {
         guard let s = raw.syl[c] else { return c }
         switch sys {
         // with a place chosen, 台羅 o is ㄛ — except in 臺南 and 高雄, where o is always said ㄜ
-        case 3: return HongimTone1.apply(place >= 0 && c.contains("ø") && !orPlaces.contains(place) ? s[0].replacingOccurrences(of: "ㄜ", with: "ㄛ") : s[0])
+        case 3: return HongimTone1.syllable(place >= 0 && c.contains("ø") && !orPlaces.contains(place) ? s[0].replacingOccurrences(of: "ㄜ", with: "ㄛ") : s[0])
         case 1: return raw.tl[c]?.first ?? s[1]
         case 2: return raw.pj[c] ?? s[1]
         default: return s[1]
@@ -363,18 +363,20 @@ final class Dict: @unchecked Sendable {
     }
 
     func render(_ tokens: [String], _ sys: Int, _ place: Int) -> String {
-        var out = "", prevCode = false
+        var out = "", prevCode = false, prevRaw = "", light = false
         for t in tokens {
             let cap = t.hasPrefix("^"), c = cap ? String(t.dropFirst()) : t
             if isCode(c) {
-                if sys != 3 && prevCode { out += "-" }
+                // (方音: no "-" between syllables; a space when asked; the light tone with ˙ before it)
+                if prevCode { out += sys == 3 ? HongimTone1.gap(after: prevRaw) : "-" }
                 var s = syl(c, sys, place)
+                if sys == 3 { prevRaw = raw.syl[c]?.first ?? ""; if light { s = HongimTone1.light(s) } }
                 if cap && sys != 3 { s = s.prefix(1).uppercased() + s.dropFirst() }
                 out += s; prevCode = true
-            } else if t == "--" { if sys != 3 { out += "--" }; prevCode = false }
-            else if t == "_" { out += " "; prevCode = false }
-            else if t.hasPrefix("~") { out += String(t.dropFirst()); prevCode = false }
-            else { out += t; prevCode = false }
+            } else if t == "--" { if sys != 3 { out += "--"; prevCode = false }; light = true }
+            else if t == "_" { out += " "; prevCode = false; light = false }
+            else if t.hasPrefix("~") { out += String(t.dropFirst()); prevCode = false; light = false }
+            else { out += t; prevCode = false; light = false }
         }
         return out
     }
@@ -412,18 +414,19 @@ final class Dict: @unchecked Sendable {
             guard !t.isEmpty else { return }
             if let l = out.last, l.guessed == guessed { out[out.count - 1].text += t } else { out.append((t, guessed)) }
         }
-        var prevCode = false, n = 0
+        var prevCode = false, n = 0, prevRaw = "", light = false
         for t in tokensFor(key, place) {
             let cap = t.hasPrefix("^"), c = cap ? String(t.dropFirst()) : t
             if isCode(c) {
-                if sys != 3 && prevCode { put("-", false) }
+                if prevCode { put(sys == 3 ? HongimTone1.gap(after: prevRaw) : "-", false) }
                 var s = syl(c, sys, place)
+                if sys == 3 { prevRaw = raw.syl[c]?.first ?? ""; if light { s = HongimTone1.light(s) } }
                 if cap && sys != 3 { s = s.prefix(1).uppercased() + s.dropFirst() }
                 put(s, g.contains(n)); n += 1; prevCode = true
-            } else if t == "--" { if sys != 3 { put("--", false) }; prevCode = false }
-            else if t == "_" { put(" ", false); prevCode = false }
-            else if t.hasPrefix("~") { put(String(t.dropFirst()), false); prevCode = false }
-            else { put(t, false); prevCode = false }
+            } else if t == "--" { if sys != 3 { put("--", false); prevCode = false }; light = true }
+            else if t == "_" { put(" ", false); prevCode = false; light = false }
+            else if t.hasPrefix("~") { put(String(t.dropFirst()), false); prevCode = false; light = false }
+            else { put(t, false); prevCode = false; light = false }
         }
         return out
     }
@@ -479,6 +482,23 @@ final class Dict: @unchecked Sendable {
     // MARK: words each place says differently (各地講法)
 
     private var vocabIndex: [String: [Int]]? = nil
+    /// (word -> the words whose meanings list it as 近義 / 反義: the word, which meaning, 近 or 反)
+    private var backLinks: [String: [(key: String, sense: Int, syn: Bool)]]? = nil
+    private let backLock = NSLock()
+
+    /// a word the dictionary lists only as another word's 近義 or 反義, with no meaning of its own (光龐龐, one of
+    /// the 近反義詞不單列詞目者): those words and the meaning it's listed under
+    func linkedFrom(_ key: String) -> [(key: String, sense: Int, syn: Bool)] {
+        backLock.lock(); defer { backLock.unlock() }
+        if backLinks == nil {
+            var idx: [String: [(key: String, sense: Int, syn: Bool)]] = [:]
+            for (src, m) in raw.sy { for (s, list) in m { for t in list { idx[t, default: []].append((src, Int(s) ?? -1, true)) } } }
+            for (src, m) in raw.an { for (s, list) in m { for t in list { idx[t, default: []].append((src, Int(s) ?? -1, false)) } } }
+            for k in idx.keys { idx[k]?.sort { ($0.syn ? 0 : 1, $0.key) < ($1.syn ? 0 : 1, $1.key) } }
+            backLinks = idx
+        }
+        return backLinks?[key] ?? []
+    }
     private let vocabLock = NSLock()
 
     /// the 各地講法 index (word -> meanings it's listed for); call with vocabLock held
@@ -997,6 +1017,10 @@ final class Dict: @unchecked Sendable {
     func placeLabel(_ key: String) -> String? {
         guard let ps = raw.loc?[key], !ps.isEmpty else { return nil }
         return placeNames(ps)
+    }
+    /// a reading with fewer syllables than the word has characters: a 合音 (佗位 tuē)
+    func isContraction(_ codes: String, _ key: String) -> Bool {
+        codes.split(separator: " ").filter { isCode(String($0)) }.count < Dict.hanOf(key).count
     }
     func placeNames(_ ps: [Int], most: Int = 3) -> String {
         let names = ps.prefix(most).map { $0 < raw.places.count ? trs(String(raw.places[$0].prefix(2))) : "" }

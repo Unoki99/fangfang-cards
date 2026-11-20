@@ -87,6 +87,8 @@ extension Store {
             }
             if changed > 0 { save() }
         }
+        // 自己的歌詞: the 歌詞 folder beside the backups
+        let lyricsIn = OwnLyrics.shared.sync(in: folder)
 
         let data = backupData()
         guard coordinatedWrite(data, to: folder.appendingPathComponent(ownFileName)) else {
@@ -108,6 +110,7 @@ extension Store {
 
         lastBackup = Date()
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastBackup")
+        if lyricsIn > 0 && changed == 0 { return "已同步，從其他裝置更新了 \(lyricsIn) 首歌的歌詞。" }
         return changed > 0 ? "已同步，從其他裝置更新了 \(changed) 個詞。" : "已備份到「\(folder.lastPathComponent)」。"
     }
 

@@ -168,6 +168,7 @@ private struct LookSettings: View {
     @State private var textSizeDraft: Double?
     @AppStorage("widgetBG") private var widgetBG = 0.45
     @AppStorage(ThemeMotion.key) private var themeMotion = true
+    @AppStorage(ThemeMotion.saverKey) private var motionSaver = false
     @AppStorage(DictFont.key) private var dictFont = 0
     @State private var fontReady = true
 
@@ -197,8 +198,9 @@ private struct LookSettings: View {
                 }
                 .pickerStyle(.menu)
                 Toggle(tr("主題動畫"), isOn: $themeMotion)
+                Toggle(tr("省電動畫"), isOn: $motionSaver).disabled(!themeMotion)
             } footer: {
-                Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。"))
+                Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。省電動畫：雪和花瓣少一半，一秒只畫 12 次（開低耗電模式的時候也會自動這樣）。被別的頁面蓋住的背景不會動。"))
             }
             // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour
             if store.isSv {
@@ -288,6 +290,19 @@ private struct LookSettings: View {
                         Image(systemName: "textformat.size.larger").foregroundStyle(T.muted)
                         Text(TextSize.names[TextSize.clamp(textSizeDraft.map { Int($0.rounded()) } ?? textSize)]).foregroundStyle(T.muted).monospacedDigit()
                     }
+                    // (a sample that grows while the slider moves; the whole app follows when it's let go)
+                    let lv = TextSize.clamp(textSizeDraft.map { Int($0.rounded()) } ?? textSize)
+                    let pct = (Double(TextSize.names[lv].dropLast()) ?? 100) / 100
+                    HStack(spacing: 14) {
+                        Text("字")
+                            .font(.system(size: 22 * pct, weight: .semibold))
+                            .foregroundStyle(T.glyph)
+                            .frame(width: 96, height: 96)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(T.fnEdge, lineWidth: 1))
+                            .animation(.snappy, value: lv)
+                        Text(tr("拖的時候這裡先變大；放開以後整個 App 才跟著變。")).ffFont(.footnote).foregroundStyle(T.muted)
+                    }
                 } header: {
                     Text(tr("文字大小"))
                 } footer: {
@@ -308,7 +323,7 @@ private struct LookSettings: View {
                 Text(tr("小工具背景"))
             }
             Section {
-                Toggle(tr("畫成圖再放大"), isOn: $swellOn)
+                Toggle(tr("指到的字放大"), isOn: $swellOn)
             } header: {
                 Text(tr("詞放大"))
             } footer: {
@@ -336,6 +351,7 @@ private struct LanguageSettings: View {
     @AppStorage(Simp.key) private var simplified = false
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
+    @AppStorage(HongimTone1.allKey) private var hongimAll = false
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
@@ -380,6 +396,9 @@ private struct LanguageSettings: View {
                 Toggle(tr("第一聲的地方空一格"), isOn: $hongimTone1Space)
                     .disabled(hongimTone1)
                     .onChange(of: hongimTone1Space) { store.objectWillChange.send() }
+                // (ㄉㄧㄠˋ ㄧˉ: never two spaces with the one above)
+                Toggle(tr("方音每個音節中間空一格"), isOn: $hongimAll)
+                    .onChange(of: hongimAll) { store.objectWillChange.send() }
             }
             Section {
                 Picker(tr("字形"), selection: $simplified) {
@@ -555,7 +574,56 @@ private struct DictionarySettings: View {
                 Text(tr("台語和華語各有自己的複製格式。華語可以加英文解釋：{英文} 或 {英文列表}。"))
             }
             MainMeaningSection()
+            SearchOrderSection()
             InputCodesSettings()
+        }
+    }
+}
+
+/// 搜尋結果的順序: 標準, or 自己排 with up to three things in order (the first one counts first)
+private struct SearchOrderSection: View {
+    @AppStorage(SearchOrder.key) private var order = ""
+    @AppStorage("searchOrderSaved") private var saved = "freq,exact"
+
+    private var list: [String] { order.split(separator: ",").map(String.init).filter { !$0.isEmpty } }
+    private func set(_ l: [String]) { order = l.joined(separator: ","); if !l.isEmpty { saved = order } }
+
+    var body: some View {
+        Section {
+            Picker(tr("搜尋結果的順序"), selection: Binding(get: { list.isEmpty ? 0 : 1 }, set: { set($0 == 0 ? [] : saved.split(separator: ",").map(String.init)) })) {
+                Text(tr("標準")).tag(0)
+                Text(tr("自己排")).tag(1)
+            }
+            .pickerStyle(.segmented)
+            if !list.isEmpty {
+                ForEach(Array(list.enumerated()), id: \.element) { i, id in
+                    HStack(spacing: 10) {
+                        Text("\(i + 1)").ffFont(.subheadline, .bold).monospacedDigit().foregroundStyle(T.btnInk)
+                            .frame(width: 26, height: 26).background(Circle().fill(T.btn))
+                        Text(trs(SearchOrder.all.first { $0.id == id }?.name ?? id))
+                        Spacer()
+                        if i > 0 {
+                            Button { var l = list; l.swapAt(i, i - 1); set(l) } label: { Image(systemName: "arrow.up") }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(tr("往上"))
+                        }
+                        Button { var l = list; l.remove(at: i); set(l.isEmpty ? [] : l); if l.isEmpty { order = "" } } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless).foregroundStyle(T.muted)
+                            .accessibilityLabel(tr("拿掉"))
+                    }
+                }
+                if list.count < 3 {
+                    Menu {
+                        ForEach(SearchOrder.all.filter { a in !list.contains(a.id) }, id: \.id) { a in
+                            Button(trs(a.name)) { set(list + [a.id]) }
+                        }
+                    } label: { Label(tr("加一個"), systemImage: "plus.circle") }
+                }
+            }
+        } header: {
+            Text(tr("搜尋結果的順序"))
+        } footer: {
+            Text(tr("標準：照方方原本的順序。自己排：最多選三個，第一個最重要，一樣的時候再看第二個、第三個。例如查「非常」的時候，「常用的詞先」會把比較常用的詞排在前面，「方言的講法先」會先列你選的腔口（在上面的腔口選單選）的方言詞和讀音。「HSK／TOCFL 等級低的先」只用在華語。"))
         }
     }
 }
@@ -567,6 +635,7 @@ private struct SoundSettings: View {
     @AppStorage("volume") private var volume = 0.8
     @AppStorage("audioBase") private var audioBase = Audio.defaultBase
     @State private var message: String?
+    @ObservedObject private var radio = RadioPlayer.shared
 
     var body: some View {
         SettingsPage(title: tr("聲音")) {
@@ -577,6 +646,21 @@ private struct SoundSettings: View {
                     Slider(value: $volume, in: 0...1, step: 0.05)
                     Image(systemName: "speaker.wave.3.fill").foregroundStyle(T.muted)
                 }
+            } header: {
+                Text(tr("詞的發音"))
+            }
+            // 電台 音量 (the same as in the 電台 page)
+            Section {
+                HStack {
+                    Image(systemName: "speaker.fill").foregroundStyle(T.muted)
+                    Slider(value: $radio.volume, in: 0...1)
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(T.muted)
+                    Text("\(Int((radio.volume * 100).rounded()))%").monospacedDigit().foregroundStyle(T.muted).frame(minWidth: 44, alignment: .trailing)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(tr("電台音量"))
+            } header: {
+                Text(tr("電台"))
             }
             Section {
                 TextField(tr("音檔來源"), text: $audioBase)
@@ -723,64 +807,73 @@ private struct ExportSettings: View {
 
 // MARK: 用法及資料來源
 
-/// what each part of the app can do (用法, Usage.swift), then where the data comes from
+/// what each part of the app can do (用法, Usage.swift), then where the data comes from: tiles in a grid, like the
+/// add-on's settings page
 private struct AboutSettings: View {
     var body: some View {
-        SettingsPage(title: tr("用法及資料來源")) {
-            UsageSections()
-            Section {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                UsageTiles()
                 Text(tr("以下是每個語言的資料從哪裡來、用什麼授權。")).ffFont(.footnote).foregroundStyle(T.muted)
-            } header: {
-                Text(tr("資料來源"))
-            }
-            Section(tr("資料來源・台語")) {
-                credit(tr("詞條、讀音、釋義、例句、音檔"), "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）。釋義、例句原文照錄，音檔未經修改；讀音依規則轉成皓羅、方音、白話字。")
-                credit(tr("推算的內容"), "辭典沒寫的腔口讀音是依規則推算的，用紅色和「推測」標示。")
-                credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》（經作者同意使用）")
-                if let c = TaigiSpeechInfo.credit { credit(tr("轉換的朗讀"), c) }
-                credit(tr("皓羅、自補詞條"), "Unoki99")
-                credit(tr("皓羅字型"), "DejaVu Sans")
-                credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（LXGW）；芫荽：Iansui（The Iansui Project Authors）。都是 SIL Open Font License 1.1。楷體：Apple 的華文楷體。")
-                credit(tr("詞頻"), "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
-                credit(tr("英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
-            }
-            Section(tr("資料來源・華語")) {
-                credit(tr("詞條、注音、釋義、例句"), "中華文化總會《兩岸常用詞典》（CC BY-NC-ND），g0v 萌典整理。拼音依注音轉寫，例句讀音依詞推算。")
-                credit(tr("漢字卡的字義"), "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄，引用的古書省略。")
-                credit(tr("漢字等級"), "HSK 3.0 漢字表、TOCFL（TBCL）漢字表")
-                credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）")
-                credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
-                credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
-                credit(tr("四川話讀音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：成都話的四川話拼音，漢字一樣、普通話讀音也一樣的詞。另外存，不改辭典的內容。")
-                credit(tr("發音"), "裝置內建的語音")
-            }
-            Section(tr("資料來源・練習")) {
-                credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
-            }
-            Section(tr("資料來源・粵語")) {
-                credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
-                credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
-                credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
-                credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
-                credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
-            }
-            Section(tr("資料來源・客語")) {
-                credit(tr("詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
-                credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
-                credit(tr("注音"), "照臺灣客家語拼音方案由拼音轉寫")
-            }
-            Section(tr("資料來源・其他")) {
-                credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")
+                    .padding(.top, 6)
+                InfoGrid(title: tr("資料來源・台語"), icon: "t.circle", tint: T.muted) {
+                    credit(tr("詞條、讀音、釋義、例句、音檔"), "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）。釋義、例句原文照錄，音檔未經修改；讀音依規則轉成皓羅、方音、白話字。")
+                    credit(tr("推算的內容"), "辭典沒寫的腔口讀音是依規則推算的，用紅色和「推測」標示。")
+                    credit(tr("音節編碼"), "YuRen-tw《rime-taigi-tps》（經作者同意使用）")
+                    if let c = TaigiSpeechInfo.credit { credit(tr("轉換的朗讀"), c) }
+                    credit(tr("皓羅、自補詞條"), "Unoki99")
+                    credit(tr("皓羅字型"), "DejaVu Sans")
+                    credit(tr("手寫練習的字體"), "文楷：霞鶩文楷 TC（LXGW）；芫荽：Iansui（The Iansui Project Authors）。都是 SIL Open Font License 1.1。楷體：Apple 的華文楷體。")
+                    credit(tr("詞頻"), "教育部辭典例句、Rime《八股文》（LGPL-3.0）")
+                    credit(tr("英文解釋"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：漢字一樣、閩南語讀音也一樣的詞。另外存，不改辭典的內容。")
+                }
+                InfoGrid(title: tr("資料來源・華語"), icon: "h.circle", tint: T.muted) {
+                    credit(tr("詞條、注音、釋義、例句"), "中華文化總會《兩岸常用詞典》（CC BY-NC-ND），g0v 萌典整理。拼音依注音轉寫，例句讀音依詞推算。")
+                    credit(tr("漢字卡的字義"), "教育部《重編國語辭典修訂本》（創用CC 姓名標示-禁止改作 3.0 臺灣），g0v 萌典整理。解釋和用例照錄，引用的古書省略。")
+                    credit(tr("漢字等級"), "HSK 3.0 漢字表、TOCFL（TBCL）漢字表")
+                    credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）")
+                    credit(tr("詞表"), "HSK 3.0（ivankra/hsk30，MIT）、TOCFL 華語八千詞（ivankra/tocfl）")
+                    credit(tr("部首組合"), "字的組成：cjkvi-ids（CHISE IDS，GPLv2）")
+                    credit(tr("四川話讀音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）：成都話的四川話拼音，漢字一樣、普通話讀音也一樣的詞。另外存，不改辭典的內容。")
+                    credit(tr("發音"), "裝置內建的語音")
+                }
+                InfoGrid(title: tr("資料來源・練習"), icon: "figure.run", tint: T.muted) {
+                    credit(tr("複習的間隔"), "照 SM-2 的方法自己寫的：Algorithm SM-2, (C) Copyright SuperMemo World, 1991. www.supermemo.com")
+                }
+                InfoGrid(title: tr("資料來源・粵語"), icon: "y.circle", tint: T.muted) {
+                    credit(tr("詞條、粵拼、英文解釋"), "CC-Canto（Pleco，CC BY-SA 3.0）、CC-CEDICT（CC BY-SA 4.0）")
+                    credit(tr("意思、例句、華語對照、錄音"), "維基詞典（Wiktionary，經 kaikki.org wiktextract 整理，CC BY-SA 4.0）；錄音來自 Wikimedia Commons")
+                    credit(tr("讀音、詞頻"), "rime-cantonese（CC BY 4.0／ODbL）")
+                    credit(tr("漢字卡的字義"), "開放詞典《開放粵語字典》（kfcd/yyzd，CC BY 3.0）")
+                    credit(tr("發音"), "有錄音的詞用錄音，其他用裝置內建的語音")
+                }
+                InfoGrid(title: tr("資料來源・客語"), icon: "k.circle", tint: T.muted) {
+                    credit(tr("詞條、六腔讀音、意思、例句"), "教育部《臺灣客語辭典》（創用CC 姓名標示-禁止改作 3.0 臺灣）。資料在自己的電腦上下載、整理，不另外散布。")
+                    credit(tr("英文解釋"), "CC-CEDICT（CC BY-SA 4.0）：華語寫法相同的詞的英文解釋，客語的意思可能不完全一樣")
+                    credit(tr("注音"), "照臺灣客家語拼音方案由拼音轉寫")
+                }
+                InfoGrid(title: tr("資料來源・電台與音樂"), icon: "radio", tint: T.muted) {
+                    credit(tr("電台目錄"), "Radio Browser（radio-browser.info，公眾領域）。App 只在播放、搜尋時查詢電台的網址；廣播內容屬於各電台。")
+                    credit(tr("歌詞"), "LRCLIB（lrclib.net）。App 只在聽歌時查詢並顯示歌詞，不收錄也不散布；歌詞的著作權屬於原作者。")
+                    credit(tr("歌和試聽"), "Apple 的音樂目錄（iTunes Search API）：歌名、歌手、封面和 30 秒試聽。整首歌用裝置上的 Apple Music 播放（要自己的訂閱）。")
+                    credit(tr("自己的歌詞"), "只存在自己的裝置上（LRC 格式）。")
+                }
+                InfoGrid(title: tr("資料來源・其他"), icon: "ellipsis.circle", tint: T.muted) {
+                    credit(tr("輸入法拆碼"), "倉頡、五筆：Rime 碼表（LGPL-3.0）")
+                }
                 Text(tr("本 App 與教育部無關，不是官方產品。")).ffFont(.footnote).foregroundStyle(T.muted)
             }
+            .padding()
+            .frame(maxWidth: 1100)
+            .frame(maxWidth: .infinity)
         }
+        .appBackground()
+        .navigationTitle(tr("用法及資料來源"))
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func credit(_ what: String, _ who: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(what).ffFont(.caption).foregroundStyle(T.muted)
-            Text(who).ffFont(.footnote)
-        }
+        InfoTile(title: what, text: trs(who), tint: T.muted)
     }
 }
 

@@ -25,7 +25,46 @@ enum HongimTone1 {
     /// with the mark left out: a space where it was (ㄉㄚ ㄍㄚ), or nothing
     static let spaceKey = "hongimTone1Space"
     static var space: Bool { UserDefaults.standard.bool(forKey: spaceKey) }
-    static func apply(_ s: String) -> String { on || !s.contains("ˉ") ? s : s.replacingOccurrences(of: "ˉ", with: space ? " " : "") }
+    /// a space between every syllable (ㄉㄧㄠˋ ㄧˉ)
+    static let allKey = "hongimSpaceAll"
+    static var all: Bool { UserDefaults.standard.bool(forKey: allKey) }
+
+    /// one syllable: the first-tone mark left out when asked (the space for it comes from gap, between syllables)
+    static func syllable(_ s: String) -> String { on ? s : s.replacingOccurrences(of: "ˉ", with: "") }
+    /// between two syllables of a word: a space between all of them, or after one whose ˉ was left out (never two)
+    static func gap(after prev: String) -> String { all || (!on && space && prev.contains("ˉ")) ? " " : "" }
+    /// a syllable in the light tone (after "--"): ˙ before it, as 注音 writes 輕聲, and its own tone mark left out
+    static func light(_ s: String) -> String {
+        var out = "˙"
+        out.unicodeScalars.append(contentsOf: s.unicodeScalars.filter { !marks.contains($0) })
+        return out
+    }
+    private static let marks: Set<Unicode.Scalar> = ["ˉ", "ˋ", "ˊ", "˪", "˫", "\u{A715}", "\u{A718}", "\u{0307}", "˙"]
+    private static let stops: Set<Unicode.Scalar> = ["ㆴ", "ㆵ", "ㆶ", "ㆷ"]
+    private static func isLetter(_ u: Unicode.Scalar) -> Bool { (0x3105...0x312F).contains(u.value) || (0x31A0...0x31BF).contains(u.value) }
+
+    /// a whole 方音 reading written out already: the syllables spaced (when asked) and the first-tone mark
+    static func apply(_ s: String) -> String {
+        var out = s
+        if all {
+            // (a syllable ends after its tone mark, or at a checked syllable's last letter when it has none)
+            var t = String.UnicodeScalarView()
+            let u = Array(s.unicodeScalars)
+            for i in u.indices {
+                t.append(u[i])
+                guard i + 1 < u.count else { break }
+                let n = u[i + 1]
+                if (marks.contains(u[i]) && u[i] != "˙" && (isLetter(n) || n == "˙")) || (stops.contains(u[i]) && isLetter(n)) { t.append(" ") }
+            }
+            out = String(t)
+        }
+        guard !on, out.contains("ˉ") else { return out }
+        if space && !all {
+            // (a space where the mark was, only when a syllable follows it: never two spaces)
+            out = out.replacingOccurrences(of: "ˉ(?=[\\u3105-\\u312F\\u31A0-\\u31BF˙])", with: " ", options: .regularExpression)
+        }
+        return out.replacingOccurrences(of: "ˉ", with: "")
+    }
 }
 
 enum ToneColors {
@@ -300,6 +339,14 @@ extension Dict {
                 let nounHere = pp.contains("代詞") || pp.contains("數詞") || pp.contains("量詞")
                 if !nounHere { main = "動詞" }
             }
+            // a one-syllable word that is both a 名詞 and a 副詞 (閣 koh: 樓閣, and 閣【替】 又、還): the 副詞 when a
+            // verb, adjective or adverb comes next (閣不止仔媠), unless it's after 這 / 彼 / a number / a 量詞
+            if main.contains("名詞"), pos.contains("副詞"), !Dict.codesOf(key).contains(" ") {
+                let pp = prev.flatMap { raw.pos[$0] } ?? ""
+                let np = next.flatMap { raw.pos[$0] }.flatMap { $0.split(separator: "|", omittingEmptySubsequences: false).first.map(String.init) } ?? ""
+                let nounHere = pp.contains("代詞") || pp.contains("數詞") || pp.contains("量詞")
+                if !nounHere, np.contains("動詞") || np.contains("形容詞") || np.contains("副詞") { main = "副詞" }
+            }
         }
         if main.contains("時間詞") { return true }
         if main.contains("名詞") { return true }
@@ -350,21 +397,22 @@ extension Dict {
     /// a reading drawn syllable by syllable in its tone colours (same text as render)
     func toneText(_ tokens: [String], _ sys: Int, _ place: Int, tones: [Int], system: Int) -> AttributedString {
         var out = AttributedString()
-        var prevCode = false, n = 0
+        var prevCode = false, n = 0, prevRaw = "", light = false
         for t in tokens {
             let cap = t.hasPrefix("^"), c = cap ? String(t.dropFirst()) : t
             if isCode(c) {
-                if sys != 3 && prevCode { out += AttributedString("-") }
+                if prevCode { out += AttributedString(sys == 3 ? HongimTone1.gap(after: prevRaw) : "-") }
                 let shown = ToneColors.marks && n < tones.count ? sandhiCode(c, tones[n]) : c
                 var s = syl(shown, sys, place)
+                if sys == 3 { prevRaw = raw.syl[shown]?.first ?? ""; if light { s = HongimTone1.light(s) } }
                 if cap && sys != 3 { s = s.prefix(1).uppercased() + s.dropFirst() }
                 var a = AttributedString(s)
                 if n < tones.count, let col = ToneColors.color(tones[n], system) { a.swiftUI.foregroundColor = col }
                 out += a; n += 1; prevCode = true
-            } else if t == "--" { if sys != 3 { out += AttributedString("--") }; prevCode = false }
-            else if t == "_" { out += AttributedString(" "); prevCode = false }
-            else if t.hasPrefix("~") { out += AttributedString(String(t.dropFirst())); prevCode = false }
-            else { out += AttributedString(t); prevCode = false }
+            } else if t == "--" { if sys != 3 { out += AttributedString("--"); prevCode = false }; light = true }
+            else if t == "_" { out += AttributedString(" "); prevCode = false; light = false }
+            else if t.hasPrefix("~") { out += AttributedString(String(t.dropFirst())); prevCode = false; light = false }
+            else { out += AttributedString(t); prevCode = false; light = false }
         }
         return out
     }
@@ -663,6 +711,23 @@ struct ToneGlow: ViewModifier {
 }
 extension View {
     func toneGlow() -> some View { modifier(ToneGlow()) }
+}
+
+/// 轉換: the colours' glow on or off right there (the same switch as 設定 → 顏色與外觀 → 顏色光暈), for when a long
+/// text gets slow with it. Only while the tone colours are on.
+struct GlowToggle: View {
+    @AppStorage(ToneColors.key) private var system = 0
+    @AppStorage(ToneColors.glowKey) private var glow = ToneColors.glowStandard
+    var body: some View {
+        if system != 0 {
+            Button { glow.toggle() } label: {
+                Image(systemName: glow ? "sparkles" : "sparkle")
+                    .foregroundStyle(glow ? AnyShapeStyle(T.btnInk) : AnyShapeStyle(T.muted))
+            }
+            .accessibilityLabel((glow ? tr("關掉顏色光暈") : tr("打開顏色光暈")))
+            .help((glow ? tr("關掉顏色光暈") : tr("打開顏色光暈")))
+        }
+    }
 }
 
 

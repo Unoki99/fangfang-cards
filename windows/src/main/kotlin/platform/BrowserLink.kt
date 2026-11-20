@@ -35,12 +35,18 @@ object BrowserImport {
             ?.mapNotNull { (it as? List<Any?>)?.map { x -> x as? String ?: "" } } ?: return 0
         val groups = uri.getQueryParameter("gr")?.let { unpack(it) }?.let { try { JReader(it).any() as? Map<String, Any?> } catch (_: Exception) { null } }
             ?.mapValues { (it.value as? List<Any?>)?.map { x -> x as? String ?: "" } ?: emptyList() } ?: emptyMap()
-        for (op in ops) if (op.size >= 4 && op[1] != "k" && op[3].isNotEmpty()) {
-            val g = groups[op[3]] ?: emptyList()
-            Store.addToGroup(op[3], g.firstOrNull() ?: op[3], g.getOrNull(1) ?: "", op[0])
+        val p = pending(); p.addAll(ops.filter { it.size >= 2 })
+        if (!Store.loaded) {
+            // (not ready yet: the words wait; their groups are made now)
+            keep(p)
+            for (op in ops) if (op.size >= 4 && op[1] != "k" && op[3].isNotEmpty()) {
+                val g = groups[op[3]] ?: emptyList()
+                Store.addToGroup(op[3], g.firstOrNull() ?: op[3], g.getOrNull(1) ?: "", op[0])
+            }
+            return ops.size
         }
-        val p = pending(); p.addAll(ops.filter { it.size >= 2 }); keep(p)
-        apply()
+        // (everything in one go: see Store.applyBrowser)
+        keep(Store.applyBrowser(ops, groups, p))
         Store.saveNow()
         return ops.size
     }
@@ -50,18 +56,7 @@ object BrowserImport {
         if (!Store.loaded) return
         val p = pending()
         if (p.isEmpty()) return
-        val waiting = ArrayList<List<String>>()
-        for (op in p) {
-            if (op.size < 2) continue
-            val k = op[0]
-            if (op[1] == "g") continue
-            if (op[1] == "s") { if (!Store.isSaved(k)) Store.toggleSaved(k); continue }
-            val want = if (op[1] == "k") 1 else 2
-            if (Store.cardFor(k) != null || Lang.kind(k) == Store.lang) {
-                if (Store.wordStatus(k) != want) Store.setWord(k, want)
-            } else waiting.add(op)
-        }
-        keep(waiting)
+        keep(Store.applyBrowser(emptyList(), emptyMap(), p))
         Store.saveNow()
     }
 }

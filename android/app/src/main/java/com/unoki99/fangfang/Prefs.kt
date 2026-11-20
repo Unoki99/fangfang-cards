@@ -61,6 +61,8 @@ object Prefs : KeyValue {
     val hideMeaning = Pref("hideMeaning", false)
     val autoPlay = Pref("autoPlay", false)
     val volume = Pref("volume", 0.8f)
+    /** 電台 音量: the radio's own loudness (0…1), on top of the device's volume */
+    val radioVolume = Pref("radioVolume", 1f)
     val goal = Pref("goal", 3)
     val sessionSize = Pref("sessionSize", 10)
     val audioBase = Pref("audioBase", "https://unoki99.github.io/fangfang/")
@@ -210,7 +212,7 @@ object Prefs : KeyValue {
     /** 本週學習 → 選詞: the 分類 the words are picked from (-1 = 不熟) */
     val weekPickTopic = Pref("weekPickTopic", -1)
 
-    private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, hongimTone1, hongimTone1Space, toneGlow, hideMeaning, autoPlay, volume, goal, sessionSize,
+    private val all = listOf<Pref<*>>(rom, place, toneSys, toneMarks, hongimTone1, hongimTone1Space, toneGlow, hideMeaning, autoPlay, volume, radioVolume, goal, sessionSize,
         audioBase, theme, swellAnim, widgetBG, textSize, syncDevices, topic, dictTab, lookupQuery, pronQuery, convText, latin,
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
@@ -226,6 +228,7 @@ object Prefs : KeyValue {
         syncEngine()
         toneSys.onChange = { syncEngine() }
         toneMarks.onChange = { syncEngine() }
+        radioVolume.onChange = { Radio.radioVolumeChanged() }
         hongimTone1.onChange = { syncEngine() }
         hongimTone1Space.onChange = { syncEngine() }
         com.unoki99.fangfang.engine.ToneColors.load(toneColorsTw.value, toneColorsZh.value, toneColorsYue.value, toneColorsHak.value)

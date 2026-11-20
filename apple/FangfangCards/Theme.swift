@@ -209,8 +209,8 @@ struct RomButton: View {
 
     private var romButton: some View {
         Button {
-            // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字
-            withAnimation(.snappy) { if store.isZh { store.zhRom = (store.zhRom + 1) % 2 } else { rom = (rom + 1) % 3 } }
+            // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字 → 只用方音
+            withAnimation(.snappy) { if store.isZh { store.zhRom = (store.zhRom + 1) % 2 } else { rom = (rom + 1) % 4 } }
         } label: {
             capsule
         }
@@ -221,8 +221,8 @@ struct RomButton: View {
     private var row: some View {
         HStack(spacing: 6) {
             Button {
-                // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字
-                withAnimation(.snappy) { if store.isZh { store.zhRom = (store.zhRom + 1) % 2 } else { rom = (rom + 1) % 3 } }
+                // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字 → 只用方音
+                withAnimation(.snappy) { if store.isZh { store.zhRom = (store.zhRom + 1) % 2 } else { rom = (rom + 1) % 4 } }
             } label: {
                 label
             }
@@ -374,7 +374,7 @@ struct CompactReadingMenu: View {
                     .pickerStyle(.inline)
                 } else {
                     Picker(tr("拼寫"), selection: $rom) {
-                        ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0])).tag($0) }
+                        ForEach(0..<ROM_NAMES.count, id: \.self) { Text(trs(ROM_NAMES[$0] == "方音" ? "只用方音" : ROM_NAMES[$0])).tag($0) }
                     }
                     .pickerStyle(.inline)
                 }
@@ -592,8 +592,12 @@ enum DictFont {
     /// font as it is). The system font has no 漢字: what it doesn't have is looked for in its cascade list first, so
     /// putting the handwriting font there changes only those characters.
     static func font(_ size: CGFloat, weight: Font.Weight = .regular, on: Bool = true) -> Font? {
-        let c = chosen
-        guard on, c > 0 else { return nil }
+        on ? font(size, weight: weight, style: chosen) : nil
+    }
+
+    /// the same with a font of its own choosing (卡拉 OK's): 0 = the system font (nil), then Kaiti.styles
+    static func font(_ size: CGFloat, weight: Font.Weight = .regular, style c: Int) -> Font? {
+        guard c > 0 else { return nil }
         let key = "\(c)|\(size)|\(weight.hashValue)" as NSString
         if let hit = cache.object(forKey: key) { return Font(hit as CTFont) }
         Kaiti.register()

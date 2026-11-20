@@ -334,6 +334,7 @@ final class RadioPlayer: ObservableObject {
     }
 
     func play(_ s: RadioStation) {
+        SongPlayer.shared.stop()         // (找歌來聽's song stops: one or the other)
         _ = LyricsBridge.shared          // (the songs' lyrics into 轉換 from now on)
         keepAwake(false)
         job?.cancel()
@@ -435,7 +436,7 @@ final class RadioPlayer: ObservableObject {
         let item = AVPlayerItem(url: url)
         let p = AVPlayer(playerItem: item)
         p.automaticallyWaitsToMinimizeStalling = true
-        p.volume = (Player.shared.playing == nil ? 1 : duckVolume) * level
+        p.volume = (Player.shared.playing == nil ? 1 : duckVolume) * level * volume
         player = p
         p.play()
         for _ in 0..<48 {
@@ -514,7 +515,14 @@ final class RadioPlayer: ObservableObject {
 
     private let duckVolume: Float = 0.15
     /// (the sleep timer's fade out, the alarm's fade in: 0…1)
-    private var level: Float = 1 { didSet { if Player.shared.playing == nil { player?.volume = level } } }
+    private var level: Float = 1 { didSet { if Player.shared.playing == nil { player?.volume = level * volume } } }
+    /// 音量: the radio's own loudness, set in the 電台 page (0…1), on top of the phone's volume
+    @Published var volume: Float = UserDefaults.standard.object(forKey: "radioVolume") as? Float ?? 1 {
+        didSet {
+            UserDefaults.standard.set(volume, forKey: "radioVolume")
+            if Player.shared.playing == nil { player?.volume = level * volume }
+        }
+    }
 
     // MARK: sleep timer and alarm
 
@@ -631,11 +639,11 @@ final class RadioPlayer: ObservableObject {
     private func duck(_ on: Bool) {
         unduck?.cancel()
         guard let p = player else { return }
-        if on { p.volume = duckVolume * level; return }
+        if on { p.volume = duckVolume * level * volume; return }
         unduck = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 600_000_000)
             guard !Task.isCancelled, let p = self?.player else { return }
-            let lv = self?.level ?? 1
+            let lv = (self?.level ?? 1) * (self?.volume ?? 1)
             for i in 1...8 { p.volume = ((self?.duckVolume ?? 0.15) + Float(i) / 8 * 0.85) * lv; try? await Task.sleep(nanoseconds: 40_000_000) }
         }
     }
@@ -876,13 +884,14 @@ struct RadioMetaLog: View {
 /// in the top bar, next to ⚙︎: opens 電台 (lit while a station plays)
 struct RadioButton: View {
     @ObservedObject private var radio = RadioPlayer.shared
+    @ObservedObject private var songs = SongPlayer.shared
     var body: some View {
         Button { radio.sheetOpen = true } label: {
-            Image(systemName: radio.isOn ? "radio.fill" : "radio")
-                .foregroundStyle(radio.isOn ? T.btnInk : T.glyph)
+            Image(systemName: songs.active && !radio.isOn ? "music.note" : (radio.isOn ? "radio.fill" : "radio"))
+                .foregroundStyle(radio.isOn || songs.playing ? T.btnInk : T.glyph)
                 .symbolEffect(.pulse, isActive: radio.state == .connecting)
         }
-        .accessibilityLabel(tr("電台"))
+        .accessibilityLabel(tr("電台與音樂"))
     }
 }
 
@@ -893,7 +902,7 @@ struct RadioSheetModifier: ViewModifier {
     func body(content: Content) -> some View {
         content.sheet(isPresented: $radio.sheetOpen) {
             NavigationStack {
-                RadioView()
+                MediaTabs()
                     .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { radio.sheetOpen = false } } }
             }
             .environmentObject(Store.shared)
@@ -939,6 +948,19 @@ struct RadioView: View {
                         }
                     }
                 }
+            }
+            // 音量: the radio's own, on top of the phone's
+            Section {
+                HStack(spacing: 10) {
+                    Image(systemName: "speaker.fill").foregroundStyle(T.muted)
+                    Slider(value: $radio.volume, in: 0...1)
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(T.muted)
+                    Text("\(Int((radio.volume * 100).rounded()))%").monospacedDigit().foregroundStyle(T.muted).frame(minWidth: 44, alignment: .trailing)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(tr("電台音量"))
+            } header: {
+                Text(tr("音量"))
             }
             RadioTimersSection()
             Section {

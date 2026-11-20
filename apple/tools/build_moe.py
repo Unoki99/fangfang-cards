@@ -151,11 +151,17 @@ by_han = collections.defaultdict(list)
 for e in E:
     if "r" in e: by_han[e["h"]].append(e)
 said = collections.OrderedDict()                     # (han, place index) -> [readings]
+said_zh = collections.defaultdict(set)               # (han, place index) -> the 華語 words it's given for
 for r in S["詞彙比較"][1:]:
     if len(r) < 5 or r[2] not in PLACES or not r[4].strip(): continue
     k = (r[3], str(PLACES.index(r[2])))
     rs = rstr(reading(r[4]))
     if rs not in said.setdefault(k, []): said[k].append(rs)
+    said_zh[k].add(r[1])
+# each entry's meanings (for telling two entries with the same characters apart by what they mean)
+sense_texts = collections.defaultdict(list)     # entry id -> its meanings' texts, in order
+for r in S["義項"][1:]:
+    sense_texts[r[0]].append(r[3] if len(r) > 3 else "")
 # which dictionary entry a 詞彙比較 word is: same characters and number of syllables; if several, the one
 # closest to the readings given for all the places together (做伙: 宜蘭 tsò-hué is exactly the main reading)
 all_forms = collections.defaultdict(list)
@@ -169,11 +175,48 @@ def entry_for(han, n):
     best = max(overlap(e) for e in cands)
     top = [e for e in cands if overlap(e) == best]
     return top[0] if len(top) == 1 else None
-vocab_set = vocab_extra = 0
+# When the readings can't tell (金門 佗 tio̍h for 華語「哪裡」: 佗 tó "which" and 佗 toh "where"), the meaning can:
+# the one entry with a meaning that has the 華語 word in it (toh: 何處、哪裡). Nothing is guessed: no such entry,
+# or more than one, and the row is left out as before. -> (entry, the meanings that have it)
+def entry_by_meaning(han, n, zhs):
+    cands = [e for e in by_han.get(han, []) if len(codes_only(e["r"].split())) == n]
+    if len(cands) < 2: return None, []
+    hits = []
+    for e in cands:
+        # (the 華語 word as one of the meaning's own words, 何處、哪裡: not just inside one, 飯 in 稀飯)
+        ix = [i for i, t in enumerate(sense_texts.get(str(e["i"]), []))
+              if any(z and z in [w.strip("「」『』（）() ") for w in re.split(r"[、，,；;。：:]", t)] for z in zhs)]
+        if ix: hits.append((e, ix))
+    return hits[0] if len(hits) == 1 else (None, [])
+vocab_set = vocab_extra = by_meaning = contracted = 0
+meaning_only = set()                                 # (entry id, place): said so for one meaning, not carried on
 for (han, pl), forms in said.items():
     fc = [codes_only(f.split()) for f in forms]
-    e = entry_for(han, len(fc[0]))
-    if e is None: continue
+    # (the readings with one syllable for each character tell the entry; 合音, 佗位 tuē, are fewer)
+    # (only for words written in 漢字: a-lú-mih is written in its own letters)
+    hanzi = all(0x3400 <= ord(ch) <= 0x9FFF or 0xF900 <= ord(ch) <= 0xFAFF or ord(ch) >= 0x20000 for ch in han)
+    n = len(han) if hanzi and (any(len(f) == len(han) for f in fc) or all(len(f) < len(han) for f in fc)) else len(fc[0])
+    e = entry_for(han, n)
+    senses = []
+    if e is None:
+        e, senses = entry_by_meaning(han, n, said_zh[(han, pl)])
+        # (a place MOE already states for that entry stays exactly as it was)
+        if e is None or (e["i"], pl) in explicit: continue
+        by_meaning += 1
+        meaning_only.add((e["i"], pl))
+        if len(senses) < len(sense_texts.get(str(e["i"]), [])):
+            # only some of its meanings: the place's reading goes on those meanings only
+            f0 = next((f for f in forms if len(codes_only(f.split())) == n), None)
+            if f0 and codes_only(f0.split()) != codes_only(e["r"].split()):
+                for i in senses: e.setdefault("sd", {}).setdefault(str(i), {})[pl] = f0
+            continue
+    # 合音 only (新竹 佗位 tuē, tueh): the place's other ways of saying it; the word's own reading stays
+    if hanzi and all(len(f) < n for f in fc):
+        xs = e.setdefault("dd", {}).setdefault(pl, [])
+        for f in forms:
+            if f not in xs: xs.append(f)
+        contracted += 1
+        continue
     main = codes_only(e["r"].split())
     stated = []
     if (e["i"], pl) in explicit:                     # 語音差異 first, then what 詞彙比較 adds
@@ -193,17 +236,15 @@ for (han, pl), forms in said.items():
     extra = [x for x in stated[1:] if codes_only(x.split()) != codes_only(stated[0].split())]
     if extra:
         e.setdefault("dd", {})[pl] = extra; vocab_extra += 1
-print("詞彙比較 readings used:", vocab_set, "places with a second reading:", vocab_extra)
+print("詞彙比較 readings used:", vocab_set, "places with a second reading:", vocab_extra,
+      "told apart by meaning:", by_meaning, "合音 only:", contracted)
 explicit |= {(e["i"], p) for e in E for p in e.get("dx", [])}
 
 # A 詞彙比較 row is about one meaning of a word (華語「很」 → 臺南「足 tsok」). When a character's meaning itself
 # says it has that other reading (足「非常、很、十分。也可唸作tsok。」, 啥「置於詞尾時通常唸作siannh。」), the
 # place's reading belongs to that meaning only: it is shown for the character, but not carried into other
 # words (滿足, 十足, 啥物 keep tsiok / siánn).
-sense_texts = collections.defaultdict(list)     # entry id -> its meanings' texts, in order
-for r in S["義項"][1:]:
-    sense_texts[r[0]].append(r[3] if len(r) > 3 else "")
-one_meaning = set()                              # (entry id, place)
+one_meaning = set(meaning_only)                  # (entry id, place)
 for e in E:
     if len(e["h"]) != 1 or "d" not in e: continue
     for pl in list(e.get("vx", [])):

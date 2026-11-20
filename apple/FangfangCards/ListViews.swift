@@ -24,6 +24,9 @@ struct UnknownView: View {
     @State private var idiomWriting = false
     @State private var gaming = false
     @State private var helping = false
+    /// 遊戲: the grid of games open, and the one picked (opened once the grid has closed)
+    @State private var gamesOpen = false
+    @State private var pickedGame: PracticeGame?
     @State private var statsOpen = false
     /// 要複習 → practise just the words due
     @State private var reviewWords: [Card] = []
@@ -49,33 +52,19 @@ struct UnknownView: View {
                     reviewWords = store.allDueCards
                     if hand { reviewWriting = true } else { reviewing = true }
                 }
+                // 開始練習 and the handwriting ones here; every game behind one button (遊戲), chosen from a grid with
+                // what each does; 怎麼練習 across the whole width
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
                     PracticeTile(title: tr("開始練習"), icon: "graduationcap.fill", enabled: !pool.isEmpty || !due.isEmpty) { studying = true }
-                    PracticeTile(title: tr("滑卡練習"), icon: "hand.draw", enabled: !pool.isEmpty || !due.isEmpty) { swiping = true }
-                    PracticeTile(title: tr("例句填空"), icon: "text.badge.checkmark",
-                                 enabled: (pool + due).contains { !store.blanks($0).isEmpty }) { blanks = true }
-                    PracticeTile(title: tr("排句子"), icon: "rectangle.3.group", enabled: !pool.isEmpty) { scrambling = true }
-                    PracticeTile(title: tr("看字排讀音"), icon: "character.book.closed", enabled: !pool.isEmpty && !store.isSv) { readingOrder = true }
-                    // (客語: no voice to listen to)
-                    // (日語: no tones; its particles instead)
-                    if store.isJa {
-                        PracticeTile(title: tr("助詞練習"), icon: "puzzlepiece", enabled: true) { particles = true }
-                    } else {
-                        PracticeTile(title: tr("聲調練習"), icon: "waveform", enabled: !store.isHak && !store.isSv) { toning = true }
-                        // (every syllable's tone, in its colour: a game)
-                        PracticeTile(title: tr("聲調色球"), icon: "circle.hexagongrid.fill", enabled: !store.isSv) { toneGame = true }
-                    }
-                    PracticeTile(title: tr("翻牌配對"), icon: "square.grid.2x2", enabled: pool.count > 1) { memory = true }
                     PracticeTile(title: tr("手寫練習"), icon: "pencil.and.scribble", enabled: !store.isSv) { writing = true }
                     PracticeTile(title: tr("自由寫字"), icon: "square.grid.3x3", enabled: !store.isSv) { freeWriting = true }
                     // (華語: 四字格 from their meaning)
                     if store.lang == 1 {
                         PracticeTile(title: tr("四字格手寫"), icon: "square.grid.2x2.fill", enabled: store.zh != nil) { idiomWriting = true }
                     }
-                    PracticeTile(title: tr("遊戲"), icon: "gamecontroller", enabled: pool.count > 3) { gaming = true }
-                    // what each way of practising does
-                    PracticeTile(title: tr("怎麼練習"), icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
                 }
+                PracticeTile(title: tr("遊戲"), icon: "gamecontroller", enabled: true) { gamesOpen = true }
+                PracticeTile(title: tr("怎麼練習"), icon: "questionmark.circle", enabled: true, quiet: true) { helping = true }
                 }
                 .padding(.vertical, 6)
                 .textCase(nil)
@@ -133,6 +122,9 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $idiomWriting) { IdiomWriteView().environmentObject(store) }
         .fullScreenCover(isPresented: $gaming) { FallingGameView().environmentObject(store) }
         .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
+        .sheet(isPresented: $gamesOpen, onDismiss: openPickedGame) {
+            GamePicker(games: games) { pickedGame = $0; gamesOpen = false }.environmentObject(store)
+        }
         .sheet(isPresented: $statsOpen) { NavigationStack { ReviewStatsView() }.environmentObject(store).macTextSize() }
         .fullScreenCover(isPresented: $readingOrder) { ScrambleView(readingMode: true).environmentObject(store) }
     }
@@ -242,6 +234,91 @@ struct KnownView: View {
     }
 }
 
+
+/// 遊戲: every game, chosen from a grid with what each does
+enum PracticeGame: String, Identifiable { case swipe, blanks, scramble, readingOrder, tones, toneBalls, particles, memory, falling
+    var id: String { rawValue } }
+
+extension UnknownView {
+    /// the games there are for this language and these words
+    var games: [(game: PracticeGame, icon: String, title: String, text: String, enabled: Bool)] {
+        let pool = store.practiceCards, due = store.dueCards
+        var a: [(PracticeGame, String, String, String, Bool)] = [
+            (.swipe, "hand.draw", trs("滑卡練習"), trs("像「新詞」一樣滑卡片：往右是會，往左是不會。"), !pool.isEmpty || !due.isEmpty),
+            (.blanks, "text.badge.checkmark", trs("例句填空"), trs("看例句，把空著的詞選回去。"), (pool + due).contains { !store.blanks($0).isEmpty }),
+            (.scramble, "rectangle.3.group", trs("排句子"), trs("例句被打亂了，照意思把詞排回去。"), !pool.isEmpty),
+            (.readingOrder, "character.book.closed", trs("看字排讀音"), trs("只看漢字，把讀音照順序排。"), !pool.isEmpty && !store.isSv),
+        ]
+        if store.isJa {
+            a.append((.particles, "puzzlepiece", trs("助詞練習"), trs("選句子裡缺的助詞。"), true))
+        } else {
+            a.append((.tones, "waveform", trs("聲調練習"), trs("聽發音，選聲調對的拼法。"), !store.isHak && !store.isSv))
+            a.append((.toneBalls, "circle.hexagongrid.fill", trs("聲調色球"), trs("聽一個詞，照每個字的聲調點顏色球。"), !store.isSv))
+        }
+        a.append((.memory, "square.grid.2x2", trs("翻牌配對"), trs("一次翻兩張牌，把漢字和它的讀音配起來。"), pool.count > 1))
+        a.append((.falling, "arrow.down.circle", trs("掉下來的字"), trs("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), pool.count > 3))
+        return a.map { (game: $0.0, icon: $0.1, title: $0.2, text: $0.3, enabled: $0.4) }
+    }
+
+    func openPickedGame() {
+        guard let g = pickedGame else { return }
+        pickedGame = nil
+        switch g {
+        case .swipe: swiping = true
+        case .blanks: blanks = true
+        case .scramble: scrambling = true
+        case .readingOrder: readingOrder = true
+        case .tones: toning = true
+        case .toneBalls: toneGame = true
+        case .particles: particles = true
+        case .memory: memory = true
+        case .falling: gaming = true
+        }
+    }
+}
+
+struct GamePicker: View {
+    let games: [(game: PracticeGame, icon: String, title: String, text: String, enabled: Bool)]
+    let pick: (PracticeGame) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+                    ForEach(games, id: \.game) { g in
+                        Button { pick(g.game) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Image(systemName: g.icon).font(.system(size: 26, weight: .semibold))
+                                    .foregroundStyle(g.enabled ? T.btnInk : T.muted)
+                                Text(g.title).ffFont(.headline).foregroundStyle(g.enabled ? T.glyph : T.muted)
+                                Text(g.text).ffFont(.caption).foregroundStyle(T.muted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(14)
+                            .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
+                            .background(RoundedRectangle(cornerRadius: 16).fill(g.enabled ? T.btn : T.fn.opacity(0.6)))
+                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(g.enabled ? T.btnEdge : T.fnEdge, lineWidth: 1.5))
+                            .contentShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!g.enabled)
+                    }
+                }
+                .padding()
+                .frame(maxWidth: 900)
+                .frame(maxWidth: .infinity)
+            }
+            .appBackground()
+            .navigationTitle(tr("遊戲"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { dismiss() } } }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+    }
+}
 
 /// one practice button in 不熟 (half the width, the soft green)
 struct PracticeTile: View {

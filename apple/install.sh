@@ -2,9 +2,7 @@
 # 方方詞卡: builds the app and installs it on your iPhone / iPad and your Mac. No Xcode clicking needed.
 #   bash ~/Downloads/fangfang-cards-main/install.sh          iPhone/iPad + Mac
 #   bash ~/Downloads/fangfang-cards-main/install.sh ios      only iPhone/iPad
-#   bash ~/Downloads/fangfang-cards-main/install.sh mac      only Mac (Apple chip: asks once, iPad app or Mac version; Intel: the Mac version)
-#   bash ~/Downloads/fangfang-cards-main/install.sh ipad     only Mac, as the iPad app (Apple chip), and remember that
-#   bash ~/Downloads/fangfang-cards-main/install.sh catalyst only Mac, as the Mac version, and remember that
+#   bash ~/Downloads/fangfang-cards-main/install.sh mac      only Mac (the iPad app on the Mac; needs an Apple chip)
 #   bash ~/Downloads/fangfang-cards-main/install.sh ipa      an app file (FangfangCards.ipa on the Desktop) to install with Sideloadly
 #   … nosafari (after any of the above, e.g. "install.sh ipa nosafari"): skips the Safari pop-up's words.
 #   The app downloads and makes each language's dictionary itself (設定 → 詞典資料); the only data put in it is
@@ -264,42 +262,24 @@ PY
   fi
 fi
 
-# 5. Mac. On a Mac with an Apple chip: the iPad app itself (exactly the same app as on the iPad; it runs
-#    smoother than the Mac version). On an Intel Mac, or with "install.sh catalyst": the Mac version.
-# Apple chip: you choose (asked once, remembered in ~/.fangfang-mac-kind; "install.sh ipad" or
-# "install.sh catalyst" choose again). Intel: always the Mac version (iPad apps don't run there).
-MACKIND="catalyst"
-if [ "$(uname -m)" = "arm64" ] || [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
-  KINDFILE="$HOME/.fangfang-mac-kind"
-  if [ "$WHAT" = "catalyst" ] || [ "$WHAT" = "ipad" ]; then
-    MACKIND="$WHAT"; echo "$MACKIND" > "$KINDFILE"
-  elif [ -f "$KINDFILE" ]; then
-    MACKIND=$(cat "$KINDFILE")
-  elif [ "$WHAT" = "all" ] || [ "$WHAT" = "mac" ]; then
-    echo ""
-    echo "這台 Mac 是 Apple 晶片，Mac 上要裝哪一種？"
-    echo "  1) iPad 版（建議）：跟 iPad 上的一模一樣，比較順，聲調光暈也比較漂亮；7 天後要重新執行這個指令。"
-    echo "  2) Mac 版：有側邊欄、可以用選單列；不會過期，但滑鼠移過去放大字的時候比較不順。"
-    if [ -t 0 ]; then read -r -p "請輸入 1 或 2（直接按 Enter = 1）：" ANS; else ANS=1; fi
-    if [ "$ANS" = "2" ]; then MACKIND="catalyst"; else MACKIND="ipad"; fi
-    echo "$MACKIND" > "$KINDFILE"
-    echo "（記住了。之後想換：install.sh ipad 或 install.sh catalyst）"
-  else
-    MACKIND="ipad"
+# 5. Mac: the iPad app itself, on a Mac with an Apple chip (exactly the same app as on the iPad). The separate
+#    Mac version (Mac Catalyst) isn't made any more. Intel Macs can't run iPad apps, so nothing is installed there.
+MACKIND="ipad"
+if ! { [ "$(uname -m)" = "arm64" ] || [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; }; then
+  MACKIND="none"
+  if [ "$WHAT" != "all" ] && [ "$WHAT" != "ios" ] && [ "$WHAT" != "ipa" ]; then
+    echo "✗ 這台 Mac 是 Intel 晶片，不能執行 iPad App；方方詞卡在 Mac 上只有 iPad 版，所以這台 Mac 不裝。"
   fi
-  [ "$MACKIND" = "ipad" ] || MACKIND="catalyst"
-elif [ "$WHAT" = "ipad" ]; then
-  echo "✗ 這台 Mac 是 Intel 晶片，不能執行 iPad App，改裝 Mac 版。"
 fi
-if [ "$WHAT" = "all" ] || [ "$WHAT" = "mac" ] || [ "$WHAT" = "catalyst" ] || [ "$WHAT" = "ipad" ]; then
+rm -f "$HOME/.fangfang-mac-kind"
+if [ "$MACKIND" = "ipad" ] && { [ "$WHAT" = "all" ] || [ "$WHAT" = "mac" ] || [ "$WHAT" = "catalyst" ] || [ "$WHAT" = "ipad" ]; }; then
   TARGET="/Applications"
   [ -w "$TARGET" ] || { TARGET="$HOME/Applications"; mkdir -p "$TARGET"; }
   if [ "$MACKIND" = "ipad" ]; then
     ensure_ios_platform
     echo "建置 Mac 版（iPad App）…"
     MDD="$DD-ipadmac"
-    # the project is set up for the Mac version; for this build, switch it to "iPad app on the Mac"
-    # (in the copy in ~/FangfangCards; put back right after)
+    # (the project is set up for the iPad app on the Mac already; this only makes sure, in older copies)
     PBX="$DEST/FangfangCards.xcodeproj/project.pbxproj"
     cp "$PBX" "$PBX.fangfang-bak"
     sed -i '' -e 's/SUPPORTS_MACCATALYST = YES;/SUPPORTS_MACCATALYST = NO;/' \
@@ -333,17 +313,6 @@ if [ "$WHAT" = "all" ] || [ "$WHAT" = "mac" ] || [ "$WHAT" = "catalyst" ] || [ "
     xattr -cr "$TARGET/方方詞卡.app" 2>/dev/null
     echo "✓ Mac 版（iPad App）已安裝到 $TARGET/方方詞卡.app"
     echo "  跟 iPhone／iPad 一樣，免費 Apple ID 的話 7 天後再執行一次這個指令。"
-  else
-    echo "建置 Mac 版…"
-    xcodebuild -project "$DEST/FangfangCards.xcodeproj" -scheme FangfangCards -configuration Release \
-       -destination "generic/platform=macOS,variant=Mac Catalyst" -derivedDataPath "$DD" \
-       CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" "${IDARG[@]}" \
-       build > "$LOG" 2>&1 < /dev/null || fail
-    MACAPP=$(ls -d "$DD"/Build/Products/Release-maccatalyst/*.app | head -1)
-    pkill -x "$(basename "$MACAPP" .app)" 2>/dev/null
-    rm -rf "$TARGET/方方詞卡.app"
-    cp -R "$MACAPP" "$TARGET/方方詞卡.app"
-    echo "✓ Mac 版已安裝到 $TARGET/方方詞卡.app"
   fi
 fi
 echo "完成！免費 Apple ID：7 天後再執行一次這個指令就好。"

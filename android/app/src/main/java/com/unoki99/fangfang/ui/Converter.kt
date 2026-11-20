@@ -311,7 +311,6 @@ private fun outWords(d: Dict, res: ConvResult, mode: Int, rom: Int, place: Int, 
     val glow = Prefs.toneGlow.value
     val orange = Color(0xFFFF9F0A)
     val out = ArrayList<OutWord>()
-    val senseKeys = Store.savedSenseKeys
     var newLine = false
     for (p in pieces) {
         if (p.text == "\n") {
@@ -330,8 +329,7 @@ private fun outWords(d: Dict, res: ConvResult, mode: Int, rom: Int, place: Int, 
         else {
             val it = res.items[i]
             val k = d.keyOf(it.current)
-            // saved or in 不熟: a star in the tone colours under it; only meanings saved: a blue one
-            if (k != null) mark = if (Store.isSaved(k) || Store.cardStatus(k) == 2) 1 else if (senseKeys.contains(k)) 2 else 0
+            // (no star under saved words any more: taken away on request)
             // (a choice of readings, or other places say it differently (各地講法): the same line)
             val deco = if (it.opts.size > 1 || it.current.han?.let { h -> d.sayingHans.contains(h) } == true) TextDecoration.Underline else null
             val bg = Color.Unspecified

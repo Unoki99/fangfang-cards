@@ -511,6 +511,8 @@ struct ZhPiece {
     let text: [String]
     let tw: [String]?
     let lu: [String]?
+    /// 日語: the dictionary form of a word written in another form (食べた → 食べる), to open its entry
+    var base: String? = nil
     /// (四川話: filled in by ZhDict.sentence from the dictionary's words)
     func syl(_ place: Int) -> [String]? { place >= 1 ? (lu ?? tw) : tw }
 }
@@ -1150,6 +1152,14 @@ final class ZhDict: @unchecked Sendable {
     /// a sentence's 漢字, in tone colours when they're on
     func sentenceHan(_ ps: [ZhPiece], _ place: Int, base: Color, blank: String? = nil, colours: Int = ToneColors.system) -> AttributedString {
         var out = AttributedString()
+        // 日語: kanji, hiragana and katakana each in their colour
+        if isJa {
+            for p in ps {
+                if let blank, p.text.joined() == blank { var a = AttributedString("＿＿"); a.swiftUI.foregroundColor = base; out += a; continue }
+                out += hanText(p.text.joined(), [], base: base, colours: colours)
+            }
+            return out
+        }
         for p in ps {
             if let blank, p.text.joined() == blank {
                 var a = AttributedString("＿＿"); a.swiftUI.foregroundColor = base; out += a; continue
@@ -1230,6 +1240,26 @@ final class ZhDict: @unchecked Sendable {
     /// (四川話's own words only when 讀音 = 四川話)
     func search(_ q0: String, place: Int = 0) -> Found {
         var f = search0(q0, place: place)
+        // (設定 → 詞典 → 搜尋結果的順序: 自己排)
+        let keys = SearchOrder.chosen
+        if !keys.isEmpty {
+            let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+            let m: (String, Int) -> Double = { k, i in
+                let e = self.entries[i]
+                switch k {
+                case "freq": return Double(i)
+                case "exact": return e.h == q || e.alt == q || (e.senses.first?.text.components(separatedBy: "。").first ?? "") == q ? 0 : 1
+                case "short": return Double(e.h.count)
+                case "level":
+                    let l = Lang.zhList == 1 ? e.tocfl : e.hsk
+                    return l > 0 ? Double(l) : 99
+                default: return 0
+                }
+            }
+            f.words = SearchOrder.sort(f.words, keys, m); f.starts = SearchOrder.sort(f.starts, keys, m)
+            f.contains = SearchOrder.sort(f.contains, keys, m); f.defs = SearchOrder.sort(f.defs, keys, m)
+            f.english = SearchOrder.sort(f.english, keys, m); f.mandarin = SearchOrder.sort(f.mandarin, keys, m)
+        }
         guard lang == 1, place != 2 else { return f }
         let keep: (Int) -> Bool = { self.entries[$0].spec != Self.sichuanSpec }
         f.words = f.words.filter(keep); f.starts = f.starts.filter(keep); f.contains = f.contains.filter(keep)
@@ -1528,6 +1558,7 @@ final class ZhDict: @unchecked Sendable {
 
     /// the entry for a word of a sentence: the one read the way the sentence reads it
     func entry(for p: ZhPiece) -> ZhEntry? {
+        if isJa { return jaEntry(p.base ?? p.text.joined()).map { entries[$0] } }
         let text = p.text.joined()
         let cands = (byHan[text] ?? []).filter { entries[$0].h == text || entries[$0].alt == text }
         let tw = (p.tw ?? []).filter { $0 != "_" }
@@ -1587,6 +1618,7 @@ final class ZhDict: @unchecked Sendable {
 
     /// 轉換: the text as pieces with readings (一 / 不 change their tone before another syllable)
     func convertPieces(_ text: String) -> [ZhPiece] {
+        if isJa { return convertJa(text) }
         var ps: [ZhPiece] = []
         for (t, e) in convert(text) {
             let chars = t.unicodeScalars.map { String($0) }
@@ -1901,5 +1933,98 @@ extension ZhDict {
                                  jp: out[i].jp)
             }
         }
+    }
+}
+
+
+// MARK: - 日語 轉換
+
+extension ZhDict {
+    /// (a character of Japanese words: kanji, kana, the long-vowel mark, 々)
+    fileprivate static func jaLetter(_ c: Character) -> Bool {
+        JaKana.isKanji(c) || JaKana.isHiragana(c) || JaKana.isKatakana(c) || c == "ー" || c == "々"
+    }
+
+    /// the entry for a word as it's written (kanji or kana; the more common one when there are several)
+    func jaEntry(_ w: String) -> Int? {
+        if let is_ = byHan[w], let i = is_.min() { return i }
+        if w.allSatisfy({ JaKana.isHiragana($0) || JaKana.isKatakana($0) || $0 == "ー" }), let is_ = byPlain[JaKana.hiragana(w)], let i = is_.min() { return i }
+        return nil
+    }
+
+    /// a word's whole reading in hiragana: kana words as they're written (katakana stays katakana)
+    private func jaReading(_ surface: String, _ e: Int) -> String {
+        if surface.allSatisfy({ !JaKana.isKanji($0) }) { return surface }
+        return JaKana.hiragana(entries[e].tw.joined())
+    }
+
+    /// a form of a word (食べた): the reading of its dictionary form's kanji part (た of 食べる), then the form's own
+    /// kana ending (べた)
+    private func jaFormReading(_ surface: String, base: String, _ e: Int) -> String {
+        if surface.allSatisfy({ !JaKana.isKanji($0) }) { return surface }
+        let b = Array(base), rb = Array(JaKana.hiragana(entries[e].tw.joined()))
+        var k = 0
+        while k < b.count && k < rb.count && Character(JaKana.hiragana(String(b[b.count - 1 - k]))) == rb[rb.count - 1 - k] { k += 1 }
+        let stem = String(rb.dropLast(k))
+        let sf = Array(surface)
+        let cut = min(sf.count, b.count - k)
+        return stem + JaKana.hiragana(String(sf[cut...]))
+    }
+
+    /// the text split into words: the dictionary's words written in kanji or kana, and forms of them (食べた,
+    /// 書いて, 見なかった), fewest words first, then the more common ones; each with its whole reading
+    func convertJa(_ text: String) -> [ZhPiece] {
+        let chars = Array(text)
+        let n = chars.count
+        guard n > 0 else { return [] }
+        // best[i]: (words, score) to reach i; back[i]: where the word started, its entry, reading and dictionary form
+        var best = [(Int, Int)?](repeating: nil, count: n + 1)
+        var back = [(Int, Int?, String, String?)](repeating: (0, nil, "", nil), count: n + 1)
+        best[0] = (0, 0)
+        let longest = min(maxLen + 4, 14)
+        for i in 0..<n {
+            guard let cur = best[i] else { continue }
+            let (cnt, sc) = cur
+            var cands: [(Int, Int?, String, String?)] = []
+            if Self.jaLetter(chars[i]) {
+                var L = min(longest, n - i)
+                while L >= 1 {
+                    let part = chars[i..<i + L]
+                    if part.allSatisfy(Self.jaLetter) {
+                        let w = String(part)
+                        if let e = jaEntry(w) {
+                            cands.append((i + L, e, jaReading(w, e), nil))
+                        } else if L >= 2, let last = part.last, JaKana.isHiragana(last) {
+                            // a form of a word that has forms
+                            for (b, _) in JaGrammar.deinflect(w) {
+                                if let e = jaEntry(b), JaGrammar.classOf(entries[e]) != nil {
+                                    cands.append((i + L, e, jaFormReading(w, base: b, e), b)); break
+                                }
+                            }
+                        }
+                    }
+                    L -= 1
+                }
+            }
+            if cands.isEmpty { cands.append((i + 1, nil, "", nil)) }
+            for c in cands {
+                let ns = (cnt + 1, sc + (c.1 ?? entries.count))
+                if best[c.0] == nil || ns < best[c.0]! { best[c.0] = ns; back[c.0] = (i, c.1, c.2, c.3) }
+            }
+        }
+        var out: [ZhPiece] = []
+        var j = n
+        while j > 0 {
+            let (i, e, reading, base) = back[j]
+            let t = chars[i..<j].map(String.init)
+            if e != nil, !reading.isEmpty {
+                // the whole reading on the first character, the others "-" (the reading isn't split by character)
+                out.append(ZhPiece(text: t, tw: [reading] + Array(repeating: "-", count: t.count - 1), lu: nil, base: base))
+            } else {
+                for ch in t.reversed() { out.append(ZhPiece(text: [ch], tw: nil, lu: nil)) }
+            }
+            j = i
+        }
+        return out.reversed()
     }
 }

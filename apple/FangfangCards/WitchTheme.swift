@@ -7,6 +7,10 @@ import SwiftUI
 /// 設定 → 顏色與外觀 → 主題動畫: the themes' backgrounds can stay still (less power)
 enum ThemeMotion {
     static let key = "themeMotion"
+    /// 省電動畫: the falling things fewer and drawn 12 times a second instead of 30 (also on by itself in 低耗電模式)
+    static let saverKey = "themeMotionSaver"
+    static var saver: Bool { UserDefaults.standard.bool(forKey: saverKey) || ProcessInfo.processInfo.isLowPowerModeEnabled }
+    static var interval: Double { saver ? 1.0 / 12 : 1.0 / 30 }
 }
 
 struct WitchBackground: View {
@@ -346,7 +350,10 @@ struct WinterBackground: View {
     }()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion0
     @AppStorage(ThemeMotion.key) private var motion = true
-    private var reduceMotion: Bool { reduceMotion0 || !motion }
+    @AppStorage(ThemeMotion.saverKey) private var saverOn = false
+    /// (a page under another one, or another tab: its background stands still)
+    @State private var shown = true
+    private var reduceMotion: Bool { reduceMotion0 || !motion || !shown }
 
     var body: some View {
         GeometryReader { g in
@@ -379,10 +386,10 @@ struct WinterBackground: View {
                         .position(x: w * t.0, y: h - 92 - t.1 * 0.35)
                 }
                 // falling snow
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+                TimelineView(.animation(minimumInterval: saverOn || ProcessInfo.processInfo.isLowPowerModeEnabled ? 1.0 / 12 : 1.0 / 30, paused: reduceMotion)) { tl in
                     let time = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
                     Canvas { ctx, size in
-                        for f in Self.flakes {
+                        for (n, f) in Self.flakes.enumerated() where !(saverOn && n % 2 == 1) {
                             let p = (f.phase + time * f.speed).truncatingRemainder(dividingBy: 1)
                             let y = CGFloat(p) * (size.height + 20) - 10
                             let x = f.x * size.width + sin(time * 0.6 + f.phase * 6.28) * f.sway
@@ -395,6 +402,8 @@ struct WinterBackground: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .onAppear { shown = true }
+        .onDisappear { shown = false }
     }
 }
 
@@ -446,7 +455,10 @@ struct FallingThingsBackground: View {
     }()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion0
     @AppStorage(ThemeMotion.key) private var motion = true
-    private var reduceMotion: Bool { reduceMotion0 || !motion }
+    @AppStorage(ThemeMotion.saverKey) private var saverOn = false
+    /// (a page under another one, or another tab: its background stands still)
+    @State private var shown = true
+    private var reduceMotion: Bool { reduceMotion0 || !motion || !shown }
 
     var body: some View {
         GeometryReader { g in
@@ -488,10 +500,10 @@ struct FallingThingsBackground: View {
                     .fill(LinearGradient(colors: [Color(hex: 0xc0502a).opacity(0.18), Color(hex: 0x7a2e18).opacity(0.10)],
                                          startPoint: .top, endPoint: .bottom))
                 }
-                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { tl in
+                TimelineView(.animation(minimumInterval: saverOn || ProcessInfo.processInfo.isLowPowerModeEnabled ? 1.0 / 12 : 1.0 / 30, paused: reduceMotion)) { tl in
                     let time = reduceMotion ? 0 : tl.date.timeIntervalSinceReferenceDate
                     Canvas { ctx, size in
-                        for (i, f) in Self.things.enumerated() {
+                        for (i, f) in Self.things.enumerated() where !(saverOn && i % 2 == 1) {
                             let p = (f.phase + time * f.speed).truncatingRemainder(dividingBy: 1)
                             let y = CGFloat(p) * (size.height + 30) - 15
                             let x = f.x * size.width + sin(time * 0.5 + f.phase * 6.28) * f.sway
@@ -508,5 +520,7 @@ struct FallingThingsBackground: View {
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
+        .onAppear { shown = true }
+        .onDisappear { shown = false }
     }
 }

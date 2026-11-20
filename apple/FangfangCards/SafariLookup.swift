@@ -38,14 +38,20 @@ enum SafariImport {
         // is in the group already). Not the ones marked 認識.
         let groups = items.first(where: { $0.name == "gr" })?.value.flatMap(unpack)
             .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: [String]] } ?? [:]
-        for op in ops where op.count >= 4 && op[1] != "k" && !op[3].isEmpty {
-            let g = groups[op[3]] ?? []
-            store.addToGroup(op[3], name: g.first ?? op[3], url: g.count > 1 ? g[1] : "", key: op[0])
-        }
         var pending = UserDefaults.standard.array(forKey: pendingKey) as? [[String]] ?? []
         pending += ops.filter { $0.count >= 2 }
-        UserDefaults.standard.set(pending, forKey: pendingKey)
-        apply(store)
+        guard store.loaded else {
+            // (not ready yet: the groups too wait, with their words)
+            UserDefaults.standard.set(pending, forKey: pendingKey)
+            for op in ops where op.count >= 4 && op[1] != "k" && !op[3].isEmpty {
+                let g = groups[op[3]] ?? []
+                store.addToGroup(op[3], name: g.first ?? op[3], url: g.count > 1 ? g[1] : "", key: op[0])
+            }
+            return ops.count
+        }
+        // (everything in one go: see Store.applySafari)
+        let waiting = store.applySafari(groupOps: ops, groups: groups, ops: pending)
+        UserDefaults.standard.set(waiting, forKey: pendingKey)
         return ops.count
     }
 
@@ -54,27 +60,8 @@ enum SafariImport {
         guard store.loaded else { return }
         let pending = UserDefaults.standard.array(forKey: pendingKey) as? [[String]] ?? []
         guard !pending.isEmpty else { return }
-        var waiting: [[String]] = []
-        for op in pending where op.count >= 2 {
-            let k = op[0]
-            if op[1] == "g" { continue }          // (only its group: done when it came)
-            // (the sentence on the page the word was saved from)
-            if op.count >= 3 && !op[2].isEmpty { store.addFoundSentence(k, op[2]) }
-            if op[1] == "s" {
-                if !store.isSaved(k) { store.toggleSaved(k) }
-            } else {
-                // 認識 → 熟悉, 加到不熟 → 不熟. A word of the language open now that isn't one of the cards (四川話's
-                // own words, rare words) is kept by its key all the same; another language's word waits for it.
-                let want = op[1] == "k" ? 1 : 2
-                if store.card(for: k) != nil || Lang.kind(k) == store.lang {
-                    if store.wordStatus(k) != want { store.setWord(k, status: want) }
-                } else {
-                    waiting.append(op)
-                }
-            }
-        }
+        let waiting = store.applySafari(groupOps: [], groups: [:], ops: pending)
         UserDefaults.standard.set(waiting, forKey: pendingKey)
-        store.saveNow()
     }
 
     static var waitingCount: Int { (UserDefaults.standard.array(forKey: pendingKey) as? [[String]] ?? []).count }

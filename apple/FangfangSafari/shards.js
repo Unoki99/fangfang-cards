@@ -215,6 +215,14 @@ var ffShards = (() => {
             meta.py = zyPy;
             meta.s2t = Object.keys(s2t).length;
             meta.zh = count;
+            // HSK 3.0 (x) and TOCFL (y) levels of the words, for 認識的詞's 「HSK／TOCFL 懂多少」
+            const lx = {}, ly = {};
+            for (const e of zh.e || []) {
+                if (!e.h) continue;
+                if (e.x && !(lx[e.h] <= e.x)) lx[e.h] = e.x;
+                if (e.y && !(ly[e.h] <= e.y)) ly[e.h] = e.y;
+            }
+            files["d-levels.json"] = { x: lx, y: ly };
             log("華語 words: " + count);
         }
 

@@ -13,6 +13,8 @@ struct FangfangCardsApp: App {
     init() {
         // (電台鬧鐘: its notification, tapped while the app was closed, starts the radio)
         UNUserNotificationCenter.current().delegate = RadioAlarmDelegate.shared
+        // "--" stays two hyphens everywhere you type (台語 writes the light tone with it), not "—"
+        RawDashes.install()
         // 日語 is read in kana until rōmaji is chosen
         UserDefaults.standard.register(defaults: [Lang.jaRomKey: 1])
         // 皓羅 font (DejaVu Sans subset) so tone marks sit right
@@ -35,6 +37,8 @@ struct FangfangCardsApp: App {
                 .fontDesign((AppTheme(rawValue: theme) ?? .night).fontDesign)
                 .onAppear {
                     MacWindow.setUp()
+                    // 歌詞條: the song's line being sung, in its own window over everything (games too)
+                    DispatchQueue.main.async { LyricsOverlay.install(store) }
                     // (a dictionary made by an older version of the app: made again, with what's new)
                     DictInstaller.shared.updateOutdated()
                 }
@@ -68,6 +72,7 @@ struct RootView: View {
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
+    @AppStorage(HongimTone1.allKey) private var hongimAll = false
     @AppStorage(ZhMeaning.key) private var zhEnglish = false
     @AppStorage("pickedLanguage") private var pickedLanguage = false
     @AppStorage(UILang.key) private var uiLang = 0
@@ -148,14 +153,21 @@ struct RootView: View {
         .sheet(item: $router.islandEntry) { e in IslandEntrySheet(key: e.key).environmentObject(store) }
         .overlay {
             // loading the 華語 dictionary (the first time 華語 is chosen)
-            if store.switching {
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text(tr("載入\(trs(Lang.names[max(Lang.current, 1)]))詞典…")).ffFont(.subheadline).foregroundStyle(T.glyph)
+            // (a small note at the bottom, not in the way: the app can be used meanwhile)
+            if store.switching || (store.loaded && store.isZh && store.zh == nil && !store.missingDict) {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(tr("載入\(trs(Lang.names[max(Lang.current, 1)]))詞典…")).ffFont(.footnote).foregroundStyle(T.glyph)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(Capsule().fill(T.fn.opacity(0.95)))
+                    .overlay(Capsule().stroke(T.fnEdge, lineWidth: 1))
+                    .padding(.bottom, 96)
                 }
-                .padding(24)
-                .background(RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.95)))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(T.fnEdge, lineWidth: 1.5))
+                .allowsHitTesting(false)
+                .transition(.opacity)
             }
         }
         .alert(tr("粵語的語音"), isPresented: Binding(get: { store.speechHint != nil }, set: { if !$0 { store.speechHint = nil } })) {
@@ -176,6 +188,7 @@ struct RootView: View {
         .onChange(of: toneMarks) { WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: hongimTone1) { WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: hongimTone1Space) { WidgetBridge.rebuildIfNeeded(store) }
+        .onChange(of: hongimAll) { WidgetBridge.rebuildIfNeeded(store) }
         // 華語 words on the widgets: their meaning, reading and word list
         .onChange(of: zhEnglish) { WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store) }
         .onChange(of: store.zhList) { WidgetBridge.rebuildIfNeeded(store) }
@@ -207,7 +220,11 @@ struct SettingsSheet: ViewModifier {
     @AppStorage(UILang.key) private var uiLang = 0
     @AppStorage(AppTheme.key) private var theme = AppTheme.night.rawValue
     func body(content: Content) -> some View {
-        content.sheet(isPresented: $router.settingsOpen) {
+        content
+        .sheet(isPresented: $router.profileOpen) {
+            ProfileView().environmentObject(Store.shared).preferredColorScheme(.dark).tint(AppTint.accent)
+        }
+        .sheet(isPresented: $router.settingsOpen) {
             NavigationStack {
                 SettingsView()
                     .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { router.settingsOpen = false } } }
@@ -256,14 +273,14 @@ struct RootPageBar<Extra: View>: ViewModifier {
             .toolbar {
                 ToolbarItem(placement: .principal) { Text("") }
                 if iPadAppOnMac {
-                    ToolbarItem(placement: .topBarLeading) { extra.fixedSize() }
+                    ToolbarItem(placement: .topBarLeading) { HStack(spacing: 12) { ProfileButton(); extra }.fixedSize() }
                     ToolbarItem(placement: .primaryAction) { SettingsButton() }
                     ToolbarItem(placement: .topBarTrailing) { CompactReadingMenu().fixedSize() }
                 } else if hsc == .compact || onPad {
                     // a narrow top bar (iPhone held upright), or an iPad (its tabs float in the middle of the top
                     // bar): the page's own button (新詞's group) on the left, the spelling, language and tone colours
-                    // in one menu on the right
-                    ToolbarItem(placement: .topBarLeading) { extra.fixedSize() }
+                    // in one menu on the right; 我的進度 first on the left
+                    ToolbarItem(placement: .topBarLeading) { HStack(spacing: 12) { ProfileButton(); extra }.fixedSize() }
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 10) {
                             CompactReadingMenu()
@@ -272,6 +289,7 @@ struct RootPageBar<Extra: View>: ViewModifier {
                         .fixedSize()
                     }
                 } else {
+                    ToolbarItem(placement: .topBarLeading) { ProfileButton() }
                     // one item, at its full width: as separate items, the ones that didn't fit were dropped
                     ToolbarItem(placement: .topBarTrailing) {
                         HStack(spacing: 10) {
@@ -526,5 +544,41 @@ struct LanguageWelcome: View {
             .contentShape(RoundedRectangle(cornerRadius: 22))
         }
         .buttonStyle(SwellButtonStyle())
+    }
+}
+
+/// iOS turns "--" into "—" as you type. Every text field and text view in the app has that turned off when it
+/// appears (SwiftUI's fields are these underneath), so "--" is written as it's typed.
+enum RawDashes {
+    private static var done = false
+    static func install() {
+        guard !done else { return }
+        done = true
+        swap(UITextField.self, #selector(UITextField.ff_rawDashesMoved))
+        swap(UITextView.self, #selector(UITextView.ff_rawDashesMoved))
+    }
+    /// (the class's didMoveToWindow runs ours too: added to the class itself, so UIView's own isn't touched)
+    private static func swap(_ cls: AnyClass, _ mine: Selector) {
+        let sel = #selector(UIView.didMoveToWindow)
+        guard let orig = class_getInstanceMethod(cls, sel), let new = class_getInstanceMethod(cls, mine) else { return }
+        if class_addMethod(cls, sel, method_getImplementation(new), method_getTypeEncoding(new)) {
+            class_replaceMethod(cls, mine, method_getImplementation(orig), method_getTypeEncoding(orig))
+        } else {
+            method_exchangeImplementations(orig, new)
+        }
+    }
+}
+
+extension UITextField {
+    @objc func ff_rawDashesMoved() {
+        ff_rawDashesMoved()     // (swapped: the original didMoveToWindow)
+        if smartDashesType != .no { smartDashesType = .no }
+    }
+}
+
+extension UITextView {
+    @objc func ff_rawDashesMoved() {
+        ff_rawDashesMoved()
+        if smartDashesType != .no { smartDashesType = .no }
     }
 }

@@ -131,7 +131,9 @@ final class Store: ObservableObject {
             progress = p
         }
         loaded = true
-        if Lang.isZh { setLanguage(Lang.current) }
+        // (the language used last is the one the app opens in, right away: its dictionary is read meanwhile and the
+        // app can be used already; no 台語 first and a switch after)
+        if Lang.isZh { startIn(Lang.current) }
         // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
         loadDict()
         // (台語: the 華語 dictionary when it's installed, for its 近義詞 in the 台語 search; else the one used last)
@@ -285,11 +287,14 @@ final class Store: ObservableObject {
         // words already in 熟悉: their characters' cards too (and saved, so other devices get them)
         if first { save() }        // (save() first marks the character cards)
         if Lang.current == kind {
-            guard lang != kind else { return }
+            let starting = startingIn == kind
+            startingIn = 0
+            guard lang != kind || starting else { return }
             if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }
             cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
             lang = kind; isZh = true; zhRom = Lang.zhRom; undoStack = []; canUndo = false; missingDict = false; recount()
             newStart = 0; queueTopic = -1
+            if starting { listVersion += 1 }
             save()
         } else if lang == 0 {
             other = deck
@@ -305,6 +310,28 @@ final class Store: ObservableObject {
     @Published private(set) var missingDict = false
 
     /// a language without its dictionary: shown anyway (empty), so the app stays in the language chosen
+    /// (the app opening in 華語 / 粵語 / …: that language shown at once, its deck filled in once it's read)
+    private var startingIn = 0
+    private func startIn(_ want: Int) {
+        if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][want]) { showMissing(want); return }
+        other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0)
+        cards = []; byKey = [:]; rank = [:]; pools = [:]; topics = []
+        newStart = 0; queueTopic = -1
+        lang = want; isZh = true; zhRom = Lang.zhRom
+        startingIn = want
+        recount()
+        Task {
+            let result = await zhLoadTask(priority: .userInitiated, kind: want).value
+            switch result {
+            case .success(let (d, deck)): useZh(d, deck: deck)
+            case .failure(let e):
+                zhLoad = nil
+                startingIn = 0
+                zhError = "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
+            }
+        }
+    }
+
     private func showMissing(_ want: Int) {
         // 台語's words wait, ready to switch back
         if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }
@@ -871,6 +898,59 @@ final class Store: ObservableObject {
             .filter { id in groupKeys(id).contains { Lang.kind($0) == lang } }
             .sorted { groupDate($0) > groupDate($1) }
     }
+    /// Safari 查詞's words, all at once, with one change to progress and one save. One by one, each word redrew the
+    /// app and worked out the counts, the lists, the 熟悉 words' characters and the widgets again, which froze the app
+    /// for a while when many words came. (groupOps: the words of the videos' 影片詞組; ops: the words to put in.)
+    /// Returns the ones that wait for their language.
+    func applySafari(groupOps: [[String]], groups: [String: [String]], ops: [[String]]) -> [[String]] {
+        let now = Date().timeIntervalSince1970
+        var p = progress
+        var changed = false
+        for op in groupOps where op.count >= 4 && op[1] != "k" && !op[3].isEmpty {
+            let id = op[3], g = groups[id] ?? []
+            if (p.groupTime[id] ?? -1) <= 0 { p.groupTime[id] = now }
+            let old = p.groupInfo[id] ?? []
+            p.groupInfo[id] = [old.first ?? (g.first ?? id), g.count > 1 ? g[1] : "", old.count > 2 ? old[2] : ""]
+            let wk = id + "\u{1}" + op[0]
+            if (p.groupWords[wk] ?? -1) <= 0 { p.groupWords[wk] = now + Double(p.groupWords.count % 1000) / 1e6 }
+            changed = true
+        }
+        var waiting: [[String]] = []
+        for (i, op) in ops.enumerated() where op.count >= 2 {
+            let k = op[0]
+            if op[1] == "g" { continue }          // (only its group: done when it came)
+            // (the sentence on the page the word was saved from, at most 5 kept)
+            if op.count >= 3 {
+                let s = op[2].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !s.isEmpty {
+                    var list = p.found[k] ?? []
+                    list.removeAll { $0 == s }
+                    list.append(s)
+                    p.found[k] = Array(list.suffix(5))
+                    changed = true
+                }
+            }
+            if op[1] == "s" {
+                if (p.saved[k] ?? -1) <= 0 { p.saved[k] = now + Double(ops.count - i) * 0.001; changed = true }
+                continue
+            }
+            // 認識 → 熟悉, 加到不熟 → 不熟. A word of the language open now that isn't one of the cards is kept by its key
+            // all the same; another language's word waits for it.
+            let want = op[1] == "k" ? 1 : 2
+            guard card(for: k) != nil || Lang.kind(k) == lang else { waiting.append(op); continue }
+            guard (p.status[k] ?? 0) != want else { continue }
+            p.status[k] = want
+            p.added[k] = now
+            if want == 1 { p.streak[k] = nil; knowChars(of: k, in: &p) } else if p.streak[k] == nil { p.streak[k] = 0 }
+            changed = true
+        }
+        if changed {
+            progress = p
+            save(syncChars: false)
+        }
+        return waiting
+    }
+
     /// a word into a group (the group made when it's new)
     func addToGroup(_ id: String, name: String, url: String, key: String) {
         let now = Date().timeIntervalSince1970

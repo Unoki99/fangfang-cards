@@ -253,16 +253,23 @@ struct ConvertPane: View {
     let dict: Dict
     /// the 歌詞 window: no typing, only the 漢字 (left) and the chosen spelling (right)
     let lyrics: Bool
+    /// the lyrics bar over the other pages: only the line being sung, in 漢字
+    var bar = false
     @EnvironmentObject var store: Store
     /// (歌詞: the readings side can be turned off; it takes memory and slows a long song down)
     @AppStorage(LyricsBridge.readingsKey) private var lyricsReadings = true
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @StateObject private var model: ConvModel
+    /// (歌詞: the page on screen. Off it (another tab, the lyrics bar over another page) its words stop following
+    /// the song: they were redrawn a dozen times a second unseen)
+    @State private var onScreen = true
+    private var liveBeat: LyricsBeat? { lyrics && onScreen ? LyricsBeat.shared : nil }
 
-    init(dict: Dict, textKey: String = "ff-text", lyrics: Bool = false) {
+    init(dict: Dict, textKey: String = "ff-text", lyrics: Bool = false, bar: Bool = false) {
         self.dict = dict
         self.lyrics = lyrics
+        self.bar = bar
         _model = StateObject(wrappedValue: ConvModel(key: textKey))
     }
     @AppStorage("rom") private var rom = 0
@@ -275,16 +282,48 @@ struct ConvertPane: View {
     private var hasOutput: Bool { model.result.items.contains(where: { $0.isWord }) }
 
     var body: some View {
+        if bar { barBody } else { mainBody.onAppear { onScreen = true }.onDisappear { onScreen = false } }
+    }
+
+    /// (the lyrics bar: the line's 漢字, the word being sung swelling; a word tapped opens its meaning)
+    private var barBody: some View {
+        let pieces = model.engine?.pieces(model.result.items, mode: 0, rom: min(max(rom, 0), 2), place: place) ?? []
+        let sp = swellPieces(pieces, ink: T.glyph, mode: 0)
+        return SwellWords(pieces: sp.pieces, lineSpacing: 2, vPad: 2, beat: LyricsBeat.shared, beatWhole: true,
+                          ruby: lyricsReadings ? rubies(sp.items) : nil, rubyFont: rubyFont(12)) { n in
+            if let i = sp.items[n], i >= 0 { openItem = ConvSelection(index: i) }
+        }
+        .foregroundStyle(T.glyph)
+        .scaledFont(22)
+        .onAppear { model.attach(dict) }
+        // (a word's sheet open: its line stays until it's closed, the sheet points into it)
+        .onReceive(NotificationCenter.default.publisher(for: LyricsBridge.changed)) { _ in
+            guard openItem == nil else { return }
+            let t = UserDefaults.standard.string(forKey: model.key) ?? ""
+            if t != model.text { model.text = t }
+        }
+        .onChange(of: openItem == nil) { _, closed in
+            guard closed else { return }
+            let t = UserDefaults.standard.string(forKey: model.key) ?? ""
+            if t != model.text { model.text = t }
+        }
+        .sheet(item: $openItem) { sel in
+            WordSheet(dict: dict, model: model, index: sel.index)
+                .environmentObject(store)
+                .presentationDetents([.medium, .large])
+                .presentationContentInteraction(.scrolls)
+                .presentationDragIndicator(.visible)
+        }
+    }
+
+    private var mainBody: some View {
         GeometryReader { geo in
             if lyrics {
                 ScrollView {
                     if hasOutput {
+                        // (the readings right under each word, smaller, when they're on)
                         LyricsColumns {
                             panel(0, trs("漢字"))
-                            // (letters: no glow here, it got slow)
-                            if lyricsReadings {
-                                panel(1, trs(ROM_NAMES[min(max(rom, 0), 2)])).environment(\.noToneGlow, true)
-                            }
                         }
                         .padding()
                         .frame(maxWidth: 1100)
@@ -421,6 +460,7 @@ struct ConvertPane: View {
         .glassSurface(RoundedRectangle(cornerRadius: 18))
         .overlay(alignment: .bottomTrailing) {
             HStack(spacing: 6) {
+                GlowToggle()
                 Button {
                     if let s = UIPasteboard.general.string { model.text = s }
                 } label: { Image(systemName: "doc.on.clipboard") }
@@ -478,7 +518,8 @@ struct ConvertPane: View {
                 .foregroundStyle(T.muted)
             }
             let sp = swellPieces(pieces, ink: ink, mode: mode)
-            SwellWords(pieces: sp.pieces, lineSpacing: 4, vPad: 3) { n in
+            SwellWords(pieces: sp.pieces, lineSpacing: 4, vPad: 3, beat: liveBeat,
+                       ruby: lyrics && mode == 0 && lyricsReadings ? rubies(sp.items) : nil, rubyFont: rubyFont(15)) { n in
                 if let i = sp.items[n], i >= 0 {
                     focused = false
                     openItem = ConvSelection(index: i)
@@ -496,46 +537,7 @@ struct ConvertPane: View {
     /// 聲調顏色 in 轉換: the tone of every syllable of every word, working through the whole text
     /// (punctuation and line ends close a tone group). item index -> (tokens, tones)
     private func itemTones() -> [Int: (tokens: [String], tones: [Int])] {
-        let items = model.result.items
-        var units: [ToneUnit] = []
-        var ranges: [Int: (tokens: [String], from: Int, to: Int)] = [:]
-        var prevKey: String? = nil
-        func endPhrase() { if !units.isEmpty { units[units.count - 1].phraseEnd = true } }
-        // the word right after each word (not across punctuation or a line end): to tell a 量詞 (這款種)
-        var nextKeyOf: [Int: String] = [:]
-        var upcoming: String? = nil
-        for i in items.indices.reversed() {
-            let it = items[i]
-            if it.space { continue }
-            if it.newline || it.raw != nil || it.current.codes == nil { upcoming = nil; continue }
-            if let up = upcoming { nextKeyOf[i] = up }
-            upcoming = dict.keyOf(it.current)
-        }
-        for (i, it) in items.enumerated() {
-            if it.newline { endPhrase(); prevKey = nil; continue }
-            if it.space { continue }
-            if let raw = it.raw {
-                if ConvertEngine.isPunct(raw) && !ConvertEngine.openers.contains(raw) { endPhrase() }
-                prevKey = nil
-                continue
-            }
-            guard let codes = it.current.codes else { endPhrase(); prevKey = nil; continue }
-            let key = dict.keyOf(it.current)
-            let tokens: [String]
-            if let key, dict.baseKeys.contains(key), it.current.parent == nil { tokens = dict.tokensFor(key, place) }
-            else { tokens = (it.current.tokens ?? codes.joined(separator: " ")).split(separator: " ").map(String.init) }
-            let u = dict.toneUnits(tokens: tokens, key: key, after: prevKey, before: nextKeyOf[i])
-            prevKey = key
-            // a word that starts with "--" (--ah): the syllable before it keeps its tone
-            if tokens.first == "--", !units.isEmpty { units[units.count - 1].beforeLight = true }
-            // a word that starts with 仔: 仔-sandhi on the syllable before it
-            if it.current.han?.first == "仔", !units.isEmpty { units[units.count - 1].beforeA = true }
-            ranges[i] = (tokens, units.count, units.count + u.count)
-            units += u
-        }
-        endPhrase()
-        let tones = dict.realizedTones(units, place)
-        return ranges.mapValues { (tokens: $0.tokens, tones: Array(tones[$0.from..<$0.to])) }
+        dict.convItemTones(model.result.items, place)
     }
 
     /// the output piece by piece (a piece's leading space included), ready to show; tappable words carry a link
@@ -606,13 +608,30 @@ struct ConvertPane: View {
         return all
     }
 
+    /// (歌詞) each 漢字 piece's reading, by the word it belongs to: 方音 when that's the only spelling, else the
+    /// spelling chosen; in the tone colours like the words
+    private func rubies(_ items: [Int?]) -> [AttributedString?] {
+        let mode = rom == 3 ? 2 : 1
+        let rp = model.engine?.pieces(model.result.items, mode: mode, rom: min(max(rom, 0), 2), place: place) ?? []
+        let rs = swellPieces(rp, ink: mode == 1 ? T.greenInk : T.purpleInk, mode: mode)
+        var byItem: [Int: AttributedString] = [:]
+        for (k, it) in rs.items.enumerated() {
+            guard let it, it >= 0 else { continue }
+            var t = rs.pieces[k].text
+            while let l = t.characters.last, l == " " { t.characters.removeLast() }
+            byItem[it, default: AttributedString()] += t
+        }
+        return items.map { $0.flatMap { byItem[$0] } }
+    }
+
+    private func rubyFont(_ size: CGFloat) -> Font { rom == 3 ? .system(size: size) : T.lat(size) }
+
     /// the pieces for SwellWords: a word's link becomes its button (the link itself is taken off, so the
     /// word keeps its colours); a space in front of a word moves to the end of the piece before it, so a
     /// line never starts with a space; "\n" starts a new line
     private func swellPieces(_ pieces: [(text: String, item: Int?)], ink: Color, mode: Int)
         -> (pieces: [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)], items: [Int?]) {
         let texts = attributedPieces(pieces, ink: ink, mode: mode)
-        let savedSenseKeys = store.savedSenseKeys
         var out: [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)] = [], items: [Int?] = []
         var newLine = false
         for (p, a0) in zip(pieces, texts) {
@@ -624,11 +643,15 @@ struct ConvertPane: View {
                 a.removeSubrange(a.startIndex..<a.index(afterCharacter: a.startIndex))
                 if !newLine, !out.isEmpty { out[out.count - 1].text += AttributedString(" ") }
             }
-            // a little star under the word: in the tone colours when the word is saved or in 不熟,
-            // blue when only some of its meanings are saved
+            // (no star under saved words any more: taken away on request)
+            // a word with more than one reading (or said otherwise elsewhere): a small grey dot above it instead of
+            // the dotted line under it; orange when the reading is a shaky guess
             var mark = 0
-            if let i = p.item, i >= 0, model.result.items.indices.contains(i), let k = dict.keyOf(model.result.items[i].current) {
-                mark = store.isSaved(k) || store.cardStatus(k) == 2 ? 1 : (savedSenseKeys.contains(k) ? 2 : 0)
+            if let i = p.item, i >= 0, i < model.result.items.count {
+                let it = model.result.items[i]
+                let several = it.opts.count > 1 || (it.current.han.map { dict.sayingHans.contains($0) } ?? false)
+                if it.unsure && it.current.codes != nil { mark = 4 } else if several { mark = 3 }
+                if mark != 0 { a.swiftUI.underlineStyle = nil }
             }
             out.append((a, tap, newLine, mark)); items.append(p.item)
             newLine = false
@@ -929,27 +952,13 @@ struct DictEntryBody: View {
                     }
                 }
             }
-            namesRow
             variantsRow
             otherWordsRow
-            if let g = dict.gl[key], !g.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Chip(text: tr("華語"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
-                    Text(g.map { $0.t }.joined(separator: "、")).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9))
-                }
-            }
-            // English from Wiktionary (a file of its own: the dictionary's own meanings below stay as they are)
-            let en = TwEnglish.meanings(key)
-            if !en.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Chip(text: tr("英"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
-                    VStack(alignment: .leading, spacing: 3) {
-                        ZhEnglishList(items: en, max: 6)
-                        Text(tr("英文解釋：維基詞典（CC BY-SA）")).ffFont(.caption2).foregroundStyle(T.muted)
-                    }
-                }
-            }
+            // 華語 and 英: side by side (one under the other when there's no room), each numbered. The 華語 numbers are the
+            // meanings' own, the same as the numbered meanings and their example sentences below
+            meaningsOverview
             ForEach(dict.senses(key), id: \.n) { s in sense(s) }
+            if dict.senses(key).isEmpty { linkedMeanings }
             FoundSentences(key: key)
             // a single character: 說文解字 (when installed)
             if han.count == 1 { ShuowenBlock(ch: han) }
@@ -966,6 +975,8 @@ struct DictEntryBody: View {
             if dict.raw.typ[key] == 1 {
                 Text(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。")).ffFont(.caption).foregroundStyle(T.muted)
             }
+            // (names last: the least needed)
+            namesRow
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .wordOpener(dict, $tapped)
@@ -975,16 +986,41 @@ struct DictEntryBody: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
-                // tap a character to see it on its own (the entry with the same reading)
-                TappableHeadword(text: dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph),
-                                 targets: charKeys) { tapped = DictKey(k: $0) }
-                    .toneGlow()
-                // the reading of the 腔口 chosen, in the spelling chosen, right next to the word
-                Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
-                if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
-                Spacer()
-                FrequencyBadge(key: key)
+            // tap a character to see it on its own (the entry with the same reading); the reading of the 腔口 chosen, in
+            // the spelling chosen, right next to the word, or under it when they don't fit side by side (a long word
+            // on a phone: the characters got squeezed and the reading broke in the middle)
+            let head = TappableHeadword(text: dict.hanText(key, place, base: dict.isUser(key) ? T.ownInk : T.glyph),
+                                        targets: charKeys) { tapped = DictKey(k: $0) }
+                .toneGlow().fixedSize()
+            let reading = Text(dict.wordText(key, rom, place) + AttributedString(dict.otherSpellings(key, rom, place))).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 12) {
+                    head
+                    reading.fixedSize()
+                    if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
+                    Spacer(minLength: 0)
+                    FrequencyBadge(key: key)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 12) {
+                        head
+                        if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
+                        Spacer(minLength: 0)
+                        FrequencyBadge(key: key)
+                    }
+                    reading
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 12) {
+                        head
+                        Spacer(minLength: 0)
+                        FrequencyBadge(key: key)
+                    }
+                    HStack(alignment: .center, spacing: 12) {
+                        reading
+                        if let au = dict.raw.au[key] { PlayButton(path: Audio.wordPath(au)) }
+                    }
+                }
             }
             HStack(spacing: 8) {
                 saveButton
@@ -1185,6 +1221,85 @@ struct DictEntryBody: View {
         }
     }
 
+    /// each meaning's short 華語 (its first phrase), numbered as the meanings below
+    private var zhShort: [(n: Int, t: String)] {
+        let ss = dict.senses(key)
+        let out = ss.compactMap { s -> (n: Int, t: String)? in
+            var t = s.text.components(separatedBy: "\n").first ?? s.text
+            if let r = t.range(of: "。") { t = String(t[..<r.lowerBound]) }
+            t = t.trimmingCharacters(in: .whitespaces)
+            if t.count > 28 { t = String(t.prefix(27)) + "…" }
+            return t.isEmpty ? nil : (s.n, t)
+        }
+        if !out.isEmpty { return out }
+        // (no meanings: the 華語 words the dictionary gives for it)
+        return (dict.gl[key] ?? []).enumerated().map { (n: $0.offset + 1, t: $0.element.t) }
+    }
+
+    @ViewBuilder private var meaningsOverview: some View {
+        let zh = zhShort
+        let en = TwEnglish.meanings(key)
+        let zhCol = VStack(alignment: .leading, spacing: 5) {
+            ForEach(zh, id: \.n) { x in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if zh.count > 1 { Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit() }
+                    Text(x.t).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9)).textSelection(.enabled)
+                }
+            }
+        }
+        let enCol = VStack(alignment: .leading, spacing: 3) {
+            ZhEnglishList(items: en, max: 8)
+            Text(tr("英文解釋：維基詞典（CC BY-SA）")).ffFont(.caption2).foregroundStyle(T.muted)
+        }
+        // (always two columns side by side, also on a phone: each column's label above it, so they have room)
+        if !zh.isEmpty || !en.isEmpty {
+            HStack(alignment: .top, spacing: 12) {
+                if !zh.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) { Chip(text: tr("華"), fill: T.fn, edge: T.fnEdge, ink: T.muted); zhCol }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if !en.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) { Chip(text: tr("英"), fill: T.fn, edge: T.fnEdge, ink: T.muted); enCol }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    /// a word with no meaning of its own, only listed as another word's 近義 / 反義 (光龐龐): those words with the
+    /// meaning it's listed under
+    @ViewBuilder private var linkedMeanings: some View {
+        let back = dict.linkedFrom(key)
+        if !back.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(tr("辭典沒有另外解釋這個詞，只把它列做下面這些詞的近義詞或反義詞："))
+                    .ffFont(.caption).foregroundStyle(T.muted)
+                ForEach(Array(back.enumerated()), id: \.offset) { _, b in
+                    let ss = dict.senses(b.key)
+                    let s = ss.indices.contains(b.sense) ? ss[b.sense] : ss.first
+                    VStack(alignment: .leading, spacing: 4) {
+                        NavigationLink(value: DictKey(k: b.key)) {
+                            HStack(spacing: 6) {
+                                Chip(text: b.syn ? tr("近") : tr("反"), fill: b.syn ? T.blue : T.rust,
+                                     edge: b.syn ? T.blueEdge : T.rustEdge, ink: b.syn ? T.blueInk : T.rustInk)
+                                Text(Dict.hanOf(b.key)).ffFont(.headline).foregroundStyle(T.glyph)
+                                Text(dict.wordText(b.key, rom, place)).latFont(15).foregroundStyle(T.greenInk)
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(T.muted)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        if let s {
+                            Text((b.syn ? "" : trs("（反義）")) + s.text).ffFont(.body).foregroundStyle(T.glyph.opacity(0.9))
+                        }
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.55)))
+                }
+            }
+        }
+    }
+
     @ViewBuilder private func links(_ name: String, _ keys: [String], _ fill: Color, _ edge: Color, _ ink: Color) -> some View {
         if !keys.isEmpty {
             HStack(alignment: .top, spacing: 6) {
@@ -1195,6 +1310,10 @@ struct DictEntryBody: View {
                             HStack(spacing: 4) {
                                 Text(Dict.hanOf(k)).foregroundStyle(T.glyph)
                                 Text(dict.wordText(k, rom, place)).latFont(13).foregroundStyle(ink)
+                                // (a word only some places say: which)
+                                if let ps = dict.raw.loc?[k], !ps.isEmpty {
+                                    Text(dict.placeNames(ps)).ffFont(.caption2).foregroundStyle(T.muted)
+                                }
                             }
                             .ffFont(.subheadline)
                             .padding(.horizontal, 8).padding(.vertical, 3)
@@ -1253,6 +1372,12 @@ struct SwellWords: View {
     var vPad: CGFloat = 4
     /// room on each side of a word (例句的詞分開一點)
     var hPad: CGFloat = 0
+    /// 歌詞 that follow the song: the word being sung swells (beatWhole: all of it is the line being sung, the bar's)
+    var beat: LyricsBeat? = nil
+    var beatWhole = false
+    /// (歌詞: each word's reading right under it, smaller; nil where a piece has none)
+    var ruby: [AttributedString?]? = nil
+    var rubyFont: Font = .system(size: 12)
     let onTap: (Int) -> Void
     @State private var frames: [Int: CGRect] = [:]
     /// which word is swollen: kept in its own object, so only the words notice when it changes
@@ -1260,27 +1385,74 @@ struct SwellWords: View {
     @StateObject private var sw = SwellState()
     @State private var space = UUID()
 
+    /// each piece's line (counting the lines with words) and where it is in it by length (0…1)
+    private var beatMap: [(line: Int, f0: Double, f1: Double)] {
+        guard beat != nil else { return [] }
+        var groups: [[Int]] = [[]]
+        for i in pieces.indices {
+            if pieces[i].newLine && !groups[groups.count - 1].isEmpty { groups.append([]) }
+            groups[groups.count - 1].append(i)
+        }
+        var map = Array(repeating: (line: -1, f0: 0.0, f1: 0.0), count: pieces.count)
+        for (l, ids) in groups.enumerated() {
+            // (every word's letters count, in the dictionary or not: a Swedish word it doesn't know is still sung)
+            let lens = ids.map { i -> Double in
+                Double(pieces[i].text.characters.filter { $0.isLetter || $0.isNumber }.count)
+            }
+            let total = max(1, lens.reduce(0, +))
+            var acc = 0.0
+            for (j, i) in ids.enumerated() {
+                map[i] = (beatWhole ? -2 : l, acc / total, (acc + lens[j]) / total)
+                acc += lens[j]
+            }
+        }
+        return map
+    }
+
+    /// a piece's text, with its reading under it when there is one (歌詞)
+    @ViewBuilder private func word(_ i: Int, _ t: AttributedString) -> some View {
+        if let r = ruby, i < r.count, let rt = r[i] {
+            VStack(spacing: 0) {
+                Text(t).toneGlow()
+                Text(rt).font(rubyFont).lineLimit(1).fixedSize().environment(\.noToneGlow, true)
+            }
+        } else {
+            Text(t).toneGlow()
+        }
+    }
+
     var body: some View {
+        let bm = beatMap
         let flow = FlowLayout(spacing: 0, lineSpacing: lineSpacing) {
             ForEach(pieces.indices, id: \.self) { i in
                 let p = pieces[i]
                 Group {
                     if p.tap {
                         Button { if !sw.scrubbing { onTap(i) } } label: {
-                            Text(p.text).toneGlow().padding(.vertical, vPad).padding(.horizontal, hPad).contentShape(Rectangle())
+                            word(i, p.text).padding(.vertical, vPad).padding(.horizontal, hPad).contentShape(Rectangle())
                                 .overlay(alignment: .bottom) {
                                     if p.mark == 1 { ToneStar().offset(y: 5) } else if p.mark == 2 { ToneStar(blue: true).offset(y: 5) }
                                 }
+                                .overlay(alignment: .top) {
+                                    // (more than one reading: grey; a shaky guess: orange)
+                                    if p.mark == 3 || p.mark == 4 {
+                                        Circle().fill(p.mark == 4 ? Color.orange : T.muted).frame(width: 4, height: 4).offset(y: 1)
+                                    }
+                                }
                         }
                         .buttonStyle(SwellButtonStyle())
+                        // (no iPad pointer highlight: scrolling with a trackpad ran it on every word passing under the pointer)
+                        .hoverEffectDisabled()
                         .swellHot(sw, i)
                         .background(GeometryReader { g in
                             Color.clear.preference(key: WordFramesKey.self, value: [i: g.frame(in: .named(space))])
                         })
                     } else {
-                        Text(p.text).toneGlow().padding(.vertical, vPad).padding(.horizontal, hPad)
+                        word(i, p.text).padding(.vertical, vPad).padding(.horizontal, hPad)
                     }
                 }
+                .modifier(BeatSwell(beat: beat ?? LyricsBeat.idle, line: bm.isEmpty ? -1 : bm[i].line,
+                                    f0: bm.isEmpty ? 0 : bm[i].f0, f1: bm.isEmpty ? 0 : bm[i].f1))
                 .layoutValue(key: FlowBreak.self, value: p.newLine)
             }
         }
@@ -1289,9 +1461,11 @@ struct SwellWords: View {
             .onPreferenceChange(WordFramesKey.self) { frames = $0 }
             // one pointer tracker for the whole text, instead of one per word: with one per word, the Mac
             // checked every word on every mouse move (slow, and late to react)
+            .onContinuousHover(coordinateSpace: .global) { sw.noteGlobal($0) }
             .onContinuousHover(coordinateSpace: .named(space)) { phase in
+                // (only when the pointer itself moves: not while a trackpad scrolls the words under it)
                 var hit: Int? = nil
-                if case .active(let p) = phase { hit = frames.first { $0.value.contains(p) }?.key }
+                if case .active(let p) = phase, sw.pointerMoving { hit = frames.first { $0.value.contains(p) }?.key }
                 if hit != sw.hover { sw.hover = hit }
             }
         #if targetEnvironment(macCatalyst)
@@ -1344,6 +1518,50 @@ struct LookupResult: Sendable {
     /// words whose English (Wiktionary) has the word: added after the rest, which stay as they are
     var english: [String] = []
     var empty: Bool { english.isEmpty && parts.isEmpty && tones.isEmpty && taigi.isEmpty && contains.isEmpty && pattern.isEmpty && patternZh.isEmpty && exact.isEmpty && gloss.isEmpty && synonyms.isEmpty && defs.isEmpty && places.isEmpty }
+}
+
+/// 設定 → 詞典 → 搜尋結果的順序: 標準 (as the search gives them), or 自己排: up to three things to sort by, the first
+/// one first
+enum SearchOrder {
+    static let key = "searchOrder"
+    /// (id, name): what search results can be sorted by
+    static let all: [(id: String, name: String)] = [
+        ("freq", "常用的詞先"), ("exact", "和查的詞一模一樣的先"), ("place", "方言的講法先（選的腔口）"),
+        ("short", "字少的先"), ("level", "HSK／TOCFL 等級低的先"),
+    ]
+    static var chosen: [String] {
+        (UserDefaults.standard.string(forKey: key) ?? "").split(separator: ",").map(String.init).filter { id in all.contains { $0.id == id } }
+    }
+    static func sort<T>(_ xs: [T], _ keys: [String], _ metric: (String, T) -> Double) -> [T] {
+        guard !keys.isEmpty, xs.count > 1 else { return xs }
+        return xs.enumerated().sorted { a, b in
+            for k in keys {
+                let x = metric(k, a.element), y = metric(k, b.element)
+                if x != y { return x < y }
+            }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+    /// 台語: a word's value for one of them (smaller first)
+    static func metric(_ d: Dict, _ k: String, _ key: String, q: String, place: Int) -> Double {
+        let han = Dict.hanOf(key)
+        switch k {
+        case "freq":
+            let cs = Array(han)
+            guard !cs.isEmpty else { return 0 }
+            return -cs.reduce(0) { $0 + (d.raw.freq[String($1)] ?? 0) } / Double(cs.count)
+        case "exact":
+            if han == q { return 0 }
+            return (d.gl[key] ?? []).contains { $0.t == q } ? 0 : 1
+        case "place":
+            // (通行: the words only some places say, 方言詞, first)
+            guard place >= 0 else { return d.raw.loc?[key] != nil ? 0 : 1 }
+            if let ps = d.raw.loc?[key] { return ps.contains(place) ? 0 : 2 }
+            return d.isStated(key, place) ? 0.5 : 1
+        case "short": return Double(han.count)
+        default: return 0
+        }
+    }
 }
 
 /// 華語's 近義詞 (教育部《重編國語辭典修訂本》): 幫忙 → 幫助、協助. The 台語 search uses them: a 台語 word may be explained
@@ -1462,7 +1680,22 @@ enum Lookup {
         return Array(keys.sorted { d.score(Dict.hanOf($0), Dict.codesOf($0)) > d.score(Dict.hanOf($1), Dict.codesOf($1)) }.prefix(120))
     }
 
+    /// the search, its lists in the order chosen in 設定 → 詞典 → 搜尋結果的順序 (標準: as they come)
     static func run(_ d: Dict, _ q0: String, place: Int = -1, split: Bool = true) -> LookupResult {
+        var r = run0(d, q0, place: place, split: split)
+        let keys = SearchOrder.chosen
+        guard !keys.isEmpty else { return r }
+        let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+        let m: (String, String) -> Double = { k, key in SearchOrder.metric(d, k, key, q: q, place: place) }
+        r.exact = SearchOrder.sort(r.exact, keys, m); r.taigi = SearchOrder.sort(r.taigi, keys, m)
+        r.contains = SearchOrder.sort(r.contains, keys, m); r.gloss = SearchOrder.sort(r.gloss, keys, m)
+        r.synonyms = SearchOrder.sort(r.synonyms, keys, m); r.synWords = SearchOrder.sort(r.synWords, keys, m)
+        r.defs = SearchOrder.sort(r.defs, keys, m); r.english = SearchOrder.sort(r.english, keys, m)
+        r.tones = SearchOrder.sort(r.tones, keys, m)
+        return r
+    }
+
+    private static func run0(_ d: Dict, _ q0: String, place: Int = -1, split: Bool = true) -> LookupResult {
         let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
         var r = LookupResult()
         guard !q.isEmpty else { return r }
@@ -2091,6 +2324,8 @@ struct ExampleBlock: View {
                         wordLabel(colored(i, p.swapped ? T.swapInk : T.glyph), line: T.swapInk.opacity(0.8))
                     }
                     .buttonStyle(SwellButtonStyle())
+                        // (no iPad pointer highlight: scrolling with a trackpad ran it on every word passing under the pointer)
+                        .hoverEffectDisabled()
                     .swellHot(sw, i)
                     .background(frameReader(i))
                 } else if let k = p.key, k != own {
@@ -2098,6 +2333,8 @@ struct ExampleBlock: View {
                         wordLabel(colored(i, T.blueInk), line: T.blueInk.opacity(0.45))
                     }
                     .buttonStyle(SwellButtonStyle())
+                        // (no iPad pointer highlight: scrolling with a trackpad ran it on every word passing under the pointer)
+                        .hoverEffectDisabled()
                     .swellHot(sw, i)
                     .background(frameReader(i))
                 } else {
@@ -2111,9 +2348,10 @@ struct ExampleBlock: View {
             .coordinateSpace(name: scrubSpace)
             .onPreferenceChange(WordFramesKey.self) { wordFrames = $0 }
             // one pointer tracker for the whole sentence (see SwellWords)
+            .onContinuousHover(coordinateSpace: .global) { sw.noteGlobal($0) }
             .onContinuousHover(coordinateSpace: .named(scrubSpace)) { phase in
                 var hit: Int? = nil
-                if case .active(let p) = phase { hit = wordFrames.first { $0.value.contains(p) }?.key }
+                if case .active(let p) = phase, sw.pointerMoving { hit = wordFrames.first { $0.value.contains(p) }?.key }
                 if hit != sw.hover { sw.hover = hit }
             }
         #if targetEnvironment(macCatalyst)
@@ -2635,7 +2873,7 @@ struct PlacesTable: View {
                         let also = Array(Set(g.places.flatMap { dict.alsoSaid(key, $0) })).sorted()
                         ForEach(also, id: \.self) { x in
                             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                Chip(text: tr("也講"), fill: T.twFill, edge: T.twEdge, ink: T.twInk)
+                                Chip(text: dict.isContraction(x, key) ? tr("合音") : tr("也講"), fill: T.twFill, edge: T.twEdge, ink: T.twInk)
                                 Text(dict.codes(x, rom, g.places[0])).latFont(15).foregroundStyle(T.greenInk)
                                 Text(dict.codes(x, 3, g.places[0])).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
                                 let who = g.places.filter { dict.alsoSaid(key, $0).contains(x) }
@@ -2767,6 +3005,19 @@ final class SwellState: ObservableObject {
     @Published var hover: Int?
     @Published var scrub: Int?
     var scrubbing = false
+    /// (the pointer on the screen, and when it last moved: scrolling with a trackpad moves the words under a
+    /// pointer that stays still, and swelling every word passed then made scrolling lag)
+    private var lastGlobal: CGPoint?
+    private var movedAt = Date.distantPast
+    var pointerMoving: Bool { Date().timeIntervalSince(movedAt) < 0.15 }
+    func noteGlobal(_ phase: HoverPhase) {
+        // (the pointer gone for a moment, as iPad hides it while two fingers scroll: where it was is kept, so its
+        // coming back in the same place isn't taken for a move)
+        guard case .active(let p) = phase else { return }
+        if let l = lastGlobal, abs(l.x - p.x) < 2, abs(l.y - p.y) < 2 { return }
+        lastGlobal = p
+        movedAt = Date()
+    }
 }
 
 private struct SwellHotKey: EnvironmentKey { static let defaultValue = false }
@@ -2792,7 +3043,7 @@ private struct SwellBody<L: View>: View {
     let label: L
     let pressed: Bool
     @Environment(\.swellHot) private var hot
-    /// 設定 → 畫成圖再放大
+    /// 設定 → 指到的字放大
     @AppStorage(SwellTest.key) private var on = SwellTest.standard
     var body: some View {
         let big = on && (pressed || hot)
@@ -2808,7 +3059,7 @@ private struct SwellBody<L: View>: View {
 }
 
 enum SwellTest {
-    /// 設定 → 畫成圖再放大: words swell (drawn once as a picture, and the picture grows); off = they don't swell
+    /// 設定 → 指到的字放大: words swell (drawn once as a picture, and the picture grows); off = they don't swell
     static let key = "swellOn"
     static let standard = true
 }
@@ -3399,14 +3650,32 @@ struct TwPlaceRows: View {
     let key: String
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
+    /// the 腔 the places lean to, in this order, each with its places in rows of three
+    private static let kinds = ["泉", "混", "漳"]
     var body: some View {
-        // every 腔口 side by side (the name, its reading under it), wrapping onto more lines when needed
+        // 通行 first; then the places by 腔 (偏泉腔, 混合腔, 偏漳腔), as many to a row as fit
         // (a 方言詞, 柑仔得: only the places that say it, not every place nor 通行)
         if !dict.raw.places.isEmpty {
             let local = dict.raw.loc?[key]?.filter { $0 < dict.raw.places.count }
-            FlowLayout(spacing: 10) {
+            let all = local ?? Array(dict.raw.places.indices)
+            VStack(alignment: .leading, spacing: 10) {
                 if local == nil { cell(-1) }
-                ForEach(local ?? Array(dict.raw.places.indices), id: \.self) { p in cell(p) }
+                ForEach(Self.kinds, id: \.self) { k in
+                    let ps = all.filter { dict.raw.places[$0].contains(k) }
+                    if !ps.isEmpty {
+                        let long = ps.contains { String(dict.wordText(key, rom, $0).characters).count > 10 }
+                        HStack(alignment: .top, spacing: 8) {
+                            Text(trs(k)).ffFont(.caption, .bold).foregroundStyle(T.muted)
+                                .frame(width: 22, height: 24)
+                                .background(Circle().fill(T.fn.opacity(0.7)))
+                            // (as many on a line as fit: 4 or 5 on a wide screen, fewer on a phone)
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: long ? 120 : 78), spacing: 8, alignment: .top)],
+                                      alignment: .leading, spacing: 8) {
+                                ForEach(ps, id: \.self) { p in cell(p) }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -3423,9 +3692,56 @@ struct TwPlaceRows: View {
             if rom != 3 { Text(dict.wordText(key, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk) }
             if p >= 0 {
                 ForEach(dict.alsoSaid(key, p), id: \.self) { x in
-                    Text(tr("也講") + " " + dict.codes(x, rom, p)).ffFont(.caption2).foregroundStyle(T.muted)
+                    Text(tr("也講") + " " + dict.codes(x, rom, p) + (dict.isContraction(x, key) ? trs("（合音）") : "")).ffFont(.caption2).foregroundStyle(T.muted)
                 }
             }
         }
+    }
+}
+
+
+extension Dict {
+    /// 聲調顏色 in 轉換: the tone of every syllable of every word, working through the whole text
+    /// (punctuation and line ends close a tone group). item index -> (tokens, tones)
+    func convItemTones(_ items: [ConvItem], _ place: Int) -> [Int: (tokens: [String], tones: [Int])] {
+        var units: [ToneUnit] = []
+        var ranges: [Int: (tokens: [String], from: Int, to: Int)] = [:]
+        var prevKey: String? = nil
+        func endPhrase() { if !units.isEmpty { units[units.count - 1].phraseEnd = true } }
+        // the word right after each word (not across punctuation or a line end): to tell a 量詞 (這款種)
+        var nextKeyOf: [Int: String] = [:]
+        var upcoming: String? = nil
+        for i in items.indices.reversed() {
+            let it = items[i]
+            if it.space { continue }
+            if it.newline || it.raw != nil || it.current.codes == nil { upcoming = nil; continue }
+            if let up = upcoming { nextKeyOf[i] = up }
+            upcoming = keyOf(it.current)
+        }
+        for (i, it) in items.enumerated() {
+            if it.newline { endPhrase(); prevKey = nil; continue }
+            if it.space { continue }
+            if let raw = it.raw {
+                if ConvertEngine.isPunct(raw) && !ConvertEngine.openers.contains(raw) { endPhrase() }
+                prevKey = nil
+                continue
+            }
+            guard let codes = it.current.codes else { endPhrase(); prevKey = nil; continue }
+            let key = keyOf(it.current)
+            let tokens: [String]
+            if let key, baseKeys.contains(key), it.current.parent == nil { tokens = tokensFor(key, place) }
+            else { tokens = (it.current.tokens ?? codes.joined(separator: " ")).split(separator: " ").map(String.init) }
+            let u = toneUnits(tokens: tokens, key: key, after: prevKey, before: nextKeyOf[i])
+            prevKey = key
+            // a word that starts with "--" (--ah): the syllable before it keeps its tone
+            if tokens.first == "--", !units.isEmpty { units[units.count - 1].beforeLight = true }
+            // a word that starts with 仔: 仔-sandhi on the syllable before it
+            if it.current.han?.first == "仔", !units.isEmpty { units[units.count - 1].beforeA = true }
+            ranges[i] = (tokens, units.count, units.count + u.count)
+            units += u
+        }
+        endPhrase()
+        let tones = realizedTones(units, place)
+        return ranges.mapValues { (tokens: $0.tokens, tones: Array(tones[$0.from..<$0.to])) }
     }
 }
