@@ -263,6 +263,48 @@ for k in order:
     if allk:
         lstd[k] = allk
         sy[k] = {str(i): st for i, st in enumerate(stds) if st}
+        # (and the other way: the usual word lists it as a 近義 of its own, with the places that say it)
+        for x in allk:
+            back = sy.setdefault(x, {}).setdefault("e", [])
+            if k not in back: back.append(k)
+
+# 合音: a word some places say in fewer syllables (佗位: 宜蘭, 臺南, 新竹… tuē, tueh) is an entry of its own too,
+# marked with those places and pointing to the word it's the 合音 of
+cont = collections.OrderedDict()
+raw_tok = {}                                       # (漢字, codes) -> the reading as written (with "--")
+for _, row in D["cmp"]:
+    for p, han, rs in row:
+        c = codes_only(rs) if rs else None
+        if c: raw_tok.setdefault((han, c), rs)
+def ps_all(han, rs):
+    return {p for _, row in cmp for p, h, r in row if h == han and r == rs}
+for zh, row in cmp:
+    for p, han, rs in row:
+        rc = codes_only(rs) if rs else None
+        if not rc or not HAN.match(han) or han not in first_key: continue
+        if len(rc.split()) >= len(han): continue
+        main = first_key[han]
+        # (MOE gives it already, for everyone, 下昏 合音唸作 i̋ng: not a word of some places)
+        if any(a[0] == rc and len(a) > 1 and a[1] == "合" for a in alt.get(main, [])) and len(ps_all(han, rs)) >= 10: continue
+        k = han + "\t" + rc
+        if k in seen and k not in cont: continue
+        cont.setdefault(k, set()).add(p)
+        raw = raw_tok.get((han, rc))
+        if raw and needs_tokens(raw): tok[k] = raw                     # (硩落去 te--loih: its light tone)
+for k, ps in cont.items():
+    han, rc = k.split("\t")
+    main = first_key[han]
+    words.append([han, rc]); seen.add(k)
+    used.update(rc.split())
+    defs_m[k] = len(defs_t)
+    defs_t.append("「" + han + "」的合音。看「" + han + "」。")
+    typ[k] = TYPE_LOCAL
+    loc[k] = sorted(ps)
+    lstd[k] = [main]
+    sy[k] = {"0": [main]}
+    back = sy.setdefault(main, {}).setdefault("e", [])
+    if k not in back: back.append(k)
+print("合音 entries:", len(cont), file=sys.stderr)
 
 G = collections.defaultdict(dict)
 for e in D["E"]:
@@ -349,7 +391,7 @@ chars = {ch for h, _ in words for ch in h}
 freq = {ch: round(math.log(counts[ch]), 1) for ch in sorted(chars) if counts[ch] > 0}
 
 out = {
-    "v": 5, "words": words, "syl": syl, "tl": tl, "pj": pj,
+    "v": 6, "words": words, "syl": syl, "tl": tl, "pj": pj,
     "defs": {"t": defs_t, "m": defs_m}, "pos": pos, "ex": ex, "reg": reg, "own": own, "au": au,
     "gl": [[k, v] for k, v in gl.items()], "freq": freq, "dex": dex, "ctx": ctx, "dia2": dia2, "sdia": sdia,
     "places": D["places"], "g1": D["g1"], "types": D["types"], "cats": D["cats"],

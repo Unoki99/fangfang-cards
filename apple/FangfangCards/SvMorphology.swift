@@ -795,6 +795,11 @@ struct SvConvertPane: View {
         var parts: [String] = []
     }
 
+    /// (歌詞: the page on screen. Off it (another tab, the lyrics bar over another page) its words stop following
+    /// the song: they were redrawn a dozen times a second unseen)
+    @State private var onScreen = true
+    private var liveBeat: LyricsBeat? { lyrics && onScreen ? LyricsBeat.shared : nil }
+
     init(dict: ZhDict, textKey: String = "svConvText", lyrics: Bool = false) {
         self.dict = dict
         self.lyrics = lyrics
@@ -802,6 +807,10 @@ struct SvConvertPane: View {
     }
 
     var body: some View {
+        svBody.onAppear { onScreen = true }.onDisappear { onScreen = false }
+    }
+
+    private var svBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 if lyrics {
@@ -918,7 +927,7 @@ struct SvConvertPane: View {
     private var coloured: some View {
         box(trs("瑞典文"), copy: 0) {
             SwellWords(pieces: words.map { (ink($0, hyphens: false) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3,
-                       beat: lyrics ? LyricsBeat.shared : nil) { j in
+                       beat: liveBeat) { j in
                 if let k = words[j].key { focused = false; remember(k, j); tapped = ZhKey(k: k) }
                 else if !words[j].parts.isEmpty { focused = false; compound = SvWordRef(id: words[j].core) }
             }
@@ -933,7 +942,7 @@ struct SvConvertPane: View {
             if lyrics {
                 // (the 歌詞 window: these words swell and open too)
                 SwellWords(pieces: words.map { (ink($0, hyphens: true) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3,
-                           beat: LyricsBeat.shared) { j in
+                           beat: liveBeat) { j in
                     if let k = words[j].key { remember(k, j); tapped = ZhKey(k: k) }
                     else if !words[j].parts.isEmpty { compound = SvWordRef(id: words[j].core) }
                 }

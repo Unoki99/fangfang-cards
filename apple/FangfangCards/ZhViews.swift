@@ -472,12 +472,17 @@ struct ZhEntryBody: View {
                 if dict.lang == 1 { ZhPlaceRows(dict: dict, entry: entry) }
                 if !dict.isJa && !dict.isSv { InputCodesRow(han: entry.h) }
                 // the English meanings, one per line
+                // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
                 let ens = dict.isJa ? [] : entry.enList
-                if !ens.isEmpty {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Chip(text: tr("英"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
-                        ZhEnglishList(items: ens)
-                    }
+                let zhShort: [(n: Int, t: String)] = dict.isJa || dict.isSv || dict.isYue ? [] : entry.senses.compactMap { s in
+                    var t = s.text.components(separatedBy: "\n").first ?? s.text
+                    if let r = t.range(of: "。") { t = String(t[..<r.lowerBound]) }
+                    t = t.trimmingCharacters(in: .whitespaces)
+                    if t.count > 28 { t = String(t.prefix(27)) + "…" }
+                    return t.isEmpty ? nil : (s.n, t)
+                }
+                if !ens.isEmpty || !zhShort.isEmpty {
+                    MeaningsOverview(zh: zhShort, zhLabel: tr(dict.isHak ? "客" : "華"), en: ens)
                 }
                 // 粵語: the 華語 word(s) with the same meaning
                 if !entry.eq.isEmpty && !dict.isSv {
@@ -833,6 +838,11 @@ struct ZhConvertPane: View {
     /// the lyrics bar over the other pages: only the line being sung, in 漢字
     var bar = false
 
+    /// (歌詞: the page on screen. Off it (another tab, the lyrics bar over another page) its words stop following
+    /// the song: they were redrawn a dozen times a second unseen)
+    @State private var onScreen = true
+    private var liveBeat: LyricsBeat? { lyrics && onScreen ? LyricsBeat.shared : nil }
+
     init(dict: ZhDict, textKey: String = "zhConvText", lyrics: Bool = false, bar: Bool = false) {
         self.dict = dict
         self.lyrics = lyrics
@@ -844,14 +854,15 @@ struct ZhConvertPane: View {
     private var romIndex: Int { min(max(store.zhRom, 0), 1) }
 
     var body: some View {
-        if bar { barBody } else { mainBody }
+        if bar { barBody } else { mainBody.onAppear { onScreen = true }.onDisappear { onScreen = false } }
     }
 
     /// (the lyrics bar: the line's 漢字, the word being sung swelling; a word tapped opens its meaning)
     private var barBody: some View {
         let w = words
         return SwellWords(pieces: w.map { x in (dict.sentenceHan([x.piece], store.zhPlace, base: T.glyph), x.key != nil, false, 0) },
-                          lineSpacing: 2, vPad: 2, beat: LyricsBeat.shared, beatWhole: true) { j in
+                          lineSpacing: 2, vPad: 2, beat: LyricsBeat.shared, beatWhole: true,
+                          ruby: lyricsReadings ? rubies(w) : nil, rubyFont: .system(size: 12)) { j in
             if let k = w[j].key { tapped = ZhKey(k: k) }
         }
         .scaledFont(22)
@@ -871,11 +882,9 @@ struct ZhConvertPane: View {
                             let n = Int((100 * Double(ks.filter { $0 == 1 }.count) / Double(ks.count)).rounded())
                             Text(tr("懂 \(n)%（虛線：還沒學的詞，黃線：不熟）")).ffFont(.footnote).foregroundStyle(T.muted)
                         }
+                        // (the readings right under each word, smaller, when they're on)
                         LyricsColumns {
                             panel(0, trs("漢字"), dict.sentenceHan(pieces, store.zhPlace, base: T.glyph))
-                            if lyricsReadings {
-                                panel(romIndex + 1, trs(Lang.romNames[romIndex]), dict.sentence(pieces, romIndex, store.zhPlace))
-                            }
                         }
                     }
                 } else {
@@ -971,14 +980,14 @@ struct ZhConvertPane: View {
                         a.underlineStyle = line
                     }
                     return (a, x.key != nil, x.newLine, 0)
-                }, vPad: 3, beat: lyrics ? LyricsBeat.shared : nil) { j in
+                }, vPad: 3, beat: liveBeat, ruby: lyrics && lyricsReadings ? rubies(w) : nil, rubyFont: .system(size: 14)) { j in
                     if let k = w[j].key { focused = false; remember(k, j, w); tapped = ZhKey(k: k) }
                 }
                 .ffFont(.title3)
             } else if lyrics {
                 // (the 歌詞 window: the reading's words swell and open too, like the 漢字)
                 let w = words
-                SwellWords(pieces: romPieces(w, i - 1), vPad: 3, beat: LyricsBeat.shared) { j in
+                SwellWords(pieces: romPieces(w, i - 1), vPad: 3, beat: liveBeat) { j in
                     if let k = w[j].key { remember(k, j, w); tapped = ZhKey(k: k) }
                 }
                 .environment(\.noToneGlow, true)      // (letters: no glow here, it got slow)
@@ -996,6 +1005,18 @@ struct ZhConvertPane: View {
 
     /// the reading word by word (a space before each word that follows another; only a line's first word with a
     /// capital letter in 拼音)
+    /// (歌詞) each word's reading, to go right under it; nil for what isn't a word
+    private func rubies(_ w: [(piece: ZhPiece, key: String?, newLine: Bool)]) -> [AttributedString?] {
+        w.map { x in
+            guard dict.pieceSyl(x.piece, store.zhPlace) != nil else { return nil }
+            var a = dict.sentence([x.piece], romIndex, store.zhPlace)
+            while let l = a.characters.last, l == " " { a.characters.removeLast() }
+            if a.characters.isEmpty { return nil }
+            if ToneColors.system == 0 { a.swiftUI.foregroundColor = T.greenInk }
+            return a
+        }
+    }
+
     private func romPieces(_ w: [(piece: ZhPiece, key: String?, newLine: Bool)], _ mode: Int)
         -> [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)] {
         var out: [(text: AttributedString, tap: Bool, newLine: Bool, mark: Int)] = []

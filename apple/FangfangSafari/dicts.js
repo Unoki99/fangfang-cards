@@ -15,7 +15,7 @@ var FF_DICTS = (() => {
     const rc = g + "rime/rime-cantonese/main/";
     return [
         {
-            id: "zh", name: "華語", script: "mandarin", fn: "buildMandarin", outs: ["zh"], mb: 75,
+            id: "zh", name: "華語", script: "mandarin", fn: "buildMandarin", outs: ["zh"], mb: 75, ver: 1,
             sources: [{ file: "dict-csld.json", url: g + "g0v/moedict-data-csld/master/dict-csld.json", arg: "csld" },
                 Object.assign({}, essay), Object.assign({}, cedict, { optional: true }),
                 { file: "hsk30.csv", url: g + "ivankra/hsk30/master/hsk30-expanded.csv", arg: "hsk", optional: true },
@@ -28,7 +28,7 @@ var FF_DICTS = (() => {
         },
         {
             // (ver: the version of the data the converter makes; an older one installed is offered again)
-            id: "tw", name: "台語", script: "taigi", fn: "buildTaigi", outs: ["dict", "cards"], mb: 11, ver: 5,
+            id: "tw", name: "台語", script: "taigi", fn: "buildTaigi", outs: ["dict", "cards"], mb: 11, ver: 6,
             sources: [{ file: "kautian.ods", url: "https://sutian.moe.edu.tw/media/senn/ods/kautian.ods", arg: "ods" },
                 Object.assign({}, essay)],
             bundled: { own: "install/twown.json" },

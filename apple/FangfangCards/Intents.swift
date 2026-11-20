@@ -9,6 +9,8 @@ final class Router: ObservableObject {
     @Published var tab = 4
     /// 設定 is open (shown above everything, so it stays open while a change in it redraws the pages behind)
     @Published var settingsOpen = false
+    /// 我的進度 is open (the button at the top left of the main pages)
+    @Published var profileOpen = false
     /// the Dynamic Island tapped: its word's dictionary entry, shown over 詞典
     @Published var islandEntry: EntryRef?
     struct EntryRef: Identifiable { let key: String; var id: String { key } }

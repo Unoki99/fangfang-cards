@@ -168,6 +168,7 @@ private struct LookSettings: View {
     @State private var textSizeDraft: Double?
     @AppStorage("widgetBG") private var widgetBG = 0.45
     @AppStorage(ThemeMotion.key) private var themeMotion = true
+    @AppStorage(ThemeMotion.saverKey) private var motionSaver = false
     @AppStorage(DictFont.key) private var dictFont = 0
     @State private var fontReady = true
 
@@ -197,8 +198,9 @@ private struct LookSettings: View {
                 }
                 .pickerStyle(.menu)
                 Toggle(tr("主題動畫"), isOn: $themeMotion)
+                Toggle(tr("省電動畫"), isOn: $motionSaver).disabled(!themeMotion)
             } footer: {
-                Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。"))
+                Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。省電動畫：雪和花瓣少一半，一秒只畫 12 次（開低耗電模式的時候也會自動這樣）。被別的頁面蓋住的背景不會動。"))
             }
             // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour
             if store.isSv {
@@ -288,6 +290,19 @@ private struct LookSettings: View {
                         Image(systemName: "textformat.size.larger").foregroundStyle(T.muted)
                         Text(TextSize.names[TextSize.clamp(textSizeDraft.map { Int($0.rounded()) } ?? textSize)]).foregroundStyle(T.muted).monospacedDigit()
                     }
+                    // (a sample that grows while the slider moves; the whole app follows when it's let go)
+                    let lv = TextSize.clamp(textSizeDraft.map { Int($0.rounded()) } ?? textSize)
+                    let pct = (Double(TextSize.names[lv].dropLast()) ?? 100) / 100
+                    HStack(spacing: 14) {
+                        Text("字")
+                            .font(.system(size: 22 * pct, weight: .semibold))
+                            .foregroundStyle(T.glyph)
+                            .frame(width: 96, height: 96)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(T.fn.opacity(0.7)))
+                            .overlay(RoundedRectangle(cornerRadius: 14).stroke(T.fnEdge, lineWidth: 1))
+                            .animation(.snappy, value: lv)
+                        Text(tr("拖的時候這裡先變大；放開以後整個 App 才跟著變。")).ffFont(.footnote).foregroundStyle(T.muted)
+                    }
                 } header: {
                     Text(tr("文字大小"))
                 } footer: {
@@ -308,7 +323,7 @@ private struct LookSettings: View {
                 Text(tr("小工具背景"))
             }
             Section {
-                Toggle(tr("畫成圖再放大"), isOn: $swellOn)
+                Toggle(tr("指到的字放大"), isOn: $swellOn)
             } header: {
                 Text(tr("詞放大"))
             } footer: {
@@ -336,6 +351,7 @@ private struct LanguageSettings: View {
     @AppStorage(Simp.key) private var simplified = false
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
+    @AppStorage(HongimTone1.allKey) private var hongimAll = false
 
     var body: some View {
         SettingsPage(title: tr("語言與讀音")) {
@@ -380,6 +396,9 @@ private struct LanguageSettings: View {
                 Toggle(tr("第一聲的地方空一格"), isOn: $hongimTone1Space)
                     .disabled(hongimTone1)
                     .onChange(of: hongimTone1Space) { store.objectWillChange.send() }
+                // (ㄉㄧㄠˋ ㄧˉ: never two spaces with the one above)
+                Toggle(tr("方音每個音節中間空一格"), isOn: $hongimAll)
+                    .onChange(of: hongimAll) { store.objectWillChange.send() }
             }
             Section {
                 Picker(tr("字形"), selection: $simplified) {
@@ -555,7 +574,56 @@ private struct DictionarySettings: View {
                 Text(tr("台語和華語各有自己的複製格式。華語可以加英文解釋：{英文} 或 {英文列表}。"))
             }
             MainMeaningSection()
+            SearchOrderSection()
             InputCodesSettings()
+        }
+    }
+}
+
+/// 搜尋結果的順序: 標準, or 自己排 with up to three things in order (the first one counts first)
+private struct SearchOrderSection: View {
+    @AppStorage(SearchOrder.key) private var order = ""
+    @AppStorage("searchOrderSaved") private var saved = "freq,exact"
+
+    private var list: [String] { order.split(separator: ",").map(String.init).filter { !$0.isEmpty } }
+    private func set(_ l: [String]) { order = l.joined(separator: ","); if !l.isEmpty { saved = order } }
+
+    var body: some View {
+        Section {
+            Picker(tr("搜尋結果的順序"), selection: Binding(get: { list.isEmpty ? 0 : 1 }, set: { set($0 == 0 ? [] : saved.split(separator: ",").map(String.init)) })) {
+                Text(tr("標準")).tag(0)
+                Text(tr("自己排")).tag(1)
+            }
+            .pickerStyle(.segmented)
+            if !list.isEmpty {
+                ForEach(Array(list.enumerated()), id: \.element) { i, id in
+                    HStack(spacing: 10) {
+                        Text("\(i + 1)").ffFont(.subheadline, .bold).monospacedDigit().foregroundStyle(T.btnInk)
+                            .frame(width: 26, height: 26).background(Circle().fill(T.btn))
+                        Text(trs(SearchOrder.all.first { $0.id == id }?.name ?? id))
+                        Spacer()
+                        if i > 0 {
+                            Button { var l = list; l.swapAt(i, i - 1); set(l) } label: { Image(systemName: "arrow.up") }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(tr("往上"))
+                        }
+                        Button { var l = list; l.remove(at: i); set(l.isEmpty ? [] : l); if l.isEmpty { order = "" } } label: { Image(systemName: "minus.circle") }
+                            .buttonStyle(.borderless).foregroundStyle(T.muted)
+                            .accessibilityLabel(tr("拿掉"))
+                    }
+                }
+                if list.count < 3 {
+                    Menu {
+                        ForEach(SearchOrder.all.filter { a in !list.contains(a.id) }, id: \.id) { a in
+                            Button(trs(a.name)) { set(list + [a.id]) }
+                        }
+                    } label: { Label(tr("加一個"), systemImage: "plus.circle") }
+                }
+            }
+        } header: {
+            Text(tr("搜尋結果的順序"))
+        } footer: {
+            Text(tr("標準：照方方原本的順序。自己排：最多選三個，第一個最重要，一樣的時候再看第二個、第三個。例如查「非常」的時候，「常用的詞先」會把比較常用的詞排在前面，「方言的講法先」會先列你選的腔口（在上面的腔口選單選）的方言詞和讀音。「HSK／TOCFL 等級低的先」只用在華語。"))
         }
     }
 }

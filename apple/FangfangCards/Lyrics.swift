@@ -46,9 +46,10 @@ struct LyricHit: Decodable, Identifiable, Hashable {
 
     /// the timed version's lines (LRC: "[01:23.45]words", a line may have several times): when each is sung, the
     /// empty ones (between verses) as "". nil when the song has no timed version.
-    var timedRows: [(times: [Double], text: String)]? {
+    /// marks: word times inside the line ("<01:23.80>", enhanced LRC): how many letters come before each and its time
+    var timedRows: [(times: [Double], text: String, marks: [(at: Int, t: Double)])]? {
         guard let s = syncedLyrics, !s.isEmpty else { return nil }
-        var out: [(times: [Double], text: String)] = []
+        var out: [(times: [Double], text: String, marks: [(at: Int, t: Double)])] = []
         for raw in s.split(separator: "\n", omittingEmptySubsequences: false) {
             var line = Substring(raw)
             var times: [Double] = []
@@ -58,7 +59,28 @@ struct LyricHit: Decodable, Identifiable, Hashable {
                 if parts.count == 2, let m = Double(parts[0]), let sec = Double(parts[1]) { times.append(m * 60 + sec) } else { break }
                 line = line[line.index(after: close)...]
             }
-            if !times.isEmpty { out.append((times, line.trimmingCharacters(in: .whitespaces))) }
+            guard !times.isEmpty else { continue }
+            var marks: [(at: Int, t: Double)] = []
+            if line.contains("<") {
+                // (the word times taken out of the words, each kept with the number of letters before it)
+                var text = "", letters = 0
+                var rest = line
+                while let c = rest.first {
+                    if c == "<", let close = rest.firstIndex(of: ">") {
+                        let parts = rest[rest.index(after: rest.startIndex)..<close].split(separator: ":")
+                        if parts.count == 2, let m = Double(parts[0]), let sec = Double(parts[1]) {
+                            marks.append((letters, m * 60 + sec))
+                            rest = rest[rest.index(after: close)...]
+                            continue
+                        }
+                    }
+                    text.append(c)
+                    if c.isLetter || c.isNumber { letters += 1 }
+                    rest = rest.dropFirst()
+                }
+                line = Substring(text)
+            }
+            out.append((times, line.trimmingCharacters(in: .whitespaces), marks))
         }
         return out.contains(where: { !$0.text.isEmpty }) ? out : nil
     }
@@ -171,7 +193,8 @@ final class LyricsBridge: ObservableObject {
     // ── following the song (timed lyrics): the song started when the station said so (or when it was chosen),
     // and the lines come at their times from then on; 對時 moves them earlier or later ──
     /// each time a line starts: (seconds into the song, the line's number among those with words, -1: none)
-    private var cues: [(t: Double, line: Int)] = []
+    /// (marks: the line's own word times, as (how far into its letters 0…1, seconds), when it was given them)
+    private var cues: [(t: Double, line: Int, marks: [(f: Double, t: Double)])] = []
     /// the lines with words (as shown)
     private(set) var lineTexts: [String] = []
     /// when the song started
@@ -197,6 +220,8 @@ final class LyricsBridge: ObservableObject {
     @Published private(set) var nextLine = ""
     /// the bar closed for this song
     @Published var barHiddenFor: Int?
+    /// 卡拉 OK open: the lyrics bar stays away
+    @Published var karaoke = false
     /// something is open over the app's pages (a game, 設定…): the bar shows even on 轉換 → 歌詞
     @Published private(set) var appCovered = false
 
@@ -237,7 +262,11 @@ final class LyricsBridge: ObservableObject {
             for row in rows {
                 let line = row.text.isEmpty ? -1 : n
                 if !row.text.isEmpty { n += 1 }
-                for t in row.times { cues.append((t, line)) }
+                // (word times: only for a line sung once)
+                let letters = Double(row.text.filter { $0.isLetter || $0.isNumber }.count)
+                let marks = row.times.count == 1 && row.marks.count >= 2 && letters > 0
+                    ? row.marks.map { (f: min(1, Double($0.at) / letters), t: $0.t) } : []
+                for t in row.times { cues.append((t, line, marks)) }
             }
             cues.sort { $0.t < $1.t }
         }
@@ -262,7 +291,19 @@ final class LyricsBridge: ObservableObject {
         var frac = 0.0
         if k >= 0 {
             let t0 = cues[k].t, t1 = k + 1 < cues.count ? cues[k + 1].t : t0 + 5
-            frac = min(1, max(0, (pos - t0) / max(0.5, t1 - t0)))
+            let mk = cues[k].marks
+            if mk.isEmpty {
+                frac = min(1, max(0, (pos - t0) / max(0.5, t1 - t0)))
+            } else {
+                // (the line's own word times: the place in its letters goes faster where the words were sung faster)
+                let pts = [(f: 0.0, t: t0)] + mk.filter { $0.f > 0 } + [(f: 1.0, t: max(t1, (mk.last?.t ?? t0) + 0.1))]
+                frac = 1
+                for j in 1..<pts.count where pos < pts[j].t {
+                    let a = pts[j - 1], b = pts[j]
+                    frac = a.f + (b.f - a.f) * min(1, max(0, (pos - a.t) / max(0.01, b.t - a.t)))
+                    break
+                }
+            }
         }
         let q = (frac * 30).rounded(.down) / 30
         let beat = LyricsBeat.shared
@@ -285,7 +326,9 @@ final class LyricsBridge: ObservableObject {
                 NotificationCenter.default.post(name: Self.changed, object: nil)
             }
         }
-        if beat.frac != q { beat.frac = q }
+        // (卡拉 OK open: it follows only the line, so the words behind it don't swell: the lyrics page under it isn't
+        // redrawn a dozen times a second)
+        if !karaoke, beat.frac != q { beat.frac = q }
         let covered = LyricsOverlay.appCovered
         if covered != appCovered { appCovered = covered }
     }
@@ -407,6 +450,7 @@ final class LyricsBridge: ObservableObject {
 struct LyricsWindow: View {
     /// (轉換's 歌詞 section: the page's own top bar has the spelling menu)
     var inConvert = false
+    @ObservedObject private var songLangs = SongLanguage.shared
     @ObservedObject private var lyrics = LyricsBridge.shared
     @ObservedObject private var songs = SongPlayer.shared
     @ObservedObject private var radio = RadioPlayer.shared
@@ -418,6 +462,9 @@ struct LyricsWindow: View {
     @Environment(\.horizontalSizeClass) private var hSize
     /// (iPhone: which bar shows above the lyrics, 對時 or the tools)
     @AppStorage("lyricsBarPage") private var barPage = 0
+    /// 自己的歌詞 opened from the tools: the editor, over the whole app
+    @State private var editorSong: SongHit?
+    @State private var karaokeOpen = false
     @AppStorage(LyricsBridge.readingsKey) private var readings = true
     @AppStorage(LyricsBridge.glowKey) private var lyricsGlow = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -459,6 +506,18 @@ struct LyricsWindow: View {
             NavigationStack { LyricsLineList() }
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .preferredColorScheme(.dark)
+                .tint(AppTint.accent)
+        }
+        .fullScreenCover(isPresented: $karaokeOpen) {
+            KaraokeView()
+                .environmentObject(Store.shared)
+                .preferredColorScheme(.dark)
+                .tint(AppTint.accent)
+        }
+        .fullScreenCover(item: $editorSong) { song in
+            LyricsEditor(song: song)
+                .environmentObject(Store.shared)
                 .preferredColorScheme(.dark)
                 .tint(AppTint.accent)
         }
@@ -539,12 +598,18 @@ struct LyricsWindow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(readings ? tr("關掉讀音那一邊") : tr("打開讀音那一邊"))
             LyricsGlowToggle(circle: true).buttonStyle(.plain)
+            // (歌的語言: the lyrics read in the language the song is sung in)
+            SongLanguageMenu(song: h)
             // (the song playing in 音樂: lyrics of your own, or these timed again)
-            LyricsEditButton(plain: true)
+            LyricsEditButton(plain: true) { editorSong = $0 }
             if lyrics.timed {
                 Button { lineList = true } label: { Image(systemName: "list.number").toolCircle() }
                     .buttonStyle(.plain)
                     .accessibilityLabel(tr("跳到哪一行"))
+                // 卡拉 OK: the whole screen the lyrics, line by line
+                Button { karaokeOpen = true } label: { Image(systemName: "music.mic").toolCircle() }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tr("卡拉 OK"))
             }
             SaveSongButton(size: 16, song: h).toolCircle()
             Button { picking = true } label: { Image(systemName: "text.magnifyingglass").toolCircle() }
@@ -556,9 +621,11 @@ struct LyricsWindow: View {
         .liquidGlass(Capsule())
     }
 
-    /// the language's 轉換, in its 歌詞 form (no typing)
+    /// the language's 轉換, in its 歌詞 form (no typing); a song tagged with another language: in that one
     @ViewBuilder private var words: some View {
-        if store.isSv {
+        if let t = SongLanguage.shared.tag(lyrics.song), t != store.lang {
+            LyricsLangPane(textKey: LyricsBridge.textKey)
+        } else if store.isSv {
             ZhGate { z in SvConvertPane(dict: z, textKey: LyricsBridge.textKey, lyrics: true) }
         } else if store.isZh {
             ZhGate { z in ZhConvertPane(dict: z, textKey: LyricsBridge.textKey, lyrics: true) }
@@ -1113,7 +1180,7 @@ struct LyricsFloat: View {
     @ObservedObject private var songs = SongPlayer.shared
 
     var body: some View {
-        if on, lyrics.timed, radio.isOn || songs.active, !songs.editing, let h = lyrics.song, lyrics.barHiddenFor != h.id,
+        if on, lyrics.timed, radio.isOn || songs.active, !songs.editing, !lyrics.karaoke, let h = lyrics.song, lyrics.barHiddenFor != h.id,
            !(router.tab == 3 && convertTab == 2 && !lyrics.appCovered), !radio.sheetOpen {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
@@ -1318,7 +1385,9 @@ struct BarLines: View {
     /// each place's lift (− up, + below) and how much it shows
     @State private var lift: [CGFloat] = [0, 34]
     @State private var seen: [Double] = [1, 0]
-    private let rise: CGFloat = 34
+    /// (the readings under the words make the line taller: the next one waits further down)
+    @AppStorage(LyricsBridge.readingsKey) private var readings = true
+    private var rise: CGFloat { readings ? 52 : 34 }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -1367,6 +1436,7 @@ struct BarLines: View {
 private struct BarLine: View {
     let key: String
     @EnvironmentObject var store: Store
+    @ObservedObject private var songLangs = SongLanguage.shared
     @AppStorage private var line: String
 
     init(key: String) {
@@ -1378,6 +1448,8 @@ private struct BarLine: View {
         Group {
             if line.isEmpty {
                 Text("♪").ffFont(.title3).foregroundStyle(T.muted)
+            } else if let t = SongLanguage.shared.tag(LyricsBridge.shared.song), t != store.lang {
+                LyricsLangPane(textKey: key, bar: true)
             } else if store.isZh, !store.isSv, let z = store.zh {
                 ZhConvertPane(dict: z, textKey: key, lyrics: true, bar: true).id(ObjectIdentifier(z))
             } else if !store.isZh, !store.isSv, let d = store.dict {
@@ -1396,5 +1468,146 @@ extension View {
     /// (the lyrics' tools: each a round 34-point button)
     func toolCircle() -> some View {
         frame(width: 34, height: 34).contentShape(Circle())
+    }
+}
+
+// MARK: - 歌的語言
+
+/// 歌的語言: a song tagged with the language it's sung in. Its lyrics are read in that language (its readings, its
+/// tone colours, its words to tap) whatever language the dictionary is on; the song also goes into a 歌單 named
+/// after the language. Untagged: the dictionary's language, as before.
+@MainActor
+final class SongLanguage: ObservableObject {
+    static let shared = SongLanguage()
+    private static let key = "songLanguages"
+    /// (title|singer, folded) → language (0 台語 … 5 瑞典語)
+    @Published private(set) var tags: [String: Int]
+    /// the other languages' dictionaries, read for lyrics (the one the app is on isn't read twice)
+    @Published private(set) var dicts: [Int: ZhDict] = [:]
+    private var loading = Set<Int>()
+
+    private init() {
+        tags = UserDefaults.standard.dictionary(forKey: Self.key) as? [String: Int] ?? [:]
+    }
+
+    static func songKey(_ title: String, _ artist: String) -> String {
+        (title + "|" + artist).folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    func tag(_ h: LyricHit?) -> Int? {
+        guard let h else { return nil }
+        return tags[Self.songKey(h.trackName, h.artistName)]
+    }
+
+    /// the language the lyrics are read in: the song's own, else the app's
+    func lang(_ h: LyricHit?, _ store: Store) -> Int { tag(h) ?? store.lang }
+
+    /// a language's dictionary for the lyrics (台語's is the app's own Dict, not here); nil while it's read
+    func dict(_ l: Int, _ store: Store) -> ZhDict? {
+        if let z = store.zh, z.lang == l { return z }
+        if let z = dicts[l] { return z }
+        load(l)
+        return nil
+    }
+
+    private func load(_ l: Int) {
+        guard (1...5).contains(l), !loading.contains(l), let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv"][l]) else { return }
+        loading.insert(l)
+        let accent = Lang.hakAccent
+        Task {
+            let d = await Task.detached(priority: .userInitiated) { () -> ZhDict? in
+                try? ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent, from: url)
+            }.value
+            loading.remove(l)
+            if let d { dicts[l] = d }
+        }
+    }
+
+    /// tags the song (nil: back to the app's language); with the song's 音樂 entry, it goes into the language's 歌單
+    /// (and out of the one it was in before)
+    func set(_ h: LyricHit, _ l: Int?) {
+        let k = Self.songKey(h.trackName, h.artistName)
+        let old = tags[k]
+        tags[k] = l
+        UserDefaults.standard.set(tags, forKey: Self.key)
+        Task {
+            let lib = MusicLibrary.shared
+            var hit = SongPlayer.shared.song.flatMap { s in Self.songKey(s.trackName, s.artistName) == k ? s : nil }
+            if hit == nil { hit = await SongPlayer.shared.find(title: h.trackName, artist: h.artistName) }
+            guard let s = hit else { return }
+            if let o = old, o != l, let p = lib.playlists.first(where: { $0.name == Lang.names[o] }),
+               let i = p.songs.firstIndex(where: { $0.id == s.id }) {
+                lib.remove(at: IndexSet(integer: i), from: p.id)
+            }
+            guard let l, Lang.names.indices.contains(l) else { return }
+            let name = Lang.names[l]
+            if let p = lib.playlists.first(where: { $0.name == name }) { lib.add(s, to: p.id) }
+            else { _ = lib.newPlaylist(name, with: s) }
+        }
+    }
+}
+
+/// the lyrics' 轉換 in the song's language (the 歌詞 page; bar: the line in the lyrics bar)
+struct LyricsLangPane: View {
+    let textKey: String
+    var bar = false
+    @EnvironmentObject var store: Store
+    @ObservedObject private var tags = SongLanguage.shared
+    @ObservedObject private var lyrics = LyricsBridge.shared
+
+    var body: some View {
+        let l = tags.lang(lyrics.song, store)
+        Group {
+            if l == 0 {
+                if let d = store.dict {
+                    ConvertPane(dict: d, textKey: textKey, lyrics: true, bar: bar)
+                } else {
+                    waiting.onAppear { store.loadDict() }
+                }
+            } else if let z = tags.dict(l, store) {
+                if l == 5 {
+                    if bar { Text(UserDefaults.standard.string(forKey: textKey) ?? "").ffFont(.title3).foregroundStyle(T.glyph) }
+                    else { SvConvertPane(dict: z, textKey: textKey, lyrics: true).id(ObjectIdentifier(z)) }
+                } else {
+                    ZhConvertPane(dict: z, textKey: textKey, lyrics: true, bar: bar).id(ObjectIdentifier(z))
+                }
+            } else {
+                waiting
+            }
+        }
+    }
+
+    @ViewBuilder private var waiting: some View {
+        if bar { Text("♪").ffFont(.title3).foregroundStyle(T.muted) }
+        else { ProgressView().frame(maxWidth: .infinity).padding(.top, 40) }
+    }
+}
+
+/// the 歌的語言 button in the lyrics' tools: which language this song is sung in
+struct SongLanguageMenu: View {
+    let song: LyricHit
+    @EnvironmentObject var store: Store
+    @ObservedObject private var tags = SongLanguage.shared
+
+    var body: some View {
+        let t = tags.tag(song)
+        Menu {
+            Picker(tr("歌的語言"), selection: Binding(get: { t ?? -1 }, set: { tags.set(song, $0 < 0 ? nil : $0) })) {
+                Text(tr("跟詞典一樣（") + trs(Lang.names[min(max(store.lang, 0), Lang.names.count - 1)]) + "）").tag(-1)
+                ForEach(Lang.names.indices, id: \.self) { i in
+                    if i == 0 ? DataFiles.has("dict") : DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][i]) {
+                        Text(trs(Lang.names[i])).tag(i)
+                    }
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Text(t.map { String(trs(Lang.names[$0]).prefix(1)) } ?? "語")
+                .ffFont(.subheadline, .bold)
+                .opacity(t == nil ? 0.5 : 1)
+                .toolCircle()
+        }
+        .accessibilityLabel(tr("歌的語言"))
     }
 }

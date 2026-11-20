@@ -95,3 +95,74 @@ function ffChoice(prefs, key, options, onChange) {
     draw();
     return g;
 }
+
+/// which language an app key is of: after the tab 粵 / 客 / 日 / 瑞, 注音 (華語), or letters (台語) (as content.js)
+function ffKeyLang(k) {
+    const t = (k || "").split("\t")[1] || "";
+    const c = t.charAt(0), cp = t.codePointAt(0) || 0;
+    if (c === "粵") return "yue";
+    if (c === "客") return "hak";
+    if (c === "日") return "ja";
+    if (c === "瑞") return "sv";
+    if ((cp >= 0x3100 && cp <= 0x312F) || (cp >= 0x31A0 && cp <= 0x31BF) || c === "˙" || c === "字") return "zh";
+    return "tw";
+}
+
+/// 資料夾同步: every device's backup in the folder (方方詞卡-*.json, the app's iPhone / iPad / Android / Windows ones
+/// and this add-on's), each word as it was changed last → the words you know and are learning, kept here as if the
+/// app had sent them. → how many of each
+async function ffReadFolder(files) {
+    const best = new Map();       // key → [status, time]
+    let read = 0;
+    for (const f of files) {
+        if (!/^方方詞卡-.*\.json$/.test(f.name) || /舊備份/.test(f.webkitRelativePath || "")) continue;
+        let o;
+        try { o = JSON.parse(await f.text()); } catch (e) { continue; }
+        if (!o || o.app !== "fangfang-cards" || !o.status) continue;
+        read++;
+        const added = o.added || {};
+        for (const [k, st] of Object.entries(o.status)) {
+            const t = added[k] || 0, b = best.get(k);
+            if (!b || t > b[1]) best.set(k, [st, t]);
+        }
+    }
+    const k = {}, u = {};
+    for (const [key, [st]] of best) {
+        if (st !== 1 && st !== 2) continue;
+        const head = key.split("\t")[0];
+        if (!head) continue;
+        const l = ffKeyLang(key), to = st === 1 ? k : u;
+        (to[l] = to[l] || new Set()).add(head);
+    }
+    const arr = m => Object.fromEntries(Object.entries(m).map(([l, s]) => [l, [...s]]));
+    const r = await ffStore.get(["ffKnown"]).catch(() => ({}));
+    const o = { v: 1, k: arr(k), u: arr(u), f: (r.ffKnown && r.ffKnown.f) || [], at: Date.now(), from: "folder" };
+    await ffStore.set({ ffKnown: o });
+    const n = x => Object.values(x).reduce((a, s) => a + s.size, 0);
+    return { files: read, known: n(k), unknown: n(u) };
+}
+
+/// this add-on's own file for the folder: the words chosen here (認識, 不熟, 收藏), in the app's backup form, so
+/// the apps take them when they sync. Saved as a download: choose the sync folder when the browser asks.
+async function ffFolderFile(queue) {
+    const r = await ffStore.get(["ffDeviceId"]).catch(() => ({}));
+    let id = r.ffDeviceId;
+    if (!id) { id = Math.random().toString(16).slice(2, 6).toUpperCase(); await ffStore.set({ ffDeviceId: id }).catch(() => {}); }
+    const now = Date.now() / 1000;
+    const status = {}, added = {}, saved = {};
+    for (const x of queue || []) {
+        const t = (x.t || Date.now()) / 1000;
+        if (x.w === "known" || x.w === "unknown") { status[x.k] = x.w === "known" ? 1 : 2; added[x.k] = t; }
+        else if (x.w === "saved") saved[x.k] = t;
+    }
+    const browserName = /Firefox/i.test(navigator.userAgent) ? "Firefox" : (/Edg\//.test(navigator.userAgent) ? "Edge" : (/Chrome/i.test(navigator.userAgent) ? "Chrome" : "Safari"));
+    const obj = { app: "fangfang-cards", version: 1, exported: new Date().toISOString(), from: "add-on", status, added, saved,
+        streak: {}, own: {}, ownInfo: {}, senses: {}, week: {}, weekStart: {}, srs: {}, log: {}, groupTime: {}, groupInfo: {}, groupWords: {} };
+    const name = "方方詞卡-查詞-" + browserName + "-" + id + ".json";
+    const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 1)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return { name, n: Object.keys(status).length + Object.keys(saved).length, now };
+}

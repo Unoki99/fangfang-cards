@@ -293,7 +293,8 @@ struct WordRow: View {
                         SichuanChip(kind: k, small: true)
                     }
                 }
-                Text(card.firstMeaning).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
+                // (主要解釋 = 英文: the English here too)
+                Text(store.practiceMeaning(card).t).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(1)
             }
             Spacer()
             if let s = streak {

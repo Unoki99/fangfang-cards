@@ -1240,6 +1240,26 @@ final class ZhDict: @unchecked Sendable {
     /// (四川話's own words only when 讀音 = 四川話)
     func search(_ q0: String, place: Int = 0) -> Found {
         var f = search0(q0, place: place)
+        // (設定 → 詞典 → 搜尋結果的順序: 自己排)
+        let keys = SearchOrder.chosen
+        if !keys.isEmpty {
+            let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+            let m: (String, Int) -> Double = { k, i in
+                let e = self.entries[i]
+                switch k {
+                case "freq": return Double(i)
+                case "exact": return e.h == q || e.alt == q || (e.senses.first?.text.components(separatedBy: "。").first ?? "") == q ? 0 : 1
+                case "short": return Double(e.h.count)
+                case "level":
+                    let l = Lang.zhList == 1 ? e.tocfl : e.hsk
+                    return l > 0 ? Double(l) : 99
+                default: return 0
+                }
+            }
+            f.words = SearchOrder.sort(f.words, keys, m); f.starts = SearchOrder.sort(f.starts, keys, m)
+            f.contains = SearchOrder.sort(f.contains, keys, m); f.defs = SearchOrder.sort(f.defs, keys, m)
+            f.english = SearchOrder.sort(f.english, keys, m); f.mandarin = SearchOrder.sort(f.mandarin, keys, m)
+        }
         guard lang == 1, place != 2 else { return f }
         let keep: (Int) -> Bool = { self.entries[$0].spec != Self.sichuanSpec }
         f.words = f.words.filter(keep); f.starts = f.starts.filter(keep); f.contains = f.contains.filter(keep)

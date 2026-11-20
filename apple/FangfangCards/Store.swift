@@ -131,7 +131,9 @@ final class Store: ObservableObject {
             progress = p
         }
         loaded = true
-        if Lang.isZh { setLanguage(Lang.current) }
+        // (the language used last is the one the app opens in, right away: its dictionary is read meanwhile and the
+        // app can be used already; no 台語 first and a switch after)
+        if Lang.isZh { startIn(Lang.current) }
         // both dictionaries are read when the app starts (in the background), so neither has to be waited for later
         loadDict()
         // (台語: the 華語 dictionary when it's installed, for its 近義詞 in the 台語 search; else the one used last)
@@ -285,11 +287,14 @@ final class Store: ObservableObject {
         // words already in 熟悉: their characters' cards too (and saved, so other devices get them)
         if first { save() }        // (save() first marks the character cards)
         if Lang.current == kind {
-            guard lang != kind else { return }
+            let starting = startingIn == kind
+            startingIn = 0
+            guard lang != kind || starting else { return }
             if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }
             cards = deck.cards; byKey = deck.byKey; rank = deck.rank; pools = deck.pools; topics = deck.topics
             lang = kind; isZh = true; zhRom = Lang.zhRom; undoStack = []; canUndo = false; missingDict = false; recount()
             newStart = 0; queueTopic = -1
+            if starting { listVersion += 1 }
             save()
         } else if lang == 0 {
             other = deck
@@ -305,6 +310,28 @@ final class Store: ObservableObject {
     @Published private(set) var missingDict = false
 
     /// a language without its dictionary: shown anyway (empty), so the app stays in the language chosen
+    /// (the app opening in 華語 / 粵語 / …: that language shown at once, its deck filled in once it's read)
+    private var startingIn = 0
+    private func startIn(_ want: Int) {
+        if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][want]) { showMissing(want); return }
+        other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0)
+        cards = []; byKey = [:]; rank = [:]; pools = [:]; topics = []
+        newStart = 0; queueTopic = -1
+        lang = want; isZh = true; zhRom = Lang.zhRom
+        startingIn = want
+        recount()
+        Task {
+            let result = await zhLoadTask(priority: .userInitiated, kind: want).value
+            switch result {
+            case .success(let (d, deck)): useZh(d, deck: deck)
+            case .failure(let e):
+                zhLoad = nil
+                startingIn = 0
+                zhError = "\(Lang.names[want])詞典讀取失敗：\(e.localizedDescription)"
+            }
+        }
+    }
+
     private func showMissing(_ want: Int) {
         // 台語's words wait, ready to switch back
         if lang == 0 { other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0) }

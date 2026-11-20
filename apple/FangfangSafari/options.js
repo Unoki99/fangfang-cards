@@ -295,6 +295,55 @@
     });
     pasteRow.appendChild(paste);
     kn.append(pasteRow, msg);
+
+    // HSK／TOCFL 懂多少: each level of the word list, how many of its words are 認識 and 不熟 (from the app's words,
+    // and the ones marked 認識 here)
+    const lv = await ffDB.get("d-levels.json").catch(() => null);
+    kn.appendChild(el("h3", ffT("HSK／TOCFL 懂多少"), "sub"));
+    if (!lv) {
+        kn.appendChild(el("p", ffT("要先安裝（或重新安裝）「詞典」裡的華語，才看得到每一級的詞。"), "lead"));
+    } else {
+        const local = (await ffStore.get(["ffKnownLocal"]).catch(() => ({}))).ffKnownLocal || [];
+        const knownZh = new Set([...((k && k.k && k.k.zh) || []), ...local.filter(x => !/^[a-z]+:/.test(x) || x.startsWith("zh:")).map(x => x.replace(/^zh:/, ""))]);
+        const learnZh = new Set((k && k.u && k.u.zh) || []);
+        const box = el("div");
+        if (prefs.levelList !== "y") prefs.levelList = "x";
+        const listSw = ffChoice(prefs, "levelList", [["x", "HSK 3.0"], ["y", "TOCFL"]], () => draw());
+        kn.append(listSw, box);
+        const names = { x: l => l >= 7 ? "HSK 7–9" : "HSK " + l,
+            y: l => "TOCFL " + (["", "準備一級", "準備二級", "入門級", "基礎級", "進階級", "高階級", "流利級"][l] || l) };
+        const draw = () => {
+            box.replaceChildren();
+            const which = prefs.levelList === "y" ? "y" : "x";
+            const by = new Map();
+            for (const [h, l0] of Object.entries(lv[which] || {})) {
+                const l = which === "x" ? Math.min(l0, 7) : l0;
+                if (!by.has(l)) by.set(l, [0, 0, 0]);
+                const c = by.get(l);
+                c[0]++;
+                if (knownZh.has(h)) c[1]++; else if (learnZh.has(h)) c[2]++;
+            }
+            const g = el("div", null, "grid");
+            let all = [0, 0, 0];
+            for (const l of [...by.keys()].sort((a, b) => a - b)) {
+                const [n, kk, uu] = by.get(l);
+                all = [all[0] + n, all[1] + kk, all[2] + uu];
+                const t = el("div", null, "tile");
+                const hd = el("div", null, "head");
+                const w = el("div", null, "what");
+                w.append(el("b", ffT(names[which](l))), el("small", n + ffT(" 個詞")));
+                hd.append(w, el("b", Math.round(100 * kk / Math.max(1, n)) + "%"));
+                const bar = el("div"); bar.style.cssText = "display:flex;height:10px;border-radius:5px;overflow:hidden;background:#2e3039";
+                const a = el("div"); a.style.cssText = "background:var(--known);width:" + (100 * kk / Math.max(1, n)) + "%";
+                const b = el("div"); b.style.cssText = "background:#e8c547;opacity:.75;width:" + (100 * uu / Math.max(1, n)) + "%";
+                bar.append(a, b);
+                t.append(hd, bar, el("small", ffT("認識 ") + kk + ffT("　不熟 ") + uu + ffT("　還沒學 ") + (n - kk - uu)));
+                g.appendChild(t);
+            }
+            box.append(el("p", ffT("全部：認識 ") + all[1] + " / " + all[0] + "（" + Math.round(100 * all[1] / Math.max(1, all[0])) + "%）", "lead"), g);
+        };
+        draw();
+    }
     tip(kn, "how", ffT("在 App 的「設定 → Safari 查詞」按「複製認識的詞」，再回到這裡按「貼上從 App 複製的詞」。或者按「把認識的詞傳到 Safari 查詞」：它會在 Safari 打開 example.com，詞放在網址的 # 後面，不會傳到網路上（Safari 查詞要允許在 example.com 上，或允許所有網站）。"));
     tip(kn, "how", ffT("Android 的 Firefox：在 App 的「設定 → 匯出與匯入 → 瀏覽器查詞（Firefox）」按「把認識的詞傳到瀏覽器查詞」，或「複製認識的詞」再回到這裡貼上。"));
     tip(kn, "good", ffT("學了新詞以後再傳一次，懂的百分比就會更新。卡片上的「認識」按鈕也算：按了馬上不上色，傳到 App 的時候 App 也會把它標成熟悉。"));
@@ -342,6 +391,40 @@
     } else sd.appendChild(el("p", ffT("還沒有選詞。"), "lead"));
     tip(sd, "warn", ffT("Safari 會先問要不要打開方方詞卡：按「打開」。App 沒有打開的話再按一次。"));
     tip(sd, "how", ffT("Android 的 Firefox：按「傳到 App」會打開 Android 的方方詞卡（Firefox 可能先問要不要打開）。沒有打開的話，按旁邊的「App 沒有打開？點這裡」。"));
+
+    // ── 資料夾同步 ──
+    const fo = part("folder", ffT("資料夾同步"), v("--send"),
+        ffT("和 App 用同一個備份資料夾（iCloud Drive、OneDrive、Google 雲端硬碟…）：讀所有裝置的備份，你在每個裝置認識和不熟的詞這裡都會用；這裡選的詞也可以存一個檔案到那個資料夾，App 同步的時候會讀進去。"));
+    const pick = el("input");
+    pick.type = "file"; pick.multiple = true; pick.webkitdirectory = true; pick.style.display = "none";
+    const fb = el("div", null, "btns");
+    const readB = el("button", ffT("讀資料夾"), "act main");
+    readB.style.setProperty("--c", v("--send"));
+    const saveB = el("button", ffT("把這裡選的詞存到資料夾"), "act");
+    const said = el("p", "", "lead");
+    readB.addEventListener("click", () => pick.click());
+    pick.addEventListener("change", async () => {
+        said.textContent = ffT("讀取中…");
+        try {
+            const r = await ffReadFolder([...pick.files]);
+            said.textContent = r.files ? ffT("讀了 ") + r.files + ffT(" 個裝置的備份：認識的詞 ") + r.known + ffT(" 個、不熟的詞 ") + r.unknown + ffT(" 個。")
+                : ffT("這個資料夾裡沒有方方詞卡的備份（方方詞卡-….json）。");
+        } catch (e) { said.textContent = ffT("讀不到這個資料夾。"); }
+        pick.value = "";
+    });
+    saveB.addEventListener("click", async () => {
+        const r = await ffFolderFile(d.queue);
+        said.textContent = ffT("存了 ") + r.n + ffT(" 個詞：") + r.name;
+    });
+    fb.append(readB, saveB, pick);
+    fo.appendChild(fb);
+    fo.appendChild(said);
+    if (d.known && d.known.from === "folder" && d.known.at) {
+        fo.appendChild(el("p", ffT("上次讀資料夾：") + new Date(d.known.at).toLocaleString(), "lead"));
+    }
+    tip(fo, "how", ffT("按「讀資料夾」，選 App 的備份資料夾（App 的 設定 → 備份 裡選的那一個），瀏覽器會問可不可以讀：按「上傳」或「允許」（檔案不會離開你的電腦）。"));
+    tip(fo, "good", ffT("要讓「存到資料夾」直接存在那個資料夾：在瀏覽器的設定把下載改成「每次都問要存在哪裡」，存的時候選那個資料夾。之後存一樣的檔名就會蓋過舊的。"));
+    tip(fo, "warn", ffT("存的檔案只有還沒傳到 App 的詞；傳到 App 或在 App 同步以後，這些詞就在 App 的備份裡了。"));
 })();
 
 /// 設定 → 詞典: each dictionary, installed or not, and its 安裝 / 移除 (one at a time)

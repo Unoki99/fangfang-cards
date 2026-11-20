@@ -846,18 +846,20 @@
         });
         const line = sys => {
             const out = [];
-            let prevCode = false, n = 0;
+            let prevCode = false, n = 0, light = false;
             for (const t of toks) {
                 if (isCode(t)) {
                     const cap = t.startsWith("^"), c = cap ? t.slice(1) : t;
                     let sp = twSpell(c, tab, sys, place);
                     if (cap && sys !== 3) sp = sp.charAt(0).toUpperCase() + sp.slice(1);
+                    // 方音's light tone (after "--"): ˙ before the syllable, as 注音 writes 輕聲, its tone mark left out
+                    if (sys === 3 && light) sp = "˙" + sp.replace(/[ˉˋˊ˪˫\uA715\uA718\u0307˙]/g, "");
                     out.push({ t: (prevCode && sys !== 3 ? "-" : "") + sp, c: colOn() ? TW[tones[n]] : null });
                     n++; prevCode = true;
-                } else if (t === "--") { if (sys !== 3) out.push({ t: "--", c: null }); prevCode = false; }
-                else if (t === "_") { out.push({ t: " ", c: null }); prevCode = false; }
-                else if (t.startsWith("~")) { out.push({ t: t.slice(1), c: null }); prevCode = false; }
-                else { out.push({ t, c: null }); prevCode = false; }
+                } else if (t === "--") { if (sys !== 3) out.push({ t: "--", c: null }); prevCode = false; light = true; }
+                else if (t === "_") { out.push({ t: " ", c: null }); prevCode = false; light = false; }
+                else if (t.startsWith("~")) { out.push({ t: t.slice(1), c: null }); prevCode = false; light = false; }
+                else { out.push({ t, c: null }); prevCode = false; light = false; }
             }
             return out;
         };
@@ -1438,7 +1440,7 @@
                 if (w === "known") queue = queue.filter(q => !(q.k === key && q.w === "unknown"));
                 if (w === "unknown") { queue = queue.filter(q => !(q.k === key && q.w === "known")); localDel(han, keyLang(key)); saveKnownLocal(); }
                 if (w === "known") { localAdd(han, keyLang(key)); saveKnownLocal(); }
-                queue.push(withGroup({ k: key, w, h: han, x: lastSentence || "" }));
+                queue.push(withGroup({ k: key, w, h: han, x: lastSentence || "", t: Date.now() }));
                 // (remembered here too: the rainbow and the colours on pages)
                 if (w === "saved" && !saved.some(x => x.h === han)) {
                     saved.push({ h: han, c: (hanSegsList || []).flatMap(sg => [...sg.t].map(() => sg.c || null)) });
@@ -1761,12 +1763,12 @@
         const han = key.split("\t")[0];
         if (want === "known") {
             queue = queue.filter(q => !(q.k === key && (q.w === "unknown" || q.w === "known")));
-            queue.push({ k: key, w: "known", h: han });
+            queue.push({ k: key, w: "known", h: han, t: Date.now() });
             localAdd(han, keyLang(key)); saveKnownLocal();
         } else {
             queue = queue.filter(q => !(q.k === key && (q.w === "known" || q.w === "unknown" || q.w === "saved")));
-            queue.push(withGroup({ k: key, w: "unknown", h: han, x: sentence }));
-            queue.push(withGroup({ k: key, w: "saved", h: han, x: sentence }));
+            queue.push(withGroup({ k: key, w: "unknown", h: han, x: sentence, t: Date.now() }));
+            queue.push(withGroup({ k: key, w: "saved", h: han, x: sentence, t: Date.now() }));
             localDel(han, keyLang(key)); saveKnownLocal();
             if (!saved.some(x => x.h === han)) { saved.push({ h: han, c: [] }); saveSaved(); }
         }

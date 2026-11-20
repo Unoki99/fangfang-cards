@@ -28,6 +28,49 @@ struct EnNum: View {
 }
 
 /// the English meanings (CC-CEDICT separates them with ;), numbered
+/// a word's meanings at a glance: its own language's (numbered as its meanings below, whose example sentences go with
+/// those numbers) beside the English ones; one under the other when there's no room
+struct MeaningsOverview: View {
+    let zh: [(n: Int, t: String)]
+    var zhLabel: String = "華"
+    let en: [String]
+    var enNote: String? = nil
+
+    var body: some View {
+        // (always two columns side by side, also on a phone: each column's label above it, so they have room)
+        if !zh.isEmpty || !en.isEmpty {
+            HStack(alignment: .top, spacing: 12) {
+                if !zh.isEmpty { zhPart.frame(maxWidth: .infinity, alignment: .leading) }
+                if !en.isEmpty { enPart.frame(maxWidth: .infinity, alignment: .leading) }
+            }
+        }
+    }
+
+    private var zhPart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Chip(text: zhLabel, fill: T.fn, edge: T.fnEdge, ink: T.muted)
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(zh, id: \.n) { x in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        if zh.count > 1 { Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit() }
+                        Text(x.t).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9)).textSelection(.enabled)
+                    }
+                }
+            }
+        }
+    }
+
+    private var enPart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Chip(text: tr("英"), fill: T.fn, edge: T.fnEdge, ink: T.muted)
+            VStack(alignment: .leading, spacing: 3) {
+                ZhEnglishList(items: en)
+                if let enNote { Text(enNote).ffFont(.caption2).foregroundStyle(T.muted) }
+            }
+        }
+    }
+}
+
 struct ZhEnglishList: View {
     let items: [String]
     var max = 0                 // 0 = all of them

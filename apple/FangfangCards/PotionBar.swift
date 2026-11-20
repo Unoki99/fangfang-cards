@@ -62,7 +62,7 @@ private struct PotionLiquid: View, Animatable {
     ])
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moving)) { tl in
+        TimelineView(.animation(minimumInterval: ThemeMotion.interval, paused: !moving)) { tl in
             let t = moving ? tl.date.timeIntervalSinceReferenceDate : 0
             ZStack {
                 // glow: the liquid again, blurred, outside the glass
@@ -217,7 +217,7 @@ private struct SplitPotionLiquid: View, Animatable {
     ])
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !moving)) { tl in
+        TimelineView(.animation(minimumInterval: ThemeMotion.interval, paused: !moving)) { tl in
             let t = moving ? tl.date.timeIntervalSinceReferenceDate : 0
             ZStack {
                 liquids(t, bubbles: false).blur(radius: 8).opacity(0.75).allowsHitTesting(false)
@@ -297,6 +297,14 @@ struct HSKProgressView: View {
     var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
+                // 華語: the word list switched right here too (HSK 3.0 ⇄ TOCFL), not only in 新詞
+                if store.lang == 1 {
+                    Picker(tr("詞表"), selection: $store.zhList) {
+                        ForEach(Lang.listNames.indices, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(store.switching)
+                }
                 if store.isZh {
                     NavigationLink { ZhCharListView() } label: { charMeter }
                         .buttonStyle(.plain)

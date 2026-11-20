@@ -184,6 +184,8 @@ struct TimedLine: Identifiable, Equatable {
     let id = UUID()
     var text: String
     var t: Double?
+    /// when each of the line's pieces (LRC.pieces) starts, when they were moved by hand; nil: spread evenly
+    var words: [Double]? = nil
 }
 
 enum LRC {
@@ -191,6 +193,54 @@ enum LRC {
     static func stamp(_ t: Double) -> String {
         let cs = Int((max(0, t) * 100).rounded())
         return String(format: "[%02d:%02d.%02d]", cs / 6000, (cs / 100) % 60, cs % 100)
+    }
+
+    /// 1:23.45 → "<01:23.45>" (a word's time inside a line)
+    static func wordStamp(_ t: Double) -> String { "<" + String(stamp(t).dropFirst().dropLast()) + ">" }
+
+    /// the pieces a line's word times go by: every 漢字 (or kana, hangul) its own, other words by the spaces;
+    /// punctuation and spaces go with the piece before. Joined they're the line again; each has a letter.
+    static func pieces(_ text: String) -> [String] {
+        var out: [String] = []
+        var cur = "", letters = 0, curCJK = false, gap = false
+        for ch in text {
+            guard ch.isLetter || ch.isNumber else {
+                cur.append(ch)
+                if ch.isWhitespace { gap = true }
+                continue
+            }
+            let cjk = ch.unicodeScalars.first.map { isCJK($0.value) } ?? false
+            if letters > 0 && (cjk || curCJK || gap) {
+                out.append(cur); cur = ""; letters = 0
+            }
+            cur.append(ch); letters += 1; curCJK = cjk; gap = false
+        }
+        if !cur.isEmpty {
+            if letters == 0, !out.isEmpty { out[out.count - 1] += cur } else { out.append(cur) }
+        }
+        return out
+    }
+
+    private static func isCJK(_ v: UInt32) -> Bool {
+        (0x3040...0x30FF).contains(v) || (0x3400...0x4DBF).contains(v) || (0x4E00...0x9FFF).contains(v)
+            || (0xF900...0xFAFF).contains(v) || (0x20000...0x3134F).contains(v) || (0xAC00...0xD7AF).contains(v)
+    }
+
+    /// letters before each piece
+    static func pieceStarts(_ ps: [String]) -> [Int] {
+        var acc = 0
+        return ps.map { p in
+            defer { acc += p.filter { $0.isLetter || $0.isNumber }.count }
+            return acc
+        }
+    }
+
+    /// the line's words with their word times in them (only when they were moved by hand)
+    static func withWords(_ l: TimedLine) -> String {
+        guard l.t != nil, let w = l.words else { return l.text }
+        let ps = pieces(l.text)
+        guard ps.count >= 2, ps.count == w.count else { return l.text }
+        return zip(ps, w).map { wordStamp($1) + $0 }.joined()
     }
 
     /// "1:23.4" for showing
@@ -202,6 +252,7 @@ enum LRC {
     /// the lines written out as LRC. Lines without a time get one between their neighbours'; breaks without one are left out.
     static func make(_ lines: [TimedLine], title: String, artist: String, length: Double?) -> String {
         var ls = lines.filter { !($0.text.isEmpty && $0.t == nil) }
+        var guessed: [Double] = []
         // (untimed lines: spread evenly between the timed ones around them)
         var i = 0
         while i < ls.count {
@@ -211,13 +262,18 @@ enum LRC {
             let before = i > 0 ? ls[i - 1].t ?? 0 : 0
             let after = j < ls.count ? ls[j].t ?? (before + Double(j - i + 1) * 3) : before + Double(j - i + 1) * 3
             let step = (after - before) / Double(j - i + 1)
-            for k in i..<j { ls[k].t = before + step * Double(k - i + 1) }
+            for k in i..<j {
+                ls[k].t = ((before + step * Double(k - i + 1)) * 100).rounded() / 100
+                guessed.append(ls[k].t ?? 0)
+            }
             i = j
         }
         var out = ["[ti:\(title)]", "[ar:\(artist)]"]
         if let l = length, l > 0 { out.append(String(format: "[length:%02d:%02d]", Int(l) / 60, Int(l) % 60)) }
         out.append("[by:方方詞卡]")
-        for l in ls { out.append(stamp(l.t ?? 0) + l.text) }
+        // (the lines given a time only so the file has one: not timed yet, as the editor shows when it's opened again)
+        if !guessed.isEmpty { out.append("[ff-untimed:" + guessed.map { String(format: "%.2f", $0) }.joined(separator: ",") + "]") }
+        for l in ls { out.append(stamp(l.t ?? 0) + withWords(l)) }
         return out.joined(separator: "\n")
     }
 
@@ -226,10 +282,22 @@ enum LRC {
         if let rows = h.timedRows {
             var out: [TimedLine] = []
             for r in rows {
-                for t in r.times { out.append(TimedLine(text: r.text, t: t)) }
+                // (word times back onto the line's pieces, when every piece has one)
+                var words: [Double]?
+                if r.times.count == 1, r.marks.count >= 2 {
+                    let ps = pieces(r.text)
+                    let ws = pieceStarts(ps).map { at in r.marks.first(where: { $0.at == at })?.t }
+                    if ps.count >= 2, !ws.contains(where: { $0 == nil }) { words = ws.compactMap { $0 } }
+                }
+                for t in r.times { out.append(TimedLine(text: r.text, t: t, words: words)) }
             }
             out.sort { ($0.t ?? 0) < ($1.t ?? 0) }
             while out.first?.text.isEmpty == true { out.removeFirst() }
+            // (lines saved before they were timed: untimed again)
+            if let s = h.syncedLyrics, let r = s.range(of: "[ff-untimed:"), let end = s[r.upperBound...].firstIndex(of: "]") {
+                let gs = s[r.upperBound..<end].split(separator: ",").compactMap { Double($0) }
+                for i in out.indices { if let t = out[i].t, gs.contains(where: { abs($0 - t) < 0.006 }) { out[i].t = nil } }
+            }
             return out
         }
         return lines(fromText: h.text ?? "", keeping: [])
@@ -245,7 +313,7 @@ enum LRC {
             out.append(TimedLine(text: s, t: nil))
         }
         // (an empty line at the very end stays: where the last line stops being sung)
-        for i in out.indices where i < old.count && old[i].text == out[i].text { out[i].t = old[i].t }
+        for i in out.indices where i < old.count && old[i].text == out[i].text { out[i].t = old[i].t; out[i].words = old[i].words }
         return out
     }
 }
@@ -259,6 +327,43 @@ final class LyricsEditModel: ObservableObject {
     @Published var cursor = 0
     /// the line tapped in the list (空行 goes under it while the song is paused)
     @Published var focus: Int?
+    /// a line chosen by tapping it: 空行 goes under that one, playing or not (until a tap times a line)
+    @Published var picked: Int?
+    /// (復原: the lines, the next line and the chosen one as they were before each change in the timing)
+    private var history: [(lines: [TimedLine], cursor: Int, focus: Int?, picked: Int?)] = []
+    @Published private(set) var canUndo = false
+
+    /// (before a change: kept so 復原 can bring it back; the last 200)
+    func remember() {
+        history.append((lines, cursor, focus, picked))
+        if history.count > 200 { history.removeFirst() }
+        canUndo = true
+    }
+
+    /// a line's word times set by hand: the same line sung again later (the same words exactly) gets the same timing,
+    /// stretched to its own length, as long as that one has no word times of its own yet (it can still be changed
+    /// on its own afterwards)
+    func shareWords(from i: Int) {
+        guard lines.indices.contains(i), let w = lines[i].words, let t0 = lines[i].t else { return }
+        let span = max(0.2, endOf(i) - t0)
+        for j in lines.indices where j != i && lines[j].text == lines[i].text && lines[j].words == nil {
+            guard let s = lines[j].t else { continue }
+            let span2 = max(0.2, endOf(j) - s)
+            lines[j].words = w.map { ((s + ($0 - t0) / span * span2) * 100).rounded() / 100 }
+        }
+    }
+
+    /// a line moved earlier or later: its word times with it
+    func shiftWords(_ i: Int, by d: Double) {
+        guard lines.indices.contains(i), let w = lines[i].words, d != 0 else { return }
+        lines[i].words = w.map { max(0, (($0 + d) * 100).rounded() / 100) }
+    }
+
+    func undo() {
+        guard let h = history.popLast() else { return }
+        lines = h.lines; cursor = h.cursor; focus = h.focus; picked = h.picked
+        canUndo = !history.isEmpty
+    }
     /// the line being sung now, by the times given so far (changes only when the line does: the list isn't
     /// redrawn four times a second)
     @Published private(set) var sung: Int?
@@ -276,6 +381,43 @@ final class LyricsEditModel: ObservableObject {
         let x = OwnLyric(trackId: song.id, trackName: song.trackName, artistName: song.artistName, duration: song.seconds, lrc: lrc)
         OwnLyrics.shared.set(x)
         if SongPlayer.shared.song?.id == song.id { LyricsBridge.shared.put(x.hit) }
+    }
+
+    /// 重複這一句: the line played over and over (nil: off)
+    @Published var loopLine: Int? { didSet { loopChanged() } }
+    private var loopTimer: Timer?
+
+    /// where line i stops being sung: the next line's time (a 間奏 counts), else a few seconds on
+    func endOf(_ i: Int) -> Double {
+        let t = lines.indices.contains(i) ? lines[i].t ?? 0 : 0
+        if i + 1 < lines.count, let n = lines[(i + 1)...].first(where: { $0.t != nil })?.t, n > t + 0.2 { return n }
+        return t + 4
+    }
+
+    private func loopChanged() {
+        loopTimer?.invalidate(); loopTimer = nil
+        // (turned off, or a line without a time: nothing to repeat. Never set loopLine here: it's @Published, so
+        // setting it in its own didSet calls didSet again, forever — that was the crash)
+        guard let l = loopLine, lines.indices.contains(l), let start = lines[l].t else { return }
+        let p = SongPlayer.shared
+        p.seek(max(0, start - 0.3))
+        if !p.playing { p.togglePause() }
+        // (a few times a second: back to the line's start once it's over)
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                // (the editor closed: the song plays on normally)
+                guard SongPlayer.shared.editing else {
+                    self?.loopTimer?.invalidate(); self?.loopTimer = nil
+                    if self?.loopLine != nil { self?.loopLine = nil }
+                    return
+                }
+                guard let self, let l = self.loopLine, self.lines.indices.contains(l), let s = self.lines[l].t,
+                      let pos = SongPlayer.shared.position else { return }
+                if pos >= self.endOf(l) - 0.03 || pos < s - 3 { SongPlayer.shared.seek(max(0, s - 0.3)) }
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        loopTimer = t
     }
 
     func updateSung(_ t: Double) {
@@ -347,6 +489,12 @@ struct LyricsEditor: View {
             HStack(spacing: 12) {
                 Button(tr("取消")) { dismiss() }
                 Spacer()
+                if page == 1 {
+                    // 復原: the last change in the timing taken back
+                    Button { m.undo() } label: { Image(systemName: "arrow.uturn.backward").font(.system(size: 18, weight: .semibold)) }
+                        .disabled(!m.canUndo)
+                        .accessibilityLabel(tr("復原"))
+                }
                 // (all the file things and the timing settings in one place: ⋯)
                 EditorMenu(song: song, m: m, page: page, open: { importing = true }) { confirmDelete = true }
                 Button(tr("儲存")) {
@@ -436,6 +584,7 @@ private struct EditorMenu: View {
                         Text("0.3 s").tag(0.3)
                     }
                     Button {
+                        m.remember()
                         for i in m.lines.indices { m.lines[i].t = nil }
                         m.cursor = 0
                         m.focus = nil
@@ -541,7 +690,7 @@ private struct LyricsTimingPage: View {
                             .id(i)
                             .listRowBackground(i == m.cursor ? T.btnEdge.opacity(0.28) : (i == m.focus ? T.fn.opacity(0.9) : Color.clear))
                             .swipeActions {
-                                Button { m.lines[i].t = nil; if i < m.cursor { m.cursor = i } } label: { Label(tr("清掉時間"), systemImage: "clock.badge.xmark") }
+                                Button { m.remember(); m.lines[i].t = nil; m.lines[i].words = nil; if i < m.cursor { m.cursor = i } } label: { Label(tr("清掉時間"), systemImage: "clock.badge.xmark") }
                                 if m.lines[i].text.isEmpty {
                                     Button(role: .destructive) { removeLine(i) } label: { Label(tr("刪除"), systemImage: "trash") }
                                 }
@@ -562,6 +711,26 @@ private struct LyricsTimingPage: View {
 
     private func row(_ i: Int) -> some View {
         let l = m.lines[i]
+        return VStack(alignment: .leading, spacing: 6) {
+            lineRow(i)
+            // (the line being worked on: its words, to move where each starts)
+            if m.picked == i, let t = l.t, !l.text.isEmpty, LRC.pieces(l.text).count >= 2 {
+                WordTimingBar(m: m, i: i, start: t, end: endTime(i))
+                    .padding(.leading, 60)
+                    .padding(.bottom, 4)
+            }
+        }
+    }
+
+    /// where line i stops being sung: the next line's time (a 間奏 counts), else a few seconds on
+    private func endTime(_ i: Int) -> Double {
+        let t = m.lines[i].t ?? 0
+        if i + 1 < m.lines.count, let n = m.lines[(i + 1)...].first(where: { $0.t != nil })?.t, n > t + 0.2 { return n }
+        return t + 4
+    }
+
+    private func lineRow(_ i: Int) -> some View {
+        let l = m.lines[i]
         let sung = m.sung == i
         return HStack(spacing: 8) {
             Text(l.t.map(LRC.shown) ?? "–")
@@ -571,14 +740,18 @@ private struct LyricsTimingPage: View {
             Group {
                 if l.text.isEmpty {
                     Text(tr("（間奏）")).foregroundStyle(T.muted).italic()
+                } else if sung, let t = l.t {
+                    // (the line being sung: its words light up as they're sung, by its word times or spread evenly)
+                    SungLineText(text: l.text, start: t, end: m.endOf(i), words: l.words)
                 } else {
                     Text(l.text)
-                        .foregroundStyle(sung ? T.btnInk : (l.t == nil ? T.glyph.opacity(0.6) : T.glyph))
-                        .fontWeight(sung ? .semibold : .regular)
+                        .foregroundStyle(l.t == nil ? T.glyph.opacity(0.6) : T.glyph)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
+            // (one tap: this line is the one to work on; two: the song goes to it)
+            .onTapGesture(count: 2) { jump(i) }
             .onTapGesture { pick(i) }
             if i == m.cursor { Image(systemName: "hand.tap").foregroundStyle(T.btnInk).ffFont(.caption) }
             // −¼ / +¼: this line a quarter of a second earlier or later (the song goes back to just before it)
@@ -596,24 +769,33 @@ private struct LyricsTimingPage: View {
 
     private func move(_ i: Int, _ d: Double) {
         guard let t = m.lines[i].t else { return }
+        m.remember()
         m.lines[i].t = max(0, ((t + d) * 100).rounded() / 100)
+        m.shiftWords(i, by: (m.lines[i].t ?? t) - t)
         m.focus = i
+        m.picked = i
         player.seek(max(0, (m.lines[i].t ?? 0) - 1.5))
     }
 
-    /// a line tapped: time again from there (the song goes back to a little before it)
+    /// a line tapped once: the one to work on (the next tap times it, 空行 goes under it); the song stays where it is
     private func pick(_ i: Int) {
         m.cursor = i
         m.focus = i
-        let back = (i > 0 ? m.lines[i - 1].t : nil) ?? m.lines[i].t.map { $0 - 3 }
-        if let b = back { player.seek(max(0, b - 1)) }
+        m.picked = i
+    }
+
+    /// a line tapped twice: the song goes to it (a little before its time, or the line before's when it has none)
+    private func jump(_ i: Int) {
+        pick(i)
+        let at = m.lines[i].t ?? (i > 0 ? m.lines[i - 1].t : nil)
+        if let a = at { player.seek(max(0, a - 1)) }
     }
 
     private var tapBar: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
                 Button { undo() } label: {
-                    Image(systemName: "arrow.uturn.backward").frame(width: 44, height: 52)
+                    Image(systemName: "backward.end").frame(width: 44, height: 52)
                 }
                 .softButton()
                 .disabled(m.cursor == 0)
@@ -640,6 +822,16 @@ private struct LyricsTimingPage: View {
                 .softButton()
                 .disabled(m.lines.isEmpty)
                 .accessibilityLabel(tr("在這一行下面加一個空行"))
+                // 重複這一句: the line chosen (or being sung) over and over, to time it
+                Button {
+                    if m.loopLine != nil { m.loopLine = nil }
+                    else if let l = m.picked ?? m.focus ?? m.sung, m.lines.indices.contains(l), m.lines[l].t != nil { m.loopLine = l }
+                } label: {
+                    Image(systemName: m.loopLine != nil ? "repeat.circle.fill" : "repeat").frame(width: 44, height: 52)
+                        .foregroundStyle(m.loopLine != nil ? T.btnInk : T.glyph)
+                }
+                .softButton()
+                .accessibilityLabel(m.loopLine != nil ? tr("不要重複") : tr("重複這一句"))
                 Button { skip() } label: {
                     Image(systemName: "forward.end").frame(width: 44, height: 52)
                 }
@@ -647,7 +839,7 @@ private struct LyricsTimingPage: View {
                 .disabled(m.cursor >= m.lines.count)
                 .accessibilityLabel(tr("跳過這一行"))
             }
-            Text(tr("每一句開始唱的時候按「這一句開始」。放歌的時候按「空行」：唱著的那一行在這裡結束。點一行從那裡重新對；−¼／+¼ 微調那一行。"))
+            Text(tr("每一句開始唱的時候按「這一句開始」。放歌的時候按「空行」：唱著的那一行在這裡結束。點一下一行：改那一行（空行加在它下面）；點兩下：歌跳到那裡。−¼／+¼ 微調那一行；上面的 ↶ 復原。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
         .frame(maxWidth: 900)
@@ -658,7 +850,11 @@ private struct LyricsTimingPage: View {
 
     private func tap() {
         guard m.cursor < m.lines.count, let now = player.position else { return }
+        m.remember()
+        m.picked = nil
+        let was = m.lines[m.cursor].t
         m.lines[m.cursor].t = max(0, ((now - reaction) * 100).rounded() / 100)
+        if let was { m.shiftWords(m.cursor, by: (m.lines[m.cursor].t ?? was) - was) } else { m.lines[m.cursor].words = nil }
         m.focus = m.cursor
         m.cursor += 1
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -666,8 +862,10 @@ private struct LyricsTimingPage: View {
 
     private func undo() {
         guard m.cursor > 0 else { return }
+        m.remember()
         m.cursor -= 1
         m.lines[m.cursor].t = nil
+        m.lines[m.cursor].words = nil
         m.focus = nil
         player.seek(max(0, ((m.cursor > 0 ? m.lines[m.cursor - 1].t : nil) ?? 0) - 1))
     }
@@ -676,6 +874,23 @@ private struct LyricsTimingPage: View {
     /// blank line under the line tapped (or the one just timed), timed by the next tap.
     private func addBreak() {
         guard !m.lines.isEmpty else { return }
+        m.remember()
+        // (a line chosen by tapping it: under that one, whether the song plays or not)
+        if let p = m.picked, m.lines.indices.contains(p) {
+            let at = p + 1
+            let t: Double? = player.playing ? player.position.map { max(0, (($0 - reaction) * 100).rounded() / 100) } : nil
+            if at < m.lines.count && m.lines[at].text.isEmpty {
+                if let t { m.lines[at].t = t }
+            } else {
+                m.lines.insert(TimedLine(text: "", t: t), at: at)
+                if m.cursor >= at { m.cursor += 1 }
+            }
+            m.focus = at
+            m.picked = nil
+            m.cursor = t == nil ? at : min(m.lines.count, at + 1)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         if player.playing, let now = player.position {
             let t = max(0, ((now - reaction) * 100).rounded() / 100)
             // (the line being sung: by the times, or the one just timed)
@@ -702,6 +917,8 @@ private struct LyricsTimingPage: View {
     }
 
     private func removeLine(_ i: Int) {
+        m.remember()
+        m.picked = nil
         m.lines.remove(at: i)
         if m.cursor > i { m.cursor -= 1 }
         if let f = m.focus { m.focus = f == i ? nil : (f > i ? f - 1 : f) }
@@ -709,6 +926,7 @@ private struct LyricsTimingPage: View {
 
     private func skip() {
         guard m.cursor < m.lines.count else { return }
+        m.remember()
         m.cursor += 1
     }
 
@@ -734,6 +952,9 @@ struct LyricsEditButton: View {
     var label = false
     /// (the lyrics' tools strip: a plain round button)
     var plain = false
+    /// (the lyrics page: it opens the editor itself; a button in its swiped bar, measured twice by ViewThatFits,
+    /// opening a full page of its own froze the app)
+    var onOpen: ((SongHit) -> Void)? = nil
     @State private var open = false
     var body: some View {
         if let s = player.song {
@@ -743,7 +964,7 @@ struct LyricsEditButton: View {
                         Label(own.get(s.id) != nil ? tr("改自己的歌詞") : tr("自己打歌詞、對時間"), systemImage: "pencil.and.list.clipboard")
                     }
                 } else if plain {
-                    Button { open = true } label: { Image(systemName: "pencil.and.list.clipboard").toolCircle() }
+                    Button { if let onOpen { onOpen(s) } else { open = true } } label: { Image(systemName: "pencil.and.list.clipboard").toolCircle() }
                         .buttonStyle(.plain)
                 } else {
                     Button { open = true } label: { Image(systemName: "pencil.and.list.clipboard") }
@@ -757,6 +978,144 @@ struct LyricsEditButton: View {
                     .environmentObject(Store.shared)
                     .preferredColorScheme(.dark)
                     .tint(AppTint.accent)
+            }
+        }
+    }
+}
+
+/// under the line being worked on: its words in a bar, each as wide as the time it's sung. Drag the lines between
+/// them: where the singer goes fast the words get narrow (the lyrics swell through them faster there).
+private struct WordTimingBar: View {
+    @ObservedObject var m: LyricsEditModel
+    let i: Int
+    let start: Double
+    let end: Double
+    /// the word times when the drag began (kept while dragging)
+    @State private var dragFrom: [Double]?
+    @State private var dragging: Int?
+
+    private var pieces: [String] { LRC.pieces(m.lines[i].text) }
+
+    /// the line's word times: the ones moved by hand, or spread evenly by the letters
+    private var times: [Double] {
+        let ps = pieces
+        if let w = m.lines[i].words, w.count == ps.count { return w }
+        let starts = LRC.pieceStarts(ps)
+        let total = Double(max(1, ps.reduce(0) { $0 + $1.filter { $0.isLetter || $0.isNumber }.count }))
+        return starts.map { start + (end - start) * Double($0) / total }
+    }
+
+    var body: some View {
+        let ps = pieces
+        let ts = times
+        let span = max(0.2, end - start)
+        let avg = span / Double(max(1, ps.count))
+        VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { g in
+                let w = g.size.width
+                let x: (Double) -> CGFloat = { CGFloat(($0 - start) / span) * w }
+                ZStack(alignment: .topLeading) {
+                    ForEach(ps.indices, id: \.self) { k in
+                        let a = ts[k], b = k + 1 < ts.count ? ts[k + 1] : end
+                        let fast = (b - a) < avg * 0.6
+                        Text(ps[k].trimmingCharacters(in: .whitespaces))
+                            .ffFont(.subheadline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.4)
+                            .foregroundStyle(fast ? T.btnInk : T.glyph)
+                            .frame(width: max(2, x(b) - x(a) - 2), height: 40)
+                            .background(RoundedRectangle(cornerRadius: 6).fill(fast ? T.btnEdge.opacity(0.55) : T.fn.opacity(k % 2 == 0 ? 0.95 : 0.6)))
+                            .offset(x: x(a) + 1)
+                    }
+                    // (the lines between the words: drag them)
+                    ForEach(1..<max(1, ps.count), id: \.self) { k in
+                        Capsule()
+                            .fill(dragging == k ? T.btnInk : T.muted)
+                            .frame(width: dragging == k ? 4 : 3, height: 48)
+                            .frame(width: 24, height: 48)
+                            .contentShape(Rectangle())
+                            .offset(x: x(ts[k]) - 12, y: -4)
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 1)
+                                    .onChanged { v in drag(k, by: Double(v.translation.width / max(1, w)) * span) }
+                                    .onEnded { _ in dragFrom = nil; dragging = nil; m.shareWords(from: i) }
+                            )
+                            .accessibilityLabel(tr("這個字開始的時候"))
+                    }
+                }
+            }
+            .frame(height: 40)
+            HStack(spacing: 10) {
+                Text(dragging.map { LRC.shown(ts[$0]) } ?? LRC.shown(start))
+                    .ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
+                Spacer()
+                Button { listen() } label: { Label(tr("聽這一句"), systemImage: "play.fill").ffFont(.caption) }
+                    .softButton()
+                Button { m.loopLine = m.loopLine == i ? nil : i } label: {
+                    Label(tr("重複這一句"), systemImage: "repeat").ffFont(.caption)
+                        .foregroundStyle(m.loopLine == i ? T.btnInk : T.glyph)
+                }
+                .softButton()
+                .accessibilityAddTraits(m.loopLine == i ? .isSelected : [])
+                if m.lines[i].words != nil {
+                    Button { m.remember(); m.lines[i].words = nil } label: { Label(tr("平均"), systemImage: "equal").ffFont(.caption) }
+                        .softButton()
+                        .accessibilityLabel(tr("每個字一樣快"))
+                }
+                Text(LRC.shown(end)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
+            }
+            Text(tr("拖字中間的線：唱得快的地方字就窄，歌詞變大的時候就照這個走。一模一樣的句子還沒有自己的時間的，會跟著一起改。"))
+                .ffFont(.caption2).foregroundStyle(T.muted)
+        }
+    }
+
+    /// line k (where piece k starts) moved; it stays between its neighbours
+    private func drag(_ k: Int, by d: Double) {
+        if dragFrom == nil {
+            m.remember()
+            dragFrom = times
+            dragging = k
+        }
+        guard var w = dragFrom, w.indices.contains(k) else { return }
+        let lo = w[k - 1] + 0.05
+        let hi = (k + 1 < w.count ? w[k + 1] : end) - 0.05
+        guard hi > lo else { return }
+        w[k] = ((min(hi, max(lo, w[k] + d))) * 100).rounded() / 100
+        w[0] = start
+        if m.lines[i].words != w { m.lines[i].words = w }
+    }
+
+    private func listen() {
+        let p = SongPlayer.shared
+        p.seek(max(0, start - 0.5))
+        if !p.playing { p.togglePause() }
+    }
+}
+
+/// the line being sung in 對時間: the words already sung lit, the one being sung brightest, the rest dim. Only this
+/// one line follows the song closely (ten times a second), not the whole list.
+private struct SungLineText: View {
+    let text: String
+    let start: Double
+    let end: Double
+    let words: [Double]?
+
+    var body: some View {
+        let ps = LRC.pieces(text)
+        let ts: [Double] = {
+            if let w = words, w.count == ps.count { return w }
+            let starts = LRC.pieceStarts(ps)
+            let total = Double(max(1, ps.reduce(0) { $0 + $1.filter { $0.isLetter || $0.isNumber }.count }))
+            return starts.map { start + (end - start) * Double($0) / total }
+        }()
+        TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+            let pos = SongPlayer.shared.position ?? 0
+            let cur = ts.lastIndex(where: { $0 <= pos }) ?? -1
+            ps.indices.reduce(Text("")) { acc, k in
+                let piece = Text(ps[k])
+                if k == cur { return acc + piece.foregroundColor(T.btnInk).fontWeight(.bold) }
+                if k < cur { return acc + piece.foregroundColor(T.btnInk.opacity(0.75)).fontWeight(.semibold) }
+                return acc + piece.foregroundColor(T.glyph.opacity(0.55))
             }
         }
     }
