@@ -58,8 +58,8 @@
     }
     main.appendChild(box);
 
-    // 3. 資料夾同步's 立刻同步
-    {
+    // 3. 資料夾同步's 立刻同步 (Safari only: not in the Firefox version)
+    if (await ffIsSafari()) {
         const sc = el("div", null, "card");
         sc.appendChild(el("div", ffT("資料夾同步：讀所有裝置的備份，再把這裡標的詞存回去。"), "note"));
         const { sb, said } = await ffSyncControls(d, "#ff8cc6", "note");

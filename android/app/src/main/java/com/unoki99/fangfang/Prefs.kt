@@ -152,6 +152,11 @@ object Prefs : KeyValue {
     val radioStarted = Pref("radioStarted", false)
     /** 歌詞: each line's reading under it, on or off (off: lighter on memory) */
     val lyricsReadings = Pref("lyricsReadings", true)
+    /** 浮動歌詞 (Windows): the letters' size, and the reading under the line on or off */
+    val lyricsFloatSize = Pref("lyricsFloatSize", 24f)
+    val lyricsFloatReadings = Pref("lyricsFloatReadings", true)
+    /** 歌的語言: songs tagged with the language they're sung in (JSON: song → 0 台語, 1 華語, 2 粵語, 3 客語) */
+    val songLanguages = Pref("songLanguages", "")
     val lockSource = Pref("lockWordSource", "")
     val freeText = Pref("freeWritingText", "")
     /** 四字格手寫: which ones (common 成語, all 成語, the 練習範圍's four-character words), how many a round, the reading shown */
@@ -220,7 +225,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont) + copyOn + copyStyle + copyPreText + jaColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, songLanguages) + copyOn + copyStyle + copyPreText + jaColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return

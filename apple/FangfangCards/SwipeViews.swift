@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// A stack of cards: drag right = 認識 (known), drag left = 不熟 (unknown). A card swiped away falls apart into
 /// little squares: blue ones floating up on the right (認識), red ones dropping down on the left (不熟).
@@ -298,8 +299,8 @@ struct SwipeButtons: View {
 
     var body: some View {
         HStack(spacing: 22) {
+            // (← → on a keyboard: ArrowKeys on the deck, which comes before iPadOS's own use of the arrows)
             round("xmark", leftLabel, T.rust, T.rustEdge, T.rustInk, onLeft)
-                .keyboardShortcut(.leftArrow, modifiers: [])
             if let onUndo {
                 Button(action: onUndo) {
                     Image(systemName: "arrow.uturn.backward")
@@ -313,7 +314,6 @@ struct SwipeButtons: View {
                 .accessibilityLabel(tr("復原"))
             }
             round("checkmark", rightLabel, T.blue, T.blueEdge, T.blueInk, onRight)
-                .keyboardShortcut(.rightArrow, modifiers: [])
         }
         // one piece of Liquid Glass across the three
         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -512,7 +512,76 @@ struct DeckArea: View {
                              onUndo: undo)
             }
         }
+        // ← and → on a keyboard (iPad, Mac): the card swiped left / right, like the buttons
+        .background {
+            ArrowKeys(active: !cards.isEmpty, top: cards.first?.k ?? "") { right in fling = .init(right: right) }
+                .frame(width: 0, height: 0)
+        }
     }
+}
+
+/// ← and → on a hardware keyboard. iPadOS keeps the plain arrow keys for scrolling and moving the keyboard focus, so a
+/// SwiftUI keyboard shortcut on them never comes; key commands with priority over the system's do. An invisible view
+/// that takes the keyboard while the deck is showing (and gives it up to a text field you tap: it takes it back only
+/// when no text is being typed)
+struct ArrowKeys: UIViewRepresentable {
+    var active: Bool
+    var top: String                     // (the card on top: a new one, the keyboard taken back if it was lost)
+    var onArrow: (Bool) -> Void
+
+    func makeUIView(context: Context) -> KeyView { KeyView() }
+    func updateUIView(_ v: KeyView, context: Context) {
+        v.onArrow = onArrow
+        v.active = active
+        DispatchQueue.main.async { v.claim() }
+    }
+
+    final class KeyView: UIView {
+        var onArrow: (Bool) -> Void = { _ in }
+        var active = true
+        override var canBecomeFirstResponder: Bool { active }
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            if window != nil { DispatchQueue.main.async { self.claim() } }
+        }
+        /// takes the keyboard, unless someone is typing
+        func claim() {
+            guard active, window != nil, !isFirstResponder else { return }
+            if let r = KeyView.current, r is UITextInput { return }
+            becomeFirstResponder()
+        }
+        /// (nothing open over the deck: a word's page, a sheet. Arrows there aren't the deck's)
+        private var onTop: Bool {
+            guard var top = window?.rootViewController else { return false }
+            while let p = top.presentedViewController { top = p }
+            return isDescendant(of: top.view)
+        }
+        override var keyCommands: [UIKeyCommand]? {
+            guard active, onTop else { return nil }
+            return [UIKeyCommand.inputLeftArrow, UIKeyCommand.inputRightArrow].map { input in
+                let c = UIKeyCommand(input: input, modifierFlags: [], action: #selector(arrow(_:)))
+                c.wantsPriorityOverSystemBehavior = true
+                return c
+            }
+        }
+        @objc private func arrow(_ c: UIKeyCommand) {
+            guard active, onTop else { return }
+            onArrow(c.input == UIKeyCommand.inputRightArrow)
+        }
+
+        // (the first responder now: found by sending an action nobody but it answers)
+        private static weak var found: UIResponder?
+        static var current: UIResponder? {
+            found = nil
+            UIApplication.shared.sendAction(#selector(UIResponder.ffFindFirstResponder), to: nil, from: nil, for: nil)
+            return found
+        }
+        fileprivate static func setFound(_ r: UIResponder) { found = r }
+    }
+}
+
+extension UIResponder {
+    @objc fileprivate func ffFindFirstResponder() { ArrowKeys.KeyView.setFound(self) }
 }
 
 /// a capsule of Liquid Glass behind a row of buttons (iOS 26; frosted glass before)

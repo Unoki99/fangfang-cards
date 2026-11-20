@@ -1,6 +1,6 @@
 // 方方詞卡 查詞: what the settings page (options.html) and the toolbar window (popup.html) share: the settings'
 // defaults, saving them, and sending the chosen words (and the minutes watched) to the app.
-const FF_DEFAULTS = { pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
+const FF_DEFAULTS = { pcLink: false, pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
     yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
     subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFlowH: 0, subs2: "", subsColours: true, subsBar: true, subsFont: 1, subsRd: true, subsGl: true, subsRdSize: 0.56, subsGlSize: 0.5, subsEnZh: true, subsLang: "auto", subsTrad: true, subsDefs: false, subsBg: "dark", subsMark: "new", subsRare: 3000, onlyNew: false,
     keys: true, keyKnown: "a", keyNew: "s", uiLang: "zh" };
@@ -333,4 +333,10 @@ async function ffSyncControls(d, colour, saidClass) {
         sb.appendChild(other);
     }
     return { safari, direct, sb, fb, said };
+}
+
+/// Safari (the add-on inside the app, its words made on the Mac) rather than Firefox (which installs its dictionaries
+/// itself, with the converters in install/). 資料夾同步 is Safari's only
+async function ffIsSafari() {
+    return !(await fetch(browser.runtime.getURL("install/common.js")).then(r => r.ok, () => false));
 }

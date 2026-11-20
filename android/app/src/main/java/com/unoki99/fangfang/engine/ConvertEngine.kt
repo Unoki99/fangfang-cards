@@ -46,6 +46,9 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
     var latinMode: LatinMode = LatinMode.of(prefs.getString("ff-latin"))
     private val mem: HashMap<String, String> = HashMap(
         try { prefs.getString("ff-picks")?.let { JReader(it).strMap() } ?: emptyMap() } catch (_: Exception) { emptyMap() })
+    /** 歌詞: the song the text is the lyrics of. A reading picked in it is kept for that song and always used in it,
+     *  wherever its lyrics show (like the iPhone / iPad's) */
+    var songKey: String? = null
 
     companion object {
         fun isHan(v: Int): Boolean =
@@ -348,6 +351,13 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
         for (k in res.items.indices) {
             val it = res.items[k]
             if (it.opts.size <= 1) continue
+            // (歌詞: what you picked for this word in this song, first of all)
+            val song = songKey
+            if (song != null) {
+                val want = mem["s:" + song + "|" + memKey(it)]
+                val at = if (want != null) it.opts.indexOfFirst { o -> optID(o) == want } else -1
+                if (at >= 0) { it.sel = at; byYou.add(k); continue }
+            }
             // what you picked before for this word between the same neighbours always wins
             val wantCtx = mem[ctxMemKey(res.items, k)]
             if (wantCtx != null) {
@@ -457,6 +467,7 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
         val it = items[k]
         mem[memKey(it)] = optID(it.current)
         mem[ctxMemKey(items, k)] = optID(it.current)
+        songKey?.let { mem["s:" + it + "|" + memKey(items[k])] = optID(items[k].current) }
         prefs.putString("ff-picks", JWriter.any(mem))
     }
 

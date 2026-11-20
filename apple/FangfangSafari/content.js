@@ -25,7 +25,7 @@
     // on: the pop-up on at all (its button in Safari's toolbar); font: the size of the letters (1 = normal);
     // yue / hak: 粵語 and 客語 (hakAcc: the accent, hakRom: 0 拼音 / 1 注音); ring: a rainbow around the words saved
     // here when they're on a page; tint: the characters of saved words in their tone colours on the page
-    const DEFAULTS = { pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
+    const DEFAULTS = { pcLink: false, pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
         yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
         // 影片字幕 (YouTube, Viki): the panel on; the video stops while a word is looked up in it; the subtitles on
         // the video itself hidden while the panel shows them
@@ -134,10 +134,11 @@
             saved = r.ffSaved || [];
             setKnown(r.ffKnown);
             pageMarks();
+            pcLinkUpdate();
         }).catch(() => {});
         // (changed in the extension's own window, from its button in Safari's toolbar, or on another page)
         if (browser.storage.onChanged) browser.storage.onChanged.addListener((ch, area) => {
-            if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (isOpen() && last && !card.querySelector(".set")) redraw(); }
+            if (ch.ffPrefs) { prefs = fixPrefs(ch.ffPrefs.newValue); if (isOpen() && last && !card.querySelector(".set")) redraw(); pcLinkUpdate(); }
             // (a dictionary installed or taken away in 設定 → 詞典: its files read again)
             if (ch.ffData) { metaP = null; shardP.clear(); foundP.clear(); entryP.clear(); warmed.clear(); }
             if (ch.ffQueue) queue = ch.ffQueue.newValue || [];
@@ -1093,7 +1094,7 @@
     function drawPageMarks() {
         pageAnno();
         if (ringBox) { ringBox.remove(); ringBox = null; }
-        if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-tone-")) CSS.highlights.delete(k);
+        try { if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-tone-")) CSS.highlights.delete(k); } catch (e) {}
         if (prefs.on && prefs.tint === "all" && document.body) { tintAll(); if (!prefs.ring) return; }
         if (!prefs.on || (!prefs.ring && !prefs.tint) || !saved.length || !document.body) return;
         const words = saved.map(s => s.h).filter(Boolean).sort((a, b) => b.length - a.length);
@@ -1220,7 +1221,7 @@
         const run = ++annoRun;
         const clear = () => {
             if (annoBox) { annoBox.remove(); annoBox = null; }
-            if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-anno-")) CSS.highlights.delete(k);
+            try { if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-anno-")) CSS.highlights.delete(k); } catch (e) {}
         };
         const L = ["zh", "tw", "yue", "hak"].find(l => prefs[l]);
         if (!prefs.on || !prefs.pageAnno || !L || !document.body) { clear(); return; }
@@ -1233,12 +1234,11 @@
             const b = r.getBoundingClientRect();
             return b.bottom > -80 && b.top < vh + 80 && b.width > 0;
         }).slice(0, 300);
-        const shardOf = cp => `d-${L}-${String(cp % (meta.shards || 256)).padStart(3, "0")}.json`;
-        const cps = new Set();
-        for (const n of nodes) for (const ch of n.nodeValue) { const c = ch.codePointAt(0); if (isHan(c)) cps.add(shardOf(c)); }
-        const files = new Map();
-        await Promise.all([...cps].slice(0, 160).map(async nm => files.set(nm, await getFile(nm))));
+        // (the words found by the add-on itself, not here: only they come to the page)
+        const texts = nodes.map(n => n.nodeValue);
+        const seg = nodes.length ? await ask({ op: "segment", lang: L, texts }) : { ok: true, data: [] };
         if (run !== annoRun) return;
+        if (!seg || !seg.ok || !seg.data) return;
         const rd = prefs.pageAnno !== "gl", gl = prefs.pageAnno !== "rd";
         const box = document.createElement("div");
         box.id = "ff-anno";
@@ -1254,65 +1254,60 @@
             box.appendChild(d);
         };
         let n = 0;
-        for (const node of nodes) {
+        nodes.forEach((node, ni) => {
+            // (the text changed meanwhile: left for the next time)
+            if (node.nodeValue !== texts[ni] || !node.isConnected) return;
             const chars = [...node.nodeValue];
-            let i = 0, pos = 0;
-            while (i < chars.length && n < 250) {
-                const cp = chars[i].codePointAt(0);
-                if (!isHan(cp)) { pos += chars[i].length; i++; continue; }
-                const sh = files.get(shardOf(cp));
-                let entry = null, len = 1;
-                if (sh) for (let k = Math.min(meta.max || 12, chars.length - i); k >= 1; k--) {
-                    const w = chars.slice(i, i + k).join("");
-                    if (sh[w]) { len = k; entry = subsEntry(sh[w], L) || sh[w][0]; break; }
-                }
+            // (where each character starts in the text: a few take two places)
+            const at = [];
+            let q = 0;
+            for (const ch of chars) { at.push(q); q += ch.length; }
+            for (const [i, len, list] of seg.data[ni] || []) {
+                if (n >= 250) break;
+                if (i + len > chars.length) continue;
+                const entry = subsEntry(list, L) || list[0];
+                if (!entry) continue;
                 const word = chars.slice(i, i + len).join("");
-                const wlen = word.length;
-                if (entry) {
-                    const head = entry.k ? entry.k.split("\t")[0] : word;
-                    const known = isKnownIn(word, L) || (head !== word && isKnownIn(head, L));
-                    const rare = entry.f == null || entry.f >= (prefs.subsRare || 3000);
-                    const mode = prefs.subsMark || "new";
-                    const marked = mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known;
-                    if (marked) {
-                        const r = document.createRange();
-                        r.setStart(node, pos); r.setEnd(node, pos + wlen);
-                        const rects = r.getClientRects();
-                        const b = r.getBoundingClientRect();
-                        // (on one line, on screen)
-                        if (rects.length === 1 && b.width > 0 && b.bottom > -40 && b.top < vh + 40 && b.right > 0 && b.left < vw) {
-                            n++;
-                            let parts = {};
-                            try { parts = subsParts(entry, L, meta) || {}; } catch (err) { parts = {}; }
-                            const cx = b.left + b.width / 2 + sx;
-                            if (rd && parts.r && parts.r.length) {
-                                label(cx, b.top + sy - 1, true, Math.max(9, Math.round(b.height * 0.48)),
-                                    parts.r.map((sg, j) => ({ t: j && L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t, c: sg.c })));
-                            }
-                            if (gl) {
-                                const g = subsGloss(entry);
-                                if (g) label(cx, b.bottom + sy + 1, false, Math.max(9, Math.round(b.height * 0.42)), [{ t: g }]);
-                            }
-                            // (the word's characters in their tone colours)
-                            const cols = (parts.h || []).flatMap(sg => [...sg.t].map(() => sg.c || null));
-                            let p2 = pos;
-                            for (let j = 0; j < len; j++) {
-                                const ch = chars[i + j];
-                                if (cols[j]) { const rr = document.createRange(); rr.setStart(node, p2); rr.setEnd(node, p2 + ch.length); (tones[cols[j]] = tones[cols[j]] || []).push(rr); }
-                                p2 += ch.length;
-                            }
-                        }
-                    }
+                const pos = at[i];
+                const head = entry.k ? entry.k.split("\t")[0] : word;
+                const known = isKnownIn(word, L) || (head !== word && isKnownIn(head, L));
+                const rare = entry.f == null || entry.f >= (prefs.subsRare || 3000);
+                const mode = prefs.subsMark || "new";
+                const marked = mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known;
+                if (!marked) continue;
+                const r = document.createRange();
+                r.setStart(node, pos); r.setEnd(node, pos + word.length);
+                const rects = r.getClientRects();
+                const b = r.getBoundingClientRect();
+                // (on one line, on screen)
+                if (!(rects.length === 1 && b.width > 0 && b.bottom > -40 && b.top < vh + 40 && b.right > 0 && b.left < vw)) continue;
+                n++;
+                let parts = {};
+                try { parts = subsParts(entry, L, meta) || {}; } catch (err) { parts = {}; }
+                const cx = b.left + b.width / 2 + sx;
+                if (rd && parts.r && parts.r.length) {
+                    label(cx, b.top + sy - 1, true, Math.max(9, Math.round(b.height * 0.48)),
+                        parts.r.map((sg, j) => ({ t: j && L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t, c: sg.c })));
                 }
-                pos += wlen;
-                i += len;
+                if (gl) {
+                    const g = subsGloss(entry);
+                    if (g) label(cx, b.bottom + sy + 1, false, Math.max(9, Math.round(b.height * 0.42)), [{ t: g }]);
+                }
+                // (the word's characters in their tone colours)
+                const cols = (parts.h || []).flatMap(sg => [...sg.t].map(() => sg.c || null));
+                for (let j = 0; j < len; j++) {
+                    if (!cols[j]) continue;
+                    const rr = document.createRange();
+                    rr.setStart(node, at[i + j]); rr.setEnd(node, at[i + j] + chars[i + j].length);
+                    (tones[cols[j]] = tones[cols[j]] || []).push(rr);
+                }
             }
-        }
+        });
         if (run !== annoRun) return;
         clear();
         document.documentElement.appendChild(box);
         annoBox = box;
-        if (window.CSS && CSS.highlights && window.Highlight) {
+        if (window.CSS && CSS.highlights && window.Highlight) try {
             let style = document.getElementById("ff-anno-style");
             if (!style) { style = document.createElement("style"); style.id = "ff-anno-style"; (document.head || document.documentElement).appendChild(style); }
             let css = "";
@@ -1321,7 +1316,7 @@
                 css += `::highlight(ff-anno-${c}) { color: #${c}; }\n`;
             }
             style.textContent = css;
-        }
+        } catch (e) {}
     }
     window.addEventListener("scroll", pageMarks, { passive: true });
     window.addEventListener("resize", pageMarks, { passive: true });
@@ -3653,6 +3648,55 @@
         const ids = Object.keys(seenAll);
         if (ids.length > 300) for (const id of ids.sort((a, b) => seenAll[a][3] - seenAll[b][3]).slice(0, ids.length - 300)) delete seenAll[id];
         store.set({ ffSeen: seenCache, ffSeenAll: seenAll }).catch(() => {});
+    }
+
+    // 連到方方詞卡（Windows）: on YouTube and YouTube Music, the song playing (its video, name, singer, where in it,
+    // playing or not, speed) goes to the 方方詞卡 program on this computer twice a second, through the add-on's
+    // background (only to 127.0.0.1); what the program's 歌詞 screen asks back is done to the video (jump, pause,
+    // play, speed). This page's own mark, so the program follows the tab that's playing
+    const pcTab = Math.random().toString(36).slice(2, 10);
+    let pcTimer = null;
+    function pcSongInfo(v) {
+        const music = location.hostname === "music.youtube.com";
+        const txt = sel => { const e = document.querySelector(sel); return e ? e.textContent.replace(/\s+/g, " ").trim() : ""; };
+        let title = "", artist = "", id = "";
+        // (the player's own idea of the video playing first: in a playlist the page's heading can still be the song
+        // before for a while, and YouTube keeps old hidden copies of it, so the program looked up the wrong lyrics)
+        try {
+            const p = document.getElementById("movie_player");
+            const w = p && p.wrappedJSObject;
+            const vd = w && typeof w.getVideoData === "function" ? w.getVideoData() : null;
+            if (vd) { id = String(vd.video_id || ""); title = String(vd.title || "").trim(); artist = String(vd.author || "").trim(); }
+        } catch (e) {}
+        if (!id) try { id = new URL(location.href).searchParams.get("v") || ""; } catch (e) {}
+        if (music) {
+            title = txt("ytmusic-player-bar .title") || title;
+            artist = (txt("ytmusic-player-bar .byline").split("•")[0] || "").trim() || artist;
+        } else if (!title) {
+            title = txt("ytd-watch-metadata:not([hidden]) h1 yt-formatted-string") || document.title.replace(/^\(\d+\)\s*/, "").replace(/\s*-\s*YouTube\s*$/, "");
+            artist = txt("ytd-watch-metadata:not([hidden]) #owner #channel-name a") || txt("#owner #channel-name a");
+        }
+        return { id, title, artist, t: v.currentTime || 0, d: isFinite(v.duration) ? v.duration : 0,
+            playing: !v.paused && !v.ended, rate: v.playbackRate || 1, tab: pcTab, site: music ? "music" : "youtube" };
+    }
+    function pcTick() {
+        if (!prefs.pcLink || !/(^|\.)youtube\.com$/.test(location.hostname)) return;
+        const v = document.querySelector("video");
+        if (!v || !(v.duration > 0)) return;
+        ask({ op: "pcNow", now: pcSongInfo(v) }).then(r => {
+            if (!r || !r.ok || !r.cmds) return;
+            for (const c of r.cmds) {
+                if (c.op === "seek" && isFinite(c.t)) v.currentTime = Math.max(0, c.t);
+                else if (c.op === "pause") v.pause();
+                else if (c.op === "play") v.play().catch(() => {});
+                else if (c.op === "rate" && c.r > 0) v.playbackRate = c.r;
+            }
+        });
+    }
+    function pcLinkUpdate() {
+        const want = !!prefs.pcLink && /(^|\.)youtube\.com$/.test(location.hostname);
+        if (want && !pcTimer) pcTimer = setInterval(pcTick, 500);
+        else if (!want && pcTimer) { clearInterval(pcTimer); pcTimer = null; }
     }
 
     // 練習統計 in the app: the time watched with the subtitle panel (playing, the panel open), kept by day and sent

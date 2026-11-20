@@ -228,7 +228,7 @@ private fun speechText(): String {
 }
 
 /** 聲調顏色 in 轉換: the tone of every syllable, working through the whole text. item index -> (tokens, tones) */
-private fun itemTones(d: Dict, items: List<ConvItem>, place: Int): Map<Int, Pair<List<String>, List<Int>>> {
+internal fun itemTones(d: Dict, items: List<ConvItem>, place: Int): Map<Int, Pair<List<String>, List<Int>>> {
     val units = ArrayList<ToneUnit>()
     val ranges = HashMap<Int, Triple<List<String>, Int, Int>>()
     var prevKey: String? = null

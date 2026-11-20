@@ -169,6 +169,16 @@ fun NewDeckTab() {
     }
 }
 
+/** ← and → on a keyboard (the Windows program's window passes them here): the deck on screen swipes its top card,
+ *  like its buttons. The deck showing last has them (a practice over 新詞: the practice's) */
+object SwipeKeys {
+    private val decks = mutableListOf<(Boolean) -> Unit>()
+    fun add(h: (Boolean) -> Unit) { decks.add(h) }
+    fun remove(h: (Boolean) -> Unit) { decks.remove(h) }
+    /** true: a deck took it */
+    fun arrow(right: Boolean): Boolean { val h = decks.lastOrNull() ?: return false; h(right); return true }
+}
+
 /** a stack plus its buttons */
 @Composable
 fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = tr("不熟"), rightLabel: String = tr("認識"),
@@ -243,6 +253,14 @@ fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = tr("不熟"), ri
     if (buttons) Spacer(Modifier.height(18.dp))
     if (buttons) cards.firstOrNull()?.let { top ->
         SwipeButtons(leftLabel, rightLabel, Store.canUndo, { fly(top, false) }, { fly(top, true) }, undo)
+    }
+    // ← → on a keyboard: the top card, like the buttons (also when they're put away)
+    val topNow = rememberUpdatedState(cards.firstOrNull())
+    val flyNow = rememberUpdatedState<(Card, Boolean) -> Unit> { c, right -> fly(c, right) }
+    DisposableEffect(Unit) {
+        val h: (Boolean) -> Unit = { right -> topNow.value?.let { flyNow.value(it, right) } }
+        SwipeKeys.add(h)
+        onDispose { SwipeKeys.remove(h) }
     }
 }
 

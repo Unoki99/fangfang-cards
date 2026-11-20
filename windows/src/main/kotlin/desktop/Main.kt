@@ -1,6 +1,7 @@
 package com.unoki99.fangfang.desktop
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,8 @@ fun main(args: Array<String>) {
     com.unoki99.fangfang.ui.PointerUI.mouse = true
     Store.init(DesktopContext)
     Radio.init(DesktopContext)
+    // (YouTube 歌詞: the browser add-on's song, heard on this computer only)
+    YtServer.start()
     if (crashFile.exists()) {
         val t = try { crashFile.readText().take(1500) } catch (_: Exception) { "" }
         crashFile.delete()
@@ -80,7 +83,16 @@ fun main(args: Array<String>) {
             exitApplication()
         }
         Window(onCloseRequest = ::quit, state = state, title = "方方詞卡", icon = icon,
-            onKeyEvent = { e -> if (e.type == KeyEventType.KeyDown && e.key == Key.Escape) Back.go() else false }) {
+            // (Escape: back. ← →: the card deck on screen swiped, like its buttons; not when a text field has them)
+            onKeyEvent = { e ->
+                if (e.type != KeyEventType.KeyDown) false
+                else when (e.key) {
+                    Key.Escape -> Back.go()
+                    Key.DirectionLeft -> SwipeKeys.arrow(false)
+                    Key.DirectionRight -> SwipeKeys.arrow(true)
+                    else -> false
+                }
+            }) {
             FilePick.window = window
             Links.window = window
             // (the window left: saved, and the backup folder written; coming back: the other devices' read)
@@ -119,6 +131,20 @@ fun main(args: Array<String>) {
                         .background(T.fn).border(1.5.dp, T.fnEdge, RoundedCornerShape(14.dp)).padding(horizontal = 18.dp, vertical = 10.dp)) {
                         Txt(t, ff(FF.Body), T.glyph)
                     }
+                }
+            }
+        }
+        // 浮動歌詞: the line being sung in a small window of its own, over everything (drag it anywhere)
+        if (UI.lyricsFloat) {
+            val fs = rememberWindowState(size = DpSize(floatingLyricsWidth().dp, floatingLyricsHeight().dp), position = WindowPosition(Alignment.BottomCenter))
+            // (the letters' size or the reading changed in YouTube 歌詞: the window just as tall as its lines)
+            LaunchedEffect(Prefs.lyricsFloatSize.value, Prefs.lyricsFloatReadings.value) {
+                fs.size = DpSize(maxOf(fs.size.width.value, floatingLyricsWidth()).dp, floatingLyricsHeight().dp)
+            }
+            Window(onCloseRequest = { UI.lyricsFloat = false }, state = fs, title = "浮動歌詞", icon = icon,
+                alwaysOnTop = true, undecorated = true, transparent = true, resizable = false) {
+                WindowDraggableArea(Modifier.fillMaxSize()) {
+                    FloatingLyrics { UI.lyricsFloat = false }
                 }
             }
         }

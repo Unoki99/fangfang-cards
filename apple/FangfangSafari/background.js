@@ -13,23 +13,27 @@ function file(name) {
         cache.delete(name); cache.set(name, p);          // (most recently used last)
         return p;
     }
-    const p = (async () => {
-        let j = null;
-        try { j = await ffDB.get(name); } catch (e) { j = null; }
-        if (j === null || j === undefined) {
-            try {
-                const r = await fetch(browser.runtime.getURL(name));
-                if (r.ok) j = await r.json();
-            } catch (e) { j = null; }
-        }
-        return j === undefined ? null : j;
-    })();
+    const p = load(name);
     cache.set(name, p);
     if (cache.size > 96) {
         for (const k of cache.keys()) { if (k !== "d-meta.json") { cache.delete(k); break; } }
     }
     return p;
 }
+async function load(name) {
+    let j = null;
+    try { j = await ffDB.get(name); } catch (e) { j = null; }
+    if (j === null || j === undefined) {
+        try {
+            const r = await fetch(browser.runtime.getURL(name));
+            if (r.ok) j = await r.json();
+        } catch (e) { j = null; }
+    }
+    return j === undefined ? null : j;
+}
+// (a file read once for a job and let go, unless it's kept already: 網頁上不認識的詞 reads many at a time, and an
+// add-on that keeps too much in memory is slow, or stopped by the browser)
+const once = name => cache.has(name) ? file(name) : load(name);
 const shardOf = (lang, cp, meta) => `d-${lang}-${String(cp % ((meta && meta.shards) || 256)).padStart(3, "0")}.json`;
 
 /// the longest word each language has at the start of the text (only those words go back to the page)
@@ -85,8 +89,65 @@ async function lookup(text, show) {
     return out;
 }
 
+// 連到方方詞卡（Windows）: the song playing on YouTube (which, where in it) to the 方方詞卡 program on this computer,
+// for its 歌詞 screen; its answer: what to do with the song (jump, pause, play, speed). Only to 127.0.0.1 (this
+// computer, nothing over the internet), only when the setting is on and Firefox was allowed to (optional permission).
+const PC_PORT = 47291;
+async function pcSend(now) {
+    try {
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 800);
+        const r = await fetch(`http://127.0.0.1:${PC_PORT}/now`, {
+            method: "POST", body: JSON.stringify(now), signal: ctl.signal, headers: { "Content-Type": "text/plain" } });
+        clearTimeout(timer);
+        if (!r.ok) return { ok: false };
+        const j = await r.json();
+        return { ok: true, cmds: Array.isArray(j.cmds) ? j.cmds : [] };
+    } catch (e) { return { ok: false }; }
+}
+
+const isHanBg = cp => (cp >= 0x3400 && cp <= 0x9fff) || (cp >= 0xf900 && cp <= 0xfaff) || (cp >= 0x20000 && cp <= 0x3ffff);
+/// 網頁上不認識的詞: the page's texts cut into the words the dictionary has (longest first, from the left), each with
+/// its entries; only those go back to the page, not the dictionary's files (sending a page full of files to the page
+/// was too slow in Firefox, and nothing was marked). Each file is read once, for all the places that need it.
+async function segment(texts, lang) {
+    const meta = await file("d-meta.json");
+    if (!meta) return { ok: true, ready: false };
+    if (!/^[a-z]+$/.test(lang)) return { ok: false };
+    const max = meta.max || 12;
+    const T = (texts || []).slice(0, 400).map(t => [...String(t || "")].slice(0, 4000));
+    const byShard = new Map();
+    T.forEach((chars, ti) => chars.forEach((ch, i) => {
+        const cp = ch.codePointAt(0);
+        if (!isHanBg(cp)) return;
+        const nm = shardOf(lang, cp, meta);
+        if (!byShard.has(nm)) byShard.set(nm, []);
+        byShard.get(nm).push([ti, i]);
+    }));
+    const best = T.map(() => new Map());
+    for (const [nm, spots] of byShard) {
+        const sh = await once(nm);
+        if (!sh) continue;
+        for (const [ti, i] of spots) {
+            const chars = T[ti];
+            for (let k = Math.min(max, chars.length - i); k >= 1; k--) {
+                const w = chars.slice(i, i + k).join("");
+                if (Object.prototype.hasOwnProperty.call(sh, w)) { best[ti].set(i, [k, sh[w]]); break; }
+            }
+        }
+    }
+    const data = T.map((chars, ti) => {
+        const f = [];
+        let i = 0;
+        while (i < chars.length) { const b = best[ti].get(i); if (b) { f.push([i, b[0], b[1]]); i += b[0]; } else i++; }
+        return f;
+    });
+    return { ok: true, ready: true, data };
+}
+
 // (a dictionary installed or taken away in 設定 → 詞典: read the files again)
 browser.runtime.onMessage.addListener((msg) => {
+    if (msg && msg.op === "pcNow" && msg.now) return pcSend(msg.now);
     if (msg && msg.op === "dataChanged") { cache.clear(); return Promise.resolve({ ok: true }); }
     if (msg && msg.op === "options") {
         return browser.tabs.create({ url: browser.runtime.getURL("options.html#dicts") })
@@ -94,6 +155,7 @@ browser.runtime.onMessage.addListener((msg) => {
     }
     // a whole file, for the page's script to keep (it then looks words up by itself, at once)
     if (msg && msg.op === "file" && /^d-[a-z0-9-]+\.json$/.test(msg.name || "")) return file(msg.name).then(data => ({ ok: !!data, data }));
+    if (msg && msg.op === "segment") return segment(msg.texts, String(msg.lang || "")).catch(e => ({ ok: false, error: String(e) }));
     if (msg && msg.op === "find") return findWords(String(msg.text || ""), msg.langs).catch(e => ({ ok: false, error: String(e) }));
     // one entry of a file (the words of one key)
     if (msg && msg.op === "entry" && /^d-[a-z0-9-]+\.json$/.test(msg.name || "")) {

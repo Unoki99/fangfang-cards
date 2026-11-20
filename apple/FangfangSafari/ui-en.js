@@ -1,6 +1,16 @@
 // 方方詞卡 查詞: the add-on's own words in English, for 設定 → 介面語言 → English. Each Chinese text of the add-on
 // (as it is in content.js, options.js, popup.js) → its English. Words and meanings from the dictionaries stay as they are.
 var FF_EN = {
+    "連到方方詞卡（Windows）": "Link to 方方詞卡 (Windows)",
+    "在 YouTube 或 YouTube Music 放歌的時候，Windows 版方方詞卡的「歌詞」會跟著歌走：查詞、讀音，從 App 裡跳到別的地方、暫停、重複一句。": "While a song plays on YouTube or YouTube Music, the Windows 方方詞卡's lyrics follow it: look words up, readings, and jump, pause or repeat a line from the program.",
+    "沒有允許：查詞不能連到這台電腦上的方方詞卡。": "Not allowed: the add-on can't reach 方方詞卡 on this computer.",
+    "只傳給這台電腦上的方方詞卡（127.0.0.1），不會傳到網路上": "Only to 方方詞卡 on this computer (127.0.0.1), nothing over the internet",
+    "關著。": "Off.",
+    "連上了：方方詞卡開著。在 YouTube 放一首歌，打開方方詞卡的「電台 → YouTube 歌詞」。": "Connected: 方方詞卡 is open. Play a song on YouTube and open Radio → YouTube lyrics in 方方詞卡.",
+    "找不到方方詞卡：在這台電腦上打開 Windows 版的方方詞卡（開著的時候才連得上）。": "Can't find 方方詞卡: open the Windows 方方詞卡 on this computer (it connects only while it's open).",
+    "找不到方方詞卡。": "Can't find 方方詞卡.",
+    "打開開關的時候 Firefox 會問可不可以連到 127.0.0.1（這台電腦自己）：按「允許」。查詞只傳正在放的歌是哪一首、放到哪裡，給這台電腦上的方方詞卡；方方詞卡只回傳你在它那裡按的（跳到哪裡、暫停、播放、速度）。": "When you turn it on, Firefox asks whether the add-on may reach 127.0.0.1 (this computer itself): choose Allow. The add-on only sends which song is playing and where, to 方方詞卡 on this computer; 方方詞卡 only sends back what you press there (jump, pause, play, speed).",
+    "歌單用 YouTube 自己的：一首放完接下一首，方方詞卡的歌詞也會自己換。": "Use YouTube's own playlists: when the next song starts, 方方詞卡's lyrics change by themselves.",
     "網頁上不認識的詞": "Unknown words on pages",
     "像字幕一樣：不認識的詞上面標讀音、下面標意思，字照聲調上色（哪些詞照「字幕 → 標哪些詞」）": "Like the subtitles: words you don't know get their reading above and meaning below, and tone colours (which words: Subtitles → Words to mark)",
     "讀音和意思": "Reading and meaning",

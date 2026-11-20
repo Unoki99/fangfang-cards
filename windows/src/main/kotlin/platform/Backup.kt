@@ -50,6 +50,8 @@ object Backup {
                 }
                 if (changed > 0) Store.save()
             }
+            // (歌詞: the lyrics of your own, one .lrc file a song, the same folder as the iPhone / iPad app's)
+            try { OwnLyrics.sync(File(dir, "歌詞")) } catch (_: Exception) {}
             val data = Store.backupData()
             try { File(dir, ownFileName).writeText(data) } catch (e: Exception) { return "備份失敗：沒辦法寫入「${dir.name}」。請重新選擇資料夾。" }
             val old = File(dir, "方方詞卡舊備份").apply { mkdirs() }

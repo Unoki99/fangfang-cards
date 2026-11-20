@@ -36,7 +36,8 @@ fun RadioBarButton() {
 
 @Composable
 fun RadioScreen() {
-    BackHandler { if (UI.lyricsOpen) UI.lyricsOpen = false else UI.radioOpen = false }
+    BackHandler { if (UI.ytEditOpen) UI.ytEditOpen = false else if (UI.ytLyricsOpen) UI.ytLyricsOpen = false else if (UI.lyricsOpen) UI.lyricsOpen = false else UI.radioOpen = false }
+    if (UI.ytLyricsOpen) { AppBackground { YtLyricsScreen() }; return }
     if (UI.lyricsOpen) { AppBackground { LyricsScreen() }; return }
     var lang by remember { mutableIntStateOf(Store.lang.coerceIn(0, RadioLang.languages.size - 1)) }
     var searching by remember { mutableStateOf(false) }
@@ -51,6 +52,12 @@ fun RadioScreen() {
             if (searching) { RadioSearch(lang) { searching = false }; return@Column }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item { NowPlayingPanel() }
+                // (Windows: the song playing on YouTube in the browser, its lyrics following it)
+                if (YtLink.available) item {
+                    SoftButton(onClick = { UI.ytLyricsOpen = true }, Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
+                        IconLabel(Icons.Filled.MusicNote, tr("YouTube 歌詞") + if (YtLink.live()) "：" + (YtLink.song?.title ?: "") else "", ff(FF.Subheadline))
+                    }
+                }
                 item {
                     Segmented((0 until RadioLang.languages.size).map { it to tr(Lang.names[it]) }, lang, { lang = it })
                 }
@@ -213,23 +220,17 @@ private fun LyricsScreen() {
     // each line's reading (the language shown: 拼音／注音, 粵拼…; 台語 in the spelling chosen)
     var readings by remember { mutableStateOf<Map<String, androidx.compose.ui.text.AnnotatedString>>(emptyMap()) }
     val showReadings = Prefs.lyricsReadings.value
-    val zk = listOf(Prefs.zhRom.value, Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, showReadings)
+    val zk = listOf(Prefs.zhRom.value, Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneGlow.value, showReadings)
     LaunchedEffect(pick, zk) {
         // (readings off: none made, and the ones made before let go)
         if (!showReadings) { readings = emptyMap(); return@LaunchedEffect }
         val p = pick ?: return@LaunchedEffect
+        // (in tone colours, 台語's too: LyricText.kt)
         readings = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            val out = HashMap<String, Styled>()
-            val z = Store.zh; val d = Store.dict
-            val tw = if (!Store.isZh && d != null) ConvertEngine(d, Prefs) else null
-            for (line in p.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()) {
-                try {
-                    if (Store.isZh && z != null) out[line] = z.sentence(z.convertPieces(line), Prefs.zhRom.value, Prefs.zhPlace.value)
-                    else if (tw != null) out[line] = listOf(Seg(tw.pieces(tw.convert(line).items, 1, Prefs.rom.value, Prefs.place.value).joinToString("") { it.text }))
-                } catch (_: Exception) {}
-            }
+            val out = HashMap<String, androidx.compose.ui.text.AnnotatedString>()
+            for (line in p.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()) lyricReading(line)?.let { out[line] = it }
             out
-        }.mapValues { it.value.annotated() }
+        }
     }
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("歌詞"), { UI.lyricsOpen = false }, settings = false)
@@ -278,35 +279,23 @@ private fun LyricsScreen() {
  *  opens it (華語: its entry in 華語 詞典; 台語: the 台語 word the converter finds for it); a click beside the words
  *  still looks up the whole line */
 @Composable
-private fun LyricWords(line: String) {
-    val zk = listOf(Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value)
-    val words: List<Pair<androidx.compose.ui.text.AnnotatedString, () -> Unit>> = remember(line, zk, Store.isZh) {
-        try {
-            val z = Store.zh; val d = Store.dict
-            if (Store.isZh && z != null) {
-                z.convertPieces(line).map { p ->
-                    val k = if (p.tw != null) z.entryFor(p)?.k else null
-                    val t = z.sentenceHan(listOf(p), Prefs.zhPlace.value, T.glyph.argbInt()).annotated()
-                    Pair(t, if (k != null) ({ UI.open(Sheet.ZhWord(k)) }) else NOOP)
-                }
-            } else if (!Store.isZh && d != null) {
-                val e = ConvertEngine(d, Prefs)
-                val items = e.convert(line).items
-                e.pieces(items, 0, Prefs.rom.value, Prefs.place.value).filter { it.text != "\n" }.map { p ->
-                    val i = p.item
-                    val k = if (i != null && i >= 0) d.keyOf(items[i].current) else null
-                    Pair(androidx.compose.ui.text.AnnotatedString(p.text), if (k != null) ({ UI.openWord(k) }) else NOOP)
-                }
-            } else emptyList()
-        } catch (_: Exception) { emptyList() }
-    }
-    if (words.isEmpty()) { Txt(line, sz(20f), T.glyph); return }
+internal fun LyricWords(line: String, size: Float = 20f, color: androidx.compose.ui.graphics.Color = T.glyph) {
+    val zk = listOf(Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneGlow.value)
+    // (in their tone colours: 華語's and 台語's alike, LyricText.kt)
+    val words = remember(line, zk, Store.isZh, Store.lang, LyricPicks.songKey, LyricPicks.lang, LyricPicks.version) { lyricWords(line) }
+    if (words.isEmpty()) { Txt(line, sz(size), color); return }
+    // (a 台語 word with several readings: its readings to pick from, YtLyricsPages.kt)
+    var menu by remember { mutableStateOf(-1) }
     TapWords(
         count = words.size,
-        isTappable = { i -> words.getOrNull(i)?.second.let { it != null && it !== NOOP } },
-        onTap = { i -> words.getOrNull(i)?.second?.invoke() },
+        isTappable = { i -> words.getOrNull(i)?.let { it.open != null || it.pick != null } == true },
+        onTap = { i -> val w = words.getOrNull(i); if (w?.pick != null) menu = i else w?.open?.invoke() },
     ) { i, hot ->
-        Text(words[i].first, style = sz(20f), color = T.glyph, modifier = Modifier.swell(hot).padding(vertical = 2.dp))
+        Box {
+            Text(words[i].text, style = sz(size), color = color, modifier = Modifier.swell(hot).padding(vertical = 2.dp)
+                .then(if (words[i].pick != null) Modifier.dottedUnder() else Modifier))
+            if (menu == i) ReadingMenu(words[i]) { menu = -1 }
+        }
     }
 }
 private val NOOP: () -> Unit = {}

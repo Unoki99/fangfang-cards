@@ -72,6 +72,12 @@ object UI {
     /** 電台, and its 歌詞 */
     var radioOpen by mutableStateOf(false)
     var lyricsOpen by mutableStateOf(false)
+    /** YouTube 歌詞 (Windows): the song playing on YouTube in the browser */
+    var ytLyricsOpen by mutableStateOf(false)
+    /** its 歌詞對時 (write or fix the lyrics, time them) */
+    var ytEditOpen by mutableStateOf(false)
+    /** 浮動歌詞 (Windows): the line being sung in a small window over everything */
+    var lyricsFloat by mutableStateOf(false)
     /** 新詞 on a phone on its side: no tab bar (only the cards) */
     var hideTabs by mutableStateOf(false)
     var practice by mutableStateOf<Practice?>(null)

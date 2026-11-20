@@ -398,22 +398,64 @@
     tip(sd, "warn", ffT("Safari 會先問要不要打開方方詞卡：按「打開」。App 沒有打開的話再按一次。"));
     tip(sd, "how", ffT("Android 的 Firefox：按「傳到 App」會打開 Android 的方方詞卡（Firefox 可能先問要不要打開）。沒有打開的話，按旁邊的「App 沒有打開？點這裡」。"));
 
-    // ── 資料夾同步 ──
-    const fo = part("folder", ffT("資料夾同步"), v("--send"),
-        ffT("和 App 用同一個備份資料夾（iCloud Drive、OneDrive、Google 雲端硬碟…）：讀所有裝置的備份，你在每個裝置認識和不熟的詞這裡都會用；這裡選的詞也可以存一個檔案到那個資料夾，App 同步的時候會讀進去。"));
-    const { safari, direct, sb, fb, said } = await ffSyncControls(d, v("--send"), "lead");
-    fo.append(sb, fb, said);
-    if (d.known && d.known.from === "folder" && d.known.at) {
-        fo.appendChild(el("p", ffT("上次讀資料夾：") + new Date(d.known.at).toLocaleString(), "lead"));
+    // ── 連到方方詞卡（Windows）: YouTube songs' lyrics in the program (Firefox only: not in Safari) ──
+    if (!(await ffIsSafari())) {
+        const pc = part("pc", ffT("連到方方詞卡（Windows）"), "#ff9f5a",
+            ffT("在 YouTube 或 YouTube Music 放歌的時候，Windows 版方方詞卡的「歌詞」會跟著歌走：查詞、讀音，從 App 裡跳到別的地方、暫停、重複一句。"));
+        const pcG = grid(pc);
+        const ORIGINS = { origins: ["http://127.0.0.1/*"] };
+        const pcSw = el("button", null, "switch");
+        pcSw.setAttribute("role", "switch");
+        pcSw.style.setProperty("--c", "#ff9f5a");
+        const status = el("p", "", "lead");
+        const paint = () => { pcSw.classList.toggle("on", !!prefs.pcLink); pcSw.setAttribute("aria-checked", prefs.pcLink ? "true" : "false"); };
+        // (Firefox asks once for the permission, only to 127.0.0.1: asked right in the tap, as Firefox wants it)
+        pcSw.addEventListener("click", () => {
+            if (prefs.pcLink) {
+                prefs.pcLink = false; ffSave(prefs); paint(); check();
+                browser.permissions.remove(ORIGINS).catch(() => {});
+                return;
+            }
+            browser.permissions.request(ORIGINS).then(ok => {
+                if (!ok) { status.textContent = ffT("沒有允許：查詞不能連到這台電腦上的方方詞卡。"); return; }
+                prefs.pcLink = true; ffSave(prefs); paint(); check();
+            }, () => { status.textContent = ffT("沒有允許：查詞不能連到這台電腦上的方方詞卡。"); });
+        });
+        paint();
+        tile(pcG, ffT("連到方方詞卡（Windows）"), ffT("只傳給這台電腦上的方方詞卡（127.0.0.1），不會傳到網路上"), pcSw);
+        pc.appendChild(status);
+        // (whether the program answers: checked every few seconds while this page is open)
+        const check = () => {
+            if (!prefs.pcLink) { status.textContent = ffT("關著。"); return; }
+            browser.runtime.sendMessage({ op: "pcNow", now: { ping: true } }).then(r => {
+                status.textContent = r && r.ok ? ffT("連上了：方方詞卡開著。在 YouTube 放一首歌，打開方方詞卡的「電台 → YouTube 歌詞」。")
+                    : ffT("找不到方方詞卡：在這台電腦上打開 Windows 版的方方詞卡（開著的時候才連得上）。");
+            }, () => { status.textContent = ffT("找不到方方詞卡。"); });
+        };
+        check();
+        setInterval(check, 4000);
+        tip(pc, "how", ffT("打開開關的時候 Firefox 會問可不可以連到 127.0.0.1（這台電腦自己）：按「允許」。查詞只傳正在放的歌是哪一首、放到哪裡，給這台電腦上的方方詞卡；方方詞卡只回傳你在它那裡按的（跳到哪裡、暫停、播放、速度）。"));
+        tip(pc, "good", ffT("歌單用 YouTube 自己的：一首放完接下一首，方方詞卡的歌詞也會自己換。"));
     }
-    tip(fo, "how", ffIOS ? ffT("按「立刻同步」，在「檔案」打開 App 的備份資料夾，按「選擇」→「全選」→「打開」：查詞把所有裝置的詞合起來（每個詞以最後改的為準）。再按「存回資料夾」→「儲存到檔案」→ 選同一個資料夾 →「儲存」，問的時候按「取代」。")
-        : safari ? ffT("按「立刻同步」，選 App 的備份資料夾裡所有的方方詞卡檔案：查詞把所有裝置的詞合起來（每個詞以最後改的為準），再下載自己的檔案（方方詞卡-查詞-Safari-….json）。")
-        : direct ? ffT("「立刻同步」第一次會問要用哪個資料夾：選 App 的備份資料夾，按「允許」讓它讀寫。之後按一下就會讀所有裝置的備份，再把這裡選的詞存進去。")
-        : ffT("「立刻同步」會先讀資料夾（選 App 的備份資料夾），再存這裡選的詞（瀏覽器問存在哪裡的時候選同一個資料夾）。"));
-    if (safari && !ffIOS) tip(fo, "good", ffT("讓下載的檔案直接進備份資料夾：Safari 設定 → 一般 → 檔案下載位置 → 選 App 的備份資料夾。App 同步的時候會讀它，同一個查詞存了好幾個的話只留最新的。"));
-    tip(fo, "how", ffT("按「讀資料夾」，選 App 的備份資料夾（App 的 設定 → 備份 裡選的那一個），瀏覽器會問可不可以讀：按「上傳」或「允許」（檔案不會離開你的電腦）。"));
-    tip(fo, "good", ffT("要讓「存到資料夾」直接存在那個資料夾：在瀏覽器的設定把下載改成「每次都問要存在哪裡」，存的時候選那個資料夾。之後存一樣的檔名就會蓋過舊的。"));
-    tip(fo, "warn", ffT("存的檔案有在這裡標過的所有詞（傳到 App 以後也還在），每個詞記著是什麼時候標的，所以每個裝置同步的時候都以最後改的為準。"));
+
+    // ── 資料夾同步 (Safari only: not in the Firefox version) ──
+    if (await ffIsSafari()) {
+        const fo = part("folder", ffT("資料夾同步"), v("--send"),
+            ffT("和 App 用同一個備份資料夾（iCloud Drive、OneDrive、Google 雲端硬碟…）：讀所有裝置的備份，你在每個裝置認識和不熟的詞這裡都會用；這裡選的詞也可以存一個檔案到那個資料夾，App 同步的時候會讀進去。"));
+        const { safari, direct, sb, fb, said } = await ffSyncControls(d, v("--send"), "lead");
+        fo.append(sb, fb, said);
+        if (d.known && d.known.from === "folder" && d.known.at) {
+            fo.appendChild(el("p", ffT("上次讀資料夾：") + new Date(d.known.at).toLocaleString(), "lead"));
+        }
+        tip(fo, "how", ffIOS ? ffT("按「立刻同步」，在「檔案」打開 App 的備份資料夾，按「選擇」→「全選」→「打開」：查詞把所有裝置的詞合起來（每個詞以最後改的為準）。再按「存回資料夾」→「儲存到檔案」→ 選同一個資料夾 →「儲存」，問的時候按「取代」。")
+            : safari ? ffT("按「立刻同步」，選 App 的備份資料夾裡所有的方方詞卡檔案：查詞把所有裝置的詞合起來（每個詞以最後改的為準），再下載自己的檔案（方方詞卡-查詞-Safari-….json）。")
+            : direct ? ffT("「立刻同步」第一次會問要用哪個資料夾：選 App 的備份資料夾，按「允許」讓它讀寫。之後按一下就會讀所有裝置的備份，再把這裡選的詞存進去。")
+            : ffT("「立刻同步」會先讀資料夾（選 App 的備份資料夾），再存這裡選的詞（瀏覽器問存在哪裡的時候選同一個資料夾）。"));
+        if (safari && !ffIOS) tip(fo, "good", ffT("讓下載的檔案直接進備份資料夾：Safari 設定 → 一般 → 檔案下載位置 → 選 App 的備份資料夾。App 同步的時候會讀它，同一個查詞存了好幾個的話只留最新的。"));
+        tip(fo, "how", ffT("按「讀資料夾」，選 App 的備份資料夾（App 的 設定 → 備份 裡選的那一個），瀏覽器會問可不可以讀：按「上傳」或「允許」（檔案不會離開你的電腦）。"));
+        tip(fo, "good", ffT("要讓「存到資料夾」直接存在那個資料夾：在瀏覽器的設定把下載改成「每次都問要存在哪裡」，存的時候選那個資料夾。之後存一樣的檔名就會蓋過舊的。"));
+        tip(fo, "warn", ffT("存的檔案有在這裡標過的所有詞（傳到 App 以後也還在），每個詞記著是什麼時候標的，所以每個裝置同步的時候都以最後改的為準。"));
+    }
 })();
 
 /// 設定 → 詞典: each dictionary, installed or not, and its 安裝 / 移除 (one at a time)
