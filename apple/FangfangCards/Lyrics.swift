@@ -656,7 +656,8 @@ struct LyricsWindow: View {
                     Text(h.trackName).ffFont(.subheadline, .semibold).lineLimit(1)
                     Text(h.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
                 }
-                .layoutPriority(1)
+                // (a long name gives way: cut short with …, the tools always all in reach)
+                .frame(minWidth: 60, alignment: .leading)
                 Spacer(minLength: 4)
             }
             ViewThatFits(in: .horizontal) {
@@ -664,6 +665,7 @@ struct LyricsWindow: View {
                 ScrollView(.horizontal, showsIndicators: false) { tools(h) }
             }
             .frame(maxWidth: songs.active && !wide ? .infinity : nil, alignment: songs.active && !wide ? .center : .trailing)
+            .layoutPriority(1)
         }
     }
 
