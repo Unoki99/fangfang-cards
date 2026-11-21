@@ -1368,7 +1368,7 @@ final class Store: ObservableObject {
     /// the card's own reading for the place is worked out by rule, not stated by the dictionary
     func isGuessed(_ card: Card, _ place: Int) -> Bool {
         guard !card.isZh, place >= 0, cardDiffers(card, place), let d = dict else { return false }
-        return !d.isStated(card.k, place)
+        return !d.isStated(card.k, place) || !d.guessedSyllables(card.k, place).isEmpty
     }
 
     /// the card's reading in the place differs from 通行 (not counting 臺南/高雄 o → or, which is the same sound)

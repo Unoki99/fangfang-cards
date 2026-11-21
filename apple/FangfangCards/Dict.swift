@@ -354,10 +354,9 @@ final class Dict: @unchecked Sendable {
     func isCode(_ t: String) -> Bool { raw.syl[t] != nil }
 
     func codesFor(_ key: String, _ place: Int) -> String {
-        let c = statedCodes(key, place)
-        // (新竹, which says -ir and -i both: the -ir one first, the -i one 也講)
-        if place >= 0, !c.contains("ɨ"), irAndI(place), let v = irVariant(key, c), v.contains("ɨ") { return v }
-        return c
+        // (新竹, which says some 字 with -ir and -i both: the -ir one first, the -i one 也講)
+        if let f = irForms(key, place) { return f.main }
+        return statedCodes(key, place)
     }
 
     /// how many syllables a word has (its 輕聲 mark not counted)
@@ -406,21 +405,43 @@ final class Dict: @unchecked Sendable {
     /// places that say -ir and -i both (新竹: 去 khìr and khì): neither is the only one there
     func irAndI(_ place: Int) -> Bool { place >= 0 && place < raw.places.count && raw.places[place].hasPrefix("新竹") }
 
-    /// a reading with -ir as -i (khìr → khì), or with -i as the -ir another place says (khì → khìr); nil: none
-    private func irVariant(_ key: String, _ shown: String) -> String? {
-        if shown.contains("ɨ") { return shown.replacingOccurrences(of: "ɨ", with: "i") }
-        let mine = shown.split(separator: " ").map(String.init)
-        for p in raw.places.indices where !irAndI(p) {
-            let o = statedCodes(key, p).split(separator: " ").map(String.init)
-            guard o.count == mine.count, o.contains(where: { $0.contains("ɨ") }) else { continue }
-            var changed = false
-            let out = mine.indices.map { j -> String in
-                if o[j].contains("ɨ") && o[j].replacingOccurrences(of: "ɨ", with: "i") == mine[j] { changed = true; return o[j] }
-                return mine[j]
+    /// the 字 新竹 itself is recorded saying both ways, -i and -ir (the 字's own entry, one syllable: 去 khì, 也講
+    /// khìr): "去|khi3" → "khɨ3". Only these; never from how other places say a word
+    private var irPairsMade: [String: String]?
+    private let irLock = NSLock()
+    private func irPairs(_ place: Int) -> [String: String] {
+        irLock.lock(); defer { irLock.unlock() }
+        if let m = irPairsMade { return m }
+        var m: [String: String] = [:]
+        let p = String(place)
+        for (k, d) in raw.dia {
+            guard let mine = d[p] else { continue }
+            let han = Dict.hanOf(k)
+            guard han.count == 1, !mine.contains(" ") else { continue }
+            let all = [mine] + (raw.dia2?[k]?[p] ?? [])
+            for x in all where x.contains("ɨ") {
+                let i = x.replacingOccurrences(of: "ɨ", with: "i")
+                if all.contains(i) { m[han + "|" + i] = x }
             }
-            if changed { return out.joined(separator: " ") }
         }
-        return nil
+        irPairsMade = m
+        return m
+    }
+
+    /// 新竹: a word with a 字 新竹 says both ways: (main: the -ir way, alt: the -i way); nil when there's none
+    private func irForms(_ key: String, _ place: Int) -> (main: String, alt: String)? {
+        guard place >= 0, irAndI(place) else { return nil }
+        let stated = statedCodes(key, place).split(separator: " ").map(String.init)
+        let han = Array(Dict.hanOf(key)).map(String.init)
+        guard han.count == stated.count else { return nil }
+        let pairs = irPairs(place)
+        var main = stated, alt = stated, any = false
+        for j in stated.indices {
+            let i = stated[j].replacingOccurrences(of: "ɨ", with: "i")
+            guard let ir = pairs[han[j] + "|" + i] else { continue }
+            main[j] = ir; alt[j] = i; any = true
+        }
+        return any ? (main.joined(separator: " "), alt.joined(separator: " ")) : nil
     }
 
     func tokensFor(_ key: String, _ place: Int, codes: String? = nil) -> [String] {
@@ -474,10 +495,21 @@ final class Dict: @unchecked Sendable {
 
     /// syllables (by position) whose reading for the place is worked out by rule, not stated by the dictionary
     func guessedSyllables(_ key: String, _ place: Int) -> Set<Int> {
-        guard place >= 0, !isStated(key, place), let dc = raw.dia[key]?[String(place)] else { return [] }
-        let a = Dict.codesOf(key).split(separator: " ").map(String.init), b = dc.split(separator: " ").map(String.init)
-        guard a.count == b.count else { return Set(0..<b.count) }
-        return Set(b.indices.filter { !sameSound(a[$0], b[$0], place) })
+        guard place >= 0 else { return [] }
+        var out = Set<Int>()
+        if !isStated(key, place), let dc = raw.dia[key]?[String(place)] {
+            let a = Dict.codesOf(key).split(separator: " ").map(String.init), b = dc.split(separator: " ").map(String.init)
+            if a.count != b.count { return Set(0..<b.count) }
+            out = Set(b.indices.filter { !sameSound(a[$0], b[$0], place) })
+        }
+        // (新竹: a 字 it says both ways, given the -ir way where the dictionary has the -i one for the word (來去
+        // lâi-khìr): that -ir is assumed, so 推測, unless it's how 通行 says it)
+        if let f = irForms(key, place) {
+            let s = statedCodes(key, place).split(separator: " "), c = f.main.split(separator: " ")
+            let a = Dict.codesOf(key).split(separator: " ")
+            if s.count == c.count && a.count == c.count { for j in c.indices where s[j] != c[j] && a[j] != c[j] { out.insert(j) } }
+        }
+        return out
     }
 
     /// the word as (text, guessed) pieces, so guessed syllables can be coloured
@@ -1012,10 +1044,9 @@ final class Dict: @unchecked Sendable {
     func alsoSaid(_ key: String, _ place: Int) -> [String] {
         guard place >= 0 else { return [] }
         let base = raw.dia2?[key]?[String(place)] ?? []
-        guard irAndI(place) else { return base }
-        let shown = codesFor(key, place)
-        guard let other = irVariant(key, shown), other != shown, !base.contains(other) else { return base }
-        return base + [other]
+        // (新竹: a 字 it says both ways: the -i way too)
+        guard let f = irForms(key, place), f.alt != f.main, !base.contains(f.alt) else { return base }
+        return base + [f.alt]
     }
 
     func others(_ key: String, _ place: Int) -> [(label: String, codes: String, tokens: String?)] {

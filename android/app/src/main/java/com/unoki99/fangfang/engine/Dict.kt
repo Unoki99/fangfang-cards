@@ -485,10 +485,9 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     fun isCode(t: String) = raw.syl.containsKey(t)
 
     fun codesFor(key: String, place: Int): String {
-        val c = statedCodes(key, place)
-        // (新竹, which says -ir and -i both: the -ir one first, the -i one 也講)
-        if (place >= 0 && !c.contains('ɨ') && irAndI(place)) irVariant(key, c)?.let { if (it.contains('ɨ')) return it }
-        return c
+        // (新竹, which says some 字 with -ir and -i both: the -ir one first, the -i one 也講)
+        irForms(key, place)?.let { return it.first }
+        return statedCodes(key, place)
     }
 
     /** how many syllables a word has (its 輕聲 mark not counted) */
@@ -589,11 +588,21 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     }
 
     fun guessedSyllables(key: String, place: Int): Set<Int> {
-        if (place < 0 || isStated(key, place)) return emptySet()
-        val dc = raw.dia[key]?.get(place.toString()) ?: return emptySet()
-        val a = codesOf(key).split(' '); val b = dc.split(' ')
-        if (a.size != b.size) return b.indices.toSet()
-        return b.indices.filter { !sameSound(a[it], b[it], place) }.toSet()
+        if (place < 0) return emptySet()
+        val out = HashSet<Int>()
+        val dc = if (isStated(key, place)) null else raw.dia[key]?.get(place.toString())
+        if (dc != null) {
+            val a = codesOf(key).split(' '); val b = dc.split(' ')
+            if (a.size != b.size) return b.indices.toSet()
+            b.indices.filterTo(out) { !sameSound(a[it], b[it], place) }
+        }
+        // (新竹: a 字 it says both ways, given the -ir way where the dictionary has the -i one for the word (來去
+        // lâi-khìr): that -ir is assumed, so 推測, unless it's how 通行 says it)
+        irForms(key, place)?.let { f ->
+            val s = statedCodes(key, place).split(' '); val c = f.first.split(' '); val a = codesOf(key).split(' ')
+            if (s.size == c.size && a.size == c.size) for (j in c.indices) if (s[j] != c[j] && a[j] != c[j]) out.add(j)
+        }
+        return out
     }
 
     /** the word as (text, guessed) pieces, so guessed syllables can be coloured */
@@ -1023,28 +1032,50 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     fun alsoSaid(key: String, place: Int): List<String> {
         if (place < 0) return emptyList()
         val base = raw.dia2?.get(key)?.get(place.toString()) ?: emptyList()
-        if (!irAndI(place)) return base
-        val shown = codesFor(key, place)
-        val other = irVariant(key, shown) ?: return base
-        return if (other == shown || other in base) base else base + other
+        // (新竹: a 字 it says both ways: the -i way too)
+        val f = irForms(key, place) ?: return base
+        return if (f.second == f.first || f.second in base) base else base + f.second
     }
 
     /** places that say -ir and -i both (新竹: 去 khì and khìr): neither is the only one there */
     fun irAndI(place: Int): Boolean = raw.places.getOrNull(place)?.startsWith("新竹") == true
 
-    /** a reading with -ir as -i (khìr → khì), or with -i as the -ir another place says (khì → khìr); null: none */
-    private fun irVariant(key: String, shown: String): String? {
-        if (shown.contains('ɨ')) return shown.replace('ɨ', 'i')
-        val mine = shown.split(' ')
-        for (p in raw.places.indices) {
-            if (irAndI(p)) continue
-            val o = statedCodes(key, p).split(' ')
-            if (o.size != mine.size || o.none { it.contains('ɨ') }) continue
-            var changed = false
-            val out = mine.mapIndexed { j, c -> if (o[j].contains('ɨ') && o[j].replace('ɨ', 'i') == c) { changed = true; o[j] } else c }
-            if (changed) return out.joinToString(" ")
+    /** the 字 新竹 itself is recorded saying both ways, -i and -ir (the 字's own entry, one syllable: 去 khì, 也講
+     *  khìr): "去|khi3" → "khɨ3". Only these; never from how other places say a word */
+    @Volatile private var irPairsMade: Map<String, String>? = null
+    @Synchronized private fun irPairs(place: Int): Map<String, String> {
+        irPairsMade?.let { return it }
+        val m = HashMap<String, String>()
+        val p = place.toString()
+        for ((k, d) in raw.dia) {
+            val mine = d[p] ?: continue
+            val han = hanOf(k)
+            if (han.codePointCount(0, han.length) != 1 || mine.contains(' ')) continue
+            val all = listOf(mine) + (raw.dia2?.get(k)?.get(p) ?: emptyList())
+            for (x in all) if (x.contains('ɨ')) { val i = x.replace('ɨ', 'i'); if (i in all) m["$han|$i"] = x }
         }
-        return null
+        irPairsMade = m
+        return m
+    }
+
+    /** 新竹: a word with a 字 新竹 says both ways: (the -ir way, the -i way); null when there's none */
+    private fun irForms(key: String, place: Int): Pair<String, String>? {
+        if (place < 0 || !irAndI(place)) return null
+        val stated = statedCodes(key, place).split(' ').filter { it.isNotEmpty() }
+        val h = hanOf(key)
+        val han = ArrayList<String>()
+        var i = 0
+        while (i < h.length) { val n = Character.charCount(h.codePointAt(i)); han.add(h.substring(i, i + n)); i += n }
+        if (han.size != stated.size) return null
+        val pairs = irPairs(place)
+        val main = stated.toMutableList(); val alt = stated.toMutableList()
+        var any = false
+        for (j in stated.indices) {
+            val iForm = stated[j].replace('ɨ', 'i')
+            val ir = pairs[han[j] + "|" + iForm] ?: continue
+            main[j] = ir; alt[j] = iForm; any = true
+        }
+        return if (any) Pair(main.joinToString(" "), alt.joinToString(" ")) else null
     }
 
     class OtherReading(val label: String, val codes: String, val tokens: String?)

@@ -108,7 +108,7 @@ fun DictEntryBody(d: Dict, key: String) {
                 if (d.isUser(key)) OwnChip()
                 if (place >= 0 && d.differsFromCommon(key, place) && place < d.raw.places.size) {
                     PlaceChip(d.raw.places[place])
-                    if (!d.isStated(key, place)) Chip(tr("推測"), T.fn, T.fnEdge, T.muted)
+                    if (!d.isStated(key, place) || d.guessedSyllables(key, place).isNotEmpty()) Chip(tr("推測"), T.fn, T.fnEdge, T.muted)
                 }
             }
         }

@@ -1238,7 +1238,7 @@ object Store {
         if (card.isZh) return false
         val d = dict ?: return false
         if (place < 0 || !cardDiffers(card, place)) return false
-        return !d.isStated(card.k, place)
+        return !d.isStated(card.k, place) || d.guessedSyllables(card.k, place).isNotEmpty()
     }
 
     fun cardDiffers(card: Card, place: Int): Boolean = if (card.isZh) false else dict?.differsFromCommon(card.k, place) ?: card.differs(place)
