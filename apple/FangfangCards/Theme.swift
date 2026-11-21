@@ -769,6 +769,29 @@ struct TextSizeCommands: Commands {
             Button(tr("實際大小")) { level = TextSize.standard }
                 .keyboardShortcut("0", modifiers: .command)
         }
+        // a keyboard (iPad, Mac): the app's pages, the search field, the lyrics and the song (hold ⌘ to see them)
+        CommandMenu(tr("前往")) {
+            Button(tr("新詞")) { Task { @MainActor in Router.shared.tab = 0 } }.keyboardShortcut("1", modifiers: .command)
+            Button(tr("不熟")) { Task { @MainActor in Router.shared.tab = 1 } }.keyboardShortcut("2", modifiers: .command)
+            Button(tr("詞典")) { Task { @MainActor in Router.shared.tab = 4 } }.keyboardShortcut("3", modifiers: .command)
+            Button(tr("熟悉")) { Task { @MainActor in Router.shared.tab = 2 } }.keyboardShortcut("4", modifiers: .command)
+            Button(tr("轉換")) { Task { @MainActor in Router.shared.tab = 3 } }.keyboardShortcut("5", modifiers: .command)
+            Divider()
+            Button(tr("搜尋")) { NotificationCenter.default.post(name: ClearButton.focusSearch, object: nil) }
+                .keyboardShortcut("f", modifiers: .command)
+            Button(tr("歌詞")) { Task { @MainActor in LyricsBridge.showInConvert() } }
+                .keyboardShortcut("l", modifiers: [.command, .shift])
+            Button(tr("播放／暫停")) {
+                Task { @MainActor in
+                    // (the song playing: 找歌來聽's, else YouTube's)
+                    if SongPlayer.shared.active { SongPlayer.shared.togglePause() }
+                    else if YtPlayer.shared.following { YtPlayer.shared.togglePause() }
+                }
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            Button(tr("我的進度")) { Task { @MainActor in Router.shared.profileOpen = true } }
+                .keyboardShortcut("i", modifiers: [.command, .shift])
+        }
     }
 }
 
@@ -781,6 +804,10 @@ struct ClearButton: ViewModifier {
     @Binding var text: String
     var editor = false
     @FocusState private var focused: Bool
+    /// ⌘F (a keyboard): the cursor into the search field on screen, the one shown last
+    static let focusSearch = Notification.Name("ffFocusSearch")
+    @MainActor private static var shown: [UUID] = []
+    @State private var me = UUID()
 
     @ViewBuilder func body(content: Content) -> some View {
         if editor {
@@ -791,6 +818,11 @@ struct ClearButton: ViewModifier {
             HStack(spacing: 6) {
                 content.focused($focused)
                 if !text.isEmpty { button }
+            }
+            .onAppear { Self.shown.removeAll { $0 == me }; Self.shown.append(me) }
+            .onDisappear { Self.shown.removeAll { $0 == me } }
+            .onReceive(NotificationCenter.default.publisher(for: Self.focusSearch)) { _ in
+                if Self.shown.last == me { focused = true }
             }
         }
     }

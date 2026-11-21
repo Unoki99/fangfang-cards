@@ -468,6 +468,23 @@ struct LyricsWindow: View {
     @AppStorage(LyricsBridge.readingsKey) private var readings = true
     @AppStorage(LyricsBridge.glowKey) private var lyricsGlow = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// (a keyboard: the keys come to the lyrics)
+    @FocusState private var keys: Bool
+
+    /// space: play / pause; ← →: 5 seconds back or on (the song playing: 找歌來聽's, else YouTube's)
+    private func lyricsKey(_ k: KeyPress) -> KeyPress.Result {
+        let yt = YtPlayer.shared
+        let useYt = !songs.active && yt.following
+        guard songs.active || useYt else { return .ignored }
+        switch k.key {
+        case .space: if useYt { yt.togglePause() } else { songs.togglePause() }; return .handled
+        case .leftArrow, .rightArrow:
+            let d: Double = k.key == .leftArrow ? -5 : 5
+            if useYt { yt.seek(yt.position + d) } else { songs.seek(max(0, (songs.position ?? 0) + d)) }
+            return .handled
+        default: return .ignored
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -488,6 +505,12 @@ struct LyricsWindow: View {
                     header(h)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { headerHeight = $0 }
                 }
+                // (a keyboard, iPad and Mac: space plays or pauses the song (Apple Music or YouTube), ← → back or on 5 s)
+                .focusable()
+                .focusEffectDisabled()
+                .focused($keys)
+                .onKeyPress(phases: .down) { k in lyricsKey(k) }
+                .onAppear { keys = true }
             } else if lyrics.looking {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -542,12 +565,17 @@ struct LyricsWindow: View {
             // (iPhone: one bar at a time, swiped sideways: 對時 (timed lyrics), the song's name (when 音樂's player
             // isn't showing it above), the tools; a dot for each under them. The name and the tools apart: side by
             // side, the name took the room and the tools weren't seen)
-            let pages = (lyrics.timed ? [0] : []) + (songs.active ? [] : [1]) + [2]
+            // (always the same three pages: a TabView whose pages come and go as songs change (YouTube → Apple Music:
+            // the name's page went) froze the app)
+            let pages = [0, 1, 2]
             VStack(spacing: 5) {
                 TabView(selection: $barPage) {
                     ForEach(pages, id: \.self) { i in
                         Group {
-                            if i == 0 { LyricsNudge() }
+                            if i == 0 {
+                                if lyrics.timed { LyricsNudge() }
+                                else { Text(tr("這首歌的歌詞沒有時間。")).ffFont(.caption).foregroundStyle(T.muted).frame(maxWidth: .infinity) }
+                            }
                             else if i == 1 { songName(h) }
                             else { toolsOnly(h) }
                         }
@@ -556,8 +584,7 @@ struct LyricsWindow: View {
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(height: 46)
-                .onAppear { if !pages.contains(barPage) { barPage = pages[0] } }
-                .onChange(of: pages) { _, ps in if !ps.contains(barPage) { barPage = ps[0] } }
+                .onAppear { if !pages.contains(barPage) { barPage = 2 } }
                 if pages.count > 1 {
                     HStack(spacing: 6) {
                         ForEach(pages, id: \.self) { i in

@@ -3,6 +3,32 @@ import SwiftUI
 import Combine
 import UniformTypeIdentifiers
 
+/// 歌詞對時's song: 找歌來聽's (Apple Music), or YouTube's in the app when that's the one the lyrics follow
+@MainActor
+enum EditPlayer {
+    static var youtube: Bool { !SongPlayer.shared.active && YtPlayer.shared.following }
+    /// the song being played, as the editor knows songs
+    static var songId: Int? { youtube ? YtPlayer.shared.editSong?.id : SongPlayer.shared.song?.id }
+    static var position: Double? { youtube ? YtPlayer.shared.position : SongPlayer.shared.position }
+    static var time: Double { youtube ? YtPlayer.shared.position : SongPlayer.shared.time }
+    static var playing: Bool { youtube ? YtPlayer.shared.playing : SongPlayer.shared.playing }
+    static var length: Double { youtube ? (YtPlayer.shared.now?.d ?? 0) : SongPlayer.shared.length }
+    static func seek(_ t: Double) { if youtube { YtPlayer.shared.seek(t) } else { SongPlayer.shared.seek(t) } }
+    static func togglePause() { if youtube { YtPlayer.shared.togglePause() } else { SongPlayer.shared.togglePause() } }
+    /// the lyrics shown looked up again (your own deleted)
+    static func reload() { if youtube { YtPlayer.shared.reloadLyrics() } else { SongPlayer.shared.reloadLyrics() } }
+}
+
+/// the same, for the timing page's code (player.position, player.seek…)
+@MainActor
+struct EditPlayerRef {
+    var position: Double? { EditPlayer.position }
+    var playing: Bool { EditPlayer.playing }
+    var songId: Int? { EditPlayer.songId }
+    func seek(_ t: Double) { EditPlayer.seek(t) }
+    func togglePause() { EditPlayer.togglePause() }
+}
+
 // 自己的歌詞: type or paste a song's lyrics, then time them while the song plays: one tap as each line starts.
 // Kept on this device as LRC (the same timed format LRCLIB uses) and used whenever that song plays, before LRCLIB's.
 // Also for fixing the timing of LRCLIB's lyrics: they're the starting point when there are no lyrics of your own.
@@ -322,7 +348,7 @@ enum LRC {
 @MainActor
 final class LyricsEditModel: ObservableObject {
     @Published var text = ""
-    @Published var lines: [TimedLine] = [] { didSet { updateSung(SongPlayer.shared.time) } }
+    @Published var lines: [TimedLine] = [] { didSet { updateSung(EditPlayer.time) } }
     /// the line the next tap times
     @Published var cursor = 0
     /// the line tapped in the list (空行 goes under it while the song is paused)
@@ -368,10 +394,17 @@ final class LyricsEditModel: ObservableObject {
     /// redrawn four times a second)
     @Published private(set) var sung: Int?
     private var sub: AnyCancellable?
+    private var ytTimer: Timer?
 
     init() {
         sub = SongClock.shared.$time.sink { [weak self] t in
-            Task { @MainActor in self?.updateSung(t) }
+            Task { @MainActor in if !EditPlayer.youtube { self?.updateSung(t) } }
+        }
+        // (YouTube's song has no SongClock: its time looked at a few times a second)
+        ytTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] t in
+            // (the editor closed: the timer stops)
+            if self == nil { t.invalidate(); return }
+            Task { @MainActor in if EditPlayer.youtube { self?.updateSung(EditPlayer.time) } }
         }
     }
 
@@ -380,7 +413,11 @@ final class LyricsEditModel: ObservableObject {
         let lrc = LRC.make(lines, title: song.trackName, artist: song.artistName, length: song.seconds)
         let x = OwnLyric(trackId: song.id, trackName: song.trackName, artistName: song.artistName, duration: song.seconds, lrc: lrc)
         OwnLyrics.shared.set(x)
-        if SongPlayer.shared.song?.id == song.id { LyricsBridge.shared.put(x.hit) }
+        if EditPlayer.songId == song.id {
+            LyricsBridge.shared.put(x.hit)
+            // (a YouTube song: these lyrics for it from now on)
+            if EditPlayer.youtube { YtPlayer.shared.remember(x.hit) }
+        }
     }
 
     /// 重複這一句: the line played over and over (nil: off)
@@ -399,9 +436,8 @@ final class LyricsEditModel: ObservableObject {
         // (turned off, or a line without a time: nothing to repeat. Never set loopLine here: it's @Published, so
         // setting it in its own didSet calls didSet again, forever — that was the crash)
         guard let l = loopLine, lines.indices.contains(l), let start = lines[l].t else { return }
-        let p = SongPlayer.shared
-        p.seek(max(0, start - 0.3))
-        if !p.playing { p.togglePause() }
+        EditPlayer.seek(max(0, start - 0.3))
+        if !EditPlayer.playing { EditPlayer.togglePause() }
         // (a few times a second: back to the line's start once it's over)
         let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -412,8 +448,8 @@ final class LyricsEditModel: ObservableObject {
                     return
                 }
                 guard let self, let l = self.loopLine, self.lines.indices.contains(l), let s = self.lines[l].t,
-                      let pos = SongPlayer.shared.position else { return }
-                if pos >= self.endOf(l) - 0.03 || pos < s - 3 { SongPlayer.shared.seek(max(0, s - 0.3)) }
+                      let pos = EditPlayer.position else { return }
+                if pos >= self.endOf(l) - 0.03 || pos < s - 3 { EditPlayer.seek(max(0, s - 0.3)) }
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -469,7 +505,7 @@ struct LyricsEditor: View {
         .confirmationDialog(tr("刪除自己的歌詞？之後會用 LRCLIB 的歌詞。"), isPresented: $confirmDelete, titleVisibility: .visible) {
             Button(tr("刪除"), role: .destructive) {
                 own.remove(song.id)
-                if SongPlayer.shared.song?.id == song.id { SongPlayer.shared.reloadLyrics() }
+                if EditPlayer.songId == song.id { EditPlayer.reload() }
                 dismiss()
             }
         }
@@ -540,10 +576,9 @@ struct LyricsEditor: View {
     private func load() {
         guard !loaded else { return }
         loaded = true
-        let player = SongPlayer.shared
         if let o = own.get(song.id) {
             m.lines = LRC.lines(from: o.hit)
-        } else if player.song?.id == song.id, let h = LyricsBridge.shared.song {
+        } else if EditPlayer.songId == song.id, let h = LyricsBridge.shared.song {
             // (LRCLIB's: to fix or time)
             m.lines = LRC.lines(from: h)
         }
@@ -584,7 +619,7 @@ private struct EditorMenu: View {
                         for i in m.lines.indices { m.lines[i].t = nil }
                         m.cursor = 0
                         m.focus = nil
-                        SongPlayer.shared.seek(0)
+                        EditPlayer.seek(0)
                     } label: { Label(tr("全部重新對時"), systemImage: "arrow.counterclockwise") }
                 }
             }
@@ -628,10 +663,11 @@ private struct LRCOpener: ViewModifier {
 /// the song in the editor: cover, name, play / pause, back 5 s, and a bar to drag anywhere in the song
 private struct EditorPlayer: View {
     let song: SongHit
-    @ObservedObject private var player = SongPlayer.shared
-    @State private var dragging: Double?
+    @ObservedObject private var songs = SongPlayer.shared
+    @ObservedObject private var yt = YtPlayer.shared
 
     var body: some View {
+        let here = EditPlayer.songId == song.id
         VStack(spacing: 6) {
             HStack(spacing: 10) {
                 SongArt(url: song.art, size: 40)
@@ -640,26 +676,46 @@ private struct EditorPlayer: View {
                     Text(song.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                Button { player.seek(max(0, (player.position ?? 0) - 5)) } label: { Text("−5 s").monospacedDigit() }
+                Button { EditPlayer.seek(max(0, (EditPlayer.position ?? 0) - 5)) } label: { Text("−5 s").monospacedDigit() }
                     .softButton().accessibilityLabel(tr("倒退五秒"))
-                Button { player.togglePause() } label: {
-                    Image(systemName: player.playing ? "pause.fill" : "play.fill").frame(width: 30, height: 26)
+                Button { EditPlayer.togglePause() } label: {
+                    Image(systemName: EditPlayer.playing ? "pause.fill" : "play.fill").frame(width: 30, height: 26)
                 }
                 .softButton()
-                .disabled(player.song?.id != song.id)
-                .accessibilityLabel(player.playing ? tr("暫停") : tr("播放"))
+                .disabled(!here)
+                .accessibilityLabel(EditPlayer.playing ? tr("暫停") : tr("播放"))
             }
-            if player.song?.id != song.id {
+            if !here {
                 Text(tr("這首歌沒有在放。到「音樂」放這首歌再來對時間。")).ffFont(.footnote).foregroundStyle(T.muted)
+            } else if EditPlayer.youtube {
+                YtEditProgress()
             } else {
                 SongProgress(precise: true)
-                if player.mode == .preview {
+                if songs.mode == .preview {
                     Text(tr("只有 30 秒的試聽：整首歌要有 Apple Music 才能對時間。")).ffFont(.caption).foregroundStyle(T.muted)
                 }
             }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.7)))
+    }
+}
+
+/// YouTube's song in the editor: where it is, and a bar to drag anywhere in it
+private struct YtEditProgress: View {
+    @State private var dragging: Double?
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.25)) { _ in
+            let len = max(1, EditPlayer.length)
+            let t = dragging ?? YtPlayer.shared.position
+            HStack(spacing: 8) {
+                Text(LRC.shown(t)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted).frame(minWidth: 52, alignment: .leading)
+                Slider(value: Binding(get: { min(len, t) }, set: { dragging = $0 }), in: 0...len, onEditingChanged: { editing in
+                    if !editing, let d = dragging { YtPlayer.shared.seek(d); dragging = nil }
+                })
+                Text(SongPlayerBar.clock(len)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
+            }
+        }
     }
 }
 
@@ -678,8 +734,15 @@ private struct LyricsTimingPage: View {
     @AppStorage("lrcByChar") private var byChar = false
     /// (逐字) the next piece of the line being timed
     @State private var ci = 0
+    @Environment(\.horizontalSizeClass) private var hSize
+    /// (iPhone) which of the bottom bar's two slides
+    @State private var barSlide = 0
+    /// (a keyboard: the keys come here)
+    @FocusState private var keys: Bool
 
-    private var player: SongPlayer { SongPlayer.shared }
+    private var player: EditPlayerRef { EditPlayerRef() }
+    @ObservedObject private var songsWatch = SongPlayer.shared
+    @ObservedObject private var ytWatch = YtPlayer.shared
     /// the line being timed has pieces to stamp one by one
     private var stampsPieces: Bool {
         byChar && m.cursor < m.lines.count && LRC.pieces(m.lines[m.cursor].text).count >= 2
@@ -711,6 +774,12 @@ private struct LyricsTimingPage: View {
             }
             tapBar
         }
+        // (a keyboard: space times, Enter 空行, arrows, undo; the page takes the keys when it opens)
+        .focusable()
+        .focusEffectDisabled()
+        .focused($keys)
+        .onKeyPress(phases: [.down, .repeat]) { key($0) }
+        .onAppear { keys = true }
     }
 
     private func row(_ i: Int) -> some View {
@@ -735,6 +804,9 @@ private struct LyricsTimingPage: View {
             Group {
                 if l.text.isEmpty {
                     Text(tr("（間奏）")).foregroundStyle(T.muted).italic()
+                } else if byChar && i == m.cursor && LRC.pieces(l.text).count >= 2 {
+                    // (逐字: the line being timed, the 字 the next press times marked, as on the computer)
+                    pieceLine(l.text)
                 } else if sung, let t = l.t {
                     // (the line being sung: its words light up as they're sung, by its word times or spread evenly)
                     SungLineText(text: l.text, start: t, end: m.endOf(i), words: l.words)
@@ -789,77 +861,139 @@ private struct LyricsTimingPage: View {
 
     private var tapBar: some View {
         VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Button { undo() } label: {
-                    Image(systemName: "backward.end").frame(width: 44, height: 52)
+            if hSize == .compact {
+                // (iPhone: too narrow for all six; two slides: the timing itself, then 空行 / 逐字 / 重複)
+                TabView(selection: $barSlide) {
+                    HStack(spacing: 10) { backButton; mainButton; skipButton }.padding(.horizontal, 2).tag(0)
+                    HStack(spacing: 10) { breakButton; charButton; loopButton }.padding(.horizontal, 2).tag(1)
                 }
-                .softButton()
-                .disabled(m.cursor == 0 && ci == 0)
-                .accessibilityLabel(tr("退一行"))
-                Button { tap() } label: {
-                    VStack(spacing: 2) {
-                        Text(m.cursor < m.lines.count ? (stampsPieces ? tr("這個字開始") : tr("這一句開始")) : tr("對好了")).ffFont(.headline)
-                        if m.cursor < m.lines.count {
-                            if stampsPieces {
-                                // (逐字: the line, the 字 the next press times marked)
-                                pieceLine(m.lines[m.cursor].text).ffFont(.caption).lineLimit(1)
-                            } else {
-                                Text(m.lines[m.cursor].text.isEmpty ? trs("（間奏）") : m.lines[m.cursor].text)
-                                    .ffFont(.caption).lineLimit(1).opacity(0.8)
-                            }
-                        }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .frame(height: 60)
+                HStack(spacing: 6) {
+                    ForEach(0..<2, id: \.self) { i in
+                        Circle().fill(i == barSlide ? T.btnInk : T.muted.opacity(0.45)).frame(width: 6, height: 6)
+                            .onTapGesture { withAnimation { barSlide = i } }
                     }
-                    .frame(maxWidth: .infinity, minHeight: 52)
                 }
-                .softButton()
-                .disabled(m.cursor >= m.lines.count || player.song?.id != song.id)
-                Button { addBreak() } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "return")
-                        Text(tr("空行")).ffFont(.caption2)
-                    }
-                    .frame(width: 48, height: 52)
-                }
-                .softButton()
-                .disabled(m.lines.isEmpty)
-                .accessibilityLabel(tr("在這一行下面加一個空行"))
-                // 逐字: the button times each 字 as it's sung (the first one is the line's start)
-                Button { byChar.toggle(); ci = 0 } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "character.cursor.ibeam")
-                        Text(tr("逐字")).ffFont(.caption2)
-                    }
-                    .frame(width: 44, height: 52)
-                    .foregroundStyle(byChar ? T.btnInk : T.glyph)
-                }
-                .softButton()
-                .accessibilityLabel(byChar ? tr("一句一句對") : tr("一個字一個字對"))
-                .accessibilityAddTraits(byChar ? .isSelected : [])
-                // 重複這一句: the line chosen (or being sung) over and over, to time it
-                Button {
-                    if m.loopLine != nil { m.loopLine = nil }
-                    else if let l = m.picked ?? m.focus ?? m.sung, m.lines.indices.contains(l), m.lines[l].t != nil { m.loopLine = l }
-                } label: {
-                    Image(systemName: m.loopLine != nil ? "repeat.circle.fill" : "repeat").frame(width: 44, height: 52)
-                        .foregroundStyle(m.loopLine != nil ? T.btnInk : T.glyph)
-                }
-                .softButton()
-                .accessibilityLabel(m.loopLine != nil ? tr("不要重複") : tr("重複這一句"))
-                Button { skip() } label: {
-                    Image(systemName: "forward.end").frame(width: 44, height: 52)
-                }
-                .softButton()
-                .disabled(m.cursor >= m.lines.count)
-                .accessibilityLabel(tr("跳過這一行"))
+                .accessibilityHidden(true)
+            } else {
+                HStack(spacing: 10) { backButton; mainButton; breakButton; charButton; loopButton; skipButton }
             }
             Text(byChar ? tr("逐字：每個字開始唱的時候按一下（第一個字就是這一句開始的時候）；一句的字按完就到下一句。還沒按的字平均分到這一句結束。上面的 ↶ 復原。")
                  : tr("每一句開始唱的時候按「這一句開始」。放歌的時候按「空行」：唱著的那一行在這裡結束。點一下一行：改那一行（空行加在它下面）；點兩下：歌跳到那裡。−¼／+¼ 微調那一行；上面的 ↶ 復原。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
+            if hSize == .regular {
+                Text(tr("鍵盤：空白鍵 = 這一句（這個字）開始，Enter = 空行，↑ ↓ = 上一行、下一行，← → = 歌退後、往前 2 秒（Shift：5 秒），Backspace 或 ⌘Z = 復原，P = 播放／暫停。"))
+                    .ffFont(.caption2).foregroundStyle(T.muted)
+            }
         }
         .frame(maxWidth: 900)
         .padding()
         .frame(maxWidth: .infinity)
         .background(T.fn.opacity(0.6))
+    }
+
+    private var backButton: some View {
+        Button { undo() } label: {
+            Image(systemName: "backward.end").frame(width: 44, height: 52)
+        }
+        .softButton()
+        .disabled(m.cursor == 0 && ci == 0)
+        .accessibilityLabel(tr("退一行"))
+    }
+
+    private var mainButton: some View {
+        Button { tap() } label: {
+            VStack(spacing: 2) {
+                Text(m.cursor < m.lines.count ? (stampsPieces ? tr("這個字開始") : tr("這一句開始")) : tr("對好了")).ffFont(.headline)
+                if m.cursor < m.lines.count {
+                    if stampsPieces {
+                        // (逐字: the line, the 字 the next press times marked)
+                        pieceLine(m.lines[m.cursor].text).ffFont(.caption).lineLimit(1)
+                    } else {
+                        Text(m.lines[m.cursor].text.isEmpty ? trs("（間奏）") : m.lines[m.cursor].text)
+                            .ffFont(.caption).lineLimit(1).opacity(0.8)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+        }
+        .softButton()
+        .disabled(m.cursor >= m.lines.count || player.songId != song.id)
+    }
+
+    private var breakButton: some View {
+        Button { addBreak() } label: {
+            VStack(spacing: 2) {
+                Image(systemName: "return")
+                Text(tr("空行")).ffFont(.caption2)
+            }
+            .frame(minWidth: 48, maxWidth: hSize == .compact ? .infinity : 48, minHeight: 52)
+        }
+        .softButton()
+        .disabled(m.lines.isEmpty)
+        .accessibilityLabel(tr("在這一行下面加一個空行"))
+    }
+
+    /// 逐字: the button times each 字 as it's sung (the first one is the line's start)
+    private var charButton: some View {
+        Button { byChar.toggle(); ci = 0 } label: {
+            VStack(spacing: 2) {
+                Image(systemName: "character.cursor.ibeam")
+                Text(tr("逐字")).ffFont(.caption2)
+            }
+            .frame(minWidth: 44, maxWidth: hSize == .compact ? .infinity : 44, minHeight: 52)
+            .foregroundStyle(byChar ? T.btnInk : T.glyph)
+        }
+        .softButton()
+        .accessibilityLabel(byChar ? tr("一句一句對") : tr("一個字一個字對"))
+        .accessibilityAddTraits(byChar ? .isSelected : [])
+    }
+
+    /// 重複這一句: the line chosen (or being sung) over and over, to time it
+    private var loopButton: some View {
+        Button { toggleLoop() } label: {
+            VStack(spacing: 2) {
+                Image(systemName: m.loopLine != nil ? "repeat.circle.fill" : "repeat")
+                if hSize == .compact { Text(tr("重複")).ffFont(.caption2) }
+            }
+            .frame(minWidth: 44, maxWidth: hSize == .compact ? .infinity : 44, minHeight: 52)
+            .foregroundStyle(m.loopLine != nil ? T.btnInk : T.glyph)
+        }
+        .softButton()
+        .accessibilityLabel(m.loopLine != nil ? tr("不要重複") : tr("重複這一句"))
+    }
+
+    private func toggleLoop() {
+        if m.loopLine != nil { m.loopLine = nil }
+        else if let l = m.picked ?? m.focus ?? m.sung, m.lines.indices.contains(l), m.lines[l].t != nil { m.loopLine = l }
+    }
+
+    private var skipButton: some View {
+        Button { skip() } label: {
+            Image(systemName: "forward.end").frame(width: 44, height: 52)
+        }
+        .softButton()
+        .disabled(m.cursor >= m.lines.count)
+        .accessibilityLabel(tr("跳過這一行"))
+    }
+
+    /// a keyboard (iPad, Mac): the keys of the computer version's 對時間
+    private func key(_ k: KeyPress) -> KeyPress.Result {
+        if k.phase == .repeat && k.key == .space { return .handled }      // (held down: once)
+        switch k.key {
+        case .space: tap(); return .handled
+        case .return: addBreak(); return .handled
+        case .upArrow: if m.cursor > 0 { pick(m.cursor - 1) }; return .handled
+        case .downArrow: if m.cursor < m.lines.count { pick(min(m.lines.count, m.cursor + 1)) }; return .handled
+        case .leftArrow: player.seek(max(0, (player.position ?? 0) - (k.modifiers.contains(.shift) ? 5 : 2))); return .handled
+        case .rightArrow: player.seek((player.position ?? 0) + (k.modifiers.contains(.shift) ? 5 : 2)); return .handled
+        case .delete, .deleteForward: m.undo(); ci = 0; return .handled
+        default:
+            if k.characters == "z" && k.modifiers.contains(.command) { m.undo(); ci = 0; return .handled }
+            if k.characters.lowercased() == "p" && k.modifiers.isEmpty { player.togglePause(); return .handled }
+            return .ignored
+        }
     }
 
     /// (逐字) the line with the 字 the next press times in the button's colour, underlined
@@ -1018,6 +1152,8 @@ private struct LyricsTimingPage: View {
 /// opens 歌詞對時 for the song playing
 struct LyricsEditButton: View {
     @ObservedObject private var player = SongPlayer.shared
+    /// (YouTube in the app: its song's lyrics can be made or timed too)
+    @ObservedObject private var yt = YtPlayer.shared
     @ObservedObject private var own = OwnLyrics.shared
     var label = false
     /// (the lyrics' tools strip: a plain round button)
@@ -1027,7 +1163,7 @@ struct LyricsEditButton: View {
     var onOpen: ((SongHit) -> Void)? = nil
     @State private var open = false
     var body: some View {
-        if let s = player.song {
+        if let s = player.song ?? (yt.following ? yt.editSong : nil) {
             Group {
                 if label {
                     Button { open = true } label: {
@@ -1070,7 +1206,7 @@ private struct SungLineText: View {
             return starts.map { start + (end - start) * Double($0) / total }
         }()
         TimelineView(.periodic(from: .now, by: 0.1)) { _ in
-            let pos = SongPlayer.shared.position ?? 0
+            let pos = EditPlayer.position ?? 0
             let cur = ts.lastIndex(where: { $0 <= pos }) ?? -1
             ps.indices.reduce(Text("")) { acc, k in
                 let piece = Text(ps[k])

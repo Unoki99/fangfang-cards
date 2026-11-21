@@ -195,6 +195,29 @@ final class YtPlayer: ObservableObject {
         lyricsFor = ""
     }
 
+    /// the video as a song the lyrics editor (歌詞對時) knows: its own number from the video, so your own lyrics for
+    /// it are kept like 找歌來聽's songs
+    var editSong: SongHit? {
+        guard let n = now, !n.id.isEmpty else { return nil }
+        return SongHit(trackId: Self.trackId(n.id), trackName: n.title, artistName: n.artist, collectionName: nil,
+                       artworkUrl100: "https://i.ytimg.com/vi/\(n.id)/mqdefault.jpg", previewUrl: nil,
+                       trackTimeMillis: n.d > 0 ? Int(n.d * 1000) : nil)
+    }
+
+    /// a video's number for your own lyrics (the same each time; far above Apple's song numbers)
+    static func trackId(_ video: String) -> Int {
+        var h: UInt64 = 5381
+        for b in video.utf8 { h = (h &* 33) &+ UInt64(b) }
+        return 2_000_000_000_000 + Int(h % 900_000_000_000)
+    }
+
+    /// the lyrics looked up again (your own for the video deleted)
+    func reloadLyrics() {
+        guard let n = now else { return }
+        lyricsFor = n.id + "|" + n.title
+        findLyrics(n, lyricsFor)
+    }
+
     /// the lyrics follow YouTube's video now (lyrics chosen by hand are then kept for it)
     var following: Bool { open && now != nil && !SongPlayer.shared.active && !RadioPlayer.shared.isOn }
 
@@ -281,6 +304,8 @@ final class YtPlayer: ObservableObject {
         b.waitFor(n.title)
         // (lyrics picked for this video before; else the 歌詞 folder's file for it, the computer version's "[yt-…]")
         // (then your own lyrics whose song's name is in the video's)
+        // (your own lyrics made for this video in 歌詞對時 first)
+        if let o = OwnLyrics.shared.get(Self.trackId(n.id)) { b.put(o.hit); return }
         if let h = YtPicks.get(video: n.id, title: n.title) ?? LyricsFolder.forVideo(n.id)
             ?? YtPicks.ownMatch(title: n.title, artist: n.artist) { b.put(h); return }
         lyricsJob = Task {
