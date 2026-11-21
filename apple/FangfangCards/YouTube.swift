@@ -259,6 +259,10 @@ final class YtPlayer: ObservableObject {
             hook()
         }
         guard !x.id.isEmpty, !x.title.isEmpty else { return }
+        // (the radio or 找歌來聽 is playing (YouTube paused for it): the lyrics are theirs. The page, still on its
+        // video, kept saying what's playing, and that took the lyrics and their clock back from the Apple Music
+        // song: its lyrics stopped lighting up)
+        if SongPlayer.shared.active || RadioPlayer.shared.isOn { return }
         let n = YtNow(id: x.id, title: x.title, artist: x.artist, d: x.d, music: x.music)
         if now != n { now = n }
         // (the video and its name: a name corrected a moment after a new video starts is looked up again)

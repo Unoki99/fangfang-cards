@@ -674,8 +674,16 @@ private struct LyricsTimingPage: View {
     /// how much earlier than the tap the line starts (people tap a little late)
     @AppStorage("lrcReaction") private var reaction = 0.15
     @State private var confirmDelete = false
+    /// 逐字: each 字 (or word) stamped with the button as it's sung, instead of only the line's start
+    @AppStorage("lrcByChar") private var byChar = false
+    /// (逐字) the next piece of the line being timed
+    @State private var ci = 0
 
     private var player: SongPlayer { SongPlayer.shared }
+    /// the line being timed has pieces to stamp one by one
+    private var stampsPieces: Bool {
+        byChar && m.cursor < m.lines.count && LRC.pieces(m.lines[m.cursor].text).count >= 2
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -706,16 +714,7 @@ private struct LyricsTimingPage: View {
     }
 
     private func row(_ i: Int) -> some View {
-        let l = m.lines[i]
-        return VStack(alignment: .leading, spacing: 6) {
-            lineRow(i)
-            // (the line being worked on: its words, to move where each starts)
-            if m.picked == i, let t = l.t, !l.text.isEmpty, LRC.pieces(l.text).count >= 2 {
-                WordTimingBar(m: m, i: i, start: t, end: endTime(i))
-                    .padding(.leading, 60)
-                    .padding(.bottom, 4)
-            }
-        }
+        lineRow(i)
     }
 
     /// where line i stops being sung: the next line's time (a 間奏 counts), else a few seconds on
@@ -775,6 +774,7 @@ private struct LyricsTimingPage: View {
 
     /// a line tapped once: the one to work on (the next tap times it, 空行 goes under it); the song stays where it is
     private func pick(_ i: Int) {
+        ci = 0
         m.cursor = i
         m.focus = i
         m.picked = i
@@ -794,14 +794,19 @@ private struct LyricsTimingPage: View {
                     Image(systemName: "backward.end").frame(width: 44, height: 52)
                 }
                 .softButton()
-                .disabled(m.cursor == 0)
+                .disabled(m.cursor == 0 && ci == 0)
                 .accessibilityLabel(tr("退一行"))
                 Button { tap() } label: {
                     VStack(spacing: 2) {
-                        Text(m.cursor < m.lines.count ? tr("這一句開始") : tr("對好了")).ffFont(.headline)
+                        Text(m.cursor < m.lines.count ? (stampsPieces ? tr("這個字開始") : tr("這一句開始")) : tr("對好了")).ffFont(.headline)
                         if m.cursor < m.lines.count {
-                            Text(m.lines[m.cursor].text.isEmpty ? trs("（間奏）") : m.lines[m.cursor].text)
-                                .ffFont(.caption).lineLimit(1).opacity(0.8)
+                            if stampsPieces {
+                                // (逐字: the line, the 字 the next press times marked)
+                                pieceLine(m.lines[m.cursor].text).ffFont(.caption).lineLimit(1)
+                            } else {
+                                Text(m.lines[m.cursor].text.isEmpty ? trs("（間奏）") : m.lines[m.cursor].text)
+                                    .ffFont(.caption).lineLimit(1).opacity(0.8)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, minHeight: 52)
@@ -818,6 +823,18 @@ private struct LyricsTimingPage: View {
                 .softButton()
                 .disabled(m.lines.isEmpty)
                 .accessibilityLabel(tr("在這一行下面加一個空行"))
+                // 逐字: the button times each 字 as it's sung (the first one is the line's start)
+                Button { byChar.toggle(); ci = 0 } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: "character.cursor.ibeam")
+                        Text(tr("逐字")).ffFont(.caption2)
+                    }
+                    .frame(width: 44, height: 52)
+                    .foregroundStyle(byChar ? T.btnInk : T.glyph)
+                }
+                .softButton()
+                .accessibilityLabel(byChar ? tr("一句一句對") : tr("一個字一個字對"))
+                .accessibilityAddTraits(byChar ? .isSelected : [])
                 // 重複這一句: the line chosen (or being sung) over and over, to time it
                 Button {
                     if m.loopLine != nil { m.loopLine = nil }
@@ -835,7 +852,8 @@ private struct LyricsTimingPage: View {
                 .disabled(m.cursor >= m.lines.count)
                 .accessibilityLabel(tr("跳過這一行"))
             }
-            Text(tr("每一句開始唱的時候按「這一句開始」。放歌的時候按「空行」：唱著的那一行在這裡結束。點一下一行：改那一行（空行加在它下面）；點兩下：歌跳到那裡。−¼／+¼ 微調那一行；上面的 ↶ 復原。"))
+            Text(byChar ? tr("逐字：每個字開始唱的時候按一下（第一個字就是這一句開始的時候）；一句的字按完就到下一句。還沒按的字平均分到這一句結束。上面的 ↶ 復原。")
+                 : tr("每一句開始唱的時候按「這一句開始」。放歌的時候按「空行」：唱著的那一行在這裡結束。點一下一行：改那一行（空行加在它下面）；點兩下：歌跳到那裡。−¼／+¼ 微調那一行；上面的 ↶ 復原。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
         }
         .frame(maxWidth: 900)
@@ -844,8 +862,53 @@ private struct LyricsTimingPage: View {
         .background(T.fn.opacity(0.6))
     }
 
+    /// (逐字) the line with the 字 the next press times in the button's colour, underlined
+    private func pieceLine(_ text: String) -> Text {
+        let ps = LRC.pieces(text)
+        var out = Text("")
+        for (k, p) in ps.enumerated() {
+            let t = Text(p)
+            out = out + (k == ci ? t.foregroundColor(T.btnInk).bold().underline() : (k < ci ? t.foregroundColor(T.glyph) : t.foregroundColor(T.glyph.opacity(0.55))))
+        }
+        return out
+    }
+
+    /// 逐字: this piece starts now (the first: the line's start too); the pieces not pressed yet spread evenly to
+    /// the line's end; the last one pressed: on to the next line
+    private func stampPiece(_ t: Double) {
+        let i = m.cursor
+        let l = m.lines[i]
+        let ps = LRC.pieces(l.text)
+        let c = min(max(ci, 0), ps.count - 1)
+        var got: [Double] = []
+        if c > 0 {
+            if let w = l.words, w.count == ps.count { got = Array(w.prefix(c)) } else { got = [l.t ?? t] }
+        }
+        while got.count < c { got.append(got.last ?? t) }
+        got.append(max(t, (got.last ?? 0) + 0.01))
+        let start = got[0]
+        // (where the line ends: the next timed line, else a little after the last press)
+        var end = got.last! + Double(ps.count - got.count) * 0.4 + 0.3
+        if i + 1 < m.lines.count, let n = m.lines[(i + 1)...].first(where: { $0.t != nil })?.t, n > got.last! { end = n }
+        var words = got.map { ($0 * 100).rounded() / 100 }
+        let from = words.last!, left = ps.count - words.count
+        if left > 0 { for k in 1...left { words.append(((from + (end - from) * Double(k) / Double(left + 1)) * 100).rounded() / 100) } }
+        m.lines[i].t = (start * 100).rounded() / 100
+        m.lines[i].words = words
+        m.focus = i
+        ci = c + 1
+        if ci >= ps.count { ci = 0; m.cursor += 1; m.shareWords(from: i) }
+    }
+
     private func tap() {
         guard m.cursor < m.lines.count, let now = player.position else { return }
+        if stampsPieces {
+            m.remember()
+            m.picked = nil
+            stampPiece(max(0, now - reaction))
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            return
+        }
         m.remember()
         m.picked = nil
         let was = m.lines[m.cursor].t
@@ -857,7 +920,17 @@ private struct LyricsTimingPage: View {
     }
 
     private func undo() {
+        // (逐字, part of a line pressed: that line again from its first 字)
+        if byChar && ci > 0 && m.cursor < m.lines.count {
+            m.remember()
+            ci = 0
+            m.lines[m.cursor].t = nil
+            m.lines[m.cursor].words = nil
+            player.seek(max(0, ((m.cursor > 0 ? m.lines[m.cursor - 1].t : nil) ?? 0) - 1))
+            return
+        }
         guard m.cursor > 0 else { return }
+        ci = 0
         m.remember()
         m.cursor -= 1
         m.lines[m.cursor].t = nil
@@ -922,6 +995,7 @@ private struct LyricsTimingPage: View {
 
     private func skip() {
         guard m.cursor < m.lines.count else { return }
+        ci = 0
         m.remember()
         m.cursor += 1
     }
@@ -976,115 +1050,6 @@ struct LyricsEditButton: View {
                     .tint(AppTint.accent)
             }
         }
-    }
-}
-
-/// under the line being worked on: its words in a bar, each as wide as the time it's sung. Drag the lines between
-/// them: where the singer goes fast the words get narrow (the lyrics swell through them faster there).
-private struct WordTimingBar: View {
-    @ObservedObject var m: LyricsEditModel
-    let i: Int
-    let start: Double
-    let end: Double
-    /// the word times when the drag began (kept while dragging)
-    @State private var dragFrom: [Double]?
-    @State private var dragging: Int?
-
-    private var pieces: [String] { LRC.pieces(m.lines[i].text) }
-
-    /// the line's word times: the ones moved by hand, or spread evenly by the letters
-    private var times: [Double] {
-        let ps = pieces
-        if let w = m.lines[i].words, w.count == ps.count { return w }
-        let starts = LRC.pieceStarts(ps)
-        let total = Double(max(1, ps.reduce(0) { $0 + $1.filter { $0.isLetter || $0.isNumber }.count }))
-        return starts.map { start + (end - start) * Double($0) / total }
-    }
-
-    var body: some View {
-        let ps = pieces
-        let ts = times
-        let span = max(0.2, end - start)
-        let avg = span / Double(max(1, ps.count))
-        VStack(alignment: .leading, spacing: 6) {
-            GeometryReader { g in
-                let w = g.size.width
-                let x: (Double) -> CGFloat = { CGFloat(($0 - start) / span) * w }
-                ZStack(alignment: .topLeading) {
-                    ForEach(ps.indices, id: \.self) { k in
-                        let a = ts[k], b = k + 1 < ts.count ? ts[k + 1] : end
-                        let fast = (b - a) < avg * 0.6
-                        Text(ps[k].trimmingCharacters(in: .whitespaces))
-                            .ffFont(.subheadline)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.4)
-                            .foregroundStyle(fast ? T.btnInk : T.glyph)
-                            .frame(width: max(2, x(b) - x(a) - 2), height: 40)
-                            .background(RoundedRectangle(cornerRadius: 6).fill(fast ? T.btnEdge.opacity(0.55) : T.fn.opacity(k % 2 == 0 ? 0.95 : 0.6)))
-                            .offset(x: x(a) + 1)
-                    }
-                    // (the lines between the words: drag them)
-                    ForEach(1..<max(1, ps.count), id: \.self) { k in
-                        Capsule()
-                            .fill(dragging == k ? T.btnInk : T.muted)
-                            .frame(width: dragging == k ? 4 : 3, height: 48)
-                            .frame(width: 24, height: 48)
-                            .contentShape(Rectangle())
-                            .offset(x: x(ts[k]) - 12, y: -4)
-                            .highPriorityGesture(
-                                DragGesture(minimumDistance: 1)
-                                    .onChanged { v in drag(k, by: Double(v.translation.width / max(1, w)) * span) }
-                                    .onEnded { _ in dragFrom = nil; dragging = nil; m.shareWords(from: i) }
-                            )
-                            .accessibilityLabel(tr("這個字開始的時候"))
-                    }
-                }
-            }
-            .frame(height: 40)
-            HStack(spacing: 10) {
-                Text(dragging.map { LRC.shown(ts[$0]) } ?? LRC.shown(start))
-                    .ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
-                Spacer()
-                Button { listen() } label: { Label(tr("聽這一句"), systemImage: "play.fill").ffFont(.caption) }
-                    .softButton()
-                Button { m.loopLine = m.loopLine == i ? nil : i } label: {
-                    Label(tr("重複這一句"), systemImage: "repeat").ffFont(.caption)
-                        .foregroundStyle(m.loopLine == i ? T.btnInk : T.glyph)
-                }
-                .softButton()
-                .accessibilityAddTraits(m.loopLine == i ? .isSelected : [])
-                if m.lines[i].words != nil {
-                    Button { m.remember(); m.lines[i].words = nil } label: { Label(tr("平均"), systemImage: "equal").ffFont(.caption) }
-                        .softButton()
-                        .accessibilityLabel(tr("每個字一樣快"))
-                }
-                Text(LRC.shown(end)).ffFont(.caption2).monospacedDigit().foregroundStyle(T.muted)
-            }
-            Text(tr("拖字中間的線：唱得快的地方字就窄，歌詞變大的時候就照這個走。一模一樣的句子還沒有自己的時間的，會跟著一起改。"))
-                .ffFont(.caption2).foregroundStyle(T.muted)
-        }
-    }
-
-    /// line k (where piece k starts) moved; it stays between its neighbours
-    private func drag(_ k: Int, by d: Double) {
-        if dragFrom == nil {
-            m.remember()
-            dragFrom = times
-            dragging = k
-        }
-        guard var w = dragFrom, w.indices.contains(k) else { return }
-        let lo = w[k - 1] + 0.05
-        let hi = (k + 1 < w.count ? w[k + 1] : end) - 0.05
-        guard hi > lo else { return }
-        w[k] = ((min(hi, max(lo, w[k] + d))) * 100).rounded() / 100
-        w[0] = start
-        if m.lines[i].words != w { m.lines[i].words = w }
-    }
-
-    private func listen() {
-        let p = SongPlayer.shared
-        p.seek(max(0, start - 0.5))
-        if !p.playing { p.togglePause() }
     }
 }
 

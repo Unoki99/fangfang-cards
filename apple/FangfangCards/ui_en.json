@@ -1829,5 +1829,9 @@
  "匯入了，存成這部影片的歌詞。": "Imported, and saved as this video's lyrics.",
  "匯出了：{0}": "Exported: {0}",
  "沒辦法存這個檔案。": "Couldn't save this file.",
- "從檔案匯入": "Import from a file"
+ "從檔案匯入": "Import from a file",
+ "這個字開始": "This character starts",
+ "一句一句對": "Time line by line",
+ "一個字一個字對": "Time character by character",
+ "逐字：每個字開始唱的時候按一下（第一個字就是這一句開始的時候）；一句的字按完就到下一句。還沒按的字平均分到這一句結束。上面的 ↶ 復原。": "By character: press once as each character starts being sung (the first one is when the line starts); after a line's last character it goes on to the next line. Characters not pressed yet are spread evenly to the line's end. ↶ at the top undoes."
 }

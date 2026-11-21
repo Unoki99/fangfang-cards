@@ -538,27 +538,56 @@ struct LyricsWindow: View {
                 toolsRow(h, wide: true).layoutPriority(1)
             }
             .padding(.horizontal).padding(.vertical, 8)
-        } else if lyrics.timed {
-            // (iPhone: one bar at a time, swiped sideways between 對時 and the tools, two dots under them)
+        } else {
+            // (iPhone: one bar at a time, swiped sideways: 對時 (timed lyrics), the song's name (when 音樂's player
+            // isn't showing it above), the tools; a dot for each under them. The name and the tools apart: side by
+            // side, the name took the room and the tools weren't seen)
+            let pages = (lyrics.timed ? [0] : []) + (songs.active ? [] : [1]) + [2]
             VStack(spacing: 5) {
                 TabView(selection: $barPage) {
-                    LyricsNudge().padding(.horizontal).tag(0)
-                    toolsRow(h, wide: false).padding(.horizontal).tag(1)
+                    ForEach(pages, id: \.self) { i in
+                        Group {
+                            if i == 0 { LyricsNudge() }
+                            else if i == 1 { songName(h) }
+                            else { toolsOnly(h) }
+                        }
+                        .padding(.horizontal).tag(i)
+                    }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .frame(height: 46)
-                HStack(spacing: 6) {
-                    ForEach(0..<2, id: \.self) { i in
-                        Circle().fill(i == barPage ? T.btnInk : T.muted.opacity(0.45)).frame(width: 6, height: 6)
-                            .onTapGesture { withAnimation { barPage = i } }
+                .onAppear { if !pages.contains(barPage) { barPage = pages[0] } }
+                .onChange(of: pages) { _, ps in if !ps.contains(barPage) { barPage = ps[0] } }
+                if pages.count > 1 {
+                    HStack(spacing: 6) {
+                        ForEach(pages, id: \.self) { i in
+                            Circle().fill(i == barPage ? T.btnInk : T.muted.opacity(0.45)).frame(width: 6, height: 6)
+                                .onTapGesture { withAnimation { barPage = i } }
+                        }
                     }
+                    .accessibilityHidden(true)
                 }
-                .accessibilityHidden(true)
             }
             .padding(.vertical, 6)
-        } else {
-            toolsRow(h, wide: false).padding(.horizontal).padding(.vertical, 8)
         }
+    }
+
+    /// (iPhone) the song's name and singer, a bar of its own
+    private func songName(_ h: LyricHit) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(h.trackName).ffFont(.subheadline, .semibold).lineLimit(1)
+            Text(h.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// (iPhone) the tools, a bar of their own (scrolled sideways when they don't all fit)
+    private func toolsOnly(_ h: LyricHit) -> some View {
+        ViewThatFits(in: .horizontal) {
+            tools(h)
+            ScrollView(.horizontal, showsIndicators: false) { tools(h) }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     /// the song (only when 音樂's player isn't showing it above) and the tools
