@@ -1305,9 +1305,17 @@ struct LyricsFloat: View {
                     Text(h.trackName + " · " + h.artistName).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1)
                     Spacer(minLength: 4)
                     if songs.active {
+                        // (音樂's songs: the one before (or back to the start of this one) and the next in the list)
+                        Button { songs.previous() } label: { Image(systemName: "backward.fill") }
+                            .buttonStyle(.plain).foregroundStyle(T.btnInk)
+                            .accessibilityLabel(tr("上一首"))
                         Button { songs.togglePause() } label: { Image(systemName: songs.playing ? "pause.fill" : "play.fill") }
                             .buttonStyle(.plain).foregroundStyle(T.btnInk)
                             .accessibilityLabel(songs.playing ? tr("暫停") : tr("播放"))
+                        Button { songs.next() } label: { Image(systemName: "forward.fill") }
+                            .buttonStyle(.plain).foregroundStyle(songs.hasNext ? T.btnInk : T.muted.opacity(0.4))
+                            .disabled(!songs.hasNext)
+                            .accessibilityLabel(tr("下一首"))
                     } else if yt.following {
                         Button { yt.togglePause() } label: { Image(systemName: yt.playing ? "pause.fill" : "play.fill") }
                             .buttonStyle(.plain).foregroundStyle(T.btnInk)

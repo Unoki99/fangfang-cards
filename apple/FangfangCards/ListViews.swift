@@ -28,10 +28,10 @@ struct UnknownView: View {
     @State private var gamesOpen = false
     @State private var pickedGame: PracticeGame?
     @State private var statsOpen = false
-    /// 要複習 → practise just the words due
-    @State private var reviewWords: [Card] = []
-    @State private var reviewing = false
-    @State private var reviewWriting = false
+    /// 要複習 → practise just the words due. (One value that carries the words: the cover opens with them. Two
+    /// separate states, the words and an "open" flag, opened the cover with the words of before, none: an empty
+    /// practice even with words to review.)
+    @State private var review: ReviewRun?
     @State private var detail: Card?
     @State private var query = ""
 
@@ -49,8 +49,7 @@ struct UnknownView: View {
                 WeekPanel()
                 PracticeScopeMenu()
                 ReviewBar(due: store.allDueCards.count, stats: { statsOpen = true }) { hand in
-                    reviewWords = store.allDueCards
-                    if hand { reviewWriting = true } else { reviewing = true }
+                    review = ReviewRun(words: store.allDueCards, hand: hand)
                 }
                 // 開始練習 and the handwriting ones here; every game behind one button (遊戲), chosen from a grid with
                 // what each does; 怎麼練習 across the whole width
@@ -108,8 +107,10 @@ struct UnknownView: View {
 
         .sheet(item: $detail) { CardSheet(card: $0).environmentObject(store) }
         .fullScreenCover(isPresented: $studying) { StudyView().environmentObject(store) }
-        .fullScreenCover(isPresented: $reviewing) { StudyView(words: reviewWords, saveAs: "review").environmentObject(store) }
-        .fullScreenCover(isPresented: $reviewWriting) { StudyView(words: reviewWords, writeOnly: true, saveAs: "reviewWrite").environmentObject(store) }
+        .fullScreenCover(item: $review) { r in
+            if r.hand { StudyView(words: r.words, writeOnly: true, saveAs: "reviewWrite").environmentObject(store) }
+            else { StudyView(words: r.words, saveAs: "review").environmentObject(store) }
+        }
         .fullScreenCover(isPresented: $blanks) { StudyView(blanksOnly: true).environmentObject(store) }
         .fullScreenCover(isPresented: $toning) { ToneView().environmentObject(store) }
         .fullScreenCover(isPresented: $toneGame) { ToneGameView().environmentObject(store) }
@@ -511,4 +512,12 @@ struct PracticeHelp: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
     }
+}
+
+
+/// 要複習 tapped: the words due then, and how to practise them (手寫 or not)
+struct ReviewRun: Identifiable {
+    let id = UUID()
+    let words: [Card]
+    let hand: Bool
 }
