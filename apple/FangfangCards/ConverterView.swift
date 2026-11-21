@@ -1046,35 +1046,16 @@ struct DictEntryBody: View {
             otherWordsRow
             // 華語 and 英: side by side (one under the other when there's no room), each numbered. The 華語 numbers are the
             // meanings' own, the same as the numbered meanings and their example sentences below
-            // the short meanings and every 腔口's reading (and the map), swiped between: the two take the same room
-            if dict.raw.places.isEmpty { meaningsOverview }
+            // the meanings and their sentences on one page, every 腔口's reading and the map on the other (swipe, or
+            // tap the tabs): the two take the same room, so nothing jumps when you switch
+            if dict.raw.places.isEmpty { meaningsPage }
             else {
                 SwipePages([trs("解釋"), trs("各地讀音")]) {
-                    meaningsOverview
+                    meaningsPage
                 } second: {
                     TwPlacesAndMap(dict: dict, key: key)
                 }
             }
-            ForEach(dict.senses(key), id: \.n) { s in sense(s) }
-            if dict.senses(key).isEmpty { linkedMeanings }
-            FoundSentences(key: key)
-            // a single character: 說文解字 (when installed)
-            if han.count == 1 { ShuowenBlock(ch: han) }
-            if place >= 0, dict.senses(key).contains(where: { s in s.ex.contains { $0.count > 1 && dict.hasGuess($0[1], han: $0[0], place: place) } }) {
-                GuessNote()
-            }
-            let wl = dict.wordLinks(key)
-            if !wl.syn.isEmpty || !wl.ant.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    links("近", wl.syn, T.blue, T.blueEdge, T.blueInk)
-                    links("反", wl.ant, T.rust, T.rustEdge, T.rustInk)
-                }
-            }
-            if dict.raw.typ[key] == 1 {
-                Text(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。")).ffFont(.caption).foregroundStyle(T.muted)
-            }
-            // (names last: the least needed)
-            namesRow
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .wordOpener(dict, $tapped)
@@ -1316,6 +1297,33 @@ struct DictEntryBody: View {
                 }
                 .padding(.leading, 18)
             }
+        }
+    }
+
+    /// the short meanings, then each meaning with its example sentences, and the rest of the entry
+    private var meaningsPage: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            meaningsOverview
+            ForEach(dict.senses(key), id: \.n) { s in sense(s) }
+            if dict.senses(key).isEmpty { linkedMeanings }
+            FoundSentences(key: key)
+            // a single character: 說文解字 (when installed)
+            if han.count == 1 { ShuowenBlock(ch: han) }
+            if place >= 0, dict.senses(key).contains(where: { s in s.ex.contains { $0.count > 1 && dict.hasGuess($0[1], han: $0[0], place: place) } }) {
+                GuessNote()
+            }
+            let wl = dict.wordLinks(key)
+            if !wl.syn.isEmpty || !wl.ant.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    links("近", wl.syn, T.blue, T.blueEdge, T.blueInk)
+                    links("反", wl.ant, T.rust, T.rustEdge, T.rustInk)
+                }
+            }
+            if dict.raw.typ[key] == 1 {
+                Text(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。")).ffFont(.caption).foregroundStyle(T.muted)
+            }
+            // (names last: the least needed)
+            namesRow
         }
     }
 
@@ -3909,13 +3917,13 @@ struct TwPlaceRows: View {
     }
 }
 
-/// two pages side by side (swipe between them, or tap a tab): both take the room of the taller one, so nothing
-/// below them moves when you switch
+/// two pages side by side (swipe between them, or tap a tab): the system's own paging (a horizontal scroll that
+/// snaps to a page), so a swipe follows the finger and a vertical scroll still scrolls the page. Both pages are as
+/// tall as the taller one, so nothing below them moves when you switch
 struct SwipePages<A: View, B: View>: View {
     let titles: [String]
     @AppStorage("entry.page") private var page = 0
-    @State private var drag: CGFloat = 0
-    @State private var width: CGFloat = 1
+    @State private var pos: Int?
     let first: A
     let second: B
     init(_ titles: [String], @ViewBuilder first: () -> A, @ViewBuilder second: () -> B) {
@@ -3925,7 +3933,7 @@ struct SwipePages<A: View, B: View>: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 ForEach(Array(titles.enumerated()), id: \.offset) { i, t in
-                    Button { withAnimation(.snappy) { page = i } } label: {
+                    Button { withAnimation(.snappy) { pos = i } } label: {
                         Text(t).ffFont(.caption, .bold).foregroundStyle(page == i ? T.twInk : T.muted)
                             .padding(.horizontal, 10).padding(.vertical, 4)
                             .background(Capsule().fill(page == i ? T.twFill : T.fn.opacity(0.6)))
@@ -3937,25 +3945,19 @@ struct SwipePages<A: View, B: View>: View {
                     Circle().fill(page == i ? T.twInk : T.muted.opacity(0.4)).frame(width: 6, height: 6)
                 }
             }
-            // (both pages laid on top of each other: the box is as tall as the taller one)
-            ZStack(alignment: .topLeading) {
-                first.frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(x: CGFloat(0 - page) * width + drag)
-                second.frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(x: CGFloat(1 - page) * width + drag)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 0) {
+                    first.frame(maxWidth: .infinity, alignment: .topLeading)
+                        .containerRelativeFrame(.horizontal).id(0)
+                    second.frame(maxWidth: .infinity, alignment: .topLeading)
+                        .containerRelativeFrame(.horizontal).id(1)
+                }
+                .scrollTargetLayout()
             }
-            .background(GeometryReader { g in Color.clear.onAppear { width = max(1, g.size.width) }
-                .onChange(of: g.size.width) { _, w in width = max(1, w) } })
-            .clipped()
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 18)
-                .onChanged { v in if abs(v.translation.width) > abs(v.translation.height) { drag = v.translation.width } }
-                .onEnded { v in
-                    var p = page
-                    if v.translation.width < -width / 4 || v.predictedEndTranslation.width < -width / 2 { p = min(titles.count - 1, page + 1) }
-                    if v.translation.width > width / 4 || v.predictedEndTranslation.width > width / 2 { p = max(0, page - 1) }
-                    withAnimation(.snappy) { page = p; drag = 0 }
-                })
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $pos)
+            .onAppear { if pos == nil { pos = min(max(page, 0), titles.count - 1) } }
+            .onChange(of: pos) { _, p in if let p, p != page { page = p } }
         }
     }
 }

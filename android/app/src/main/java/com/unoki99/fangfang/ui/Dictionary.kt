@@ -196,50 +196,53 @@ fun DictEntryBody(d: Dict, key: String) {
                 }
             } else Txt(tr("沒有簡短的解釋。往左滑看各地讀音。"), ff(FF.Footnote), T.muted)
         }
-        // the short meanings, and every 腔口's reading (swipe, or tap the tabs): the two take the same room, so
-        // nothing moves when you switch
-        if (d.raw.places.isEmpty()) meanings()
-        else SwipePages(listOf(tr("解釋"), tr("各地讀音")), "entry.page") { page ->
-            if (page == 0) meanings()
-            else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { TwPlacesAndMap(d, key) }
-        }
-        val senses = remember(key) { d.senses(key) }
-        for (s in senses) SenseBlock(d, key, s)
-        // a word with no meaning of its own, only listed as another word's 近義 / 反義 (光龐龐)
-        if (senses.isEmpty()) {
-            val back = remember(key) { d.linkedFrom(key) }
-            if (back.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Txt(tr("辭典沒有另外解釋這個詞，只把它列做下面這些詞的近義詞或反義詞："), ff(FF.Caption), T.muted)
-                for (b in back) {
-                    val ss = d.senses(b.key)
-                    val s = ss.getOrNull(b.sense) ?: ss.firstOrNull()
-                    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f))
-                        .clickable { nav.push(Route.Entry(b.key)) }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (b.syn) Chip(tr("近"), T.blue, T.blueEdge, T.blueInk) else Chip(tr("反"), T.rust, T.rustEdge, T.rustInk)
-                            Txt(Dict.hanOf(b.key), ff(FF.Headline), T.glyph)
-                            Txt(d.wordText(b.key, rom.coerceIn(0, 2), place).annotated(), lat(15f), T.greenInk)
+        // the meanings and their sentences on one page, every 腔口's reading and the map on the other (swipe, or tap
+        // the tabs); the two take the same room, so nothing jumps when you switch
+        @Composable fun meaningsAndSentences() = Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            meanings()
+            val senses = remember(key) { d.senses(key) }
+            for (s in senses) SenseBlock(d, key, s)
+            // a word with no meaning of its own, only listed as another word's 近義 / 反義 (光龐龐)
+            if (senses.isEmpty()) {
+                val back = remember(key) { d.linkedFrom(key) }
+                if (back.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Txt(tr("辭典沒有另外解釋這個詞，只把它列做下面這些詞的近義詞或反義詞："), ff(FF.Caption), T.muted)
+                    for (b in back) {
+                        val ss = d.senses(b.key)
+                        val s = ss.getOrNull(b.sense) ?: ss.firstOrNull()
+                        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f))
+                            .clickable { nav.push(Route.Entry(b.key)) }.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                if (b.syn) Chip(tr("近"), T.blue, T.blueEdge, T.blueInk) else Chip(tr("反"), T.rust, T.rustEdge, T.rustInk)
+                                Txt(Dict.hanOf(b.key), ff(FF.Headline), T.glyph)
+                                Txt(d.wordText(b.key, rom.coerceIn(0, 2), place).annotated(), lat(15f), T.greenInk)
+                            }
+                            if (s != null) Txt((if (b.syn) "" else tr("（反義）")) + s.text, ff(FF.Body), T.glyph.copy(alpha = 0.9f))
                         }
-                        if (s != null) Txt((if (b.syn) "" else tr("（反義）")) + s.text, ff(FF.Body), T.glyph.copy(alpha = 0.9f))
                     }
                 }
             }
+            // a single character: 說文解字 (when installed)
+            if (han.cpCount == 1) ShuowenBlock(han)
+            if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()
+            val wl = remember(key) { d.wordLinks(key) }
+            if (wl.first.isNotEmpty() || wl.second.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                LinkChips(d, tr("近"), wl.first, T.blue, T.blueEdge, T.blueInk)
+                LinkChips(d, tr("反"), wl.second, T.rust, T.rustEdge, T.rustInk)
+            }
+            if (d.raw.typ[key] == 1) Txt(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。"), ff(FF.Caption), T.muted)
+            // names (last: the least needed)
+            if (han.cpCount == 1) {
+                val part: (String, List<List<String>>?) -> String? = { lab, list ->
+                    if (list.isNullOrEmpty()) null else lab + "：" + list.take(4).joinToString("、") { d.codes(it[0], rom, -1) } }
+                val s = listOfNotNull(part("人名", d.raw.names[han]), part("姓", d.raw.sur[han])).joinToString("　")
+                if (s.isNotEmpty()) Txt(s, lat(14f), T.muted)
+            }
         }
-        // a single character: 說文解字 (when installed)
-        if (han.cpCount == 1) ShuowenBlock(han)
-        if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()
-        val wl = remember(key) { d.wordLinks(key) }
-        if (wl.first.isNotEmpty() || wl.second.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            LinkChips(d, tr("近"), wl.first, T.blue, T.blueEdge, T.blueInk)
-            LinkChips(d, tr("反"), wl.second, T.rust, T.rustEdge, T.rustInk)
-        }
-        if (d.raw.typ[key] == 1) Txt(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。"), ff(FF.Caption), T.muted)
-        // names (last: the least needed)
-        if (han.cpCount == 1) {
-            fun part(lab: String, list: List<List<String>>?): String? =
-                if (list.isNullOrEmpty()) null else lab + "：" + list.take(4).joinToString("、") { d.codes(it[0], rom, -1) }
-            val s = listOfNotNull(part("人名", d.raw.names[han]), part("姓", d.raw.sur[han])).joinToString("　")
-            if (s.isNotEmpty()) Txt(s, lat(14f), T.muted)
+        if (d.raw.places.isEmpty()) meaningsAndSentences()
+        else SwipePages(listOf(tr("解釋"), tr("各地讀音")), "entry.page") { page ->
+            if (page == 0) meaningsAndSentences()
+            else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { TwPlacesAndMap(d, key) }
         }
     }
 }
