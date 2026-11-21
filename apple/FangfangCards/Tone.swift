@@ -14,7 +14,7 @@ import SwiftUI
 // A syllable joined to the next one with a single "-" always changes (女權 lù-khuán), and a word listed as
 // both 名詞 and 量詞 right after a 數詞 or 代詞 is a 量詞 there (it changes too).
 // Syllables after "--" are said in the light tone: grey.
-// Sandhi follows the 腔口: 通行 and the 漳 / 混合 places 2→1, 5→7, 8→4 (8 ending in h → 3); the 泉 places 2→5, 5→3, 8→3.
+// Sandhi follows the 腔口: 通行 and the 漳 / 混合 places 2→1, 5→7; the 泉 places 2→5, 5→3. Everywhere 8 → 4 (8 ending in h → 3).
 // Tone 6 (鹿港 and other places that keep it) → 3.
 
 /// 方音's first-tone mark (ˉ, ㄉㄚˉ): written or left out (設定 → 語言與讀音 → 台語). Some write the first tone
@@ -266,7 +266,7 @@ extension Dict {
         return isCode(n) ? n : code
     }
 
-    /// 泉-leaning places use 5→3 and 8→3
+    /// 泉-leaning places use 2→5 and 5→3
     func quanSandhi(_ place: Int) -> Bool { place >= 0 && place < raw.places.count && raw.places[place].contains("泉") }
 
     /// the tone a syllable is said in when it changes (tone sandhi)
@@ -280,7 +280,7 @@ extension Dict {
         case 5: return quan ? 3 : 7
         case 7, 6: return 3
         case 4: return h ? 2 : 8
-        case 8: return h ? 3 : (quan ? 3 : 4)
+        case 8: return h ? 3 : 4
         default: return t
         }
     }

@@ -786,7 +786,7 @@
     // ── 台語 tones as they're said (the same as the app's 聲調顏色) ──
     // A word on its own: every syllable takes its changed tone (sandhi) except the last one, which keeps its own.
     // A syllable before "--" keeps its own tone too, and the syllables after "--" are in the light tone (grey).
-    // Before 仔 a syllable takes 仔's own change. The changes follow the 腔口 (泉 places: 2→5, 5→3, 8→3).
+    // Before 仔 a syllable takes 仔's own change. The changes follow the 腔口 (泉 places: 2→5, 5→3; 8 → 4 everywhere, 8 ending in h → 3).
     function toneOf(code) {
         const t = parseInt(code.slice(-1), 10);
         if (isNaN(t)) return { t: 0, h: false };
@@ -805,7 +805,7 @@
             case 5: return q ? 3 : 7;
             case 7: case 6: return 3;
             case 4: return h ? 2 : 8;
-            case 8: return h ? 3 : (q ? 3 : 4);
+            case 8: return h ? 3 : 4;
             default: return t;
         }
     }

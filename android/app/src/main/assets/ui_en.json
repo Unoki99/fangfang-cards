@@ -672,7 +672,7 @@
  "接著上次的練習": "Continuing where you left off",
  "接頭詞": "prefix",
  "推測": "Guessed",
- "推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。": "Inferred = the dictionary doesn't give this place's reading; it was worked out by rule. Colours show each place's tone sandhi on all but the last syllable (Quanzhou: 2→5, 5→3, 8→3; Zhangzhou: 2→1, 5→7, 8→4).",
+ "推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3；漳腔：2→1、5→7；各地：8→4，h 結尾的 8→3）。": "Inferred = the dictionary doesn't give this place's reading; it was worked out by rule. Colours show each place's tone sandhi on all but the last syllable (Quanzhou: 2→5, 5→3; Zhangzhou: 2→1, 5→7; everywhere: 8→4, 8 ending in h → 3).",
  "推算": "guessed",
  "推算的內容": "Inferred content",
  "推算的四川話讀音": "Guessed Sichuanese reading",

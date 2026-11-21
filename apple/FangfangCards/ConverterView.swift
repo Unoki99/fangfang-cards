@@ -3125,8 +3125,8 @@ struct PlacesTable: View {
                 // a place that says it like 通行 (臺南/高雄 o → or included) shares the 通行 box
                 let c = dict.differsFromCommon(key, p) ? dict.codesFor(key, p) : main
                 let g = !dict.guessedSyllables(key, p).isEmpty
-                // with tone colours on, places whose tones change differently (泉: 2→5, 5→3, 8→3;
-                // 漳: 2→1, 5→7, 8→4) get boxes of their own, even when the reading is the same
+                // with tone colours on, places whose tones change differently (泉: 2→5, 5→3;
+                // 漳: 2→1, 5→7) get boxes of their own, even when the reading is the same
                 let t = colours ? dict.wordTones(key, p) : []
                 if let i = out.firstIndex(where: { $0.codes == c && $0.guessed == g && $0.tones == t }) { out[i].places.append(p) }
                 else { out.append((c, g, t, [p])) }
@@ -3171,7 +3171,7 @@ struct PlacesTable: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.55)))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(g.places.contains(place) ? T.twEdge : .clear, lineWidth: 1.5))
                 }
-                Text(colours ? trs("推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3、8→3；漳腔：2→1、5→7、8→4）。")
+                Text(colours ? trs("推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。顏色是在詞尾以外的字照各地的變調（泉腔：2→5、5→3；漳腔：2→1、5→7；各地：8→4，h 結尾的 8→3）。")
                              : trs("紅色／推測 = 辭典沒有寫這個地方的讀音，是照規則推出來的。")).ffFont(.caption2).foregroundStyle(T.muted)
             }
         }

@@ -12,7 +12,8 @@ package com.unoki99.fangfang.engine
 // Before 仔 a syllable takes its own change: 2, 3 → 1; 1, 5, 7, 8 and 4 ending in h → 7; 4 ending in p/t/k → 8.
 // A syllable joined to the next one with a single "-" always changes, and a word listed as both 名詞 and 量詞
 // right after a 數詞 or 代詞 is a 量詞 there (it changes too). Syllables after "--" are light: grey.
-// Sandhi follows the 腔口: 通行 and the 漳 / 混合 places 2→1, 5→7, 8→4; the 泉 places 2→5, 5→3, 8→3. Tone 6 → 3.
+// Sandhi follows the 腔口: 通行 and the 漳 / 混合 places 2→1, 5→7; the 泉 places 2→5, 5→3. Everywhere 8 → 4 (8 ending in
+// h → 3) and 6 → 3.
 
 /** the settings the engine reads while drawing (kept in step with 設定 by the app) */
 object EngineSettings {
@@ -238,7 +239,7 @@ fun Dict.sandhiTone(code: String, place: Int): Int {
         5 -> if (quan) 3 else 7
         7, 6 -> 3
         4 -> if (h) 2 else 8
-        8 -> if (h) 3 else (if (quan) 3 else 4)
+        8 -> if (h) 3 else 4
         else -> t
     }
 }
