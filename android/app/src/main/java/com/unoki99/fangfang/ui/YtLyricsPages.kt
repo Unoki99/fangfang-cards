@@ -743,11 +743,13 @@ private fun YtLyricsEditor() {
         OwnLyrics.set(OwnLyric(id, s.title, s.artist, s.d.takeIf { it > 0 }, lrc, System.currentTimeMillis()))
         st.reloadOwn()
         saved = true
-        // (into the backup folder's 歌詞 at once, and where it went said on the lyrics page)
-        val msg = try { Backup.syncNow() } catch (e: Exception) { e.message ?: "" }
-        val dir = OwnLyrics.lastDir
-        st.savedNote = if (dir != null && Prefs.backupFolder.value.isNotEmpty()) tr("存好了：{0}", java.io.File(dir, OwnLyrics.fileName(OwnLyric(id, s.title, s.artist, null, "", 0))).path)
-            else tr("存好了，在這台電腦的程式裡。要存到備份資料夾：先在設定 → 備份與同步選一個資料夾。") + if (msg.isNotEmpty()) "（$msg）" else ""
+        // (into the backup folder's 歌詞, in the background: reading every device's backup there could take a while
+        // (iCloud) and the window froze meanwhile; where it went said on the lyrics page once it's done)
+        syncInBackground { msg ->
+            val dir = OwnLyrics.lastDir
+            st.savedNote = if (dir != null && Prefs.backupFolder.value.isNotEmpty()) tr("存好了：{0}", java.io.File(dir, OwnLyrics.fileName(OwnLyric(id, s.title, s.artist, null, "", 0))).path)
+                else tr("存好了，在這台電腦的程式裡。要存到備份資料夾：先在設定 → 備份與同步選一個資料夾。") + if (msg.isNotEmpty()) "（$msg）" else ""
+        }
     }
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("歌詞對時"), { UI.ytEditOpen = false }, settings = false) {
@@ -829,7 +831,7 @@ private fun YtLyricsEditor() {
         }
         // (your own lyrics for this song: delete them, back to LRCLIB's)
         val own = st.ownId(song)?.let { OwnLyrics.get(it) }
-        if (own != null) TextButton(onClick = { OwnLyrics.remove(own.id); st.reloadOwn(); try { Backup.syncNow() } catch (_: Exception) {}; UI.ytEditOpen = false },
+        if (own != null) TextButton(onClick = { OwnLyrics.remove(own.id); st.reloadOwn(); syncInBackground { }; UI.ytEditOpen = false },
             Modifier.align(Alignment.CenterHorizontally)) { Text(tr("刪掉自己的歌詞"), color = T.muted) }
     }
 }
@@ -887,6 +889,19 @@ private fun LyricsShareMenu() {
     }
 }
 
+/** the backup folder synced away from the window (the computer: reading every device's backup could take a while and
+ *  froze it), then done(its message) on the window's thread */
+private fun syncInBackground(done: (String) -> Unit) {
+    // (Android: as before, right here; its backup merges on the main thread)
+    if (!com.unoki99.fangfang.engine.EngineSettings.desktop) { done(try { Backup.syncNow() } catch (e: Exception) { e.message ?: "" }); return }
+    MainScope().launch {
+        val msg = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try { Backup.syncNow() } catch (e: Exception) { e.message ?: "" }
+        }
+        done(msg)
+    }
+}
+
 /** "繁華夢 - 黃齡.lrc" */
 private fun lrcName(): String {
     val s = YtLink.song
@@ -912,8 +927,8 @@ private fun importLyrics(ctx: android.content.Context, uri: android.net.Uri) {
     val lrc = LRC.make(LRC.lines(t), s.title, s.artist, s.d.takeIf { it > 0 })
     OwnLyrics.set(OwnLyric(id, s.title, s.artist, s.d.takeIf { it > 0 }, lrc, System.currentTimeMillis()))
     st.reloadOwn()
-    try { Backup.syncNow() } catch (_: Exception) {}
     st.savedNote = tr("匯入了，存成這部影片的歌詞。")
+    syncInBackground { }
 }
 
 private fun exportLyrics(ctx: android.content.Context, uri: android.net.Uri) {

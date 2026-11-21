@@ -69,7 +69,15 @@ private fun letters(s: String): Int {
 
 /** read the lyrics with the 華語 / 粵語 / 客語 dictionary (the app on it, and the song not tagged 台語); else as 台語
  *  (its dictionary is always there) */
-private fun readAsZh(z: ZhDict?): Boolean = z != null && (z !== Store.zh || (Store.isZh && (LyricPicks.lang ?: Store.lang) != 0))
+private fun readAsZh(z: ZhDict?): Boolean {
+    if (z == null) return false
+    // (the computer, the song tagged: its language decides, whatever the app is on. The 華語 dictionary kept loaded
+    // in 台語 (for its 近義詞) is the app's own Store.zh, and was taken as "the app's, which is on 台語": the lyrics were
+    // read as 台語 half the time)
+    val tag = LyricPicks.lang
+    if (EngineSettings.desktop && tag != null) return tag != 0
+    return z !== Store.zh || (Store.isZh && (tag ?: Store.lang) != 0)
+}
 
 /** the dictionary that reads the lyrics: the song's language's (on the computer, whatever the app is on), else the
  *  app's; null: 台語 */
@@ -107,6 +115,13 @@ object LyricDicts {
     }
 }
 
+/** (the computer) the song is tagged 華語, 粵語… and that dictionary is still being read: the line plain meanwhile, not
+ *  read as 台語 */
+private fun waitingForSongDict(): Boolean {
+    val tag = LyricPicks.lang
+    return EngineSettings.desktop && tag != null && tag != 0
+}
+
 /** the line's words, in their tone colours when those are on */
 internal fun lyricWords(line: String): List<LyricWord> = try {
     val z = lyricZh(); val d = Store.dict
@@ -129,7 +144,7 @@ internal fun lyricWords(line: String): List<LyricWord> = try {
             val t = z.sentenceHan(listOf(p), Prefs.zhPlace.value, T.glyph.argbInt()).annotated()
             LyricWord(t, letters(t.text), if (k != null) ({ UI.open(Sheet.ZhWord(k)) }) else null, key = k, zh = true)
         }
-    } else if (d != null) {
+    } else if (d != null && !waitingForSongDict()) {
         val e = twEngine(d)
         e.songKey = LyricPicks.songKey
         val items = e.convert(line).items
@@ -167,7 +182,7 @@ internal fun lyricReading(line: String): AnnotatedString? = try {
     val z = lyricZh(); val d = Store.dict
     if (readAsZh(z) && z!!.isSv) (if (Prefs.zhRom.value == 0) z.svSentence(line, true, T.greenInk.argbInt()).annotated() else null)
     else if (readAsZh(z)) z!!.sentence(z.convertPieces(line), Prefs.zhRom.value, Prefs.zhPlace.value).annotated()
-    else if (d != null) {
+    else if (d != null && !waitingForSongDict()) {
         val e = twEngine(d)
         e.songKey = LyricPicks.songKey
         val items = e.convert(line).items
