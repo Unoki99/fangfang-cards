@@ -269,14 +269,14 @@ private fun ConvertPane(d: Dict) {
                 ff(FF.Caption), T.muted)
         }
         if (wide) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column(Modifier.width(leftWidth).fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp),
+            Column(Modifier.width(leftWidth).fillMaxHeight().dragScrollY(rememberScrollState()).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 input(); if (hasOutput) actions() else help()
             }
-            Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f).fillMaxHeight().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (hasOutput) panels() else Txt(tr("轉換的結果會出現在這裡。"), ff(FF.Body), T.muted, Modifier.padding(top = 40.dp))
             }
-        } else Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        } else Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             input()
             if (hasOutput) { panels(); actions() } else help()
             Spacer(Modifier.height(40.dp))
@@ -497,7 +497,7 @@ private fun PlacePickDialog(d: Dict, index: Int, k: String, han: String, onClose
     AlertDialog(onDismissRequest = onClose, containerColor = T.bg,
         title = { Txt(tr("「{0}」各地的讀音", han), ff(FF.Headline), T.glyph) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.dragScrollY(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (split) SylChips(hs, j) { i -> sylPick = i }
                 Txt(if (j < 0) tr("點一個腔口，這段文字裡的這個詞就用那裡的講法。") else tr("點一個腔口，這個字就用那裡的讀音（別的字不變）。"), ff(FF.Footnote), T.muted)
                 if (j < 0) TwPlaceRows(d, k, onPick = { p -> ConvModel.pin(index, p); onClose() }, picked = picked)
@@ -543,7 +543,7 @@ fun ConvWordSheet(d: Dict, index: Int) {
         if (index !in res.items.indices) return@Column
         val it = res.items[index]
         val e = ConvModel.engine ?: return@Column
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (it.opts.size > 1) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Txt(tr("選讀音／漢字"), ff(FF.Caption, FontWeight.Bold), T.muted)
@@ -712,7 +712,7 @@ fun CopyOptionsSheet(texts: List<String>, names: List<String>, onDone: () -> Uni
     var done by remember { mutableStateOf(false) }
     LaunchedEffect(done) { if (done) { delay(700); onDone() } }
     ModalBottomSheet(onDismissRequest = onDone, containerColor = T.bg, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.fillMaxWidth().dragScrollY(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Txt(tr("選擇複製"), ff(FF.Headline))
             for (i in 0 until 3) {
                 var on by Prefs.copyOn[i]

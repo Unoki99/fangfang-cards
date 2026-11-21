@@ -16,11 +16,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1189,7 +1187,7 @@ fun IdiomWriteScreen(onClose: () -> Unit) {
         TopBar(tr("四字格手寫"), onClose, close = true, settings = false) {}
         val q = queue
         // (no scrolling while writing: a finger in the squares would move the page)
-        val scroll = if (q == null || idx >= q.size) Modifier.verticalScroll(rememberScrollState()) else Modifier
+        val scroll = if (q == null || idx >= q.size) Modifier.dragScrollY(rememberScrollState()) else Modifier
         Column(Modifier.fillMaxSize().then(scroll).widthIn(max = 1100.dp).align(Alignment.CenterHorizontally).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (q == null) {

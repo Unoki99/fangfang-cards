@@ -371,19 +371,36 @@ enum Simp {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var table: [Character: Character] = [:]
 
-    /// the pairs of a dictionary's words (正體 and 簡體 of the same length)
+    /// every word of a dictionary with its 簡體 (the same when it has none). A character is made 簡體 only when most
+    /// words change it, and to what most of them change it to: a word whose 簡體 is another way of writing it (瞳人 →
+    /// 瞳仁, 菜子 → 菜籽) made every 人 仁 and every 子 籽
     static func learn(_ pairs: [(String, String)]) {
-        var t: [Character: Character] = [:]
+        var changed: [Character: [Character: Int]] = [:]
+        var kept: [Character: Int] = [:]
         for (h, a) in pairs where h.count == a.count {
-            for (x, y) in zip(h, a) where x != y { t[x] = y }
+            for (x, y) in zip(h, a) {
+                if x != y { changed[x, default: [:]][y, default: 0] += 1 } else { kept[x, default: 0] += 1 }
+            }
         }
-        lock.lock(); table.merge(t) { old, _ in old }; back = [:]; lock.unlock()
+        var t: [Character: Character] = [:]
+        var b: [Character: (Character, Int)] = [:]
+        for (x, m) in changed {
+            guard let best = m.max(by: { $0.value < $1.value }), best.value > kept[x, default: 0] else { continue }
+            t[x] = best.key
+            if b[best.key].map({ best.value > $0.1 }) ?? true { b[best.key] = (x, best.value) }
+        }
+        lock.lock()
+        table.merge(t) { old, _ in old }
+        for (s, v) in b where backVotes[s] == nil { backVotes[s] = v.0 }
+        back = [:]
+        lock.unlock()
     }
+    nonisolated(unsafe) private static var backVotes: [Character: Character] = [:]
 
-    /// a 簡體 character's 正體 one (the first the dictionaries gave)
+    /// a 簡體 character's 正體 one (the one most words have)
     static func reverse(_ c: Character) -> Character? {
         lock.lock(); defer { lock.unlock() }
-        if back.isEmpty { for (t, s) in table where back[s] == nil { back[s] = t } }
+        if back.isEmpty { back = backVotes; for (t, s) in table where back[s] == nil { back[s] = t } }
         return back[c]
     }
     nonisolated(unsafe) private static var back: [Character: Character] = [:]
@@ -834,7 +851,7 @@ final class ZhDict: @unchecked Sendable {
         if sv { out = Self.svFix(out, byPlain) }
         entries = out
         jaKana = jk
-        Simp.learn(out.compactMap { e in e.alt.map { (e.h, $0) } })
+        Simp.learn(out.map { e in (e.h, e.alt ?? e.h) })
         var byM: [String: [Int]] = [:]
         for (i, e) in out.enumerated() { for m in e.eq where byM[m]?.last != i { byM[m, default: []].append(i) } }
         // 客語: its meanings are written in 華語 ("聊天、閒談。"): each short piece of a meaning is a 華語 word for it
@@ -1199,7 +1216,9 @@ final class ZhDict: @unchecked Sendable {
         }
         // 瑞典語: the Chinese meanings (when there are) before the English ones
         let zh = isSv ? e.svZh : []
-        let defs = !zh.isEmpty ? [Def(p: e.svZhGuessed ? "中≈" : "中", t: zh.joined(separator: "、"), x: [], sy: nil, an: nil)] + defs0 : defs0
+        // (只有中文: the English meanings' sentences kept, without the English)
+        let defs1 = isSv && e.svHideEnglish ? defs0.map { Def(p: $0.p, t: "", x: $0.x, sy: nil, an: nil) }.filter { !$0.x.isEmpty } : defs0
+        let defs = !zh.isEmpty ? [Def(p: e.svZhGuessed ? "中≈" : "中", t: zh.joined(separator: "、"), x: [], sy: nil, an: nil)] + defs1 : defs1
         let variant: [String: Variant]? = e.lu.map { lu in
             ["1": Variant(r: [readingPlain(lu, 0)], z: readingPlain(lu, 1))]
         }
@@ -1430,8 +1449,8 @@ final class ZhDict: @unchecked Sendable {
         if han {
             // 華語 / Chinese: the words with it in their Chinese meanings (the ones that are just it first)
             var exact: [Int] = [], inside: [Int] = []
-            for (i, e) in entries.enumerated() where e.svZh.contains(where: { $0.contains(q) }) {
-                if e.svZh.contains(where: { $0 == q || $0.components(separatedBy: CharacterSet(charactersIn: "、，,；;")).contains(q) }) { exact.append(i) } else if inside.count < 200 { inside.append(i) }
+            for (i, e) in entries.enumerated() where e.svZhAll.contains(where: { $0.contains(q) }) {
+                if e.svZhAll.contains(where: { $0 == q || $0.components(separatedBy: CharacterSet(charactersIn: "、，,；;")).contains(q) }) { exact.append(i) } else if inside.count < 200 { inside.append(i) }
             }
             f.english = take(exact) + take(inside)
             f.englishFirst = true

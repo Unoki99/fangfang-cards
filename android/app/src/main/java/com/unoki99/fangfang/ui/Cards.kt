@@ -22,7 +22,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -428,7 +427,7 @@ private fun CardDetail(card: Card) {
             TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
             Spacer(Modifier.weight(1f)); BarButtons(settings = false)
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Panel {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Txt(card.h, sz(44f, FontWeight.Medium), T.blueInk, Modifier.weight(1f))
@@ -540,7 +539,7 @@ fun UnknownTab() {
                         confirmButton = { TextButton(onClick = { gamesOpen = false }) { Text(tr("完成"), color = T.btnInk) } },
                         title = { Txt(tr("遊戲"), ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
                         text = {
-                            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(Modifier.dragScrollY(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 for (row in games.chunked(2)) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.height(IntrinsicSize.Max)) {
                                     for (g in row) Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(14.dp))
                                         .background(if (g.enabled) T.btn else T.fn.copy(alpha = 0.6f))
@@ -673,7 +672,7 @@ private fun PracticeHelp(goal: Int, close: () -> Unit) {
         confirmButton = { TextButton(onClick = close) { Text(tr("完成"), color = T.btnInk) } },
         title = { Txt(tr("怎麼練習"), ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.dragScrollY(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 for ((t, x) in items) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.7f))
                     .border(1.dp, T.fnEdge, RoundedCornerShape(14.dp)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Txt(t, ff(FF.Headline, FontWeight.SemiBold), T.glyph)

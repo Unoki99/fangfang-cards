@@ -85,7 +85,7 @@ fun SettingsScreen() {
                 Txt(if (p == null) tr("設定") else if (p == 9) tr(if (copyZh) "複製意思的格式（華語）" else "複製意思的格式（台語）") else if (p == 10) tr("選聲調顏色") else if (p == 11) tr("日語的顏色") else titles[p], ff(FF.Headline), T.glyph, Modifier.weight(1f))
                 TextButton(onClick = { UI.settingsOpen = false }) { Text(tr("完成"), color = T.btnInk) }
             }
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp),
+            Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 when (page) {
                     null -> SettingsGrid(titles) { page = it }
@@ -496,6 +496,12 @@ private fun LanguagePage() {
                     { if (Store.lang == 5) Prefs.zhRom.value = it else Prefs.svRom.value = it })
             }
             RowDivider()
+            // 瑞典語的意思: Chinese, English or both
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Txt(tr("意思"), ff(FF.Body))
+                Segmented(listOf(0 to tr("中文和英文"), 1 to tr("中文"), 2 to tr("英文")), Prefs.svMeanings.value, { Prefs.svMeanings.value = it })
+            }
+            RowDivider()
             SwitchRow(tr("顯示由英文推測的中文"), Prefs.svGuessZh)
             Txt(tr("詞下面用連字號分開詞素（be-tal-a），每個部分一種顏色。詞是照字幕裡出現的次數分組，每組 500 個（FrequencyWords）。由英文推測的中文是照 CC-CEDICT 裡英文解釋相同的華語詞，標「由英文推測」，不一定準。顏色在「設定 → 顏色與外觀 → 選聲調顏色」選瑞典語。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
@@ -613,7 +619,7 @@ private fun SenseCopyEditor(zh: Boolean = false) {
 fun SenseCopySettingsPage(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("複製意思的格式") + (if (Store.isZh) "（華語）" else "（台語）"), onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             SenseCopyEditor(Store.isZh)
             Spacer(Modifier.height(40.dp))
         }

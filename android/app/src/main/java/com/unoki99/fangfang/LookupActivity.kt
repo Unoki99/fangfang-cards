@@ -84,7 +84,7 @@ private fun ZhResults(z: ZhDict, text: String, open: () -> Unit) {
         }
     }
     val l = list ?: return
-    Column(Modifier.verticalScroll(rememberScrollState())) {
+    Column(Modifier.dragScrollY(rememberScrollState())) {
         if (l.isEmpty()) Txt(tr("找不到「{0}」。", text), ff(FF.Body), T.muted, Modifier.padding(8.dp))
         for (i in l) if (i < z.entries.size) Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { open() }) { ZhWordRow(z, z.entries[i], meanings = 2) }
     }
@@ -100,7 +100,7 @@ private fun TwResults(d: Dict, text: String, open: () -> Unit) {
         }
     }
     val l = list ?: return
-    Column(Modifier.verticalScroll(rememberScrollState())) {
+    Column(Modifier.dragScrollY(rememberScrollState())) {
         if (l.isEmpty()) Txt(tr("找不到「{0}」。", text), ff(FF.Body), T.muted, Modifier.padding(8.dp))
         for (k in l) Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { open() }) { DictRow(d, k) }
     }

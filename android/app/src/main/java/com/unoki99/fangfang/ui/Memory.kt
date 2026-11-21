@@ -138,7 +138,7 @@ fun MemoryScreen(stars: StarField) {
         Box(Modifier.fillMaxSize()) {
             when {
                 tiles.isEmpty() -> Txt(tr("「不熟」裡至少要有兩個詞才能玩。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center))
-                done -> Column(Modifier.align(Alignment.Center).widthIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(24.dp),
+                done -> Column(Modifier.align(Alignment.Center).widthIn(max = 520.dp).dragScrollY(rememberScrollState()).padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Icon(Icons.Filled.AutoAwesome, null, tint = T.greenInk, modifier = Modifier.size(44.dp))
                     Txt(tr("全部配對了！"), ff(FF.Title2, FontWeight.Bold), T.glyph)
@@ -160,7 +160,7 @@ fun MemoryScreen(stars: StarField) {
                     val cols = if (maxWidth > 600.dp) 4 else 3
                     val rows = (tiles.size + cols - 1) / cols
                     val h = ((maxHeight - 32.dp - 10.dp * (rows - 1)) / rows).coerceIn(64.dp, 130.dp)
-                    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         for (r in 0 until rows) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             for (cI in 0 until cols) {
                                 val t = tiles.getOrNull(r * cols + cI)

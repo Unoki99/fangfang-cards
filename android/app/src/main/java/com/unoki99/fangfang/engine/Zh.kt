@@ -81,12 +81,29 @@ object Simp {
     private val back = java.util.concurrent.ConcurrentHashMap<Int, Int>()
     val on: Boolean get() = EngineSettings.simplified && EngineSettings.zhShown && !EngineSettings.hak && !EngineSettings.ja && !EngineSettings.sv
 
+    /** every word with its 簡體 (the same when it has none). A character is made 簡體 only when most words change it,
+     *  and to what most of them change it to: a word whose 簡體 is another way of writing it (瞳人 → 瞳仁, 菜子 →
+     *  菜籽) made every 人 仁 and every 子 籽 */
     fun learn(pairs: List<Pair<String, String>>) {
+        val changed = HashMap<Int, HashMap<Int, Int>>()
+        val kept = HashMap<Int, Int>()
         for ((h, a) in pairs) {
             val x = h.codePoints().toArray(); val y = a.codePoints().toArray()
             if (x.size != y.size) continue
-            for (i in x.indices) if (x[i] != y[i]) { table.putIfAbsent(x[i], y[i]); back.putIfAbsent(y[i], x[i]) }
+            for (i in x.indices) {
+                if (x[i] != y[i]) { val m = changed.getOrPut(x[i]) { HashMap() }; m[y[i]] = (m[y[i]] ?: 0) + 1 }
+                else kept[x[i]] = (kept[x[i]] ?: 0) + 1
+            }
         }
+        val backVotes = HashMap<Int, Pair<Int, Int>>()
+        for ((x, m) in changed) {
+            val best = m.maxByOrNull { it.value } ?: continue
+            if (best.value <= (kept[x] ?: 0)) continue
+            table.putIfAbsent(x, best.key)
+            val b = backVotes[best.key]
+            if (b == null || best.value > b.second) backVotes[best.key] = Pair(x, best.value)
+        }
+        for ((s, t) in backVotes) back.putIfAbsent(s, t.first)
     }
     fun show(s: String): String = if (on) convert(s) else s
     fun convert(s: String): String {
@@ -650,7 +667,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         val dictCount = out.size
         if (!isYue && !isHak && !isJa && !isSv) addSichuan(out)
         entries = out
-        Simp.learn(out.mapNotNull { e -> e.alt?.let { e.h to it } })
+        Simp.learn(out.map { e -> e.h to (e.alt ?: e.h) })
         for ((i, e) in out.withIndex()) for (m in e.eq) { val l = byMandarin.getOrPut(m) { ArrayList() }; if (l.lastOrNull() != i) l.add(i) }
         cardCount = if (nc > 0) nc else dictCount
         var m = 1
@@ -1044,7 +1061,9 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         }
         // 瑞典語: the Chinese meanings (when there are) before the English ones
         val zh = if (isSv) e.svZh else emptyList()
-        val defs = if (zh.isNotEmpty()) listOf(Def(if (e.svZhGuessed) "中≈" else "中", zh.joinToString("、"), emptyList())) + defs0 else defs0
+        // (只有中文: the English meanings' sentences kept, without the English)
+        val defs1 = if (isSv && e.svHideEnglish) defs0.map { Def(it.p, "", it.x) }.filter { it.x.isNotEmpty() } else defs0
+        val defs = if (zh.isNotEmpty()) listOf(Def(if (e.svZhGuessed) "中≈" else "中", zh.joinToString("、"), emptyList())) + defs1 else defs1
         val variant = e.lu?.let { lu -> mapOf("1" to Variant(listOf(readingPlain(lu, 0)), readingPlain(lu, 1))) }
         val lvl = e.level(list)
         return Card(e.k, Simp.show(e.h), listOf(readingPlain(e.tw, 0)), readingPlain(e.tw, 1), null, "", defs,
@@ -1246,7 +1265,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
             val exact = ArrayList<Int>(); val inside = ArrayList<Int>()
             val seps = Regex("[、，,；;]")
             for ((i, e) in entries.withIndex()) {
-                val zh = e.svZh
+                val zh = e.svZhAll
                 if (!zh.any { it.contains(q) }) continue
                 if (zh.any { it == q || it.split(seps).contains(q) }) exact.add(i) else if (inside.size < 200) inside.add(i)
             }

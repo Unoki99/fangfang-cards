@@ -126,7 +126,7 @@ fun ToneGameScreen(stars: StarField, onClose: () -> Unit) {
                 else -> {
                     val q = queue[idx]
                     LaunchedEffect(q.id) { Player.play(q.audio) }
-                    Column(Modifier.fillMaxSize().widthIn(max = 640.dp).align(Alignment.TopCenter).verticalScroll(rememberScrollState()).padding(16.dp),
+                    Column(Modifier.fillMaxSize().widthIn(max = 640.dp).align(Alignment.TopCenter).dragScrollY(rememberScrollState()).padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(18.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Txt("${idx + 1} / ${queue.size}", ff(FF.Footnote), T.muted, Modifier.weight(1f))

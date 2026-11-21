@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -126,7 +125,7 @@ fun RadioScreen() {
     if (metaOpen) AlertDialog(onDismissRequest = { metaOpen = false }, containerColor = T.fn,
         title = { Txt(tr("電台送來的資料"), ff(FF.Headline)) },
         text = {
-            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.heightIn(max = 420.dp).dragScrollY(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (RadioExtras.metaLog.isEmpty()) Txt(tr("這個電台到現在什麼都沒送：它沒有說在放什麼歌。"), ff(FF.Body), T.muted)
                 for ((t, line) in RadioExtras.metaLog) Column {
                     Txt(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(t)), lat(12f), T.muted)
@@ -322,7 +321,7 @@ private fun LyricsScreen() {
  *  opens it (華語: its entry in 華語 詞典; 台語: the 台語 word the converter finds for it); a click beside the words
  *  still looks up the whole line */
 @Composable
-internal fun LyricWords(line: String, size: Float = 20f, color: androidx.compose.ui.graphics.Color = T.glyph) {
+internal fun LyricWords(line: String, size: Float = 20f, color: androidx.compose.ui.graphics.Color = T.glyph, center: Boolean = false) {
     val zk = listOf(Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneGlow.value)
     // (in their tone colours: 華語's and 台語's alike, LyricText.kt)
     val words = remember(line, zk, Store.isZh, Store.lang, LyricPicks.songKey, LyricPicks.lang, LyricPicks.version) { lyricWords(line) }
@@ -332,6 +331,7 @@ internal fun LyricWords(line: String, size: Float = 20f, color: androidx.compose
     val openHere = LocalLyricOpen.current
     TapWords(
         count = words.size,
+        center = center,
         isTappable = { i -> words.getOrNull(i)?.let { it.open != null || it.pick != null } == true },
         onTap = { i -> val w = words.getOrNull(i); if (w?.pick != null) menu = i else if (w?.open != null) { if (openHere != null) openHere(w) else w.open.invoke() } },
     ) { i, hot ->

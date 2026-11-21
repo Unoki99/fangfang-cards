@@ -367,6 +367,15 @@ struct SvAffix {
     let en: String
     /// an example: the word without it → with it
     let ex: String
+    /// its English in short (in, into; -ness, -ity)
+    var enShort: String {
+        var t = en
+        if let r = t.range(of: ":") { t = String(t[..<r.lowerBound]) }
+        if let r = t.range(of: " (") { t = String(t[..<r.lowerBound]) }
+        return t.trimmingCharacters(in: .whitespaces)
+    }
+    /// its meaning in short, in the language the meanings are shown in (設定 → 瑞典語的意思: 只有英文 → English)
+    var gloss: String { SvGuess.show == 2 ? enShort : zh }
 }
 
 enum SvAffixes {
@@ -590,7 +599,7 @@ struct SvMorphemeSheet: View {
     /// a short meaning for a part: a root's word's Chinese (or English), an affix's meaning
     static func gloss(_ dict: ZhDict, _ m: SvMorpheme) -> String? {
         if m.kind == .root { return dict.svWordGloss(m.word) }
-        return SvAffixes.of(m)?.zh
+        return SvAffixes.of(m)?.gloss
     }
 
     var body: some View {
@@ -663,8 +672,10 @@ struct SvMorphemeSheet: View {
     @ViewBuilder private var affix: some View {
         if let a = SvAffixes.of(m) {
             VStack(alignment: .leading, spacing: 8) {
-                row(tr("意思"), a.zh)
-                row(tr("作用"), a.does)
+                if SvGuess.show != 2 {
+                    row(tr("意思"), a.zh)
+                    row(tr("作用"), a.does)
+                }
                 row(tr("英文"), a.en)
                 row(tr("例子"), a.ex)
             }
@@ -1057,7 +1068,7 @@ extension ZhDict {
     /// (varning) or a word without its last -a / -e (flick|vän ← flicka), a linking letter (s, e, a, u, o) may come
     /// between two, and the last part is a word or one of its forms (området). The fewest parts win, then the fewest
     /// linking letters, then the longest first part. nil: no way to split it into two words or more
-    func svCompound(_ word: String) -> [SvPart]? {
+    func svCompound(_ word: String, skipWhole: Bool = false) -> [SvPart]? {
         let orig = Array(word)
         let low = Array(word.lowercased())
         let n = low.count
@@ -1088,7 +1099,8 @@ extension ZhDict {
             if tried.contains(i) { return memo[i] }
             tried.insert(i)
             var top: [SvPart]? = nil
-            if n - i >= 3, let e = last(key(i, n)) { top = [SvPart(text: shown(i, n), entry: e, link: false)] }
+            // (skipWhole: the word itself is in the dictionary without its parts, ingenting: not the answer)
+            if n - i >= 3, !(skipWhole && i == 0), let e = last(key(i, n)) { top = [SvPart(text: shown(i, n), entry: e, link: false)] }
             if n - i >= 6 {
                 for j in stride(from: n - 3, through: i + 3, by: -1) {
                     guard let e = front(key(i, j)) else { continue }
@@ -1149,7 +1161,7 @@ extension ZhDict {
 
     /// a short meaning of an entry: its first Chinese one, else its first English one
     func svGloss(_ e: ZhEntry) -> String {
-        e.svZh.first ?? e.en?.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? ""
+        e.svZh.first ?? e.en?.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? e.senses.first?.text ?? ""
     }
 
     /// 瑞典語: a word's morphemes ("text:kind" each): its own, or for a word the dictionary has without them
@@ -1322,7 +1334,7 @@ extension ZhDict {
                 }
             }
             if !out.isEmpty { return out }
-            if let p = svCompound(s) {
+            if let p = svCompound(s, skipWhole: skipSelf && s == w) {
                 let ms = svCompoundMorphemes(p)
                 let cls = p.last?.entry.map { SvCls.of(entries[$0].pos) } ?? [.any]
                 let joins = p.filter { !$0.link }.count - 1
@@ -1469,7 +1481,7 @@ struct SvCompoundBlock: View {
                                 .foregroundStyle(SvColors.color(st.kind == .prefix ? 2 : (st.kind == .suffix ? 3 : 5)))
                                 .frame(minWidth: 52, alignment: .leading)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(UILang.english ? st.en : st.zh).ffFont(.subheadline).foregroundStyle(T.glyph)
+                                Text(UILang.english || SvGuess.show == 2 ? st.en : st.zh).ffFont(.subheadline).foregroundStyle(T.glyph)
                                 if st.cls != .any && st.kind != .prefix {
                                     Text(tr("→ ") + trs(st.cls.name)).ffFont(.caption).foregroundStyle(T.muted)
                                 }
@@ -1517,16 +1529,23 @@ struct SvCompoundSheet: View {
 enum SvGuess {
     static let key = "svGuessZh"
     static var on: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? true }
+    /// 瑞典語的意思: 0 中文和英文, 1 只有中文 (English only when there's no Chinese), 2 只有英文
+    static let showKey = "svMeanings"
+    static var show: Int { UserDefaults.standard.integer(forKey: showKey) }
 }
 
 extension ZhEntry {
-    /// 瑞典語: the Chinese meanings (the guessed ones only when 設定 says)
-    var svZh: [String] {
+    /// 瑞典語: the Chinese meanings (the guessed ones only when 設定 says), searched whether shown or not
+    var svZhAll: [String] {
         let g = SvGuess.on
         return jp.compactMap { $0.hasPrefix("≈") ? (g ? String($0.dropFirst()) : nil) : $0 }
     }
+    /// 瑞典語: the Chinese meanings shown (none: 設定 says English only)
+    var svZh: [String] { SvGuess.show == 2 ? [] : svZhAll }
     /// (they're guessed from the English)
-    var svZhGuessed: Bool { SvGuess.on && (jp.first?.hasPrefix("≈") ?? false) }
+    var svZhGuessed: Bool { SvGuess.show != 2 && SvGuess.on && (jp.first?.hasPrefix("≈") ?? false) }
+    /// 瑞典語, 只有中文: the English meanings not shown (when there are Chinese ones instead)
+    var svHideEnglish: Bool { SvGuess.show == 1 && !svZh.isEmpty }
 }
 
 /// 瑞典語: the words the last search found through the English of a 華語 word (their entries say so)

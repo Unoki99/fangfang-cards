@@ -8,10 +8,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -54,7 +52,7 @@ object Rainbow {
 /** one capsule per word of the search, like the 皓羅 and 台・通行 buttons: grey until you tap one, then in its own colour */
 @Composable
 fun WordPickRow(words: List<String>, picked: Int?, onPick: (Int?) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.dragScrollX(rememberScrollState()).padding(horizontal = 4.dp, vertical = 3.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         for ((i, w) in words.withIndex()) {
             val on = picked == i
             Txt(w, ff(FF.Subheadline, FontWeight.Bold), if (on) Rainbow.ink(i) else T.glyph,
@@ -249,7 +247,7 @@ private fun RadicalCombine(z: ZhDict, picked: MutableList<String>, has: (String)
             Row(Modifier.fillMaxWidth().background(T.fn.copy(alpha = 0.5f)).padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (picked.isEmpty()) Txt(tr("還沒選部首"), ff(FF.Subheadline), T.muted)
-                Row(Modifier.weight(1f).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.weight(1f).dragScrollX(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     for ((i, r) in picked.withIndex()) Row(Modifier.clip(CircleShape).background(Rainbow.fill(i)).border(2.dp, Rainbow.edge(i), CircleShape)
                         .clickable { picked.remove(r) }.padding(horizontal = 10.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -372,7 +370,7 @@ private fun ZhComparePane(z: ZhDict, slot: com.unoki99.fangfang.Pref<String>, hi
                 items(found) { i -> Box(Modifier.background(T.fn).clickable { slot.value = z.entries[i].k; query = "" }) { ZhWordRow(z, z.entries[i]) } }
             }
         } else if (e != null) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) { ZhEntryBody(z, e); Spacer(Modifier.height(30.dp)) }
+            Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(horizontal = 16.dp)) { ZhEntryBody(z, e); Spacer(Modifier.height(30.dp)) }
         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Txt(tr("查一個詞，選它。"), ff(FF.Body), T.muted) }
     }
 }
@@ -619,7 +617,7 @@ fun PracticeScopeMenu() {
 fun ToneColorPickerPage(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("選聲調顏色"), onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp).widthIn(max = 700.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             ToneColorPickerBody()
             Spacer(Modifier.height(40.dp))
         }

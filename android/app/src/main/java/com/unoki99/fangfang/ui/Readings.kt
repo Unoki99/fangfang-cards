@@ -54,7 +54,7 @@ fun ReadingsPane() {
     val zhRom = if (Store.lang == 1) Prefs.zhRom.value else Prefs.mandRom.value
     val yueRom = if (Store.lang == 2) Prefs.zhRom.value else Prefs.yueRom.value
     val tk = textKey()
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SearchField(query, { query = it }, tr("漢字（詞或字），例如：學生、食飯、行"))
         val q = query.trim()
         if (q.isNotEmpty()) {

@@ -169,7 +169,12 @@ object SvColors {
 }
 
 /** what a prefix, suffix, linking letter or ending means and does (Chinese; what it does; English; an example) */
-class SvAffix(val zh: String, val does: String, val en: String, val ex: String)
+class SvAffix(val zh: String, val does: String, val en: String, val ex: String) {
+    /** its English in short (in, into; -ness, -ity) */
+    val enShort: String get() = en.substringBefore(":").substringBefore(" (").trim()
+    /** its meaning in short, in the language the meanings are shown in (設定 → 瑞典語的意思: 只有英文 → English) */
+    val gloss: String get() = if (SvGuess.show == 2) enShort else zh
+}
 
 object SvAffixes {
     val prefixes: Map<String, SvAffix> = mapOf(
@@ -374,12 +379,20 @@ data class SvStep(val text: String, val kind: SvMorpheme.Kind, val zh: String, v
 data class SvEstimate(val ms: List<SvMorpheme>, val cls: SvCls, val parts: List<SvPart>, val steps: List<SvStep>, val cost: Int, val adj: Int = 0)
 
 /** 瑞典語: 華語 meanings guessed from the English ones (marked ≈ in sv.json): shown or not (設定 → 瑞典語) */
-object SvGuess { @Volatile var on = true }
+object SvGuess {
+    @Volatile var on = true
+    /** 瑞典語的意思: 0 中文和英文, 1 只有中文 (English only when there's no Chinese), 2 只有英文 */
+    @Volatile var show = 0
+}
 
-/** 瑞典語: the Chinese meanings (the guessed ones only when 設定 says) */
-val ZhEntry.svZh: List<String> get() { val g = SvGuess.on; return jp.mapNotNull { if (it.startsWith("≈")) (if (g) it.drop(1) else null) else it } }
+/** 瑞典語: the Chinese meanings (the guessed ones only when 設定 says), searched (shown or not) */
+val ZhEntry.svZhAll: List<String> get() { val g = SvGuess.on; return jp.mapNotNull { if (it.startsWith("≈")) (if (g) it.drop(1) else null) else it } }
+/** 瑞典語: the Chinese meanings shown (none: 設定 says English only) */
+val ZhEntry.svZh: List<String> get() = if (SvGuess.show == 2) emptyList() else svZhAll
 /** (they're guessed from the English) */
-val ZhEntry.svZhGuessed: Boolean get() = SvGuess.on && (jp.firstOrNull()?.startsWith("≈") ?: false)
+val ZhEntry.svZhGuessed: Boolean get() = SvGuess.show != 2 && SvGuess.on && (jp.firstOrNull()?.startsWith("≈") ?: false)
+/** 瑞典語, 只有中文: the English meanings not shown (when there are Chinese ones to show instead) */
+val ZhEntry.svHideEnglish: Boolean get() = SvGuess.show == 1 && svZh.isNotEmpty()
 
 /** 瑞典語: the words the last search found through the English of a 華語 word (their entries say so) */
 class SvVia(val zh: String, val en: String) {
@@ -614,7 +627,7 @@ fun ZhDict.svSentence(text: String, hyphens: Boolean, base: Int?, colours: Boole
  *  a word without its last -a / -e (flick|vän ← flicka), a linking letter (s, e, a, u, o) may come between two, and the
  *  last part is a word or one of its forms (området). The fewest parts win, then the fewest linking letters, then the
  *  longest first part. null: no way to split it into two words or more */
-fun ZhDict.svCompound(word: String): List<SvPart>? {
+fun ZhDict.svCompound(word: String, skipWhole: Boolean = false): List<SvPart>? {
     val orig = word.cps()
     val low = word.lowercase().cps()
     val n = low.size
@@ -641,7 +654,8 @@ fun ZhDict.svCompound(word: String): List<SvPart>? {
         if (memo.containsKey(i)) return memo[i]
         memo[i] = null
         var top: List<SvPart>? = null
-        if (n - i >= 3) last(key(i, n))?.let { top = listOf(SvPart(shown(i, n), it, false)) }
+        // (skipWhole: the word itself is in the dictionary without its parts, ingenting: not the answer)
+        if (n - i >= 3 && !(skipWhole && i == 0)) last(key(i, n))?.let { top = listOf(SvPart(shown(i, n), it, false)) }
         if (n - i >= 6) {
             for (j in (n - 3) downTo (i + 3)) {
                 val e = front(key(i, j)) ?: continue
@@ -691,7 +705,7 @@ fun ZhDict.svCompoundMorphemes(parts: List<SvPart>): List<SvMorpheme> {
 }
 
 /** a short meaning of an entry: its first Chinese one, else its first English one */
-fun ZhDict.svGloss(e: ZhEntry): String = e.svZh.firstOrNull() ?: e.en?.split(";")?.firstOrNull()?.trim() ?: ""
+fun ZhDict.svGloss(e: ZhEntry): String = e.svZh.firstOrNull() ?: e.en?.split(";")?.firstOrNull()?.trim() ?: e.senses.firstOrNull()?.text ?: ""
 
 /** 瑞典語: a word's morphemes: its own, or for a word the dictionary has without them (Arvsfonden), worked out */
 fun ZhDict.svSyl(e: ZhEntry): List<String> {
@@ -710,7 +724,7 @@ fun ZhDict.svWordGloss(w: String): String? {
 }
 
 /** a short meaning for a part: a root's word's, an affix's meaning */
-fun ZhDict.svPartGloss(m: SvMorpheme): String? = if (m.kind == SvMorpheme.Kind.ROOT) svWordGloss(m.word) else SvAffixes.of(m)?.zh
+fun ZhDict.svPartGloss(m: SvMorpheme): String? = if (m.kind == SvMorpheme.Kind.ROOT) svWordGloss(m.word) else SvAffixes.of(m)?.gloss
 
 /** 瑞典語: a word the dictionary doesn't have, worked out from words it has and the rules: the base word (or a compound
  *  of words, or a prefix and a word), then the suffixes and endings each fitting the kind of word it's added to.
@@ -729,7 +743,7 @@ fun ZhDict.svEstimate(word: String, skipSelf: Boolean = false): SvEstimate? {
             for (c in SvCls.of(e.pos)) out.add(SvEstimate(ms, c, listOf(SvPart(s, i, false)), emptyList(), if (c == SvCls.ANY) 1 else 0))
         }
         if (out.isNotEmpty()) return out
-        svCompound(s)?.let { p ->
+        svCompound(s, skipWhole = skipSelf && s == w)?.let { p ->
             val ms = svCompoundMorphemes(p)
             val cls = p.lastOrNull()?.entry?.let { SvCls.of(entries[it].pos) } ?: listOf(SvCls.ANY)
             val joins = p.count { !it.link } - 1

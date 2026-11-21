@@ -287,6 +287,11 @@ struct ZhWordRow: View {
                         Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
                     }
                 }
+            } else if dict.isSv && !(query != nil && english) {
+                // (瑞典語: the meaning in the language 設定 says; both: 中文 · English)
+                let enFirst = entry.enList.first ?? entry.senses.first?.text
+                let m = SvGuess.show == 0 ? [entry.svZh.first, enFirst].compactMap { $0 }.joined(separator: " · ") : dict.svGloss(entry)
+                if !m.isEmpty { Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2) }
             } else if let q = query, english {
                 // found by its English: the English (the meanings with the word first), then the 中文 meaning
                 // (粵語: Wiktionary's meanings are English already)
@@ -472,7 +477,8 @@ struct ZhEntryBody: View {
                 if !dict.isJa && !dict.isSv { InputCodesRow(han: entry.h) }
                 // the English meanings, one per line
                 // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
-                let ens = dict.isJa ? [] : entry.enList
+                // (瑞典語, 只有中文: no English)
+                let ens = dict.isJa || (dict.isSv && entry.svHideEnglish) ? [] : entry.enList
                 let zhShort: [(n: Int, t: String)] = dict.isJa || dict.isSv || dict.isYue ? [] : entry.senses.compactMap { s in
                     var t = s.text.components(separatedBy: "\n").first ?? s.text
                     if let r = t.range(of: "。") { t = String(t[..<r.lowerBound]) }
@@ -594,13 +600,14 @@ struct ZhEntryBody: View {
 
     private func sense(_ s: ZhSense) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            // (瑞典語, 只有中文: the English meaning left out, its sentences kept)
+            if !(dict.isSv && entry.svHideEnglish) { HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("\(s.n).").ffFont(.subheadline, .bold).foregroundStyle(T.muted)
                 Text(s.text).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
                 Spacer(minLength: 4)
                 ZhSenseCopyButton(dict: dict, key: entry.k, sense: s.n - 1)
                 SenseSaveButton(item: SavedSense(key: entry.k, sense: s.n - 1), store: store)
-            }
+            } }
             ForEach(Array(s.ex.enumerated()), id: \.offset) { _, x in
                 ZhExampleBlock(dict: dict, ex: x)
                     .padding(.leading, 18)

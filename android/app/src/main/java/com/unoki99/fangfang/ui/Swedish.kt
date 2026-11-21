@@ -26,7 +26,7 @@ import com.unoki99.fangfang.engine.*
 // MARK: - 瑞典語 (the computer version only): the parts of a word, a part's page, the sentences, a word the dictionary
 // doesn't have. The same as the iPhone app's (SvMorphology.swift).
 
-private fun svColorKey(): List<Any> = Prefs.svColors.map { it.value } + Prefs.toneSys.value + Prefs.svGuessZh.value
+private fun svColorKey(): List<Any> = Prefs.svColors.map { it.value } + Prefs.toneSys.value + Prefs.svGuessZh.value + Prefs.svMeanings.value
 
 /** 瑞典語 in an entry: its Chinese meanings, the word in its parts (tap one to see what it means and does) and its
  *  forms (the ending of each in colour) */
@@ -75,7 +75,7 @@ private fun SvPartBox(z: ZhDict, m: SvMorpheme, ms: List<SvMorpheme>, onClick: (
         verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Txt(m.text, lat(20f).copy(fontWeight = FontWeight.SemiBold), T.glyph)
         Txt(tr(m.kindName), ff(FF.Caption2), T.muted)
-        remember(m) { z.svPartGloss(m) }?.let { Txt(it, ff(FF.Caption2), T.glyph.copy(alpha = 0.85f), maxLines = 1) }
+        remember(m, SvGuess.show) { z.svPartGloss(m) }?.let { Txt(it, ff(FF.Caption2), T.glyph.copy(alpha = 0.85f), maxLines = 1) }
     }
 }
 
@@ -91,7 +91,7 @@ fun SvPartPage(z: ZhDict, key: String, index: Int, onBack: () -> Unit) {
         TopBar(m?.text ?: "", onBack, settings = false)
         if (e == null || m == null) return@Column
         val c = Color(SvColors.colorOf(m, all))
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             // the word with this part lit up
             Row {
                 for (o in all) Txt(o.text, lat(30f).copy(fontWeight = if (o.id == m.id) FontWeight.Bold else FontWeight.Normal),
@@ -111,7 +111,7 @@ fun SvPartPage(z: ZhDict, key: String, index: Int, onBack: () -> Unit) {
                 val a = SvAffixes.of(m)
                 if (a != null) Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f)).padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for ((name, text) in listOf(tr("意思") to a.zh, tr("作用") to a.does, tr("英文") to a.en, tr("例子") to a.ex)) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for ((name, text) in (if (SvGuess.show == 2) listOf(tr("英文") to a.en, tr("例子") to a.ex) else listOf(tr("意思") to a.zh, tr("作用") to a.does, tr("英文") to a.en, tr("例子") to a.ex))) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Txt(name, ff(FF.Caption, FontWeight.SemiBold), T.muted, Modifier.width(40.dp))
                         Txt(text, ff(FF.Body), T.glyph, Modifier.weight(1f))
                     }
@@ -223,7 +223,7 @@ fun SvEstimateBlock(z: ZhDict, est: SvEstimate) {
                 Txt(if (st.kind == SvMorpheme.Kind.PREFIX) st.text + "-" else "-" + st.text, lat(16f).copy(fontWeight = FontWeight.SemiBold),
                     Color(SvColors.color(if (st.kind == SvMorpheme.Kind.PREFIX) 2 else if (st.kind == SvMorpheme.Kind.SUFFIX) 3 else 5)), Modifier.widthIn(min = 52.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    Txt(if (UILang.english) st.en else st.zh, ff(FF.Subheadline), T.glyph)
+                    Txt(if (UILang.english || SvGuess.show == 2) st.en else st.zh, ff(FF.Subheadline), T.glyph)
                     if (st.cls != SvCls.ANY && st.kind != SvMorpheme.Kind.PREFIX) Txt(tr("→ ") + tr(st.cls.label), ff(FF.Caption), T.muted)
                 }
             }
@@ -238,7 +238,7 @@ fun SvWordPage(z: ZhDict, word: String, onBack: () -> Unit) {
     val est = remember(word) { z.svEstimate(word) }
     Column(Modifier.fillMaxSize()) {
         TopBar(word, onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp)) {
             if (est != null) SvEstimateBlock(z, est) else Txt(tr("找不到「{0}」。", word), ff(FF.Body), T.muted)
         }
     }

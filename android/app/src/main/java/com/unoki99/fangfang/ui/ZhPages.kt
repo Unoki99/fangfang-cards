@@ -11,7 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -100,7 +99,7 @@ private fun ZhLookupPane(z: ZhDict) {
                     val e = picked?.let { z.entry(it) }
                     if (e == null) Txt(tr("點左邊的詞，詞條會在這裡打開。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center).padding(24.dp))
                     else key(e.k) {
-                        Column(Modifier.fillMaxSize().entryKeys(e.k).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                        Column(Modifier.fillMaxSize().entryKeys(e.k).dragScrollY(rememberScrollState()).padding(16.dp)) {
                             ZhEntryBody(z, e)
                             Spacer(Modifier.height(40.dp))
                         }
@@ -241,6 +240,14 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             val ens = EnglishMatch.first(if (z.isYue) EnglishMatch.unique(e.senses.map { it.text } + e.enList) else e.enList, query)
             if (ens.isNotEmpty()) Txt(ens.take(3).joinToString("; "), ff(FF.Footnote), T.glyph.copy(alpha = 0.85f), maxLines = 2)
             if (!z.isYue && !Prefs.zhEnglish.value) e.senses.firstOrNull()?.let { Txt(it.text, ff(FF.Footnote), T.muted, maxLines = 1) }
+        } else if (z.isSv) {
+            // (瑞典語: the meaning in the language 設定 says; both: 中文 · English)
+            val enFirst = e.enList.firstOrNull() ?: e.senses.firstOrNull()?.text
+            val m = when {
+                Prefs.svMeanings.value == 0 -> listOfNotNull(e.svZh.firstOrNull(), enFirst).joinToString(" · ")
+                else -> z.svGloss(e)
+            }
+            if (m.isNotEmpty()) Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
         } else {
             val m = if ((english || Prefs.zhEnglish.value) && en != null) en else e.senses.firstOrNull()?.text ?: en
             if (m != null) Txt(m, ff(FF.Footnote), T.muted, maxLines = 2)
@@ -283,7 +290,7 @@ fun SichuanNote(kind: Int) {
 fun ZhEntryPage(z: ZhDict, key: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().entryKeys(key)) {
         TopBar(z.entry(key)?.h ?: "", onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp)) {
             val e = z.entry(key)
             if (e != null) ZhEntryBody(z, e) else Txt(tr("找不到這個詞。"), ff(FF.Body), T.muted)
             Spacer(Modifier.height(40.dp))
@@ -300,7 +307,7 @@ fun ZhEntrySheetRoot(z: ZhDict, key: String) {
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(horizontal = 16.dp)) {
             val e = z.entry(key)
             if (e != null) ZhEntryBody(z, e) else Txt(tr("找不到這個詞。"), ff(FF.Body), T.muted)
             Spacer(Modifier.height(60.dp))
@@ -371,7 +378,8 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
             if (!z.isJa) {
                 val zhShort = if (z.isYue || z.lang == 5) emptyList() else e.senses.mapNotNull { s -> shortMeaning(s.text).takeIf { it.isNotEmpty() }?.let { s.n to it } }
-                MeaningsOverview(zhShort, if (z.isHak) tr("客") else tr("華"), e.enList)
+                // (瑞典語, 只有中文: no English)
+                MeaningsOverview(zhShort, if (z.isHak) tr("客") else tr("華"), if (z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish) emptyList() else e.enList)
             }
             // 瑞典語: its Chinese meanings, its parts (tap one), its forms
             if (z.isSv) SvWordExtras(z, e)
@@ -407,7 +415,8 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         for (s in e.senses) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // (瑞典語, 只有中文: the English meaning left out, its sentences kept)
+                if (!(z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Txt("${s.n}.", ff(FF.Subheadline, FontWeight.Bold), T.muted)
                     Txt(s.text, ff(FF.Body), T.glyph, Modifier.weight(1f))
                     CopyIconButton {
@@ -583,7 +592,7 @@ fun ZhConvertPane(z: ZhDict) {
         else -> z.sentence(pieces, 1, place, colours = 0).plain()
     }
     if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf(tr("漢字"), tr("拼音"), tr("注音"))) { copySheet = false }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.fillMaxWidth().surface()) {
             TextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 110.dp, max = 220.dp),
                 placeholder = { Text(tr("輸入或貼上華語（正體或簡體都可以）…"), color = T.muted) },

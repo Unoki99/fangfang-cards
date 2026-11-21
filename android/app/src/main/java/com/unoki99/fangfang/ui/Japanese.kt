@@ -163,7 +163,7 @@ fun JaParticlesPage(onBack: () -> Unit) {
     jaColorKey()
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("助詞"), onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             TileButton(Icons.Filled.Extension, tr("助詞練習"), Modifier.fillMaxWidth()) { UI.practice = Practice.JA_PARTICLES }
             // 用法地圖: one sentence, each particle under it with what it does; then the order of a sentence
             Column(Modifier.jaPanel().padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -235,7 +235,7 @@ private fun JaParticleDialog(p: JaParticle, close: () -> Unit) {
             }
         },
         text = {
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.dragScrollY(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Txt(tr(p.zh), ff(FF.Body), T.glyph)
                 Txt(p.en, ff(FF.Subheadline), T.muted)
                 for ((jp, en) in p.ex) Column(Modifier.jaPanel().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -279,7 +279,7 @@ fun JaParticleQuiz(onClose: () -> Unit) {
             Txt("$right / $done", ff(FF.Subheadline), T.muted)
         }
         val cur = q ?: return@Column
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(20.dp)) {
             Spacer(Modifier.height(12.dp))
             val sentence = JaInk.styled(JaInk.marked(cur.before)) +
@@ -423,7 +423,7 @@ fun JaLabPage(z: ZhDict, startKey: String?, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("實驗室"), onBack)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             // choosing the word
             SearchField(query, { query = it }, tr("查動詞或形容詞（日語、羅馬字或英文），例如：taberu、書く、eat"))
             if (query.isEmpty()) {
@@ -493,7 +493,7 @@ private fun LabWheels(w: JaLabWord, steps: MutableList<Int>) {
     val first = labSplits(base).firstOrNull()
     Column(Modifier.jaPanel().padding(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         // (the wheels glide to their new places when one comes or goes)
-        Row(Modifier.horizontalScroll(rememberScrollState()).animateContentSize(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
+        Row(Modifier.dragScrollX(rememberScrollState()).animateContentSize(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
             // the word's part that stays (食べ, 書): not on a wheel
             Column(Modifier.widthIn(min = 44.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Txt(tr("詞"), ff(if (big) FF.Footnote else FF.Caption2, FontWeight.Bold), T.muted)
@@ -510,7 +510,7 @@ private fun LabWheels(w: JaLabWord, steps: MutableList<Int>) {
                 Column(Modifier.width(if (big) 150.dp else 104.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Txt(tr("接 {0}", k + 1), ff(if (big) FF.Footnote else FF.Caption2, FontWeight.Bold), T.muted)
                     Column(Modifier.height(wheelH).fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.bg.copy(alpha = 0.35f))
-                        .verticalScroll(rememberScrollState()).padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        .dragScrollY(rememberScrollState()).padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         for ((i, o) in opts.withIndex()) {
                             val on = i == sel
                             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
@@ -584,7 +584,7 @@ private fun LabPane(z: ZhDict, w: JaLabWord, c: JaGrammar.Chain, rom: Int) {
 fun JaColorSettingsPage(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("日語的顏色"), onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) { JaColorSettingsBody() }
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp)) { JaColorSettingsBody() }
     }
 }
 

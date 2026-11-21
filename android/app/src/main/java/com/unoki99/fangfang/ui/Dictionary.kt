@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -46,7 +45,7 @@ fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.tone
 fun EntryPage(d: Dict, key: String, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize().entryKeys(key)) {
         TopBar(Dict.hanOf(key), onBack, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(16.dp)) {
             DictEntryBody(d, key)
             Spacer(Modifier.height(40.dp))
         }
@@ -62,7 +61,7 @@ fun EntrySheetRoot(d: Dict, key: String) {
             Spacer(Modifier.weight(1f))
             BarButtons(settings = false)
         }
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(horizontal = 16.dp)) {
             DictEntryBody(d, key)
             Spacer(Modifier.height(60.dp))
         }
@@ -849,7 +848,7 @@ private fun ComparePane(d: Dict, slot: com.unoki99.fangfang.Pref<String>, hint: 
                 items(found) { k -> Box(Modifier.background(T.fn).clickable { slot.value = k; query = "" }) { DictRow(d, k) } }
             }
         } else if (key.isNotEmpty() && (d.raw.defs.m[key] != null || d.baseKeys.contains(key) || d.isUser(key))) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) { DictEntryBody(d, key); Spacer(Modifier.height(30.dp)) }
+            Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(horizontal = 16.dp)) { DictEntryBody(d, key); Spacer(Modifier.height(30.dp)) }
         } else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Txt(tr("查一個詞，選它。"), ff(FF.Body), T.muted) }
     }
 }
@@ -910,7 +909,7 @@ private fun LookupPane(d: Dict) {
                     val k = picked
                     if (k == null) Txt(tr("點左邊的詞，詞條會在這裡打開。"), ff(FF.Body), T.muted, Modifier.align(Alignment.Center).padding(24.dp))
                     else key(k) {
-                        Column(Modifier.fillMaxSize().entryKeys(k).verticalScroll(rememberScrollState()).padding(16.dp)) {
+                        Column(Modifier.fillMaxSize().entryKeys(k).dragScrollY(rememberScrollState()).padding(16.dp)) {
                             DictEntryBody(d, k)
                             Spacer(Modifier.height(40.dp))
                         }

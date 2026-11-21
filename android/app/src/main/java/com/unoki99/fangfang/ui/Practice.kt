@@ -403,7 +403,7 @@ private fun Feedback(q: Question, ok: Boolean, learnedNow: Boolean, rom: Int, pl
 @Composable
 private fun BoxScope.TestSummary(right: Int, wrong: Int, missed: List<Card>) {
     val score = right.toDouble() / maxOf(right + wrong, 1)
-    Column(Modifier.align(Alignment.TopCenter).widthIn(max = 560.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(16.dp),
+    Column(Modifier.align(Alignment.TopCenter).widthIn(max = 560.dp).dragScrollY(androidx.compose.foundation.rememberScrollState()).padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Txt(tr("期末測驗"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
         Txt(tr("{0} 分", Math.round(score * 100)), ff(FF.Title, FontWeight.Bold), if (score >= 0.8) T.greenInk else T.rustInk)

@@ -7,7 +7,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -22,6 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
@@ -254,6 +256,7 @@ fun YtLyricsScreen() {
             Switch(showReadings, { Prefs.lyricsReadings.value = it },
                 colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
         }
+        BallSettings()
         // 浮動歌詞: the letters' size and the reading, set here (the window itself has only play / pause and close)
         if (UI.lyricsFloat) FloatSettings()
         if (st.busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(12.dp), color = T.btnEdge, trackColor = T.fnEdge)
@@ -380,15 +383,22 @@ private fun SongControls(cur: Int, pos: Double, playing: Boolean) {
             }
             Ctl(Icons.Filled.PauseCircle, tr("一句一停"), Modifier.weight(1f), on = st.stopEach) { st.stopEach = !st.stopEach }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            // (the lyrics a second or a quarter of a second later / sooner, as on the iPhone / iPad; the time: back to 0)
-            TextButton(onClick = { st.offset -= 1.0 }) { Text("−1", color = T.btnInk) }
-            TextButton(onClick = { st.offset -= 0.25 }) { Text("−¼", color = T.btnInk) }
-            Txt(if (st.offset == 0.0) tr("歌詞時間") else String.format(java.util.Locale.US, "%+.2f s", st.offset), ff(FF.Footnote), T.muted,
-                Modifier.clickable { st.offset = 0.0 }.padding(horizontal = 6.dp))
-            TextButton(onClick = { st.offset += 0.25 }) { Text("+¼", color = T.btnInk) }
-            TextButton(onClick = { st.offset += 1.0 }) { Text("+1", color = T.btnInk) }
-        }
+        OffsetRow()
+    }
+}
+
+/** 對時: the lyrics a second or a quarter of a second later / sooner, as on the iPhone / iPad; the time: back to 0
+ *  (the lyrics page and 卡拉 OK) */
+@Composable
+private fun OffsetRow() {
+    val st = YtLyricsState
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        TextButton(onClick = { st.offset -= 1.0 }) { Text("−1", color = T.btnInk) }
+        TextButton(onClick = { st.offset -= 0.25 }) { Text("−¼", color = T.btnInk) }
+        Txt(if (st.offset == 0.0) tr("歌詞時間") else String.format(java.util.Locale.US, "%+.2f s", st.offset), ff(FF.Footnote), T.muted,
+            Modifier.clickable { st.offset = 0.0 }.padding(horizontal = 6.dp))
+        TextButton(onClick = { st.offset += 0.25 }) { Text("+¼", color = T.btnInk) }
+        TextButton(onClick = { st.offset += 1.0 }) { Text("+1", color = T.btnInk) }
     }
 }
 
@@ -396,7 +406,7 @@ private fun SongControls(cur: Int, pos: Double, playing: Boolean) {
  *  time: from the lyrics' own word times (歌詞對時 on the iPad, or here) when they have them, else the line's time spread
  *  over its words by their length */
 @Composable
-internal fun SungLine(line: TimedLine, end: Double, pos: Double, size: Float) {
+internal fun SungLine(line: TimedLine, end: Double, pos: Double, size: Float, center: Boolean = false, ball: Boolean = true) {
     val zk = listOf(Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneGlow.value)
     val words = remember(line.text, zk, Store.isZh, Store.lang, LyricPicks.songKey, LyricPicks.lang, LyricPicks.version) { lyricWords(line.text.trim()) }
     var menu by remember { mutableIntStateOf(-1) }
@@ -420,8 +430,17 @@ internal fun SungLine(line: TimedLine, end: Double, pos: Double, size: Float) {
         }
     }
     if (words.isEmpty()) { Txt(line.text, sz(size, FontWeight.SemiBold), T.glyph); return }
+    // 跳跳球: each syllable's time and place (the words' places in the window, measured as they're laid out)
+    val ballOn = ball && Prefs.lyricsBall.value
+    val syls = remember(words, line, end) { ballSyllables(words, line, end) }
+    val rects = remember(words) { androidx.compose.runtime.mutableStateMapOf<Int, androidx.compose.ui.geometry.Rect>() }
+    var origin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    Box(Modifier.onGloballyPositioned { origin = it.positionInRoot() }) {
     TapWords(
         count = words.size,
+        center = center,
+        // (room above the line for the ball)
+        modifier = if (ballOn) Modifier.padding(top = (size * 0.55f).dp) else Modifier,
         isTappable = { i -> words.getOrNull(i)?.let { it.open != null || it.pick != null } == true },
         onTap = { i -> val w = words.getOrNull(i); if (w?.pick != null) menu = i else if (w?.open != null) { if (openHere != null) openHere(w) else w.open.invoke() } },
     ) { i, hot ->
@@ -429,7 +448,8 @@ internal fun SungLine(line: TimedLine, end: Double, pos: Double, size: Float) {
         val now = sung && (i == words.size - 1 || pos < starts[i + 1])
         val scale by animateFloatAsState(if (now || hot) 1.14f else 1f, label = "sung")
         val alpha by animateFloatAsState(if (sung) 1f else 0.42f, label = "lit")
-        Box {
+        // (where the word is, for the ball)
+        Box(if (ballOn) Modifier.onGloballyPositioned { rects[i] = it.boundsInRoot() } else Modifier) {
             Text(words[i].text, style = sz(size, FontWeight.SemiBold), color = T.glyph,
                 modifier = Modifier.graphicsLayer {
                     // (the first word swells to the right, not out past the left edge)
@@ -438,6 +458,109 @@ internal fun SungLine(line: TimedLine, end: Double, pos: Double, size: Float) {
                 }.padding(vertical = 2.dp)
                     .then(if (words[i].pick != null) Modifier.dottedUnder() else Modifier))
             if (menu == i) ReadingMenu(words[i]) { menu = -1 }
+        }
+    }
+    if (ballOn) LyricBall(syls, rects, origin, size, Modifier.matchParentSize())
+    }
+}
+
+/** one syllable for the ball: its word, which of the word's syllables (of n), and when it's sung */
+private class BallSyl(val word: Int, val j: Int, val n: Int, val t: Double)
+
+/** the line's syllables: each 漢字 one (a word of 漢字 is as many syllables as it has); a word in letters (English,
+ *  羅馬字) one. Their times as the line lights up: the lyrics' own, else spread by length */
+private fun ballSyllables(words: List<LyricWord>, line: TimedLine, end: Double): List<BallSyl> {
+    val start = line.t ?: return emptyList()
+    val total = words.sumOf { it.letters }.coerceAtLeast(1)
+    val own = line.words
+    val ps = if (own != null) LRC.pieceStarts(LRC.pieces(line.text)) else null
+    val dur = minOf(end - start, maxOf(1.5, total * 0.45)).coerceAtLeast(0.5)
+    val out = ArrayList<BallSyl>()
+    var acc = 0
+    for (i in words.indices) {
+        val w = words[i]
+        if (w.letters <= 0) continue
+        val text = w.text.text
+        val han = text.codePoints().anyMatch { Character.UnicodeScript.of(it) == Character.UnicodeScript.HAN }
+        val n = if (han) w.letters else 1
+        for (j in 0 until n) {
+            val at = acc + j
+            val t = if (own != null && ps != null) own.getOrElse(ps.indexOfLast { it <= at }.coerceAtLeast(0)) { start }
+                else start + dur * at / total
+            out.add(BallSyl(i, j, n, t))
+        }
+        acc += w.letters
+    }
+    return out
+}
+
+/** where the ball is at time e: on syllable k at its time, flying in an arc to the next one until that one's time */
+private fun ballAt(syls: List<BallSyl>, rects: Map<Int, androidx.compose.ui.geometry.Rect>, origin: androidx.compose.ui.geometry.Offset,
+                   e: Double, hop: Float): Triple<Float, Float, Float>? {
+    if (syls.isEmpty()) return null
+    fun spot(s: BallSyl): androidx.compose.ui.geometry.Offset? {
+        val r = rects[s.word] ?: return null
+        return androidx.compose.ui.geometry.Offset(r.left - origin.x + r.width * (s.j + 0.5f) / s.n, r.top - origin.y)
+    }
+    val k = syls.indexOfLast { it.t <= e }
+    if (k < 0) {
+        // (before the line: waiting on its first syllable, a small hop just before it starts)
+        val a = spot(syls[0]) ?: return null
+        val left = syls[0].t - e
+        val f = if (left > 0.5) 0f else (1 - left / 0.5).toFloat()
+        return Triple(a.x, a.y - hop * 0.5f * 4f * f * (1 - f), f)
+    }
+    val a = spot(syls[k]) ?: return null
+    if (k == syls.size - 1) return Triple(a.x, a.y, 0f)
+    val b = spot(syls[k + 1]) ?: return Triple(a.x, a.y, 0f)
+    val span = (syls[k + 1].t - syls[k].t).coerceAtLeast(0.05)
+    val f = ((e - syls[k].t) / span).toFloat().coerceIn(0f, 1f)
+    // (a longer gap: a higher hop)
+    val h = hop * (0.45f + 0.55f * minOf(1f, (span / 0.6).toFloat()))
+    return Triple(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f - h * 4f * f * (1 - f), f)
+}
+
+/** 跳跳球: a ball bouncing from syllable to syllable, landing on each the set seconds before it's sung; squashed a
+ *  little as it lands and takes off */
+@Composable
+private fun LyricBall(syls: List<BallSyl>, rects: Map<Int, androidx.compose.ui.geometry.Rect>, origin: androidx.compose.ui.geometry.Offset,
+                      size: Float, modifier: Modifier) {
+    val lead = Prefs.lyricsBallLead.value.toDouble()
+    var now by remember { mutableDoubleStateOf(0.0) }
+    // (every frame: the ball moves smoothly)
+    LaunchedEffect(Unit) { while (true) { androidx.compose.runtime.withFrameNanos { }; now = YtLink.position() + YtLyricsState.offset } }
+    val ink = T.btnInk
+    val glow = T.btnEdge
+    androidx.compose.foundation.Canvas(modifier) {
+        val r = (size * 0.16f).dp.toPx()
+        val p = ballAt(syls, rects, origin, now + lead, (size * 0.5f).dp.toPx())
+        if (p != null) {
+            val f = p.third
+            val air = 4f * f * (1 - f)
+            val squash = (1f - minOf(1f, air * 3f)) * 0.28f
+            val w = r * (1 + squash); val h = r * (1 - squash)
+            val cy = p.second - h - 3f
+            drawCircle(glow.copy(alpha = 0.35f), r * 1.7f, androidx.compose.ui.geometry.Offset(p.first, cy))
+            drawOval(ink, androidx.compose.ui.geometry.Offset(p.first - w, cy - h), androidx.compose.ui.geometry.Size(w * 2, h * 2))
+        }
+    }
+}
+
+/** 跳跳球 on or off, and how many seconds ahead of the syllable it lands */
+@Composable
+private fun BallSettings() {
+    val on = Prefs.lyricsBall.value
+    val lead = Prefs.lyricsBallLead.value
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Txt(tr("跳跳球"), ff(FF.Subheadline), T.glyph)
+        Switch(on, { Prefs.lyricsBall.value = it }, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
+        if (on) {
+            Spacer(Modifier.width(8.dp))
+            Txt(tr("提早"), ff(FF.Footnote), T.muted)
+            TextButton(onClick = { Prefs.lyricsBallLead.value = (Math.round((lead - 0.05f) * 100) / 100f).coerceAtLeast(0f) }) { Text("−", color = T.btnInk) }
+            Txt(tr("{0} 秒", "%.2f".format(lead)), lat(14f), T.glyph)
+            TextButton(onClick = { Prefs.lyricsBallLead.value = (Math.round((lead + 0.05f) * 100) / 100f).coerceAtMost(3f) }) { Text("+", color = T.btnInk) }
         }
     }
 }
@@ -589,7 +712,7 @@ private fun FloatDict(key: String, zh: Boolean) {
             TextButton(onClick = { if (zh) UI.open(Sheet.ZhWord(key)) else UI.openWord(key) }) { Text(tr("在程式裡打開"), color = T.btnInk) }
         }
         CompositionLocalProvider(LocalNav provides nav) {
-            Column(Modifier.fillMaxSize().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 16.dp)) {
+            Column(Modifier.fillMaxSize().dragScrollY(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 16.dp)) {
                 val z = LyricDicts.forKey(key) ?: Store.zh; val d = Store.dict
                 if (zh && z != null) { val e = z.entry(key); if (e != null) ZhEntryBody(z, e) else Txt(tr("找不到這個詞。"), ff(FF.Body), T.muted) }
                 else if (!zh && d != null) DictEntryBody(d, key)
@@ -614,7 +737,7 @@ private fun FloatLines(at: Int, pos: Double, size: Float, showRd: Boolean) {
     }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(1.dp)) {
         if (l == null || text.isEmpty()) Txt("♪", sz(size), T.muted)
-        else SungLine(l, st.endOf(at), pos, size)
+        else SungLine(l, st.endOf(at), pos, size, ball = false)
         // (everything wraps onto the next line at the window's edge, never cut off)
         if (rd != null) Txt(rd, lat(size * 0.6f), T.greenInk)
         next?.let { Box(Modifier.graphicsLayer { alpha = 0.5f }) { LyricWords(lines[it].text.trim(), size * 0.68f, T.glyph) } }
@@ -1031,6 +1154,9 @@ private fun YtKaraoke() {
             TextButton(onClick = { Prefs.karaokeSize.value = (size + 4f).coerceAtMost(96f) }) { Text("A+", color = T.btnInk) }
             TextButton(onClick = { Prefs.karaokeReadings.value = !showRd }) { Text(tr("讀音"), color = if (showRd) T.btnInk else T.muted) }
         }
+        // (歌的語言 here too, and 跳跳球)
+        SongLangRow(st.picksKey(song))
+        BallSettings()
         Box(Modifier.weight(1f).fillMaxWidth().clipToBounds().padding(horizontal = 40.dp), contentAlignment = Alignment.Center) {
             AnimatedContent(targetState = cur, label = "karaoke",
                 transitionSpec = {
@@ -1038,17 +1164,17 @@ private fun YtKaraoke() {
                     (slideInVertically(tween(450)) { h -> if (down) h / 3 else -h / 3 } + fadeIn(tween(450))) togetherWith
                         (slideOutVertically(tween(350)) { h -> if (down) -h / 3 else h / 3 } + fadeOut(tween(300))) using SizeTransform(clip = false)
                 }) { at ->
-                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy((size * 0.3f).dp)) {
-                    // (the line before, dim; the line being sung, big, lighting up; the two after it)
-                    lines.getOrNull(at - 1)?.takeIf { it.text.isNotBlank() }?.let { Box(Modifier.graphicsLayer { alpha = 0.3f }) { LyricWords(it.text.trim(), size * 0.55f, T.glyph) } }
+                Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy((size * 0.3f).dp)) {
+                    // (the line before, dim; the line being sung, big, lighting up; the two after it; all in the middle)
+                    lines.getOrNull(at - 1)?.takeIf { it.text.isNotBlank() }?.let { Box(Modifier.graphicsLayer { alpha = 0.3f }) { LyricWords(it.text.trim(), size * 0.55f, T.glyph, center = true) } }
                     val l = lines.getOrNull(at)
                     if (l == null || l.text.isBlank()) Txt("♪", sz(size), T.muted)
                     else {
-                        Box(Modifier.padding(start = 8.dp)) { SungLine(l, st.endOf(at), pos, size) }
+                        SungLine(l, st.endOf(at), pos, size, center = true)
                         if (showRd) {
                             val zk = listOf(Prefs.zhRom.value, Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneGlow.value)
                             val rd = remember(l.text, zk, Store.lang, LyricPicks.lang, LyricPicks.version) { lyricReading(l.text.trim()) }
-                            rd?.let { Txt(it, lat(size * 0.5f), T.greenInk) }
+                            rd?.let { Text(it, style = lat(size * 0.5f), color = T.greenInk, textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
                         }
                     }
                     var shown = 0
@@ -1056,7 +1182,7 @@ private fun YtKaraoke() {
                         if (shown >= 2) break
                         val n = lines[j]; if (n.text.isBlank()) continue
                         shown++
-                        Box(Modifier.graphicsLayer { alpha = if (shown == 1) 0.55f else 0.3f }) { LyricWords(n.text.trim(), size * 0.6f, T.glyph) }
+                        Box(Modifier.graphicsLayer { alpha = if (shown == 1) 0.55f else 0.3f }) { LyricWords(n.text.trim(), size * 0.6f, T.glyph, center = true) }
                     }
                 }
             }
@@ -1069,5 +1195,7 @@ private fun YtKaraoke() {
             }
             IconButton(onClick = { YtLink.seek(YtLink.position() + 5) }) { Icon(Icons.Filled.Forward5, tr("前進 5 秒"), tint = T.glyph) }
         }
+        // (對時: the lyrics sooner or later, here too)
+        Box(Modifier.padding(bottom = 10.dp)) { OffsetRow() }
     }
 }

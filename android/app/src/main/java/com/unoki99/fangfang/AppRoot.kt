@@ -174,12 +174,12 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
     AppBackground {
         val l = installing
         if (l != null) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center,
+            Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()), verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 InstallPanel(l, onSkip = { pick(l) }, onBack = { installing = null })
             }
         } else if (step == 0) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
                 // (English chosen as the app's language: the meanings in English too, unless changed below)
@@ -204,7 +204,7 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
                 ProminentButton(onClick = { step = 1 }, modifier = Modifier.widthIn(min = 240.dp)) { Text(tr("下一步")) }
             }
         } else {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.widthIn(max = 520.dp).fillMaxWidth()) {
                     TextButton(onClick = { step = 0 }) { Text(tr("上一步"), color = T.muted) }

@@ -36,7 +36,8 @@ fun Modifier.flowBreak(on: Boolean = true): Modifier = if (on) this.layoutId(FLO
  *  baseline), not at the row's top: a character drawn from another font (a rare 台語 character, 𪜶) has other
  *  heights above and below its letters, and stood higher or lower than the rest */
 @Composable
-fun Flow(modifier: Modifier = Modifier, spacing: Dp = 6.dp, lineSpacing: Dp = spacing, baseline: Boolean = false, content: @Composable () -> Unit) {
+fun Flow(modifier: Modifier = Modifier, spacing: Dp = 6.dp, lineSpacing: Dp = spacing, baseline: Boolean = false, center: Boolean = false,
+    content: @Composable () -> Unit) {
     Layout(content, modifier) { measurables, constraints ->
         val maxW = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
         val sp = spacing.roundToPx(); val ls = lineSpacing.roundToPx()
@@ -46,19 +47,20 @@ fun Flow(modifier: Modifier = Modifier, spacing: Dp = 6.dp, lineSpacing: Dp = sp
         val xs = IntArray(n); val ys = IntArray(n); val rowOf = IntArray(n)
         // (each piece's baseline from its top; none: its top)
         val bs = IntArray(n) { i -> if (!baseline) 0 else placeables[i][FirstBaseline].let { b -> if (b == AlignmentLine.Unspecified) 0 else b } }
-        val rowAbove = ArrayList<Int>(); val rowBelow = ArrayList<Int>()
+        val rowAbove = ArrayList<Int>(); val rowBelow = ArrayList<Int>(); val rowWidth = ArrayList<Int>()
         var x = 0; var row = 0; var widest = 0
-        rowAbove.add(0); rowBelow.add(0)
+        rowAbove.add(0); rowBelow.add(0); rowWidth.add(0)
         for (i in 0 until n) {
             val p = placeables[i]
             val br = measurables[i].layoutId == FLOW_BREAK
             if ((x > 0 && x + p.width > maxW) || (br && (x > 0 || row > 0 || i > 0))) {
-                x = 0; row++; rowAbove.add(0); rowBelow.add(0)
+                x = 0; row++; rowAbove.add(0); rowBelow.add(0); rowWidth.add(0)
             }
             xs[i] = x; rowOf[i] = row
             rowAbove[row] = maxOf(rowAbove[row], bs[i])
             rowBelow[row] = maxOf(rowBelow[row], p.height - bs[i])
             x += p.width + sp
+            rowWidth[row] = x - sp
             widest = maxOf(widest, x - sp)
         }
         // (each row as tall as what's above its baseline and below it; its pieces put down on it)
@@ -69,6 +71,8 @@ fun Flow(modifier: Modifier = Modifier, spacing: Dp = 6.dp, lineSpacing: Dp = sp
         for (i in 0 until n) ys[i] = rowY[rowOf[i]] + rowAbove[rowOf[i]] - bs[i]
         val w = if (constraints.hasBoundedWidth) maxOf(constraints.minWidth, minOf(widest, maxW)) else widest
         val h = maxOf(constraints.minHeight, total)
+        // (center: each row in the middle, as a song's lines are in 卡拉 OK)
+        if (center) for (i in 0 until n) xs[i] += maxOf(0, (w - rowWidth[rowOf[i]]) / 2)
         layout(w, h) { for ((i, p) in placeables.withIndex()) p.place(xs[i], ys[i]) }
     }
 }
@@ -82,6 +86,7 @@ fun TapWords(
     count: Int,
     modifier: Modifier = Modifier,
     lineSpacing: Dp = 0.dp,
+    center: Boolean = false,
     isTappable: (Int) -> Boolean,
     newLine: (Int) -> Boolean = { false },
     onTap: (Int) -> Unit,
@@ -151,7 +156,7 @@ fun TapWords(
                 }
             }
         }),
-        spacing = 0.dp, lineSpacing = lineSpacing, baseline = true,
+        spacing = 0.dp, lineSpacing = lineSpacing, baseline = true, center = center,
     ) {
         for (i in 0 until count) {
             val isHot by remember(i) { derivedStateOf { hot.value == i } }

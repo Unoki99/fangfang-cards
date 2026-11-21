@@ -85,7 +85,7 @@ fun ReviewStatsScreen(onClose: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         TopBar(tr("練習統計"), onClose, close = true, settings = false)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).widthIn(max = 700.dp).padding(16.dp),
+        Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).widthIn(max = 700.dp).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp)) {
             // where the words are
             val tiles = listOf(Triple(tr("要複習"), c.due, T.btnInk), Triple(tr("不熟"), c.unknown, T.rustInk),
@@ -202,7 +202,7 @@ fun ProfileScreen(onClose: () -> Unit) {
                     add(tr("影片懂多少") to { VideoTile() })
                     add(tr("複習") to { ReviewTile() })
                 }
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     for (row in tiles.chunked(cols)) Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         for ((title, body) in row) Column(Modifier.weight(1f).clip(RoundedCornerShape(18.dp)).background(T.fn.copy(alpha = 0.6f))
                             .border(1.dp, T.fnEdge, RoundedCornerShape(18.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -1763,5 +1763,10 @@
  "匯出成 .lrc 檔": "Export as an .lrc file",
  "匯入了，存成這部影片的歌詞。": "Imported, and saved as this video's lyrics.",
  "匯出了：{0}": "Exported: {0}",
- "沒辦法存這個檔案。": "Couldn't save this file."
+ "沒辦法存這個檔案。": "Couldn't save this file.",
+ "跳跳球": "Bouncing ball",
+ "提早": "Ahead by",
+ "{0} 秒": "{0} s",
+ "一顆球跳到下一個要唱的字上面，比唱的時候早這麼多秒。": "A ball hops onto the next syllable to be sung, this many seconds before it's sung.",
+ "中文和英文": "Chinese and English"
 }

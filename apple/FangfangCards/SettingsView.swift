@@ -335,6 +335,7 @@ private struct LanguageSettings: View {
     @AppStorage(Lang.jaRomKey) private var jaRomSaved = 1
     @AppStorage(Lang.svRomKey) private var svRomSaved = 0
     @AppStorage(SvGuess.key) private var svGuess = true
+    @AppStorage(SvGuess.showKey) private var svMeanings = 0
     @AppStorage(Simp.key) private var simplified = false
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
@@ -470,6 +471,13 @@ private struct LanguageSettings: View {
                 }
                 .pickerStyle(.segmented)
                 .onChange(of: svRomSaved) { if store.lang == 5 { store.zhRom = svRomSaved } }
+                // 瑞典語的意思: Chinese, English or both
+                Picker(tr("意思"), selection: $svMeanings) {
+                    Text(tr("中文和英文")).tag(0)
+                    Text(tr("中文")).tag(1)
+                    Text(tr("英文")).tag(2)
+                }
+                .pickerStyle(.segmented)
                 Toggle(tr("沒有中文解釋的詞：由英文推測中文"), isOn: $svGuess)
             } header: {
                 Text(tr("瑞典語"))

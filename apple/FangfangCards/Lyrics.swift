@@ -281,6 +281,37 @@ final class LyricsBridge: ObservableObject {
         }
     }
 
+    /// 跳跳球: the line and the place in its letters (0…1) `lead` seconds from now
+    func placeAhead(_ lead: Double) -> (line: Int, frac: Double)? {
+        guard timed, let pos = songPos else { return nil }
+        let p = placeAt(pos + lead)
+        return (p.line, p.frac)
+    }
+
+    /// the cue, the line and the place in its letters at a time in the song
+    private func placeAt(_ pos: Double) -> (k: Int, line: Int, frac: Double) {
+        var lo = 0, hi = cues.count - 1, k = -1
+        while lo <= hi { let m = (lo + hi) / 2; if cues[m].t <= pos { k = m; lo = m + 1 } else { hi = m - 1 } }
+        let line = k >= 0 ? cues[k].line : -1
+        var frac = 0.0
+        if k >= 0 {
+            let t0 = cues[k].t, t1 = k + 1 < cues.count ? cues[k + 1].t : t0 + 5
+            let mk = cues[k].marks
+            if mk.isEmpty {
+                frac = min(1, max(0, (pos - t0) / max(0.5, t1 - t0)))
+            } else {
+                let pts = [(f: 0.0, t: t0)] + mk.filter { $0.f > 0 } + [(f: 1.0, t: max(t1, (mk.last?.t ?? t0) + 0.1))]
+                frac = 1
+                for j in 1..<pts.count where pos < pts[j].t {
+                    let a = pts[j - 1], b = pts[j]
+                    frac = a.f + (b.f - a.f) * min(1, max(0, (pos - a.t) / max(0.01, b.t - a.t)))
+                    break
+                }
+            }
+        }
+        return (k, line, frac)
+    }
+
     /// (every few hundredths of a second: the line and the place in it)
     private func tick() {
         // (歌詞對時 open: the lyrics behind it don't follow the song meanwhile; less to draw, less heat)

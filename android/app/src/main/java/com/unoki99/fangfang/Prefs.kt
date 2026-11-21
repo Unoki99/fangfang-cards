@@ -167,6 +167,9 @@ object Prefs : KeyValue {
     /** 卡拉 OK: the letters' size, and the reading under the line */
     val karaokeSize = Pref("karaokeSize", 48f)
     val karaokeReadings = Pref("karaokeReadings", false)
+    /** 跳跳球: a ball hopping onto each syllable of the line being sung, lead seconds ahead of it */
+    val lyricsBall = Pref("lyricsBall", false)
+    val lyricsBallLead = Pref("lyricsBallLead", 0.3f)
     /** 歌的語言: songs tagged with the language they're sung in (JSON: song → 0 台語, 1 華語, 2 粵語, 3 客語) */
     val songLanguages = Pref("songLanguages", "")
     val lockSource = Pref("lockWordSource", "")
@@ -220,6 +223,8 @@ object Prefs : KeyValue {
     val svRom = Pref("svRom", 0)
     /** 瑞典語: the Chinese meanings guessed from the English ones shown */
     val svGuessZh = Pref("svGuessZh", true)
+    /** 瑞典語的意思: 0 中文和英文, 1 只有中文, 2 只有英文 */
+    val svMeanings = Pref("svMeanings", 0)
     /** 台語 and 客語: the main explanation on cards and lists (false the dictionary's, true English) */
     val twEnglish = Pref("twMainEnglish", false)
     val hakEnglish = Pref("hakMainEnglish", false)
@@ -243,7 +248,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, svRom, svGuessZh, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -266,6 +271,8 @@ object Prefs : KeyValue {
         for (p in svColors) p.onChange = { loadSvColors() }
         com.unoki99.fangfang.engine.SvGuess.on = svGuessZh.value
         svGuessZh.onChange = { com.unoki99.fangfang.engine.SvGuess.on = svGuessZh.value }
+        com.unoki99.fangfang.engine.SvGuess.show = svMeanings.value
+        svMeanings.onChange = { com.unoki99.fangfang.engine.SvGuess.show = svMeanings.value }
     }
 
     /** 瑞典語's colours, for the engine */
