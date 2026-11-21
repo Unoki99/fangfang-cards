@@ -3947,10 +3947,14 @@ struct SwipePages<A: View, B: View>: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 0) {
-                    first.frame(maxWidth: .infinity, alignment: .topLeading)
-                        .containerRelativeFrame(.horizontal).id(0)
-                    second.frame(maxWidth: .infinity, alignment: .topLeading)
-                        .containerRelativeFrame(.horizontal).id(1)
+                    // (a little room inside each page: the boxes' edges (華, 英, 通行) were cut at the top and left,
+                    // and the next page's showed at the right edge; each page is cut at its own edge)
+                    first.padding(.horizontal, 4).padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .containerRelativeFrame(.horizontal).clipped().id(0)
+                    second.padding(.horizontal, 4).padding(.vertical, 4)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .containerRelativeFrame(.horizontal).clipped().id(1)
                 }
                 .scrollTargetLayout()
             }
