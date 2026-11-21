@@ -102,7 +102,7 @@ final class LyricsPiP: NSObject, ObservableObject {
         let size = UserDefaults.standard.object(forKey: LyricsPiPSettings.sizeKey) as? Double ?? 30
         let reading = UserDefaults.standard.object(forKey: LyricsPiPSettings.readingKey) as? Bool ?? true
         let frac = (beat.frac * 20).rounded() / 20
-        let key = "\(line)|\(frac)|\(size)|\(reading)|\(SongPlayer.shared.playing)|\(lines.count)"
+        let key = "\(line)|\(frac)|\(size)|\(reading)|\(SongPlayer.shared.playing)|\(YtPlayer.shared.playing)|\(lines.count)"
         if !force && key == lastKey { return }
         lastKey = key
         let text = lines.indices.contains(line) ? lines[line] : ""
@@ -170,7 +170,11 @@ extension LyricsPiP: AVPictureInPictureSampleBufferPlaybackDelegate {
     nonisolated func pictureInPictureController(_ c: AVPictureInPictureController, setPlaying playing: Bool) {
         Task { @MainActor in
             let p = SongPlayer.shared
-            if playing && !p.playing { p.resume() } else if !playing && p.playing { p.pause() }
+            // (YouTube in the app, when it's the one the lyrics follow)
+            if !p.active && YtPlayer.shared.following {
+                let y = YtPlayer.shared
+                if playing && !y.playing { y.play() } else if !playing && y.playing { y.pause() }
+            } else if playing && !p.playing { p.resume() } else if !playing && p.playing { p.pause() }
             self.lastKey = ""
         }
     }
@@ -179,13 +183,14 @@ extension LyricsPiP: AVPictureInPictureSampleBufferPlaybackDelegate {
         CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
     }
     nonisolated func pictureInPictureControllerIsPlaybackPaused(_ c: AVPictureInPictureController) -> Bool {
-        MainActor.assumeIsolated { !SongPlayer.shared.playing }
+        MainActor.assumeIsolated { SongPlayer.shared.active || !YtPlayer.shared.following ? !SongPlayer.shared.playing : !YtPlayer.shared.playing }
     }
     nonisolated func pictureInPictureController(_ c: AVPictureInPictureController, didTransitionToRenderSize newRenderSize: CMVideoDimensions) {}
     nonisolated func pictureInPictureController(_ c: AVPictureInPictureController, skipByInterval skipInterval: CMTime, completion completionHandler: @escaping () -> Void) {
         Task { @MainActor in
             let p = SongPlayer.shared
-            if let t = p.position { p.seek(t + skipInterval.seconds) }
+            if !p.active && YtPlayer.shared.following { YtPlayer.shared.seek(YtPlayer.shared.position + skipInterval.seconds) }
+            else if let t = p.position { p.seek(t + skipInterval.seconds) }
             completionHandler()
         }
     }

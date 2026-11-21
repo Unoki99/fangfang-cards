@@ -68,6 +68,7 @@ enum KaraokeLines {
 struct KaraokeView: View {
     @ObservedObject private var lyrics = LyricsBridge.shared
     @ObservedObject private var songs = SongPlayer.shared
+    @ObservedObject private var yt = YtPlayer.shared
     @ObservedObject private var songLangs = SongLanguage.shared
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
@@ -194,6 +195,13 @@ struct KaraokeView: View {
                     }
                     .softButton()
                     .accessibilityLabel(songs.playing ? tr("暫停") : tr("播放"))
+                } else if yt.following {
+                    // (YouTube in the app)
+                    Button { yt.togglePause(); show() } label: {
+                        Image(systemName: yt.playing ? "pause.fill" : "play.fill").font(.system(size: 18)).frame(width: 40, height: 40)
+                    }
+                    .softButton()
+                    .accessibilityLabel(yt.playing ? tr("暫停") : tr("播放"))
                 }
             }
             .padding(.horizontal).padding(.top, 8)

@@ -1202,9 +1202,11 @@ struct LyricsFloat: View {
     @AppStorage("convertTab") private var convertTab = 0
     @AppStorage(LyricsBridge.glowKey) private var lyricsGlow = true
     @ObservedObject private var songs = SongPlayer.shared
+    /// (YouTube in the app: its songs' lyrics show here too)
+    @ObservedObject private var yt = YtPlayer.shared
 
     var body: some View {
-        if on, lyrics.timed, radio.isOn || songs.active, !songs.editing, !lyrics.karaoke, let h = lyrics.song, lyrics.barHiddenFor != h.id,
+        if on, lyrics.timed, radio.isOn || songs.active || yt.following, !songs.editing, !lyrics.karaoke, let h = lyrics.song, lyrics.barHiddenFor != h.id,
            !(router.tab == 3 && convertTab == 2 && !lyrics.appCovered), !radio.sheetOpen {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
@@ -1217,6 +1219,10 @@ struct LyricsFloat: View {
                         Button { songs.togglePause() } label: { Image(systemName: songs.playing ? "pause.fill" : "play.fill") }
                             .buttonStyle(.plain).foregroundStyle(T.btnInk)
                             .accessibilityLabel(songs.playing ? tr("暫停") : tr("播放"))
+                    } else if yt.following {
+                        Button { yt.togglePause() } label: { Image(systemName: yt.playing ? "pause.fill" : "play.fill") }
+                            .buttonStyle(.plain).foregroundStyle(T.btnInk)
+                            .accessibilityLabel(yt.playing ? tr("暫停") : tr("播放"))
                     }
                     LyricsGlowToggle().buttonStyle(.plain)
                     Button { LyricsBridge.showInConvert() } label: { Image(systemName: "text.alignleft") }
