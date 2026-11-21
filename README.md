@@ -22,7 +22,7 @@
 | **iPhone／iPad** | 終端機：`bash ~/Downloads/fangfang-cards-main/install.sh apple ios` | 不行（要 Mac 和 Xcode） |
 | **Mac App**（跟 iPad 上的一樣，要 Apple 晶片） | 終端機：`bash ~/Downloads/fangfang-cards-main/install.sh apple mac` | 不行 |
 | **iPhone／iPad 和 Mac App 一起** | 終端機：`bash ~/Downloads/fangfang-cards-main/install.sh apple` | 不行 |
-| **電腦版**（YouTube 歌詞、浮動歌詞、電台、瑞典語、四川話） | 雙擊 `install-mac.command`（第一次：右鍵 → 打開）<br>或終端機：`bash ~/Downloads/fangfang-cards-main/install-mac.command` | 雙擊 `install-windows.bat` |
+| **電腦版**（YouTube 歌詞、浮動歌詞、電台、瑞典語、四川話） | 終端機：`bash ~/Downloads/fangfang-cards-main/install-mac.command`<br>（從 GitHub 下載的 ZIP 裡，這個檔案沒有「可以執行」的權限，雙擊會說「沒有適當的取用權限」：用終端機就沒問題） | 雙擊 `install-windows.bat` |
 | **Android**（做一個 APK 檔） | 終端機：`bash ~/Downloads/fangfang-cards-main/install.sh android` | 雙擊 `android-install.bat` |
 | **Firefox 擴充功能「方方詞卡」** | 在 Firefox 打開 [附加元件頁](https://addons.mozilla.org/en-US/firefox/addon/%E6%96%B9%E6%96%B9%E8%A9%9E%E5%8D%A1/)，按「Add to Firefox」（中文介面：「新增至 Firefox」） | 同左 |
 | **要先裝的東西** | Apple 版：**Xcode 26 以上**（App Store），在 Xcode → Settings → Accounts 用 Apple ID 登入<br>Android：**Android Studio**<br>電腦版：不用（Java、Node.js、FFmpeg 第一次自己下載） | 全部：**Python 3**（安裝時勾選「Add python.exe to PATH」）<br>Android：**Android Studio**<br>電腦版：不用再裝別的（Java 第一次自己下載） |
@@ -72,7 +72,7 @@ Windows 版和 Android 版用同一份程式碼（`android/app/src/main/java`）
 
 ### Mac 上的電腦版
 
-Windows 版的程式也可以裝在 Mac 上（Apple 晶片或 Intel 都可以，不需要虛擬機器）：在資料夾裡**雙擊 `install-mac.command`**（第一次 Mac 可能不讓它打開：按右鍵 → 打開；或在終端機輸入 `bash ~/Downloads/fangfang-cards-main/install-mac.command`）。它會：
+Windows 版的程式也可以裝在 Mac 上（Apple 晶片或 Intel 都可以，不需要虛擬機器）：在終端機輸入 **`bash ~/Downloads/fangfang-cards-main/install-mac.command`**（雙擊這個檔案的話，Mac 會說「沒有適當的取用權限」：GitHub 的 ZIP 不會留下「可以執行」的權限。要雙擊也可以：先在終端機執行一次 `chmod +x ~/Downloads/fangfang-cards-main/install-mac.command`）。它會：
 
 1. 第一次下載建置要用的 Java 21、整理詞典用的 Node.js、電台用的 FFmpeg（放在 `~/Library/Application Support/FangfangCards`），
 2. 建置程式（第一次 5–10 分鐘），
