@@ -62,6 +62,8 @@ class Card(
     val audio: String? get() = if (isZh) (if (Lang.isHakKey(k)) web else (web ?: "tts:$h")) else a?.let { Audio.wordPath(it) }
 
     fun rom(i: Int, place: Int = -1): String {
+        // (3: 方音 only)
+        if (i == 3) return zy(place)
         val j = i.coerceIn(0, r.size - 1)
         if (place >= 0) v?.get(place.toString())?.let { return it.r[minOf(j, it.r.size - 1)] }
         return r[j]

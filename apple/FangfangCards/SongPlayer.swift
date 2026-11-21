@@ -249,6 +249,8 @@ final class SongPlayer: ObservableObject {
 
     private func start(_ h: SongHit) {
         if RadioPlayer.shared.isOn { RadioPlayer.shared.stop() }
+        // (YouTube in the app: paused, the lyrics follow this song)
+        YtPlayer.shared.yieldToOther()
         halt()
         song = h
         time = 0

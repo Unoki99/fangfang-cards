@@ -12,6 +12,8 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.layoutId
@@ -30,28 +32,43 @@ object PointerUI { var mouse = false }
 /** this piece starts a new line in a Flow */
 fun Modifier.flowBreak(on: Boolean = true): Modifier = if (on) this.layoutId(FLOW_BREAK) else this
 
-/** lays its children out in rows, wrapping like text */
+/** lays its children out in rows, wrapping like text. baseline: the pieces of a row stand on one line (their text's
+ *  baseline), not at the row's top: a character drawn from another font (a rare 台語 character, 𪜶) has other
+ *  heights above and below its letters, and stood higher or lower than the rest */
 @Composable
-fun Flow(modifier: Modifier = Modifier, spacing: Dp = 6.dp, lineSpacing: Dp = spacing, content: @Composable () -> Unit) {
+fun Flow(modifier: Modifier = Modifier, spacing: Dp = 6.dp, lineSpacing: Dp = spacing, baseline: Boolean = false, content: @Composable () -> Unit) {
     Layout(content, modifier) { measurables, constraints ->
         val maxW = if (constraints.hasBoundedWidth) constraints.maxWidth else Int.MAX_VALUE
         val sp = spacing.roundToPx(); val ls = lineSpacing.roundToPx()
         val loose = Constraints(maxWidth = maxW)
         val placeables = measurables.map { it.measure(loose) }
-        val xs = IntArray(placeables.size); val ys = IntArray(placeables.size)
-        var x = 0; var y = 0; var row = 0; var widest = 0
-        for ((i, p) in placeables.withIndex()) {
+        val n = placeables.size
+        val xs = IntArray(n); val ys = IntArray(n); val rowOf = IntArray(n)
+        // (each piece's baseline from its top; none: its top)
+        val bs = IntArray(n) { i -> if (!baseline) 0 else placeables[i][FirstBaseline].let { b -> if (b == AlignmentLine.Unspecified) 0 else b } }
+        val rowAbove = ArrayList<Int>(); val rowBelow = ArrayList<Int>()
+        var x = 0; var row = 0; var widest = 0
+        rowAbove.add(0); rowBelow.add(0)
+        for (i in 0 until n) {
+            val p = placeables[i]
             val br = measurables[i].layoutId == FLOW_BREAK
-            if ((x > 0 && x + p.width > maxW) || (br && (x > 0 || y > 0 || row > 0))) {
-                x = 0; y += row + ls; row = 0
+            if ((x > 0 && x + p.width > maxW) || (br && (x > 0 || row > 0 || i > 0))) {
+                x = 0; row++; rowAbove.add(0); rowBelow.add(0)
             }
-            xs[i] = x; ys[i] = y
+            xs[i] = x; rowOf[i] = row
+            rowAbove[row] = maxOf(rowAbove[row], bs[i])
+            rowBelow[row] = maxOf(rowBelow[row], p.height - bs[i])
             x += p.width + sp
-            row = maxOf(row, p.height)
             widest = maxOf(widest, x - sp)
         }
+        // (each row as tall as what's above its baseline and below it; its pieces put down on it)
+        val rowY = IntArray(row + 1)
+        var y = 0
+        for (r in 0..row) { rowY[r] = y; y += rowAbove[r] + rowBelow[r] + ls }
+        val total = if (n == 0) 0 else y - ls
+        for (i in 0 until n) ys[i] = rowY[rowOf[i]] + rowAbove[rowOf[i]] - bs[i]
         val w = if (constraints.hasBoundedWidth) maxOf(constraints.minWidth, minOf(widest, maxW)) else widest
-        val h = maxOf(constraints.minHeight, y + row)
+        val h = maxOf(constraints.minHeight, total)
         layout(w, h) { for ((i, p) in placeables.withIndex()) p.place(xs[i], ys[i]) }
     }
 }
@@ -134,7 +151,7 @@ fun TapWords(
                 }
             }
         }),
-        spacing = 0.dp, lineSpacing = lineSpacing,
+        spacing = 0.dp, lineSpacing = lineSpacing, baseline = true,
     ) {
         for (i in 0 until count) {
             val isHot by remember(i) { derivedStateOf { hot.value == i } }

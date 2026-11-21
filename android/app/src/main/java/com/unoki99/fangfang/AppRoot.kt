@@ -194,7 +194,7 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
                     Segmented(listOf(false to tr("華語"), true to tr("英文")), Prefs.zhEnglish.value, { meaningsEnglish(it) })
                     Txt(tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。之後每個語言可以在「設定 → 詞典 → 主要解釋」分開改。"), ff(FF.Caption), T.muted)
                     Txt(tr("每個語言用哪一種拼寫？"), ff(FF.Headline), T.glyph)
-                    Spelling(0, Prefs.rom, listOf("皓羅", "台羅", "白話字"))
+                    Spelling(0, Prefs.rom, listOf("皓羅", "台羅", "白話字", "方音"))
                     Spelling(1, Prefs.mandRom, listOf("拼音", "注音"))
                     Spelling(2, Prefs.yueRom, listOf("粵拼", "耶魯"))
                     Spelling(3, Prefs.hakRom, listOf("拼音", "注音"))

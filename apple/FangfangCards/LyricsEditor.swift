@@ -74,7 +74,7 @@ final class OwnLyrics: ObservableObject {
         return clean(x.trackName) + " - " + clean(x.artistName) + " [\(x.trackId)].lrc"
     }
 
-    private static func trackId(of name: String) -> Int? {
+    static func trackId(of name: String) -> Int? {
         guard name.hasSuffix(".lrc"), let open = name.lastIndex(of: "["), let close = name.lastIndex(of: "]"), open < close else { return nil }
         return Int(name[name.index(after: open)..<close])
     }
@@ -569,11 +569,7 @@ private struct EditorMenu: View {
     @State private var share: ShareItem?
     var body: some View {
         Menu {
-            Section(tr("LRC 檔")) {
-                Button { open() } label: { Label(tr("打開 LRC"), systemImage: "doc.badge.arrow.up") }
-                // (the file made only when asked for, not every time the menu is drawn)
-                Button { share = ShareItem(url: lrcFile) } label: { Label(tr("分享 LRC"), systemImage: "square.and.arrow.up") }
-            }
+            // (打開 LRC and 分享 LRC: on the lyrics page itself, its share button)
             if page == 1 {
                 Section(tr("對時間")) {
                     Picker(tr("按的時候提早"), selection: $reaction) {

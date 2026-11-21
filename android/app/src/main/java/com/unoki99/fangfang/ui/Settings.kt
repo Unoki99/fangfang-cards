@@ -281,7 +281,7 @@ private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
         else if (Store.isYue) tr("粵語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
         else if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames.getOrElse(Prefs.zhPlace.value) { Lang.placeNames[0] }) +
         "・" + Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)]
-        else tr("台語") + "・" + tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]) + "・" + (if (Prefs.place.value in PLACE_NAMES.indices) tr(PLACE_NAMES[Prefs.place.value].take(2)) else tr("通行"))
+        else tr("台語") + "・" + tr(ROM_NAMES[TwRom.lat(Prefs.rom.value)]) + "・" + (if (Prefs.place.value in PLACE_NAMES.indices) tr(PLACE_NAMES[Prefs.place.value].take(2)) else tr("通行"))
     val summaries = listOf(
         tr(AppTheme.of(Prefs.theme.value).title) + "・" + tones,
         lang,
@@ -417,7 +417,7 @@ private fun LanguagePage() {
         Column(Modifier.padding(14.dp)) {
             Txt(tr("羅馬字"), ff(FF.Body))
             Spacer(Modifier.height(6.dp))
-            Segmented(listOf(0 to tr("皓羅"), 1 to tr("台羅"), 2 to tr("白話字")), Prefs.rom.value, { Prefs.rom.value = it })
+            Segmented(listOf(0 to tr("皓羅"), 1 to tr("台羅"), 2 to tr("白話字"), 3 to tr("方音")), Prefs.rom.value, { Prefs.rom.value = it })
         }
         RowDivider()
         val place = Prefs.place.value

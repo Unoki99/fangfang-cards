@@ -200,7 +200,7 @@ fun CsvImportDialog(d: Dict, file: CsvFile, onDone: (Int?) -> Unit) {
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Txt(r.han, sz(19f, FontWeight.SemiBold), T.ownInk)
                                     Txt(d.codes(cs, 0, -1), lat(15f), T.greenInk)
-                                    Txt(d.codes(cs, 3, -1), ff(FF.Footnote), T.purpleInk)
+                                    if (TwRom.line) Txt(d.codes(cs, 3, -1), ff(FF.Footnote), T.purpleInk)
                                 }
                                 if (r.meaning.isNotEmpty()) Txt(r.meaning, ff(FF.Footnote), T.glyph.copy(alpha = 0.8f), maxLines = 2)
                                 if (r.example.isNotEmpty()) Txt(tr("例：") + r.example, ff(FF.Footnote), T.muted, maxLines = 2)

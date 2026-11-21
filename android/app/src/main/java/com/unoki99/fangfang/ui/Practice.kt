@@ -379,7 +379,7 @@ private fun Feedback(q: Question, ok: Boolean, learnedNow: Boolean, rom: Int, pl
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Txt(c.h, ff(FF.Title, FontWeight.Medium), T.blueInk)
                 Txt(Store.cardRom(c, rom, place).annotated(), lat(20f), T.greenInk)
-                Txt(Store.cardZy(c, place).annotated(), ff(FF.Body), T.purpleInk, Modifier.weight(1f))
+                if (TwRom.line) Txt(Store.cardZy(c, place).annotated(), ff(FF.Body), T.purpleInk, Modifier.weight(1f))
                 c.audio?.let { PlayButton(it, 34.dp) }
             }
             // 例句填空: the meaning the sentence is about; otherwise the word's first meaning (英文: the English)
@@ -579,7 +579,7 @@ private fun ToneScreen(stars: StarField) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 Txt(q.card.h, ff(FF.Title2, FontWeight.Medium), T.blueInk)
                                 Txt(q.answer.rom[rom.coerceIn(0, 2)], lat(22f), T.greenInk)
-                                Txt(q.card.zy(), ff(FF.Body), T.purpleInk)
+                                if (TwRom.line) Txt(q.card.zy(), ff(FF.Body), T.purpleInk)
                             }
                             Txt(if (Store.isYue) tr("第 {0} 聲（{1}）", t, YUE_TONE_NAMES[t] ?: "") else if (Store.isZh) (if (t == 0) tr("輕聲") else tr("第 {0} 聲（{1}）", t, ZH_TONE_NAMES[t] ?: "")) else tr("第 {0} 聲（{1}）{2}", t, TONE_NAMES[t] ?: "", hint(t, rom)), ff(FF.Subheadline), T.glyph)
                             Txt(Store.practiceMeaning(q.card).second, ff(FF.Footnote), T.muted)

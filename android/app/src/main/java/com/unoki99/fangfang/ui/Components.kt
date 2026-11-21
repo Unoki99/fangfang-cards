@@ -222,11 +222,11 @@ fun RomButton() {
     var rom by Prefs.rom
     var zhRom by Prefs.zhRom
     val zh = com.unoki99.fangfang.Store.isZh
-    // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字
-    Text(tr(if (zh) com.unoki99.fangfang.engine.Lang.romNames[zhRom.coerceIn(0, 1)] else ROM_NAMES[rom.coerceIn(0, 2)]),
+    // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字 → 方音
+    Text(tr(if (zh) com.unoki99.fangfang.engine.Lang.romNames[zhRom.coerceIn(0, 1)] else ROM_NAMES[TwRom.lat(rom)]),
         style = ff(FF.Subheadline, FontWeight.Bold), color = T.btnInk,
         modifier = Modifier.clip(CircleShape).background(T.btn).border(2.dp, T.btnEdge, CircleShape)
-            .clickable { if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 3 }.padding(horizontal = 10.dp, vertical = 4.dp))
+            .clickable { if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 4 }.padding(horizontal = 10.dp, vertical = 4.dp))
 }
 
 /** 台語 / 華語, and where it's said: always the coloured capsule (台語 green, 華語 blue), so you see which dictionary you're in */

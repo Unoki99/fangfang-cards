@@ -580,7 +580,7 @@ struct LyricsWindow: View {
         }
     }
 
-    /// 繁／簡, 讀音, 光暈, 自己的歌詞, 跳到哪一行, 存這首歌, 找別的歌詞: small round buttons on one strip of glass
+    /// 繁／簡, 讀音, 光暈, 自己的歌詞, 跳到哪一行, 存這首歌, 分享 (LRC 檔), 找別的歌詞: small round buttons on one strip of glass
     private func tools(_ h: LyricHit) -> some View {
         HStack(spacing: 2) {
             if lyrics.canSwitchScript {
@@ -612,6 +612,8 @@ struct LyricsWindow: View {
                     .accessibilityLabel(tr("卡拉 OK"))
             }
             SaveSongButton(size: 16, song: h).toolCircle()
+            // (分享: 打開 LRC 檔, 分享 LRC 檔)
+            LyricsFileMenu(hit: h)
             Button { picking = true } label: { Image(systemName: "text.magnifyingglass").toolCircle() }
                 .buttonStyle(.plain)
                 .accessibilityLabel(tr("找別的歌詞"))
@@ -653,6 +655,7 @@ struct LyricsPage: View {
     @State private var failed = false
     @State private var job: Task<Void, Never>?
     @State private var songSearch = false
+    @State private var ownPick = false
 
     var body: some View {
         List {
@@ -661,6 +664,10 @@ struct LyricsPage: View {
                     Label(tr("找歌來聽（Apple Music）"), systemImage: "play.circle")
                 }
                 LyricsEditButton(label: true)
+                // (your own lyrics, and the 歌詞 folder's files: for the song playing, a YouTube video's too)
+                Button { ownPick = true } label: {
+                    Label(tr("選自己的歌詞"), systemImage: "folder")
+                }
             } footer: {
                 Text(tr("找一首歌來放，歌詞會跟著歌走。")).ffFont(.footnote)
             }
@@ -696,7 +703,7 @@ struct LyricsPage: View {
             if !hits.isEmpty {
                 Section {
                     ForEach(hits) { h in
-                        Button { lyrics.put(h); if inSheet { dismiss() } } label: {
+                        Button { lyrics.put(h); YtPlayer.shared.remember(h); if inSheet { dismiss() } } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(h.trackName).foregroundStyle(T.glyph).lineLimit(1)
@@ -721,12 +728,27 @@ struct LyricsPage: View {
                 .preferredColorScheme(.dark)
                 .tint(AppTint.accent)
         }
+        .sheet(isPresented: $ownPick) {
+            NavigationStack {
+                LyricsFolderPicker { h in
+                    lyrics.put(h)
+                    // (a YouTube video: these lyrics for its song from now on)
+                    YtPlayer.shared.remember(h)
+                    if inSheet { dismiss() }
+                }
+            }
+            .environmentObject(Store.shared)
+            .preferredColorScheme(.dark)
+            .tint(AppTint.accent)
+        }
         .toolbar {
             if inSheet { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { dismiss() } } }
         }
         .onAppear {
             if hits.isEmpty {
-                query = lyrics.song.map { $0.artistName + " " + $0.trackName } ?? radio.nowPlaying ?? lyrics.notFound ?? ""
+                var yt: String?
+                if let n = YtPlayer.shared.now { yt = YtPlayer.queries(n.title, n.artist, false).first ?? n.title }
+                query = lyrics.song.map { $0.artistName + " " + $0.trackName } ?? radio.nowPlaying ?? lyrics.notFound ?? yt ?? ""
                 if !query.isEmpty { run() }
             }
         }

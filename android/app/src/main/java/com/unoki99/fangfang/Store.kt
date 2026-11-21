@@ -1123,7 +1123,7 @@ object Store {
         if (card.isZh) return emptyList()
         val d = dict ?: return emptyList()
         if (place < 0) return emptyList()
-        val r = rom.coerceIn(0, 2)
+        val r = if (rom == 3) 3 else rom.coerceIn(0, 2)
         return d.alsoSaid(card.k, place).map { Pair(d.codes(it, r, place), d.codes(it, 3, place)) }
     }
 
@@ -1145,8 +1145,10 @@ object Store {
     fun cardRom(card: Card, rom: Int, place: Int): Styled {
         val z = zh
         if (card.zs != null && z != null) return z.reading(zhSyl(card), Prefs.zhRom.value)
-        val r = rom.coerceIn(0, 2)
+        val r = if (rom == 3) 3 else rom.coerceIn(0, 2)
         val d = dict
+        // (方音 only: the 方音 is the reading)
+        if (r == 3) return if (d != null) d.wordText(card.k, 3, place) else styled(card.zy(place))
         if (EngineSettings.toneSystem != 0 && d != null) return d.wordText(card.k, r, place)
         if (place >= 0 && d != null && d.guessedSyllables(card.k, place).isNotEmpty()) return d.wordText(card.k, r, place)
         return styled(card.rom(r, place))
@@ -1154,6 +1156,7 @@ object Store {
 
     fun cardZy(card: Card, place: Int): Styled {
         if (card.isZh) return emptyList()       // 華語: one reading line (拼音 or 注音)
+        if (Prefs.rom.value == 3) return emptyList()      // 方音 only: it's the reading line already
         val d = dict
         if ((place >= 0 || EngineSettings.toneSystem != 0) && d != null) return d.wordText(card.k, 3, place)
         return styled(card.zy(place))
@@ -1184,13 +1187,13 @@ object Store {
         if (x.w != null && z != null) return z.sentence(ZhDict.pieces(x.h, x.w), Prefs.zhRom.value, Prefs.zhPlace.value)
         // (客語: the sentences have no reading of their own: the dictionary's words, as in 轉換)
         if (card.isZh) return if (z != null) z.sentence(examplePieces(z, card, x.h), Prefs.zhRom.value, Prefs.zhPlace.value) else styled("")
-        val r = rom.coerceIn(0, 2)
+        val r = if (rom == 3) 3 else rom.coerceIn(0, 2)
         val d = dict
-        if ((place >= 0 || EngineSettings.toneSystem != 0) && d != null) {
+        if ((place >= 0 || EngineSettings.toneSystem != 0 || r == 3) && d != null) {
             val e = dictExample(d, card, x)
             if (e != null) return d.sentenceText(e[1], r, place, e[0], if (e.size > 2) e[2] else null)
         }
-        return styled(x.r[r])
+        return styled(x.r[minOf(r, x.r.size - 1)])
     }
 
     fun exampleHan(card: Card, x: Example, place: Int, base: Int): Styled {
@@ -1212,16 +1215,16 @@ object Store {
         if (card.isZh && z != null && z.isSv) return null
         if (x.w != null && z != null) return z.sentence(ZhDict.pieces(x.h, x.w), Prefs.zhRom.value, Prefs.zhPlace.value, blank = card.h)
         if (card.isZh) return z?.sentence(examplePieces(z, card, x.h), Prefs.zhRom.value, Prefs.zhPlace.value, blank = card.h)
-        val r = rom.coerceIn(0, 2)
+        val r = if (rom == 3) 3 else rom.coerceIn(0, 2)
         val d = dict
-        if (place >= 0 && d != null) {
+        if ((place >= 0 || r == 3) && d != null) {
             val e = dictExample(d, card, x)
             if (e != null) {
                 val ps = d.blankSentencePieces(e[1], e[0], Dict.codesOf(card.k).split(' '), r, place)
                 if (ps != null) return guessColored(ps)
             }
         }
-        return x.br?.let { styled(it[r]) }
+        return x.br?.let { styled(it[minOf(r, it.size - 1)]) }
     }
 
     fun cardHasGuess(card: Card, place: Int): Boolean {

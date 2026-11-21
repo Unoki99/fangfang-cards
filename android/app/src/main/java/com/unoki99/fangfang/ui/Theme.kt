@@ -103,7 +103,19 @@ object T {
     }
 }
 
-val ROM_NAMES = listOf("皓羅", "台羅", "白話字")
+val ROM_NAMES = listOf("皓羅", "台羅", "白話字", "方音")
+
+/** 台語's spelling 3: 方音 only (the reading line is 方音, and no 方音 line under it) */
+object TwRom {
+    val hongimOnly: Boolean get() = Prefs.rom.value == 3
+    /** the 方音 line under a 羅馬字 reading: not when 方音 is the reading itself */
+    val line: Boolean get() = Prefs.rom.value != 3
+    /** the spelling of the main reading line */
+    fun lat(rom: Int): Int = if (rom == 3) 3 else rom.coerceIn(0, 2)
+    /** one of a word's ready-made readings (皓羅, 台羅, 白話字), or its 方音 */
+    fun of(r: List<String>, z: String, rom: Int): String =
+        if (rom == 3) com.unoki99.fangfang.engine.EngineSettings.hongim(z) else r[rom.coerceIn(0, r.size - 1)]
+}
 
 /** the 10 places of the MOE dictionary's 語音差異, in the data's order (腔口 index = position) */
 val PLACE_NAMES = listOf("鹿港偏泉腔", "三峽偏泉腔", "臺北偏泉腔", "宜蘭偏漳腔", "臺南混合腔",

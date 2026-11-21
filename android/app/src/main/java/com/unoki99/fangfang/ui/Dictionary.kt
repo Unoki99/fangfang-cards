@@ -96,7 +96,7 @@ fun DictEntryBody(d: Dict, key: String) {
             val r = remember(key, tk) { (d.wordText(key, rom, place) + styled(d.otherSpellings(key, rom, place))).annotated() }
             Txt(r, lat(22f), T.greenInk)
             val z = remember(key, tk) { d.wordText(key, 3, place).annotated() }
-            Txt(z, sz(19f), T.purpleInk)
+            if (TwRom.line) Txt(z, sz(19f), T.purpleInk)
             InputCodesRow(han)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 d.raw.reg[key]?.let { RegChip(it) }
@@ -215,7 +215,7 @@ fun DictEntryBody(d: Dict, key: String) {
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (b.syn) Chip(tr("近"), T.blue, T.blueEdge, T.blueInk) else Chip(tr("反"), T.rust, T.rustEdge, T.rustInk)
                                 Txt(Dict.hanOf(b.key), ff(FF.Headline), T.glyph)
-                                Txt(d.wordText(b.key, rom.coerceIn(0, 2), place).annotated(), lat(15f), T.greenInk)
+                                Txt(d.wordText(b.key, TwRom.lat(rom), place).annotated(), lat(15f), T.greenInk)
                             }
                             if (s != null) Txt((if (b.syn) "" else tr("（反義）")) + s.text, ff(FF.Body), T.glyph.copy(alpha = 0.9f))
                         }
@@ -255,7 +255,7 @@ fun OtherRow(label: String, rom: String, zy: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Chip(label)
         Txt(rom, lat(17f), T.greenInk)
-        Txt(zy, ff(FF.Footnote), T.purpleInk)
+        if (TwRom.line) Txt(zy, ff(FF.Footnote), T.purpleInk)
     }
 }
 
@@ -285,7 +285,7 @@ private fun SenseBlock(d: Dict, key: String, s: DictSense) {
                 Row(Modifier.padding(start = 18.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Chip(ps.joinToString("、") { d.raw.places.getOrNull(it)?.take(2) ?: "" })
                     Txt(d.codes(codes, rom, ps.firstOrNull() ?: -1), lat(15f), T.greenInk)
-                    Txt(d.codes(codes, 3, ps.firstOrNull() ?: -1), ff(FF.Footnote), T.purpleInk)
+                    if (TwRom.line) Txt(d.codes(codes, 3, ps.firstOrNull() ?: -1), ff(FF.Footnote), T.purpleInk)
                     Txt(tr("這個意思"), ff(FF.Caption2), T.muted)
                 }
             }
@@ -388,12 +388,12 @@ fun ExampleBlock(d: Dict, ex: List<String>, own: String? = null, boxedOwn: Boole
                 Column {
                     for ((h, c) in d.vocabOptions(w, place, zh)) {
                         TextButton(onClick = { chooseSwap(place, w, h); swapWord = null }) {
-                            Text(h + "　" + d.codes(c.joinToString(" "), rom.coerceIn(0, 2), place), color = T.greenInk)
+                            Text(h + "　" + d.codes(c.joinToString(" "), TwRom.lat(rom), place), color = T.greenInk)
                         }
                     }
                     TextButton(onClick = { chooseSwap(place, w, w); swapWord = null }) {
                         val k = d.hanMap[w]?.firstOrNull()?.let { "$w\t$it" } ?: w
-                        Text(tr("原本的詞：") + w + "　" + d.word(k, rom.coerceIn(0, 2), -1), color = T.glyph)
+                        Text(tr("原本的詞：") + w + "　" + d.word(k, TwRom.lat(rom), -1), color = T.glyph)
                     }
                 }
             },
@@ -464,7 +464,7 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
                     val cur = d.vocabSwap(w, place, zh)?.first ?: w
                     Txt("$w →", ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                     for ((h, c) in d.vocabOptions(w, place, zh)) {
-                        DropdownMenuItem(text = { Text(h + "　" + d.codes(c.joinToString(" "), rom.coerceIn(0, 2), place), color = T.glyph) },
+                        DropdownMenuItem(text = { Text(h + "　" + d.codes(c.joinToString(" "), TwRom.lat(rom), place), color = T.glyph) },
                             leadingIcon = { if (cur == h) Icon(Icons.Filled.Check, null, tint = T.greenInk) },
                             onClick = { chooseSwap(place, w, h); menu = false })
                     }
@@ -486,7 +486,7 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
 fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: Int? = null, common: Boolean = true, groups: Boolean = true,
     syl: Int? = null) {
     if (d.raw.places.isEmpty()) return
-    val rom = Prefs.rom.value.coerceIn(0, 2)
+    val rom = TwRom.lat(Prefs.rom.value)
     val place = Prefs.place.value
     val tk = textKey()
     val local = d.raw.loc?.get(key)?.filter { it < d.raw.places.size }
@@ -513,15 +513,15 @@ fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: I
             }
             if (one != null) {
                 Txt(d.codes(one.code, rom, p), lat(15f), T.greenInk, maxLines = 1)
-                Txt(d.codes(one.code, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
+                if (TwRom.line) Txt(d.codes(one.code, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
                 val ck = one.charKey
                 if (p >= 0 && ck != null) for (x in d.alsoSaid(ck, p)) Txt(tr("也講") + " " + d.codes(x, rom, p), ff(FF.Caption2), T.muted, maxLines = 1)
             } else if (made != null) {
                 Txt(d.codes(made, rom, p), lat(15f), T.greenInk, maxLines = 1)
-                Txt(d.codes(made, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
+                if (TwRom.line) Txt(d.codes(made, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
             } else {
             Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk, maxLines = 1)
-            Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk, maxLines = 1)
+            if (TwRom.line) Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk, maxLines = 1)
             if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p) + (if (d.isContraction(x, key)) tr("（合音）") else ""), ff(FF.Caption2), T.muted, maxLines = 1)
             }
         }
@@ -587,14 +587,14 @@ fun PlacesTable(d: Dict, key: String, always: Boolean = false) {
                 val tonesIn = g.places[0]
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(remember(key, shownIn, tonesIn, tk) { d.wordText(key, rom, shownIn, tonesIn).annotated() }, lat(17f), T.greenInk)
-                    Txt(remember(key, shownIn, tonesIn, tk) { d.wordText(key, 3, shownIn, tonesIn).annotated() }, ff(FF.Subheadline), T.purpleInk)
+                    if (TwRom.line) Txt(remember(key, shownIn, tonesIn, tk) { d.wordText(key, 3, shownIn, tonesIn).annotated() }, ff(FF.Subheadline), T.purpleInk)
                     if (g.guessed) Chip(tr("推測"), T.fn, T.fnEdge, T.muted)
                 }
                 val also = g.places.flatMap { d.alsoSaid(key, it) }.toSet().sorted()
                 for (x in also) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     PlaceChip(if (d.isContraction(x, key)) tr("合音") else tr("也講"))
                     Txt(d.codes(x, rom, g.places[0]), lat(15f), T.greenInk)
-                    Txt(d.codes(x, 3, g.places[0]), ff(FF.Footnote), T.purpleInk)
+                    if (TwRom.line) Txt(d.codes(x, 3, g.places[0]), ff(FF.Footnote), T.purpleInk)
                     val who = g.places.filter { d.alsoSaid(key, it).contains(x) }
                     if (who.size < g.places.size) Txt(who.joinToString("、") { d.raw.places[it].take(2) }, ff(FF.Caption2), T.muted)
                 }
@@ -617,7 +617,7 @@ fun DictRow(d: Dict, key: String, modifier: Modifier = Modifier, englishQuery: S
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Txt(remember(key, tk) { d.hanText(key, place, (if (d.isUser(key)) T.ownInk else T.glyph).argbInt()).annotated() }, sz(20f, FontWeight.SemiBold))
             Txt(remember(key, tk) { (d.wordText(key, rom, place) + styled(d.otherSpellings(key, rom, place))).annotated() }, lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
-            Txt(remember(key, tk) { (d.wordText(key, 3, place) + styled(d.otherSpellings(key, 3, place))).annotated() }, ff(FF.Footnote), T.purpleInk, Modifier.weight(1f, fill = false), maxLines = 1)
+            if (TwRom.line) Txt(remember(key, tk) { (d.wordText(key, 3, place) + styled(d.otherSpellings(key, 3, place))).annotated() }, ff(FF.Footnote), T.purpleInk, Modifier.weight(1f, fill = false), maxLines = 1)
             Spacer(Modifier.weight(0.01f))
             d.placeLabel(key)?.let { PlaceChip(it) }
             if (d.isUser(key)) OwnChip()
@@ -733,7 +733,7 @@ fun PlacesBlock(d: Dict, e: PlaceGroup) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(row.han, sz(18f, FontWeight.SemiBold), T.glyph)
                     Txt(d.codes(row.codes, rom, -1), lat(15f), T.greenInk)
-                    Txt(d.codes(row.codes, 3, row.places.firstOrNull() ?: -1), ff(FF.Footnote), T.purpleInk)
+                    if (TwRom.line) Txt(d.codes(row.codes, 3, row.places.firstOrNull() ?: -1), ff(FF.Footnote), T.purpleInk)
                 }
                 Txt(row.places.mapNotNull { d.raw.places.getOrNull(it) }.joinToString("、"), ff(FF.Caption), if (row.places.contains(place)) T.oliveInk else T.muted)
             }
@@ -1028,8 +1028,8 @@ private fun PronunciationPane(d: Dict) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(Dict.hanOf(k), sz(24f, FontWeight.SemiBold), T.glyph)
                     Txt(tr("通行"), ff(FF.Caption), T.muted)
-                    Txt(d.word(k, rom.coerceIn(0, 2), -1), lat(16f), T.greenInk)
-                    Txt(d.word(k, 3, -1), ff(FF.Footnote), T.purpleInk, Modifier.weight(1f))
+                    Txt(d.word(k, TwRom.lat(rom), -1), lat(16f), T.greenInk)
+                    if (TwRom.line) Txt(d.word(k, 3, -1), ff(FF.Footnote), T.purpleInk, Modifier.weight(1f))
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted)
                 }
                 PlacesTable(d, k, always = true)
@@ -1112,7 +1112,7 @@ private fun SavedPane(d: Dict) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Txt(Dict.hanOf(s.key), sz(20f, FontWeight.SemiBold), T.glyph)
-                                Txt(d.word(s.key, rom.coerceIn(0, 2), -1), lat(16f), T.greenInk, Modifier.weight(1f), maxLines = 1)
+                                Txt(d.word(s.key, TwRom.lat(rom), -1), lat(16f), T.greenInk, Modifier.weight(1f), maxLines = 1)
                                 CopyIconButton {
                                     SenseCopy.text(d, s.key, s.sense, rom, Prefs.place.value, Prefs.copyTpl.value, Prefs.copyEx.value, Prefs.copySep.value)
                                 }
@@ -1199,8 +1199,8 @@ private fun OwnPane(d: Dict) {
             SwipeRow(start = null, end = Pair(tr("刪除"), Color(0xFFB3261E)), onEnd = { Store.removeOwn(k) }, onClick = { nav.push(Route.Entry(k)) }) {
                 Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Txt(Dict.hanOf(k), sz(20f, FontWeight.SemiBold), T.ownInk)
-                    Txt(d.codes(Dict.codesOf(k), rom.coerceIn(0, 2), -1), lat(16f), T.greenInk)
-                    Txt(d.codes(Dict.codesOf(k), 3, -1), ff(FF.Footnote), T.purpleInk)
+                    Txt(d.codes(Dict.codesOf(k), TwRom.lat(rom), -1), lat(16f), T.greenInk)
+                    if (TwRom.line) Txt(d.codes(Dict.codesOf(k), 3, -1), ff(FF.Footnote), T.purpleInk)
                     // (its meaning, if you gave it one)
                     Txt(Store.ownInfo(k).first, ff(FF.Footnote), T.muted, Modifier.weight(1f), maxLines = 1)
                     OwnChip()
@@ -1245,7 +1245,7 @@ fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: 
                     }
                     Txt(d.codes(cs, 0, -1), lat(17f), T.greenInk)
                     Txt(d.codes(cs, 1, -1) + "　" + d.codes(cs, 2, -1), lat(14f), T.greenInk.copy(alpha = 0.8f))
-                    Txt(d.codes(cs, 3, -1), ff(FF.Body), T.purpleInk)
+                    if (TwRom.line) Txt(d.codes(cs, 3, -1), ff(FF.Body), T.purpleInk)
                 } else Txt(check.second, ff(FF.Footnote), T.muted)
             }
         },

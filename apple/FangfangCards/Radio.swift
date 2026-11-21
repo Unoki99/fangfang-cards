@@ -335,6 +335,7 @@ final class RadioPlayer: ObservableObject {
 
     func play(_ s: RadioStation) {
         SongPlayer.shared.stop()         // (找歌來聽's song stops: one or the other)
+        YtPlayer.shared.yieldToOther()   // (YouTube in the app pauses; the lyrics are the station's)
         _ = LyricsBridge.shared          // (the songs' lyrics into 轉換 from now on)
         keepAwake(false)
         job?.cancel()

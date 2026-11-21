@@ -332,13 +332,13 @@ fun WordCard(card: Card, isTop: Boolean) {
             if (hideReading) Txt(tr("點一下看讀音"), ff(FF.Subheadline), T.muted, Modifier.weight(1f))
             else Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Txt(remember(card.k, tk, dict) { Store.cardRom(card, rom, place).annotated() }, lat(26f), T.greenInk)
-                Txt(remember(card.k, tk, dict) { Store.cardZy(card, place).annotated() }, sz(18f), T.purpleInk)
+                if (TwRom.line) Txt(remember(card.k, tk, dict) { Store.cardZy(card, place).annotated() }, sz(18f), T.purpleInk)
                 val also = Store.alsoSaid(card, rom, place).firstOrNull()
                 if (also != null) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     PlaceChip(tr("也講")); Txt(also.first, lat(15f), T.greenInk.copy(alpha = 0.85f))
                 } else card.o?.firstOrNull()?.let { o ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Chip(o.l); Txt(o.r[rom.coerceIn(0, 2)], lat(15f), T.greenInk.copy(alpha = 0.85f))
+                        Chip(o.l); Txt(TwRom.of(o.r, o.z, rom), lat(15f), T.greenInk.copy(alpha = 0.85f))
                     }
                 }
             }
@@ -436,8 +436,8 @@ private fun CardDetail(card: Card) {
                     card.audio?.let { PlayButton(it, 40.dp) }
                 }
                 Txt(Store.cardRom(card, rom, place).annotated(), lat(24f), T.greenInk)
-                Txt(Store.cardZy(card, place).annotated(), sz(17f), T.purpleInk)
-                for (o in card.o ?: emptyList()) OtherRow(o.l, o.r[rom.coerceIn(0, 2)], com.unoki99.fangfang.engine.EngineSettings.hongim(o.z))
+                if (TwRom.line) Txt(Store.cardZy(card, place).annotated(), sz(17f), T.purpleInk)
+                for (o in card.o ?: emptyList()) OtherRow(o.l, TwRom.of(o.r, o.z, rom), com.unoki99.fangfang.engine.EngineSettings.hongim(o.z))
                 Txt(when (Store.status(card)) { 1 -> tr("熟悉"); 2 -> tr("不熟（連續答對 {0} 次）", Store.streak(card)); else -> tr("還沒看過") }, ff(FF.Caption), T.muted)
             }
             for ((i, d) in card.d.withIndex()) Panel {
@@ -472,7 +472,7 @@ fun WordRow(card: Card, streak: Int? = null, goal: Int = 3) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Txt(card.h, ff(FF.Title3, FontWeight.Medium), T.blueInk)
                 Txt(remember(card.k, tk, dict) { Store.cardRom(card, rom, place).annotated() }, lat(16f), T.greenInk, maxLines = 1)
-                Txt(remember(card.k, tk, dict) { Store.cardZy(card, place).annotated() }, ff(FF.Footnote), T.purpleInk, maxLines = 1)
+                if (TwRom.line) Txt(remember(card.k, tk, dict) { Store.cardZy(card, place).annotated() }, ff(FF.Footnote), T.purpleInk, maxLines = 1)
             }
             Txt(Store.practiceMeaning(card).second, ff(FF.Footnote), T.muted, maxLines = 1)   // (主要解釋 = 英文: the English here too)
         }

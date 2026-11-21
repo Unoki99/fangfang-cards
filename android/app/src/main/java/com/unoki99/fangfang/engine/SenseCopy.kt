@@ -56,7 +56,7 @@ object SenseCopy {
         val all = d.senses(key)
         if (i < 0 || i >= all.size) return ""
         val m = all[i]
-        val r = rom.coerceIn(0, 2)
+        val r = if (rom == 3) 3 else rom.coerceIn(0, 2)
         val exs = m.ex.map { x ->
             val tp = x.getOrElse(1) { "" }
             fun s(sys: Int) = if (tp.isEmpty()) "" else d.sentence(tp, sys, place, x[0])

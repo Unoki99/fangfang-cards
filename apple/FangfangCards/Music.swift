@@ -139,6 +139,7 @@ struct MusicView: View {
     var body: some View {
         List {
             nowSection
+            YtMusicSection()
             Section {
                 Button { searching = true } label: { Label(tr("找歌"), systemImage: "magnifyingglass") }
             } footer: {

@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -64,6 +65,8 @@ object YtLyricsState {
     var slow by mutableStateOf(false)
     /** where your lyrics just saved went (shown on the lyrics page) */
     var savedNote by mutableStateOf<String?>(null)
+    /** lyrics without times imported on the lyrics page: the editor opens with them, to time them */
+    var importText: String? = null
     private var forKey = ""
     private var asked = 0
 
@@ -164,6 +167,7 @@ fun YtLyricsScreen() {
     val live = YtLink.live()
     LaunchedEffect(song?.id, song?.title) { st.follow() }
     PicksFor(song)
+    SpaceToPlay()
     val pos = rememberSongPos()
     val lines = st.lines
     val cur = st.lineAt(pos)
@@ -217,6 +221,8 @@ fun YtLyricsScreen() {
             IconButton(onClick = { UI.lyricsFloat = !UI.lyricsFloat }) {
                 Icon(Icons.Filled.PictureInPicture, tr("浮動歌詞"), tint = if (UI.lyricsFloat) T.btnInk else T.glyph)
             }
+            // 分享: 從檔案匯入 and 匯出成 .lrc 檔
+            if (live && song?.id?.isNotEmpty() == true) LyricsShareMenu()
             if (live && song?.id?.isNotEmpty() == true) IconButton(onClick = { UI.ytEditOpen = true }) {
                 Icon(Icons.Filled.Edit, tr("編輯歌詞"), tint = T.glyph)
             }
@@ -239,7 +245,7 @@ fun YtLyricsScreen() {
         }
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             val find = { if (st.query.isNotBlank()) st.lookFor(st.query, "", YtLink.song?.d ?: 0.0, false, st.ownId(YtLink.song)) }
-            Box(Modifier.weight(1f)) { SearchField(st.query, { st.query = it }, tr("歌名或歌手"), onSubmit = find) }
+            Box(Modifier.weight(1f).onFocusChanged { SpaceKeys.typing = it.hasFocus }) { SearchField(st.query, { st.query = it }, tr("歌名或歌手"), onSubmit = find) }
             TextButton(onClick = find) { Text(tr("找"), color = T.btnInk) }
         }
         Row(Modifier.fillMaxWidth().clickable { Prefs.lyricsReadings.value = !showReadings }.padding(horizontal = 16.dp, vertical = 2.dp),
@@ -480,6 +486,7 @@ fun FloatingLyrics(onClose: () -> Unit) {
     val song = YtLink.song
     LaunchedEffect(song?.id, song?.title) { st.follow() }
     PicksFor(song)
+    SpaceToPlay()
     val pos = rememberSongPos()
     val lines = st.lines
     val cur = st.lineAt(pos)
@@ -634,8 +641,10 @@ private fun YtLyricsEditor() {
     val st = YtLyricsState
     val song = YtLink.song
     var page by remember { mutableIntStateOf(0) }
-    val lines = remember { mutableStateListOf<TimedLine>().apply { addAll(st.lines) } }
-    var text by remember { mutableStateOf(st.lines.joinToString("\n") { it.text }) }
+    // (lyrics without times just imported on the lyrics page: those, to time)
+    val imported = remember { st.importText.also { st.importText = null } }
+    val lines = remember { mutableStateListOf<TimedLine>().apply { addAll(if (imported != null) LRC.linesFromText(imported, emptyList()) else st.lines) } }
+    var text by remember { mutableStateOf(imported ?: st.lines.joinToString("\n") { it.text }) }
     var next by remember { mutableIntStateOf(0) }
     var saved by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -706,7 +715,7 @@ private fun YtLyricsEditor() {
     DisposableEffect(page) {
         // (a key held down stamps once, not again and again)
         var held = false
-        if (page == 1) EditorKeys.handler = { e ->
+        val mine: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = { e ->
             if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp && e.key == androidx.compose.ui.input.key.Key.Spacebar) { held = false; true }
             else if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) false
             else when (e.key) {
@@ -722,7 +731,9 @@ private fun YtLyricsEditor() {
                 else -> false
             }
         }
-        onDispose { EditorKeys.handler = null }
+        if (page == 1) EditorKeys.handler = mine
+        // (only its own: the lyrics screen's space bar, set meanwhile, stays)
+        onDispose { if (EditorKeys.handler === mine) EditorKeys.handler = null }
     }
     fun save() {
         if (page == 0) toTiming()
@@ -765,9 +776,6 @@ private fun YtLyricsEditor() {
             Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Txt(tr("打或貼上歌詞，一行一句；空一行是間奏。找到的歌詞可以在這裡改。改好以後到「對時間」。"), ff(FF.Footnote), T.muted, Modifier.weight(1f))
-                SoftButton(onClick = { pickFile.launch(arrayOf("*/*")) }) {
-                    IconLabel(Icons.Filled.FileOpen, tr("從檔案匯入"), ff(FF.Subheadline), T.btnInk)
-                }
             }
             note?.let { Txt(it, ff(FF.Footnote), T.btnInk, Modifier.padding(horizontal = 16.dp)) }
             Box(Modifier.weight(1f).fillMaxWidth().padding(12.dp).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f))
@@ -853,6 +861,92 @@ private fun SongBar(song: YtSong?) {
 
 /** a change in 歌詞對時, for 復原 */
 private class EditSnap(val lines: List<TimedLine>, val next: Int, val ci: Int)
+
+/** the lyrics page's share button: 從檔案匯入 (an .lrc file with its times is saved as your lyrics for the video at
+ *  once; plain text opens 歌詞對時 to time it) and 匯出成 .lrc 檔 (the lyrics shown, with their times) */
+@Composable
+private fun LyricsShareMenu() {
+    val st = YtLyricsState
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var open by remember { mutableStateOf(false) }
+    val pickFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) importLyrics(ctx, uri)
+    }
+    val saveFile = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) exportLyrics(ctx, uri)
+    }
+    Box {
+        IconButton(onClick = { open = true }) { Icon(Icons.Filled.Share, tr("分享"), tint = T.glyph) }
+        DropdownMenu(open, { open = false }, containerColor = T.fn) {
+            DropdownMenuItem(text = { Text(tr("從檔案匯入"), color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.FileOpen, null, tint = T.btnInk) },
+                onClick = { open = false; pickFile.launch(arrayOf("*/*")) })
+            DropdownMenuItem(text = { Text(tr("匯出成 .lrc 檔"), color = if (st.lines.isNotEmpty()) T.glyph else T.muted) },
+                leadingIcon = { Icon(Icons.Filled.Save, null, tint = T.btnInk) }, enabled = st.lines.isNotEmpty(),
+                onClick = { open = false; saveFile.launch(lrcName()) })
+        }
+    }
+}
+
+/** "繁華夢 - 黃齡.lrc" */
+private fun lrcName(): String {
+    val s = YtLink.song
+    val clean = { x: String -> x.replace(Regex("[\\\\/:*?\"<>|\\r\\n]"), " ").trim() }
+    val base = (s?.title ?: "lyrics").let(clean) + (s?.artist?.takeIf { it.isNotEmpty() }?.let { " - " + clean(it) } ?: "")
+    return (base.ifEmpty { "lyrics" }) + ".lrc"
+}
+
+private fun importLyrics(ctx: android.content.Context, uri: android.net.Uri) {
+    val st = YtLyricsState
+    val s = YtLink.song ?: return
+    val raw = try { ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (_: Exception) { null }
+    if (raw == null) { st.savedNote = tr("讀不到這個檔案。"); return }
+    val t = String(raw, Charsets.UTF_8).removePrefix("\uFEFF")
+    if (t.isBlank()) { st.savedNote = tr("這個檔案是空的。"); return }
+    if (!Regex("\\[\\d+:\\d").containsMatchIn(t)) {
+        // (no times: 歌詞對時, to time them)
+        st.importText = t.trim()
+        UI.ytEditOpen = true
+        return
+    }
+    val id = st.ownId(s) ?: return
+    val lrc = LRC.make(LRC.lines(t), s.title, s.artist, s.d.takeIf { it > 0 })
+    OwnLyrics.set(OwnLyric(id, s.title, s.artist, s.d.takeIf { it > 0 }, lrc, System.currentTimeMillis()))
+    st.reloadOwn()
+    try { Backup.syncNow() } catch (_: Exception) {}
+    st.savedNote = tr("匯入了，存成這部影片的歌詞。")
+}
+
+private fun exportLyrics(ctx: android.content.Context, uri: android.net.Uri) {
+    val st = YtLyricsState
+    val s = YtLink.song
+    val lrc = LRC.make(st.lines, s?.title ?: st.pick?.track ?: "", s?.artist ?: st.pick?.artist ?: "", s?.d?.takeIf { it > 0 })
+    val ok = try { ctx.contentResolver.openOutputStream(uri)?.use { it.write(lrc.toByteArray(Charsets.UTF_8)) } != null } catch (_: Exception) { false }
+    st.savedNote = if (ok) tr("匯出了：{0}", uri.path ?: "") else tr("沒辦法存這個檔案。")
+}
+
+/** YouTube 歌詞 (and 卡拉 OK): the space bar plays or pauses the song (the Windows / Mac program hands the keys here
+ *  first), except while typing in the search field */
+object SpaceKeys { var typing = false }
+
+@Composable
+private fun SpaceToPlay() {
+    DisposableEffect(Unit) {
+        SpaceKeys.typing = false
+        // (a key held down: once)
+        var held = false
+        val h: (androidx.compose.ui.input.key.KeyEvent) -> Boolean = { e ->
+            if (e.key != androidx.compose.ui.input.key.Key.Spacebar || SpaceKeys.typing) false
+            else if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) { held = false; true }
+            else if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) false
+            else {
+                if (!held) { held = true; if (YtLink.song?.playing == true) YtLink.pause() else YtLink.play() }
+                true
+            }
+        }
+        EditorKeys.handler = h
+        onDispose { if (EditorKeys.handler === h) EditorKeys.handler = null }
+    }
+}
 
 /** the keys of 歌詞對時's 對時間 (the Windows program hands them here first: desktop/Main.kt) */
 object EditorKeys {

@@ -194,7 +194,7 @@ private fun ConvertPane(d: Dict) {
     var copySheet by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied >= 0) { delay(1200); copied = -1 } }
     Store.rev
-    if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf(tr("漢字"), tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]), tr("方音"))) { copySheet = false }
+    if (copySheet) CopyOptionsSheet(listOf(plain(0), plain(1), plain(2)), listOf(tr("漢字"), tr(ROM_NAMES[TwRom.lat(Prefs.rom.value)]), tr("方音"))) { copySheet = false }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 820.dp
@@ -229,7 +229,8 @@ private fun ConvertPane(d: Dict) {
             }
         }
         @Composable fun panels() {
-            for ((mode, title) in listOf(0 to tr("漢字"), 1 to tr(ROM_NAMES[Prefs.rom.value.coerceIn(0, 2)]), 2 to tr("方音"))) {
+            // (方音 only: no 羅馬字 panel, the 方音 one is it)
+            for ((mode, title) in listOf(0 to tr("漢字"), 1 to tr(ROM_NAMES[TwRom.lat(Prefs.rom.value)]), 2 to tr("方音")).filter { !(it.first == 1 && TwRom.hongimOnly) }) {
                 OutPanel(d, mode, title, copied == mode, onCopy = { copyText(ctx, plain(mode)); copied = mode }) { i -> focus.clearFocus(); UI.open(Sheet.ConvWord(i)) }
             }
         }
@@ -634,7 +635,7 @@ private fun Sayings(d: Dict, han: String, swapItem: Int) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Txt(Dict.hanOf(k), sz(19f, FontWeight.SemiBold), if (Dict.hanOf(k) == han) T.greenInk else T.glyph)
-                        Txt(d.wordText(k, rom.coerceIn(0, 2), place).annotated(), lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
+                        Txt(d.wordText(k, TwRom.lat(rom), place).annotated(), lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
                         Spacer(Modifier.weight(1f))
                         PlaceChip(if (ps.size >= 6) tr("多數地方") else d.placeNames(ps, 4))
                     }

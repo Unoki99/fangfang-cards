@@ -1756,5 +1756,12 @@
  "中文（臺灣）": "Chinese (Taiwan)",
  "看": "See",
  "整個詞": "Whole word",
- "點一個腔口，這個字就用那裡的讀音（別的字不變）。": "Tap a place: this character is then said that place's way (the others stay as they are)."
+ "點一個腔口，這個字就用那裡的讀音（別的字不變）。": "Tap a place: this character is then said that place's way (the others stay as they are).",
+ "打開 LRC 檔": "Open an LRC file",
+ "分享 LRC 檔": "Share as an LRC file",
+ "分享": "Share",
+ "匯出成 .lrc 檔": "Export as an .lrc file",
+ "匯入了，存成這部影片的歌詞。": "Imported, and saved as this video's lyrics.",
+ "匯出了：{0}": "Exported: {0}",
+ "沒辦法存這個檔案。": "Couldn't save this file."
 }

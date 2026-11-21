@@ -178,7 +178,7 @@ private fun MapSpot(d: Dict, key: String, p: Int, on: Boolean, boxW: Int, boxH: 
     val name = d.raw.places[p].take(2)
     val s = SPOTS[name] ?: Triple(121.0, 24.0, 0)
     val mine = p == Prefs.place.value
-    val rom = Prefs.rom.value.coerceIn(0, 2)
+    val rom = TwRom.lat(Prefs.rom.value)
     val tk = textKey()
     val density = LocalDensity.current
     val x = mapX(s.first, boxW.toFloat()); val y = mapY(s.second, boxH.toFloat())
