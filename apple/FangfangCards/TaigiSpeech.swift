@@ -43,6 +43,7 @@ final class TaigiSpeech: ObservableObject {
         let my = token
         text = t
         phase = .loading
+        AudioMix.wordStarts()
         Task {
             do {
                 var next: Task<Data, Error>? = Task { try await TaigiSpeech.audio(parts[0]) }
@@ -60,8 +61,9 @@ final class TaigiSpeech: ObservableObject {
                     try? await Task.sleep(nanoseconds: UInt64((p.duration + 0.15) * 1_000_000_000))
                     guard my == token else { next?.cancel(); return }
                 }
-                if my == token { phase = .idle; text = nil }
+                if my == token { phase = .idle; text = nil; AudioMix.wordEnds() }
             } catch {
+                AudioMix.wordEnds()
                 guard my == token else { return }
                 phase = .failed
                 try? await Task.sleep(nanoseconds: 2_000_000_000)

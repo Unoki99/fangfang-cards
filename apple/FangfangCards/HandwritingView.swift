@@ -1604,7 +1604,7 @@ struct WordWriteArea: View {
 
     private var checkButton: some View {
         Button { withAnimation(.snappy) { checked = true } } label: {
-            Label(tr("對答案"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 40)
+            Label(tr("確認答案"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 40)
         }
         .prominentButton(T.btnEdge)
     }

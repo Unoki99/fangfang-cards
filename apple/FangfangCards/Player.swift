@@ -28,8 +28,9 @@ final class Player: ObservableObject {
         playing = path
         failed = nil
         // 華語: the device's own voice
+        AudioMix.wordStarts()
         if path.hasPrefix("tts:") {
-            ZhSpeech.shared.onFinish = { [weak self] in if my == self?.token { self?.playing = nil } }
+            ZhSpeech.shared.onFinish = { [weak self] in if my == self?.token { self?.playing = nil }; AudioMix.wordEnds() }
             ZhSpeech.shared.speak(String(path.dropFirst(4)))
             return
         }
@@ -45,8 +46,9 @@ final class Player: ObservableObject {
                 p.play()
                 let length = p.duration
                 try? await Task.sleep(nanoseconds: UInt64((length + 0.1) * 1_000_000_000))
-                if my == self.token { self.playing = nil }
+                if my == self.token { self.playing = nil; AudioMix.wordEnds() }
             } catch {
+                AudioMix.wordEnds()
                 guard my == self.token else { return }
                 self.playing = nil
                 self.failed = path
@@ -128,5 +130,37 @@ struct PlayButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(tr("播放"))
+    }
+}
+
+
+/// A word read out loud while 音樂 plays an Apple Music song. That song plays outside the app (iOS's music player), so
+/// the app's own sound took the speaker from it: the song stopped, and play didn't start it again. Now a word's sound
+/// mixes with the song, which goes quieter for it and back up after.
+@MainActor
+enum AudioMix {
+    private static var token = 0
+    private static var mixing = false
+
+    /// (before a word's sound)
+    static func wordStarts() {
+        token += 1
+        guard SongPlayer.shared.active, SongPlayer.shared.mode == .full else { return }
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers, .duckOthers])
+        try? AVAudioSession.sharedInstance().setActive(true)
+        mixing = true
+    }
+
+    /// (a word's sound done: the song back up a moment later, unless another word starts first)
+    static func wordEnds(after seconds: Double = 0.3) {
+        guard mixing else { return }
+        let my = token
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard my == token, mixing else { return }
+            mixing = false
+            try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        }
     }
 }

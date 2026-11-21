@@ -366,6 +366,10 @@ final class SongPlayer: ObservableObject {
     }
 
     func togglePause() {
+        // (Apple Music: what its player is really doing; something else may have stopped it without us knowing)
+        #if !targetEnvironment(macCatalyst)
+        if mode == .full { if music.playbackState == .playing { pause() } else { resume() }; return }
+        #endif
         if playing { pause() } else { resume() }
     }
 

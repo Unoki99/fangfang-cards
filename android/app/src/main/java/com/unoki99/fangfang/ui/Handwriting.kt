@@ -963,7 +963,7 @@ fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = M
                     IconLabel(Icons.Filled.Clear, if (n > 1) tr("全部清掉") else tr("清掉"), ff(FF.Subheadline))
                 }
                 if (!show && dontKnow != null) dontKnowButton(dontKnow)
-                if (!show) ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline)) }
+                if (!show) ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) { IconLabel(Icons.Filled.Check, tr("確認答案"), ff(FF.Subheadline)) }
             }
         } else {
             if (!show) slots()
@@ -975,7 +975,7 @@ fun WordWriteArea(chars: List<String>, answered: Boolean, modifier: Modifier = M
                 if (cur + 1 < chars.size) ProminentButton(onClick = { cur++ }, Modifier.weight(1f)) {
                     IconLabel(Icons.Filled.ChevronRight, tr("下一個字"), ff(FF.Subheadline))
                 } else if (!show) ProminentButton(onClick = { checked = true }, Modifier.weight(1f)) {
-                    IconLabel(Icons.Filled.Check, tr("對答案"), ff(FF.Subheadline))
+                    IconLabel(Icons.Filled.Check, tr("確認答案"), ff(FF.Subheadline))
                 } else if (chars.size > 1) SoftButton(onClick = { cur = 0 }, Modifier.weight(1f)) {
                     IconLabel(Icons.Filled.Undo, tr("第一個字"), ff(FF.Subheadline))
                 }
