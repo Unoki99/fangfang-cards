@@ -181,8 +181,8 @@ fun DictEntryBody(d: Dict, key: String) {
         @Composable fun enCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Chip(tr("英"), T.fn, T.fnEdge, T.muted)
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                // (where the English is from: 設定 → 資料來源 → 台語：英文解釋)
                 EnglishList(en, max = 8)
-                Txt(tr("英文解釋：維基詞典（CC BY-SA）"), ff(FF.Caption2), T.muted)
             }
         }
         @Composable fun meanings() {

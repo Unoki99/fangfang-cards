@@ -1445,8 +1445,8 @@ struct DictEntryBody: View {
             }
         }
         let enCol = VStack(alignment: .leading, spacing: 3) {
+            // (where the English is from: 設定 → 資料來源 → 台語 → 英文解釋)
             ZhEnglishList(items: en, max: 8)
-            Text(tr("英文解釋：維基詞典（CC BY-SA）")).ffFont(.caption2).foregroundStyle(T.muted)
         }
         // (always two columns side by side, also on a phone: each column's label above it, so they have room)
         if !zh.isEmpty || !en.isEmpty {
