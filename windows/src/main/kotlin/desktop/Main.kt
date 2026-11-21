@@ -186,7 +186,7 @@ fun main(args: Array<String>) {
                 }
             }
             Window(onCloseRequest = { UI.lyricsFloat = false; FloatWord.key = null }, state = fs, title = "浮動歌詞", icon = icon,
-                alwaysOnTop = true, undecorated = true, transparent = true, resizable = false) {
+                alwaysOnTop = true, undecorated = true, transparent = true, resizable = false, onPreviewKeyEvent = { floatSpaceKey(it) }) {
                 WindowDraggableArea(Modifier.fillMaxSize()) {
                     FloatingLyrics { UI.lyricsFloat = false }
                 }

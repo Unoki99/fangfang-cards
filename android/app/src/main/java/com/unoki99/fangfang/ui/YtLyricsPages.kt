@@ -609,7 +609,8 @@ fun FloatingLyrics(onClose: () -> Unit) {
     val song = YtLink.song
     LaunchedEffect(song?.id, song?.title) { st.follow() }
     PicksFor(song)
-    SpaceToPlay()
+    // (no SpaceToPlay here: that took the space bar from the whole program while this window was open; this window's
+    // own keys: floatSpaceKey, desktop/Main.kt)
     val pos = rememberSongPos()
     val lines = st.lines
     val cur = st.lineAt(pos)
@@ -649,12 +650,25 @@ fun FloatingLyrics(onClose: () -> Unit) {
                 IconButton(onClick = { if (playing) YtLink.pause() else YtLink.play() }, Modifier.size(30.dp)) {
                     Icon(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, if (playing) tr("暫停") else tr("播放"), tint = T.glyph)
                 }
-                IconButton(onClick = { gear = !gear }, Modifier.size(30.dp)) { Icon(Icons.Filled.Settings, tr("歌的語言"), tint = if (gear) T.btnInk else T.muted) }
+                IconButton(onClick = { gear = !gear }, Modifier.size(30.dp)) { Icon(Icons.Filled.Settings, tr("設定"), tint = if (gear) T.btnInk else T.muted) }
                 IconButton(onClick = { FloatWord.key = null; onClose() }, Modifier.size(30.dp)) { Icon(Icons.Filled.Close, tr("關"), tint = T.muted) }
             }
         }
         // the song's language (the lyrics read in it, whatever language the app is on)
         val sk = st.picksKey(song)
+        // 讀音: on / off (the line under each line)
+        if (gear) Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 12.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Txt(tr("讀音"), ff(FF.Footnote), T.muted)
+            for ((v, name) in listOf(true to tr("顯示"), false to tr("不顯示"))) {
+                val on = showRd == v
+                Txt(name, ff(FF.Footnote, if (on) FontWeight.SemiBold else null), if (on) T.btnInk else T.glyph,
+                    Modifier.clip(RoundedCornerShape(50)).border(1.dp, if (on) T.btnEdge else T.fnEdge, RoundedCornerShape(50))
+                        .clickable { Prefs.lyricsFloatReadings.value = v }.hand().padding(horizontal = 10.dp, vertical = 3.dp))
+            }
+        }
+        // the lyrics' timing: earlier / later (the same as in the 歌詞 page and karaoke)
+        if (gear && YtLyricsState.lines.isNotEmpty()) Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 4.dp)) { OffsetRow() }
         if (gear && sk != null) {
             SongLangs.version
             val tag = SongLangs.get(sk)
@@ -1084,6 +1098,16 @@ private fun SpaceToPlay() {
         EditorKeys.handler = h
         onDispose { if (EditorKeys.handler === h) EditorKeys.handler = null }
     }
+}
+
+/** 浮動歌詞's own window: the space bar plays / pauses, only while that window is the one in front */
+private var floatSpaceHeld = false
+fun floatSpaceKey(e: androidx.compose.ui.input.key.KeyEvent): Boolean {
+    if (e.key != androidx.compose.ui.input.key.Key.Spacebar) return false
+    if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) { floatSpaceHeld = false; return true }
+    if (e.type != androidx.compose.ui.input.key.KeyEventType.KeyDown) return false
+    if (!floatSpaceHeld) { floatSpaceHeld = true; if (YtLink.song?.playing == true) YtLink.pause() else YtLink.play() }
+    return true
 }
 
 /** the keys of 歌詞對時's 對時間 (the Windows program hands them here first: desktop/Main.kt) */
