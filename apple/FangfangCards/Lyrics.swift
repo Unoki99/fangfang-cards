@@ -686,6 +686,8 @@ struct LyricsPage: View {
                 Text(tr("電台有送歌名的話會自己找。沒有的話可以自己打歌名（控制中心的「音樂辨識」可以聽出手機正在放的歌）。歌詞來自 LRCLIB（lrclib.net）。有時間的歌詞會跟著歌走，正在唱的詞會變大；跟電台對不上的話，用「對時」的按鈕往前或往後調。"))
                     .ffFont(.footnote)
             }
+            // 浮動歌詞: Picture in Picture, over the other apps
+            LyricsPiPSection()
             if failed {
                 Text(tr("連不上 LRCLIB，等一下再試試看。")).foregroundStyle(T.muted)
             } else if searched && hits.isEmpty && !busy {

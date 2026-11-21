@@ -156,7 +156,9 @@ class DictRaw(
 }
 
 /** one meaning of a word, ready to show */
-class DictSense(val n: Int, val pos: String, val text: String, val ex: List<List<String>>, val syn: List<String>, val ant: List<String>)
+class DictSense(val n: Int, val pos: String, val text: String, val ex: List<List<String>>, val syn: List<String>, val ant: List<String>,
+                /** a local word (方言詞): the usual words its meaning was taken from (看：某、牽手) */
+                val see: List<String> = emptyList())
 
 /** a reading choice for a word in the converter */
 data class Opt(
@@ -321,6 +323,8 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         for ((c, v) in raw.tl) {
             if (v.size <= 1) continue
             push(tlRev, v[1], c)
+            // (the nasal oo as 台羅 writes it, onn; oonn still found)
+            tlStandard(v[1]).let { if (it != v[1]) push(tlRev, it, c) }
             push(pojRev, tl2poj(v[1]), c)
             push(plainRev, plainKey(v[1]), c)
             push(plainRev, plainKey(tl2poj(v[1])), c)
@@ -460,12 +464,20 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
 
     // MARK: rendering (same rules as fangcore.js)
 
+    /** 台羅: the nasal oo is written onn (hōnn, not hōonn): a nasal o is always the open one */
+    private fun tlStandard(s: String): String {
+        if (!s.contains("nn")) return s
+        val d = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+        val r = TL_OONN.replace(d) { m -> m.groupValues[1] + m.groupValues[2] }
+        return if (r == d) s else java.text.Normalizer.normalize(r, java.text.Normalizer.Form.NFC)
+    }
+
     /** sys: 0 皓羅, 1 台羅, 2 白話字, 3 方音; place: -1 = 通行 */
     fun syl(c: String, sys: Int, place: Int): String {
         val s = raw.syl[c] ?: return c
         return when (sys) {
             3 -> EngineSettings.hongimSyllable(if (place >= 0 && c.contains("ø") && !orPlaces.contains(place)) s[0].replace("ㄜ", "ㄛ") else s[0])
-            1 -> raw.tl[c]?.firstOrNull() ?: s[1]
+            1 -> raw.tl[c]?.firstOrNull()?.let { tlStandard(it) } ?: s[1]
             2 -> raw.pj[c] ?: s[1]
             else -> s[1]
         }
@@ -473,6 +485,14 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     fun isCode(t: String) = raw.syl.containsKey(t)
 
     fun codesFor(key: String, place: Int): String {
+        val c = statedCodes(key, place)
+        // (新竹, which says -ir and -i both: the -ir one first, the -i one 也講)
+        if (place >= 0 && !c.contains('ɨ') && irAndI(place)) irVariant(key, c)?.let { if (it.contains('ɨ')) return it }
+        return c
+    }
+
+    /** a place's reading as the dictionary has it (no -ir / -i swapped) */
+    private fun statedCodes(key: String, place: Int): String {
         if (place >= 0) raw.dia[key]?.get(place.toString())?.let { return it }
         return codesOf(key)
     }
@@ -523,7 +543,7 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
 
     fun differsFromCommon(key: String, place: Int): Boolean {
         if (place < 0) return false
-        val dc = raw.dia[key]?.get(place.toString()) ?: return false
+        val dc = if (irAndI(place)) codesFor(key, place) else raw.dia[key]?.get(place.toString()) ?: return false
         val a = codesOf(key).split(' '); val b = dc.split(' ')
         if (a.size != b.size) return true
         return b.indices.any { !sameSound(a[it], b[it], place) }
@@ -961,7 +981,32 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     }
 
     /** the place's other way(s) of saying the word, as codes */
-    fun alsoSaid(key: String, place: Int): List<String> = if (place < 0) emptyList() else raw.dia2?.get(key)?.get(place.toString()) ?: emptyList()
+    fun alsoSaid(key: String, place: Int): List<String> {
+        if (place < 0) return emptyList()
+        val base = raw.dia2?.get(key)?.get(place.toString()) ?: emptyList()
+        if (!irAndI(place)) return base
+        val shown = codesFor(key, place)
+        val other = irVariant(key, shown) ?: return base
+        return if (other == shown || other in base) base else base + other
+    }
+
+    /** places that say -ir and -i both (新竹: 去 khì and khìr): neither is the only one there */
+    fun irAndI(place: Int): Boolean = raw.places.getOrNull(place)?.startsWith("新竹") == true
+
+    /** a reading with -ir as -i (khìr → khì), or with -i as the -ir another place says (khì → khìr); null: none */
+    private fun irVariant(key: String, shown: String): String? {
+        if (shown.contains('ɨ')) return shown.replace('ɨ', 'i')
+        val mine = shown.split(' ')
+        for (p in raw.places.indices) {
+            if (irAndI(p)) continue
+            val o = statedCodes(key, p).split(' ')
+            if (o.size != mine.size || o.none { it.contains('ɨ') }) continue
+            var changed = false
+            val out = mine.mapIndexed { j, c -> if (o[j].contains('ɨ') && o[j].replace('ɨ', 'i') == c) { changed = true; o[j] } else c }
+            if (changed) return out.joinToString(" ")
+        }
+        return null
+    }
 
     class OtherReading(val label: String, val codes: String, val tokens: String?)
 
@@ -1024,8 +1069,46 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         return raw.defs.t[di].split("\n").withIndex().map { (i, line) ->
             val text = numRe.find(line)?.let { line.substring(it.range.last + 1) } ?: line
             val exs = raw.ex[key]?.let { if (i < it.size) it[i] else null } ?: emptyList()
-            DictSense(i + 1, if (i < pos.size) pos[i] else "", text, exs, sy[i.toString()] ?: emptyList(), an[i.toString()] ?: emptyList())
+            val syn = sy[i.toString()] ?: emptyList()
+            val see = if (raw.loc?.get(key) != null) seeWords(key, text, syn) else emptyList()
+            if (see.isNotEmpty()) {
+                // a local word (家內): the meaning of the usual words it points to (看「某」、「牽手」), then 看： them
+                DictSense(i + 1, if (i < pos.size) pos[i] else "", localMeaning(key, text, see), exs, syn.filter { it !in see },
+                    an[i.toString()] ?: emptyList(), see)
+            } else DictSense(i + 1, if (i < pos.size) pos[i] else "", text, exs, syn, an[i.toString()] ?: emptyList())
         }
+    }
+
+    private val seeRe = Regex("看((?:「[^」]+」、?)+)。?\\s*$")
+    private val seeWordRe = Regex("「([^」]+)」")
+
+    /** the usual words a local word's meaning points to (看「某」、「牽手」): their keys, those with a meaning first */
+    private fun seeWords(key: String, text: String, syn: List<String>): List<String> {
+        val m = seeRe.find(text) ?: return emptyList()
+        val hans = seeWordRe.findAll(m.groupValues[1]).map { it.groupValues[1] }.toList()
+        val out = ArrayList<String>()
+        for (h in hans) {
+            val k = syn.firstOrNull { hanOf(it) == h && it != key }
+                ?: hanMap[h]?.map { c -> h + "\t" + c }?.firstOrNull { raw.defs.m[it] != null && it != key }
+            if (k != null && k !in out) out.add(k)
+        }
+        return out
+    }
+
+    private val loopGuard = ThreadLocal<Boolean>()
+
+    /** a local word's meaning: what's before 看「…」 (the 華語 word, 妻子), else from the usual words' meanings: the one
+     *  with the word's 華語 meaning (詞彙比較) in it, else their first */
+    private fun localMeaning(key: String, text: String, see: List<String>): String {
+        val before = text.substring(0, seeRe.find(text)?.range?.first ?: 0).trim().trimEnd('。')
+        val zh = before.ifEmpty { raw.cmp.firstOrNull { e -> e.rows.any { it.han == hanOf(key) } }?.zh ?: "" }
+        if (loopGuard.get() == true) return before.ifEmpty { text }
+        loopGuard.set(true)
+        try {
+            val all = see.flatMap { k -> senses(k).map { it.text } }.filter { it.isNotEmpty() && !seeRe.containsMatchIn(it) }
+            val best = (if (zh.isNotEmpty()) all.firstOrNull { it.contains(zh) } else null) ?: all.firstOrNull()
+            return best ?: (if (zh.isNotEmpty()) "$zh。" else text)
+        } finally { loopGuard.set(false) }
     }
 
     /** (word -> the words whose meanings list it as 近義 / 反義: the word, which meaning, 近 or 反) */
@@ -1138,3 +1221,6 @@ interface KeyValue {
     fun getString(key: String): String?
     fun putString(key: String, value: String)
 }
+
+/** (台羅 oonn → onn: the o with its tone mark, the second o) */
+private val TL_OONN = Regex("([oO])([\u0300-\u036f]*)o(?=nn)")

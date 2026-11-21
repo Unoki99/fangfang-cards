@@ -46,7 +46,7 @@ struct WordCard: View {
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     NumBadge(n: i + 1)
                                     if !d.p.isEmpty { Chip(text: d.p) }
-                                    Text(d.t).foregroundStyle(T.glyph).lineLimit(compact ? 1 : 2)
+                                    Text(shownDef(card.k, i, d.t)).foregroundStyle(T.glyph).lineLimit(compact ? 1 : 2)
                                 }
                             }
                             if card.d.count > n {
@@ -214,7 +214,7 @@ struct CardDetail: View {
                                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                                     NumBadge(n: i + 1)
                                     if !d.p.isEmpty { Chip(text: d.p) }
-                                    Text(d.t).foregroundStyle(T.glyph)
+                                    Text(shownDef(card.k, i, d.t)).foregroundStyle(T.glyph)
                                 }
                                 LinkRows(sy: d.sy, an: d.an)
                                 ForEach(Array(d.x.enumerated()), id: \.offset) { _, x in

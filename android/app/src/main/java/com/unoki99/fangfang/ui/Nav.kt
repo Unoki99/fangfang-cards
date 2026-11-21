@@ -41,6 +41,9 @@ sealed class Route {
     object JaParticles : Route()
     data class JaLab(val key: String?) : Route()
     object JaColors : Route()
+    /** 瑞典語: one part of a word (its entry's key, which part), a word the dictionary doesn't have */
+    data class SvPart(val key: String, val index: Int) : Route()
+    data class SvWord(val word: String) : Route()
 }
 
 class NavStack {
@@ -69,6 +72,8 @@ object UI {
     /** the app opens on 詞典 */
     var tab by mutableIntStateOf(4)
     var settingsOpen by mutableStateOf(false)
+    /** 我的進度 (the button at the top left of the main pages) */
+    var profileOpen by mutableStateOf(false)
     /** 電台, and its 歌詞 */
     var radioOpen by mutableStateOf(false)
     var lyricsOpen by mutableStateOf(false)
@@ -78,6 +83,8 @@ object UI {
     var ytEditOpen by mutableStateOf(false)
     /** 浮動歌詞 (Windows): the line being sung in a small window over everything */
     var lyricsFloat by mutableStateOf(false)
+    /** 卡拉 OK (YouTube 歌詞): the lines big, the whole window */
+    var karaokeOpen by mutableStateOf(false)
     /** 新詞 on a phone on its side: no tab bar (only the cards) */
     var hideTabs by mutableStateOf(false)
     var practice by mutableStateOf<Practice?>(null)
@@ -92,3 +99,14 @@ object UI {
     fun closeSheet() { if (sheets.isNotEmpty()) sheets.removeAt(sheets.size - 1) }
     val tabs = List(5) { NavStack() }
 }
+
+
+/** a screen's own choices (which part of 設定, 卡片複習 / 列表 / 學習進度…) that stay when the screen is drawn again
+ *  from the start: a new theme, the other word list (HSK ⇄ TOCFL). (remember alone forgot them, and the screen went
+ *  back to its first page.) */
+object Kept { val map = HashMap<String, androidx.compose.runtime.MutableState<Any?>>() }
+
+@Suppress("UNCHECKED_CAST")
+@androidx.compose.runtime.Composable
+fun <V> rememberKept(id: String, init: () -> V): androidx.compose.runtime.MutableState<V> =
+    androidx.compose.runtime.remember(id) { Kept.map.getOrPut(id) { mutableStateOf<Any?>(init()) } as androidx.compose.runtime.MutableState<V> }

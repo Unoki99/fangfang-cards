@@ -79,6 +79,8 @@ object Prefs : KeyValue {
     val pronQuery = Pref("pronQuery", "")
     val convText = Pref("ff-text", "")
     val latin = Pref("ff-latin", "auto")
+    /** 轉換: after choosing a reading, choose which 腔口's way of saying it too */
+    val convAnyPlace = Pref("convAnyPlace", false)
     val swaps = Pref("ff-swaps", "")
     val swapOff = Pref("ff-swap-off", "")
     val compareA = Pref("compareA", "")
@@ -150,11 +152,21 @@ object Prefs : KeyValue {
     /** 電台: 我的電台 (JSON), and whether the starter stations were put in once */
     val radioStations = Pref("radioStations", "")
     val radioStarted = Pref("radioStarted", false)
+    /** 電台鬧鐘: on / off, the time (minutes after midnight), the station; 我的歌 (JSON) */
+    val radioAlarmOn = Pref("radioAlarmOn", false)
+    val radioAlarmTime = Pref("radioAlarmTime", 7 * 60)
+    val radioAlarmStation = Pref("radioAlarmStation", "")
+    val savedSongs = Pref("savedSongs", "")
     /** 歌詞: each line's reading under it, on or off (off: lighter on memory) */
     val lyricsReadings = Pref("lyricsReadings", true)
     /** 浮動歌詞 (Windows): the letters' size, and the reading under the line on or off */
     val lyricsFloatSize = Pref("lyricsFloatSize", 24f)
     val lyricsFloatReadings = Pref("lyricsFloatReadings", true)
+    /** …and its width (dp) */
+    val lyricsFloatWidth = Pref("lyricsFloatWidth", 640f)
+    /** 卡拉 OK: the letters' size, and the reading under the line */
+    val karaokeSize = Pref("karaokeSize", 48f)
+    val karaokeReadings = Pref("karaokeReadings", false)
     /** 歌的語言: songs tagged with the language they're sung in (JSON: song → 0 台語, 1 華語, 2 粵語, 3 客語) */
     val songLanguages = Pref("songLanguages", "")
     val lockSource = Pref("lockWordSource", "")
@@ -204,11 +216,17 @@ object Prefs : KeyValue {
     val simplified = Pref("simplified", false)
     /** 日語: the spelling (0 rōmaji, 1 かな; かな the first time) */
     val jaRom = Pref("jaRom", 1)
+    /** 瑞典語: 0 = the morphemes under the word (be-tal-a), 1 = not */
+    val svRom = Pref("svRom", 0)
+    /** 瑞典語: the Chinese meanings guessed from the English ones shown */
+    val svGuessZh = Pref("svGuessZh", true)
     /** 台語 and 客語: the main explanation on cards and lists (false the dictionary's, true English) */
     val twEnglish = Pref("twMainEnglish", false)
     val hakEnglish = Pref("hakMainEnglish", false)
     /** 日語's colours: kanji, hiragana, katakana, particles, endings (0xRRGGBB; -1 = the standard one) */
     val jaColors = listOf("kanji", "hira", "kata", "particle", "suffix").map { Pref("jaColor.$it", -1) }
+    /** 瑞典語's colours (root, second root, prefix, suffix, linking letter, ending; -1 = the standard one) */
+    val svColors = listOf("root", "root2", "prefix", "suffix", "link", "ending").map { Pref("svColor.$it", -1) }
     /** 手寫: a small number at the start of each stroke */
     val handNumbers = Pref("handwritingStrokeNumbers", false)
     /** the squares of a 寫字題 (dp): they stay this size, only the slider changes it */
@@ -225,7 +243,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, songLanguages) + copyOn + copyStyle + copyPreText + jaColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, svRom, svGuessZh, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -244,6 +262,16 @@ object Prefs : KeyValue {
         simplified.onChange = { syncEngine() }
         loadJaColors()
         for (p in jaColors) p.onChange = { loadJaColors() }
+        loadSvColors()
+        for (p in svColors) p.onChange = { loadSvColors() }
+        com.unoki99.fangfang.engine.SvGuess.on = svGuessZh.value
+        svGuessZh.onChange = { com.unoki99.fangfang.engine.SvGuess.on = svGuessZh.value }
+    }
+
+    /** 瑞典語's colours, for the engine */
+    fun loadSvColors() {
+        val st = com.unoki99.fangfang.engine.SvColors.standard
+        com.unoki99.fangfang.engine.SvColors.picked = IntArray(st.size) { i -> svColors[i].value.let { if (it == -1) st[i] else (it or 0xFF000000.toInt()) } }
     }
 
     /** 日語's colours, for the engine (-1 = the standard one) */

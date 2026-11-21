@@ -17,9 +17,7 @@ object Ffmpeg {
         val now = System.currentTimeMillis()
         if (now - looked < 30_000) return null
         looked = now
-        val own = File(DesktopContext.base, "ffmpeg")
-        val f = own.walkTopDown().maxDepth(4).firstOrNull { it.name.equals("ffmpeg.exe", true) && it.isFile }
-            ?: (System.getenv("PATH") ?: "").split(File.pathSeparator).map { File(it.trim('"'), "ffmpeg.exe") }.firstOrNull { it.isFile }
+        val f = Os.find("ffmpeg", File(DesktopContext.base, "ffmpeg"))
         found = f
         return f
     }

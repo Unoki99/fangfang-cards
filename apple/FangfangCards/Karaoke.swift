@@ -13,13 +13,13 @@ enum KaraokeSettings {
 }
 
 /// one line, made once per song (and again when the colours, readings or language change)
-private struct KaraokeLine {
+struct KaraokeLine {
     let text: AttributedString
     let reading: AttributedString?
 }
 
 @MainActor
-private enum KaraokeLines {
+enum KaraokeLines {
     /// the song's lines: in the tone colours (or plain), with their readings when asked for
     static func make(_ lines: [String], colours: Bool, readings: Bool) -> [KaraokeLine] {
         let store = Store.shared

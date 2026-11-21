@@ -453,7 +453,7 @@ private val YUE_TONE_NAMES = mapOf(1 to "陰平", 2 to "陰上", 3 to "陰去", 
 private fun zhToneQuestion(c: Card): ToneQuestion? {
     val d = Store.zh ?: return null
     val tw = c.zs ?: return null
-    val syl = if (Prefs.zhPlace.value == 1) (c.zl ?: tw) else tw
+    val syl = if (Prefs.zhPlace.value >= 1) (c.zl ?: tw) else tw
     val li = syl.indexOfLast { it != "-" && it != "_" }
     if (li < 0) return null
     val tone = Zhuyin.tone(syl[li])

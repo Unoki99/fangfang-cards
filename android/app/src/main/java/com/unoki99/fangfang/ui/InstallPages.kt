@@ -21,12 +21,18 @@ import com.unoki99.fangfang.engine.Lang
 
 /** each language's capsule colours: fill, edge, ink (台語 green, 華語 blue, 粵語 yellow, 客語 red, 日語 pink) */
 fun langColors(l: Int): Triple<Color, Color, Color> = when (l) {
+    5 -> Triple(SV_FILL, SV_EDGE, SV_INK)
     4 -> Triple(T.jaFill, T.jaEdge, T.jaInk)
     3 -> Triple(T.hakFill, T.hakEdge, T.hakInk)
     2 -> Triple(Color(0xFF5A4A14), Color(0xFFC9A227), Color(0xFFFFE58A))
     1 -> Triple(Color(0xFF1F3D6B), Color(0xFF4F7DFF), Color(0xFF9AD0FF))
     else -> Triple(T.twFill, T.twEdge, T.twInk)
 }
+
+/** 瑞典語's teal (the same in every theme) */
+val SV_FILL = Color(0xFF124A46)
+val SV_EDGE = Color(0xFF2EC4B6)
+val SV_INK = Color(0xFF9FF3E8)
 
 @Composable
 fun DictDataPage() {
@@ -120,7 +126,7 @@ fun InstallPanel(lang: Int, modifier: Modifier = Modifier, onSkip: (() -> Unit)?
     val st = DictInstaller.state(p)
     Column(modifier.fillMaxWidth().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Box(Modifier.size(96.dp).clip(CircleShape).background(edge.copy(alpha = 0.35f)), contentAlignment = Alignment.Center) {
-            Txt(listOf("台", "華", "粵", "客", "日")[lang.coerceIn(0, 4)], sz(54f, FontWeight.Bold), ink)
+            Txt(listOf("台", "華", "粵", "客", "日", "瑞")[lang.coerceIn(0, 5)], sz(54f, FontWeight.Bold), ink)
         }
         Txt(tr("安裝{0}詞典", tr(Lang.names[lang])), ff(FF.Title2, FontWeight.Bold), T.glyph)
         Txt(tr(p.from) + "\n" + tr(p.download), ff(FF.Footnote), T.muted, Modifier.widthIn(max = 460.dp))

@@ -45,6 +45,8 @@ object Radio {
         @Suppress("UNCHECKED_CAST")
         val l = try { (JReader(Prefs.radioStations.value.ifEmpty { "[]" }).any() as? List<Any?>)?.mapNotNull { (it as? Map<String, Any?>)?.let(RadioStation::from) } } catch (_: Exception) { null }
         if (l.isNullOrEmpty() && !Prefs.radioStarted.value) { restoreStarters(); Prefs.radioStarted.value = true } else stations.addAll(l ?: emptyList())
+        // (the minutes listened, what the station sends, 電台鬧鐘: RadioExtras.kt)
+        RadioExtras.start()
     }
     private fun save() { Prefs.radioStations.value = JWriter.any(stations.map { it.toMap() }) }
 

@@ -7,6 +7,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -36,13 +38,17 @@ fun RadioBarButton() {
 
 @Composable
 fun RadioScreen() {
-    BackHandler { if (UI.ytEditOpen) UI.ytEditOpen = false else if (UI.ytLyricsOpen) UI.ytLyricsOpen = false else if (UI.lyricsOpen) UI.lyricsOpen = false else UI.radioOpen = false }
+    BackHandler { if (UI.karaokeOpen) UI.karaokeOpen = false else if (UI.ytEditOpen) UI.ytEditOpen = false else if (UI.ytLyricsOpen) UI.ytLyricsOpen = false else if (UI.lyricsOpen) UI.lyricsOpen = false else UI.radioOpen = false }
     if (UI.ytLyricsOpen) { AppBackground { YtLyricsScreen() }; return }
     if (UI.lyricsOpen) { AppBackground { LyricsScreen() }; return }
     var lang by remember { mutableIntStateOf(Store.lang.coerceIn(0, RadioLang.languages.size - 1)) }
     var searching by remember { mutableStateOf(false) }
     var adding by remember { mutableStateOf(false) }
     var removing by remember { mutableStateOf<RadioStation?>(null) }
+    // 我的歌, 電台送來的資料
+    var songsOpen by remember { mutableStateOf(false) }
+    var metaOpen by remember { mutableStateOf(false) }
+    if (songsOpen) { AppBackground { SavedSongsScreen { songsOpen = false } }; return }
     AppBackground {
         Column(Modifier.fillMaxSize()) {
             TopBar(tr("電台"), { UI.radioOpen = false }, close = true, settings = false) {
@@ -51,7 +57,7 @@ fun RadioScreen() {
             }
             if (searching) { RadioSearch(lang) { searching = false }; return@Column }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                item { NowPlayingPanel() }
+                item { NowPlayingPanel { metaOpen = true } }
                 // (Windows: the song playing on YouTube in the browser, its lyrics following it)
                 if (YtLink.available) item {
                     SoftButton(onClick = { UI.ytLyricsOpen = true }, Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
@@ -85,6 +91,14 @@ fun RadioScreen() {
                     }
                 }
                 }
+                // 我的歌 and 電台鬧鐘
+                item {
+                    SoftButton(onClick = { songsOpen = true }, Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
+                        SongList.version
+                        IconLabel(Icons.Filled.Bookmark, tr("我的歌") + if (SongList.songs.isNotEmpty()) "（${SongList.songs.size}）" else "", ff(FF.Subheadline))
+                    }
+                }
+                item { AlarmPanel() }
                 item {
                     TextButton(onClick = { Radio.restoreStarters() }) { Text(tr("加回原本的電台"), color = T.btnInk) }
                     Txt(tr("電台來自 Radio Browser（radio-browser.info）。離開 App 也會繼續播，通知裡可以停。電台有送歌名的話，按「歌詞」可以看歌詞（LRCLIB）。"),
@@ -109,6 +123,19 @@ fun RadioScreen() {
             }) { Text(tr("加入"), color = T.btnInk) } },
             dismissButton = { TextButton(onClick = { adding = false }) { Text(tr("取消"), color = T.muted) } })
     }
+    if (metaOpen) AlertDialog(onDismissRequest = { metaOpen = false }, containerColor = T.fn,
+        title = { Txt(tr("電台送來的資料"), ff(FF.Headline)) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (RadioExtras.metaLog.isEmpty()) Txt(tr("這個電台到現在什麼都沒送：它沒有說在放什麼歌。"), ff(FF.Body), T.muted)
+                for ((t, line) in RadioExtras.metaLog) Column {
+                    Txt(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date(t)), lat(12f), T.muted)
+                    androidx.compose.foundation.text.selection.SelectionContainer { Txt(line, ff(FF.Body), T.glyph) }
+                }
+                Txt(tr("電台和聲音一起送來的文字（例如歌名和歌手）。有些電台只在自己的網站上寫在放什麼歌，聲音裡什麼都沒有。"), ff(FF.Footnote), T.muted)
+            }
+        },
+        confirmButton = { TextButton(onClick = { metaOpen = false }) { Text(tr("好"), color = T.btnInk) } })
     removing?.let { s ->
         AlertDialog(onDismissRequest = { removing = null }, containerColor = T.fn,
             title = { Txt(tr("移除「{0}」？", s.name), ff(FF.Headline)) },
@@ -117,9 +144,9 @@ fun RadioScreen() {
     }
 }
 
-/** the station playing, what it says is playing, 停 and 歌詞 */
+/** the station playing, what it says is playing (存到我的歌, 電台送來的資料), 停 and 歌詞 */
 @Composable
-private fun NowPlayingPanel() {
+private fun NowPlayingPanel(onMeta: () -> Unit) {
     val s = Radio.current ?: return
     if (Radio.state == Radio.State.IDLE) return
     Panel {
@@ -129,6 +156,15 @@ private fun NowPlayingPanel() {
                 Txt(s.name, ff(FF.Headline), T.glyph, maxLines = 1)
                 Txt(Radio.nowPlaying ?: if (Radio.state == Radio.State.CONNECTING) tr("連線中…") else tr("電台沒有送歌名"), ff(FF.Footnote), T.muted, maxLines = 2)
             }
+            // (the song playing: into 我的歌, or out again)
+            SongList.version
+            val cur = SongList.current()
+            val saved = cur != null && SongList.has(cur.first, cur.second)
+            IconButton(onClick = { SongList.toggle() }, enabled = cur != null) {
+                Icon(if (saved) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder, if (saved) tr("從我的歌拿掉") else tr("存到我的歌"),
+                    tint = if (saved) T.btnInk else if (cur != null) T.glyph else T.muted)
+            }
+            IconButton(onClick = onMeta) { Icon(Icons.Filled.Info, tr("電台送來的資料"), tint = T.muted) }
         }
         // 音量: the radio's own, on top of the device's
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -178,7 +214,7 @@ private fun RadioSearch(lang: Int, onDone: () -> Unit) {
     LaunchedEffect(Unit) { run() }
     Column(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { SearchField(query, { query = it }, tr("電台的名字（空白：{0}的電台）", tr(Lang.names[lang]))) }
+            Box(Modifier.weight(1f)) { SearchField(query, { query = it }, tr("電台的名字（空白：{0}的電台）", tr(Lang.names[lang])), onSubmit = { run() }) }
             TextButton(onClick = { run() }) { Text(tr("找"), color = T.btnInk) }
             TextButton(onClick = onDone) { Text(tr("完成"), color = T.btnInk) }
         }
@@ -216,26 +252,33 @@ private fun LyricsScreen() {
         busy = true; pick = null
         scope.launch { hits = LyricsSource.find(q); pick = hits?.firstOrNull(); busy = false }
     }
-    LaunchedEffect(Radio.nowPlaying) { Radio.nowPlaying?.let { query = it; run(it) } }
+    LaunchedEffect(Radio.nowPlaying) { if (LyricsLookup.query == null) Radio.nowPlaying?.let { query = it; run(it) } }
+    // (a song from 我的歌)
+    LaunchedEffect(LyricsLookup.query) { LyricsLookup.query?.let { query = it; run(it); LyricsLookup.query = null } }
     // each line's reading (the language shown: 拼音／注音, 粵拼…; 台語 in the spelling chosen)
     var readings by remember { mutableStateOf<Map<String, androidx.compose.ui.text.AnnotatedString>>(emptyMap()) }
     val showReadings = Prefs.lyricsReadings.value
     val zk = listOf(Prefs.zhRom.value, Prefs.zhPlace.value, Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneGlow.value, showReadings)
-    LaunchedEffect(pick, zk) {
+    LaunchedEffect(pick, zk, LyricsScript.keepSimplified) {
         // (readings off: none made, and the ones made before let go)
         if (!showReadings) { readings = emptyMap(); return@LaunchedEffect }
         val p = pick ?: return@LaunchedEffect
         // (in tone colours, 台語's too: LyricText.kt)
         readings = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val out = HashMap<String, androidx.compose.ui.text.AnnotatedString>()
-            for (line in p.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()) lyricReading(line)?.let { out[line] = it }
+            for (line in LyricsScript.shown(p.text).lines().map { it.trim() }.filter { it.isNotEmpty() }.distinct()) lyricReading(line)?.let { out[line] = it }
             out
         }
     }
     Column(Modifier.fillMaxSize()) {
-        TopBar(tr("歌詞"), { UI.lyricsOpen = false }, settings = false)
+        TopBar(tr("歌詞"), { UI.lyricsOpen = false }, settings = false) {
+            // 簡 / 繁: the lyrics as written, or in 正體 (only when they have 簡體 in them)
+            if (pick?.let { LyricsScript.canSwitch(it.text) } == true) TextButton(onClick = { LyricsScript.keepSimplified = !LyricsScript.keepSimplified }) {
+                Text(if (LyricsScript.keepSimplified) "簡" else "繁", color = T.btnInk, fontWeight = FontWeight.Bold)
+            }
+        }
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) { SearchField(query, { query = it }, tr("歌名或歌手")) }
+            Box(Modifier.weight(1f)) { SearchField(query, { query = it }, tr("歌名或歌手"), onSubmit = { run(query) }) }
             TextButton(onClick = { run(query) }) { Text(tr("找"), color = T.btnInk) }
         }
         // (the readings under the lines: off makes a long song lighter on memory)
@@ -258,7 +301,7 @@ private fun LyricsScreen() {
             }
             pick?.let { p ->
                 item { Txt(p.track + "　" + p.artist, ff(FF.Headline), T.glyph) }
-                items(p.text.lines()) { line ->
+                items(LyricsScript.shown(p.text).lines()) { line ->
                     if (line.isBlank()) Spacer(Modifier.height(10.dp))
                     // (tap a line: its words in 詞典, several at once)
                     else Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable {
@@ -286,10 +329,11 @@ internal fun LyricWords(line: String, size: Float = 20f, color: androidx.compose
     if (words.isEmpty()) { Txt(line, sz(size), color); return }
     // (a 台語 word with several readings: its readings to pick from, YtLyricsPages.kt)
     var menu by remember { mutableStateOf(-1) }
+    val openHere = LocalLyricOpen.current
     TapWords(
         count = words.size,
         isTappable = { i -> words.getOrNull(i)?.let { it.open != null || it.pick != null } == true },
-        onTap = { i -> val w = words.getOrNull(i); if (w?.pick != null) menu = i else w?.open?.invoke() },
+        onTap = { i -> val w = words.getOrNull(i); if (w?.pick != null) menu = i else if (w?.open != null) { if (openHere != null) openHere(w) else w.open.invoke() } },
     ) { i, hot ->
         Box {
             Text(words[i].text, style = sz(size), color = color, modifier = Modifier.swell(hot).padding(vertical = 2.dp)
@@ -299,3 +343,90 @@ internal fun LyricWords(line: String, size: Float = 20f, color: androidx.compose
     }
 }
 private val NOOP: () -> Unit = {}
+
+
+/** 電台鬧鐘: a station at a set time each day, while the program is open */
+@Composable
+private fun AlarmPanel() {
+    val on = Prefs.radioAlarmOn.value
+    var stationMenu by remember { mutableStateOf(false) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f)).padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(Icons.Filled.Alarm, null, tint = if (on) T.btnInk else T.muted, modifier = Modifier.size(20.dp))
+            Txt(tr("電台鬧鐘"), ff(FF.Body, FontWeight.SemiBold), T.glyph, Modifier.weight(1f))
+            androidx.compose.material3.Switch(on, { Prefs.radioAlarmOn.value = it },
+                colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
+        }
+        if (on) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                val m = Prefs.radioAlarmTime.value
+                // (the hour and the minutes, each up or down)
+                TextButton(onClick = { Prefs.radioAlarmTime.value = (m + 23 * 60) % (24 * 60) }) { Text("−", color = T.btnInk) }
+                Txt("%02d".format(m / 60), lat(22f), T.glyph)
+                TextButton(onClick = { Prefs.radioAlarmTime.value = (m + 60) % (24 * 60) }) { Text("+", color = T.btnInk) }
+                Txt(":", lat(22f), T.muted)
+                TextButton(onClick = { Prefs.radioAlarmTime.value = (m / 60) * 60 + ((m % 60) + 55) % 60 }) { Text("−", color = T.btnInk) }
+                Txt("%02d".format(m % 60), lat(22f), T.glyph)
+                TextButton(onClick = { Prefs.radioAlarmTime.value = (m / 60) * 60 + ((m % 60) + 5) % 60 }) { Text("+", color = T.btnInk) }
+                Spacer(Modifier.weight(1f))
+                Box {
+                    TextButton(onClick = { stationMenu = true }) { Text(RadioExtras.alarmStation()?.name ?: tr("電台"), color = T.btnInk, maxLines = 1) }
+                    DropdownMenu(stationMenu, { stationMenu = false }, containerColor = T.fn) {
+                        for (st in Radio.stations) DropdownMenuItem(text = { Text(st.name, color = T.glyph) },
+                            onClick = { Prefs.radioAlarmStation.value = st.id; stationMenu = false })
+                    }
+                }
+            }
+            Txt(tr("每天 {0} 電台自己開始播（程式要開著）。", RadioExtras.alarmText()), ff(FF.Footnote), T.muted)
+        }
+    }
+}
+
+/** 我的歌: the songs kept from the radio, newest first: their lyrics, YouTube, the name to copy, take out */
+@Composable
+private fun SavedSongsScreen(onClose: () -> Unit) {
+    SongList.version
+    val songs = SongList.songs
+    var menu by remember { mutableStateOf<String?>(null) }
+    val clip = androidx.compose.ui.platform.LocalClipboardManager.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    Column(Modifier.fillMaxSize()) {
+        TopBar(tr("我的歌"), onClose, settings = false)
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (songs.isEmpty()) item { Txt(tr("還沒有存歌。聽電台的時候按書籤，歌名和歌手就會存在這裡。"), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+            items(songs, key = { it.id }) { s ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f)).clickable { menu = s.id }.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Txt(s.title, ff(FF.Body, FontWeight.SemiBold), T.glyph, maxLines = 1)
+                        val d = listOfNotNull(s.artist.ifEmpty { null }, s.station,
+                            java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(s.date))).joinToString(" · ")
+                        Txt(d, ff(FF.Caption), T.muted, maxLines = 1)
+                    }
+                    Box {
+                        Icon(Icons.Filled.MoreVert, null, tint = T.muted)
+                        DropdownMenu(menu == s.id, { menu = null }, containerColor = T.fn) {
+                            DropdownMenuItem(text = { Text(tr("只看歌詞"), color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.MusicNote, null, tint = T.btnInk) },
+                                onClick = { menu = null; LyricsLookup.query = s.query; UI.lyricsOpen = true; onClose() })
+                            DropdownMenuItem(text = { Text(tr("在 YouTube 找"), color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.PlayCircle, null, tint = T.btnInk) },
+                                onClick = {
+                                    menu = null
+                                    // (in the browser: Firefox when it's there, where the add-on is)
+                                    try { BrowserKnown.open(ctx, "https://www.youtube.com/results?search_query=" + java.net.URLEncoder.encode(s.query, "UTF-8")) } catch (_: Throwable) {}
+                                })
+                            DropdownMenuItem(text = { Text(tr("複製歌名"), color = T.glyph) }, leadingIcon = { Icon(Icons.Filled.ContentCopy, null, tint = T.btnInk) },
+                                onClick = { menu = null; clip.setText(androidx.compose.ui.text.AnnotatedString(if (s.artist.isEmpty()) s.title else s.artist + " - " + s.title)) })
+                            DropdownMenuItem(text = { Text(tr("刪除"), color = T.rustInk) }, leadingIcon = { Icon(Icons.Filled.Delete, null, tint = T.rustInk) },
+                                onClick = { menu = null; SongList.remove(s) })
+                        }
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(30.dp)) }
+        }
+    }
+}
+
+/** (a song from 我的歌: the 歌詞 page looks it up) */
+object LyricsLookup { var query by mutableStateOf<String?>(null) }

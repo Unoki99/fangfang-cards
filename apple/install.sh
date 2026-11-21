@@ -24,15 +24,16 @@ mkdir -p "$HOME/Library/Logs"
 
 # copies of source files left by putting a new download over the old folder ("Store 2.swift"): the same code
 # twice, which the build can't tell apart
-# (every folder of the project, WidgetShared too, and copies numbered 2, 3, … or (1), (2), …)
+# (every folder of the project, and copies numbered 2, 3, … or (1), (2), …)
 for D in "$HERE" "$DEST"; do
   [ -d "$D" ] || continue
-  find "$D/FangfangCards" "$D/FangfangWidget" "$D/WidgetShared" "$D/FangfangSafari" -type f \
+  find "$D/FangfangCards" "$D/FangfangSafari" -type f \
        \( -name "* [0-9].swift" -o -name "* ([0-9]).swift" -o -name "* copy.swift" \) -print -delete 2>/dev/null \
     | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
-  # (the widget's shared code belongs only in WidgetShared/: an older copy elsewhere is the same code twice)
-  find "$D/FangfangCards" "$D/FangfangWidget" -type f -name "WidgetShared*.swift" -print -delete 2>/dev/null \
-    | sed 's/^/（刪掉多出來的複本：/; s/$/）/'
+  # (the widgets and the Dynamic Island aren't part of the app any more: their files, left by a new download put
+  # over an older one, are taken away, or the build would look for what they need)
+  rm -rf "$D/FangfangWidget" "$D/WidgetShared" "$D/FangfangWidget.entitlements" "$D/FangfangWidget-Info.plist" \
+         "$D/FangfangCards.entitlements" "$D/FangfangCards/WidgetBridge.swift" "$D/FangfangCards/IslandLive.swift"
 done
 
 # 1. keep the project in a fixed place: ~/FangfangCards
@@ -73,7 +74,7 @@ if [ "$SAFARI" = "1" ]; then
   for f in "$DEST"/data/safari/d-*.json; do [ -f "$f" ] && mv -f "$f" "$DEST/FangfangSafari/"; done
   # (台語 data made by an older version, without the 方言詞, or with 的 --ê and ê as one word: made again)
   D0="$DEST/FangfangCards/dict.json"
-  if [ -f "$D0" ] && ! head -c 40 "$D0" | grep -q '"v":5'; then echo "（台語資料是舊版做的，重新建立）"; rm -f "$D0" "$DEST/FangfangCards/cards.json"; fi
+  if [ -f "$D0" ] && ! head -c 40 "$D0" | grep -q '"v":8'; then echo "（台語資料是舊版做的，重新建立）"; rm -f "$D0" "$DEST/FangfangCards/cards.json"; fi
   if [ ! -f "$DEST/FangfangCards/dict.json" ] || [ ! -f "$DEST/FangfangCards/cards.json" ]; then
     bash "$DEST/build-data.sh" || { echo "✗ 沒辦法建立詞典資料。"; exit 1; }
   fi
@@ -178,7 +179,7 @@ if [ "$WHAT" = "ipa" ]; then
      -destination "generic/platform=iOS" -derivedDataPath "$IDD" \
      CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
      build > "$LOG" 2>&1 < /dev/null || fail
-  APP=$(ls -d "$IDD"/Build/Products/Release-iphoneos/*.app | grep -v -i widget | head -1)
+  APP=$(ls -d "$IDD"/Build/Products/Release-iphoneos/*.app | head -1)
   PKG=$(mktemp -d)
   mkdir -p "$PKG/Payload"
   cp -R "$APP" "$PKG/Payload/"
@@ -214,19 +215,9 @@ if grep -q 'DEVELOPMENT_TEAM = "";' "$DEST/FangfangCards.xcodeproj/project.pbxpr
 fi
 
 
-# Build with signing. If the App Group (the widget's shared folder) isn't registered for your Apple ID
-# yet, build again without it: the app works normally, only the 分類詞卡 widget has no words.
-NOGROUP=()
+# Build with signing (two identifiers only: the app, and its Safari extension)
 build_signed() {
-  xcodebuild "$@" "${NOGROUP[@]}" build > "$LOG" 2>&1 < /dev/null && return 0
-  if [ ${#NOGROUP[@]} -eq 0 ] && grep -a -q "application-groups" "$LOG"; then
-    echo "（你的 Apple ID 還沒註冊這個 App 的 App Group，先不用它建置：App 都正常，只是「分類詞卡」小工具會沒有詞。"
-    echo "  想用小工具：在 Xcode 打開 ~/FangfangCards/FangfangCards.xcodeproj，上方選你的 iPhone 按 ▶ 一次，"
-    echo "  Xcode 會自動註冊；之後再執行這個指令就好。）"
-    NOGROUP=(CODE_SIGN_ENTITLEMENTS="")
-    xcodebuild "$@" "${NOGROUP[@]}" build > "$LOG" 2>&1 < /dev/null && return 0
-  fi
-  return 1
+  xcodebuild "$@" build > "$LOG" 2>&1 < /dev/null
 }
 
 # 4. iPhone / iPad (fresh 7-day signature)
@@ -299,7 +290,7 @@ if [ "$MACKIND" = "ipad" ] && { [ "$WHAT" = "all" ] || [ "$WHAT" = "mac" ] || [ 
          -allowProvisioningUpdates -allowProvisioningDeviceRegistration "${TEAMARG[@]}" \
          || { restore; echo "（可以用的目的地：）"; echo "$SHOWD"; fail; }
     restore
-    IPAPP=$(ls -d "$MDD"/Build/Products/Debug-iphoneos/*.app | grep -v -i widget | head -1)
+    IPAPP=$(ls -d "$MDD"/Build/Products/Debug-iphoneos/*.app | head -1)
     NAME=$(basename "$IPAPP")
     pkill -f "方方詞卡.app" 2>/dev/null
     # an iPad app on the Mac lives inside a wrapper: 方方詞卡.app/Wrapper/<app>.app (+ WrappedBundle link).

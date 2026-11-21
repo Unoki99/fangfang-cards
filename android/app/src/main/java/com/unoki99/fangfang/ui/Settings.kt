@@ -38,7 +38,8 @@ import java.util.Date
 @Composable
 fun SettingsScreen() {
     val ctx = LocalContext.current
-    var page by remember { mutableStateOf<Int?>(null) }
+    // (the part of 設定 open stays open when a new theme draws everything again)
+    var page by rememberKept<Int?>("settings.page") { null }
     BackHandler { if (page == 9) page = 3 else if (page == 10) page = 0 else if (page != null) page = null else UI.settingsOpen = false }
     var message by remember { mutableStateOf<String?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
@@ -274,7 +275,8 @@ private fun copyStyleName(zh: Boolean = Store.isZh): String =
 private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
     val ts = Prefs.toneSys.value
     val tones = when (ts) { 7 -> tr("七聲"); 5 -> tr("五聲"); else -> tr("聲調顏色關") }
-    val lang = if (Store.isJa) tr("日語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
+    val lang = if (Store.isSv) tr("瑞典語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
+        else if (Store.isJa) tr("日語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
         else if (Store.isHak) tr("客語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.hakAccents[Prefs.hakAccent.value.coerceIn(0, 5)])
         else if (Store.isYue) tr("粵語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
         else if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames.getOrElse(Prefs.zhPlace.value) { Lang.placeNames[0] }) +
@@ -369,7 +371,11 @@ private fun LookPage(openJa: () -> Unit, openColors: () -> Unit) {
                     contentAlignment = Alignment.Center) {
                     androidx.compose.material3.Text("字", color = T.glyph, fontSize = androidx.compose.ui.unit.TextUnit(22f * TextSize.factor(lvl), androidx.compose.ui.unit.TextUnitType.Sp))
                 }
-                Txt(tr("拖的時候這裡先變大；放開以後整個 App 才跟著變。"), ff(FF.Footnote), T.muted, modifier = Modifier.weight(1f))
+                Column(Modifier.weight(1f)) {
+                    Txt(tr("拖的時候這裡先變大；放開以後整個 App 才跟著變。"), ff(FF.Footnote), T.muted)
+                    // (the Windows / Mac program: the keys for it)
+                    if (PointerUI.mouse) Txt(tr("鍵盤：Ctrl＋、Ctrl－、Ctrl＋0（Mac：⌘＋、⌘－、⌘0）"), ff(FF.Footnote), T.muted)
+                }
             }
             Txt(tr("也會跟著手機的字型大小。"), ff(FF.Footnote), T.muted)
         }
@@ -440,7 +446,9 @@ private fun LanguagePage() {
             Segmented(listOf(0 to tr("拼音"), 1 to tr("注音")), if (Store.lang == 1) Prefs.zhRom.value else Prefs.mandRom.value,
                 { if (Store.lang == 1) Prefs.zhRom.value = it else Prefs.mandRom.value = it })
             Txt(tr("讀音"), ff(FF.Body))
-            Segmented(listOf(0 to tr("臺灣"), 1 to tr("大陸")), Prefs.zhPlace.value.coerceIn(0, 1), { Prefs.zhPlace.value = it })
+            // (四川話: when its data is there, the computer version)
+            val places = Lang.placeNames.takeIf { it.size >= 2 && !Lang.isJa && !Lang.isYue && !Lang.isHak } ?: listOf("臺灣", "大陸")
+            Segmented(places.mapIndexed { i, n -> i to tr(n) }, Prefs.zhPlace.value.coerceIn(0, places.size - 1), { Prefs.zhPlace.value = it })
             Txt(tr("詞表"), ff(FF.Body))
             Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.zhList.value, { Store.setZhList(it) })
         }
@@ -476,6 +484,21 @@ private fun LanguagePage() {
             Segmented(listOf(0 to tr("羅馬字"), 1 to tr("假名")), if (Store.lang == 4) Prefs.zhRom.value else Prefs.jaRom.value,
                 { if (Store.lang == 4) Prefs.zhRom.value = it else Prefs.jaRom.value = it })
             Txt(tr("讀音用羅馬字（平文式）或假名寫。詞是照常用的程度分組，每組 500 個。"), ff(FF.Footnote), T.muted)
+        }
+    }
+    // 瑞典語 (the computer version only)
+    if (Lang.count > 5) {
+        SectionTitle(tr("瑞典語"))
+        Group {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Txt(tr("詞素"), ff(FF.Body))
+                Segmented(listOf(0 to tr("詞素"), 1 to tr("不顯示")), if (Store.lang == 5) Prefs.zhRom.value else Prefs.svRom.value,
+                    { if (Store.lang == 5) Prefs.zhRom.value = it else Prefs.svRom.value = it })
+            }
+            RowDivider()
+            SwitchRow(tr("顯示由英文推測的中文"), Prefs.svGuessZh)
+            Txt(tr("詞下面用連字號分開詞素（be-tal-a），每個部分一種顏色。詞是照字幕裡出現的次數分組，每組 500 個（FrequencyWords）。由英文推測的中文是照 CC-CEDICT 裡英文解釋相同的華語詞，標「由英文推測」，不一定準。顏色在「設定 → 顏色與外觀 → 選聲調顏色」選瑞典語。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
         }
     }
 }

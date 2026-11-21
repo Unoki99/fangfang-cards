@@ -33,8 +33,10 @@ fun DictGate(content: @Composable (Dict) -> Unit) {
 
 /** shows its content once the 華語 dictionary is loaded */
 @Composable
-fun ZhGate(content: @Composable (com.unoki99.fangfang.engine.ZhDict) -> Unit) {
-    val z = Store.zh
+fun ZhGate(forKey: String? = null, content: @Composable (com.unoki99.fangfang.engine.ZhDict) -> Unit) {
+    // (a word of lyrics read in another language than the app's, on the computer: that language's dictionary)
+    LyricPicks.version
+    val z = forKey?.let { LyricDicts.forKey(it) } ?: Store.zh
     // (a new dictionary (華語 ↔ 粵語): everything made again, nothing kept from the other one)
     if (z != null) key(z) { content(z) }
     else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -43,7 +45,7 @@ fun ZhGate(content: @Composable (com.unoki99.fangfang.engine.ZhDict) -> Unit) {
         else Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = T.greenInk)
             Spacer(Modifier.height(12.dp))
-            Txt(tr("載入{0}詞典…", tr(com.unoki99.fangfang.engine.Lang.names[com.unoki99.fangfang.Prefs.lang.value.coerceIn(1, 4)])), ff(FF.Footnote), T.muted)
+            Txt(tr("載入{0}詞典…", tr(com.unoki99.fangfang.engine.Lang.names[com.unoki99.fangfang.Prefs.lang.value.coerceIn(1, com.unoki99.fangfang.engine.Lang.count - 1)])), ff(FF.Footnote), T.muted)
         }
     }
 }
@@ -70,7 +72,7 @@ fun StackHost(nav: NavStack, root: @Composable () -> Unit) {
 @Composable
 fun RoutePage(r: Route, onBack: () -> Unit) {
     when (r) {
-        is Route.ZhEntry -> { ZhGate { z -> EntryFont { ZhEntryPage(z, r.key, onBack) } }; return }
+        is Route.ZhEntry -> { ZhGate(r.key) { z -> EntryFont { ZhEntryPage(z, r.key, onBack) } }; return }
         is Route.ZhLevel -> { LevelWordsPage(r.level, onBack); return }
         is Route.VideoGroups -> { VideoGroupsPage(onBack); return }
         is Route.ScopeEditor -> { ScopeEditorPage(r.name, onBack); return }
@@ -87,6 +89,8 @@ fun RoutePage(r: Route, onBack: () -> Unit) {
         is Route.JaParticles -> { JaParticlesPage(onBack); return }
         is Route.JaLab -> { ZhGate { z -> JaLabPage(z, r.key, onBack) }; return }
         is Route.JaColors -> { JaColorSettingsPage(onBack); return }
+        is Route.SvPart -> { ZhGate { z -> SvPartPage(z, r.key, r.index, onBack) }; return }
+        is Route.SvWord -> { ZhGate { z -> SvWordPage(z, r.word, onBack) }; return }
         else -> {}
     }
     DictGate { d ->
@@ -124,7 +128,7 @@ fun Sheets() {
                             is Sheet.Word -> DictGate { d -> EntrySheetRoot(d, s.key) }
                             is Sheet.ConvWord -> DictGate { d -> ConvWordSheet(d, s.index) }
                             is Sheet.CardSheet -> CardSheetRoot(s.card)
-                            is Sheet.ZhWord -> ZhGate { z -> ZhEntrySheetRoot(z, s.key) }
+                            is Sheet.ZhWord -> ZhGate(s.key) { z -> ZhEntrySheetRoot(z, s.key) }
                             is Sheet.CharWords -> CharWordsSheetRoot(s.ch)
                         }
                     }

@@ -777,7 +777,8 @@
             if (place >= 0 && c.includes("ø") && place !== 4 && place !== 5) f = f.replace(/ㄜ/g, "ㄛ");
             return f;
         }
-        if (sys === 1) return tab.tl[c] || (s ? s[1] : c);
+        // (台羅: the nasal oo written onn, not oonn)
+        if (sys === 1) return tab.tl[c] ? tab.tl[c].normalize("NFD").replace(/([oO])([\u0300-\u036f]*)o(?=nn)/g, "$1$2").normalize("NFC") : (s ? s[1] : c);
         if (sys === 2) return tab.pj[c] || (s ? s[1] : c);
         return s ? s[1] : c;
     }
@@ -1224,7 +1225,12 @@
             try { if (window.CSS && CSS.highlights) for (const k of [...CSS.highlights.keys()]) if (k.startsWith("ff-anno-")) CSS.highlights.delete(k); } catch (e) {}
         };
         const L = ["zh", "tw", "yue", "hak"].find(l => prefs[l]);
-        if (!prefs.on || !prefs.pageAnno || !L || !document.body) { clear(); return; }
+        if (!prefs.on || !prefs.pageAnno || !L || !document.body) {
+            clear();
+            // (the room made between the lines taken away again)
+            for (const el of document.querySelectorAll(".ff-anno-gap")) el.classList.remove("ff-anno-gap");
+            return;
+        }
         const meta = await getMeta();
         if (!meta || run !== annoRun) return;
         const vh = window.innerHeight, vw = window.innerWidth;
@@ -1253,6 +1259,30 @@
             for (const p of parts) { const sp = document.createElement("span"); sp.textContent = p.t; if (p.c) sp.style.color = "#" + p.c; d.appendChild(sp); }
             box.appendChild(d);
         };
+        const markedOf = (entry, word) => {
+            const head = entry.k ? entry.k.split("\t")[0] : word;
+            const known = isKnownIn(word, L) || (head !== word && isKnownIn(head, L));
+            const rare = entry.f == null || entry.f >= (prefs.subsRare || 3000);
+            const mode = prefs.subsMark || "new";
+            return mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known;
+        };
+        // room between the lines for the readings and meanings: the text with words marked gets taller lines (only
+        // the line spacing changes; the words themselves stay where they are on the line, and as big). Made before
+        // the words are measured, as the lines move
+        if (!document.getElementById("ff-anno-gap-style")) {
+            const st = document.createElement("style");
+            st.id = "ff-anno-gap-style";
+            st.textContent = ".ff-anno-gap { line-height: 2.7 !important; }";
+            (document.head || document.documentElement).appendChild(st);
+        }
+        nodes.forEach((node, ni) => {
+            if (node.nodeValue !== texts[ni] || !node.isConnected) return;
+            const el = node.parentElement;
+            if (!el || el.classList.contains("ff-anno-gap")) return;
+            const chars = [...node.nodeValue];
+            if ((seg.data[ni] || []).some(([i, len, list]) => { const e = subsEntry(list, L) || list[0]; return e && markedOf(e, chars.slice(i, i + len).join("")); }))
+                el.classList.add("ff-anno-gap");
+        });
         let n = 0;
         nodes.forEach((node, ni) => {
             // (the text changed meanwhile: left for the next time)
@@ -1262,6 +1292,9 @@
             const at = [];
             let q = 0;
             for (const ch of chars) { at.push(q); q += ch.length; }
+            // (the labels' size from the text's: readable, and fitting in the room made between the lines)
+            const fs = parseFloat(getComputedStyle(node.parentElement).fontSize) || 16;
+            const rdSize = Math.max(10, Math.round(fs * 0.6)), glSize = Math.max(10, Math.round(fs * 0.55));
             for (const [i, len, list] of seg.data[ni] || []) {
                 if (n >= 250) break;
                 if (i + len > chars.length) continue;
@@ -1269,12 +1302,7 @@
                 if (!entry) continue;
                 const word = chars.slice(i, i + len).join("");
                 const pos = at[i];
-                const head = entry.k ? entry.k.split("\t")[0] : word;
-                const known = isKnownIn(word, L) || (head !== word && isKnownIn(head, L));
-                const rare = entry.f == null || entry.f >= (prefs.subsRare || 3000);
-                const mode = prefs.subsMark || "new";
-                const marked = mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known;
-                if (!marked) continue;
+                if (!markedOf(entry, word)) continue;
                 const r = document.createRange();
                 r.setStart(node, pos); r.setEnd(node, pos + word.length);
                 const rects = r.getClientRects();
@@ -1286,12 +1314,12 @@
                 try { parts = subsParts(entry, L, meta) || {}; } catch (err) { parts = {}; }
                 const cx = b.left + b.width / 2 + sx;
                 if (rd && parts.r && parts.r.length) {
-                    label(cx, b.top + sy - 1, true, Math.max(9, Math.round(b.height * 0.48)),
+                    label(cx, b.top + sy - 1, true, rdSize,
                         parts.r.map((sg, j) => ({ t: j && L === "zh" && !sg.t.startsWith(" ") ? " " + sg.t : sg.t, c: sg.c })));
                 }
                 if (gl) {
                     const g = subsGloss(entry);
-                    if (g) label(cx, b.bottom + sy + 1, false, Math.max(9, Math.round(b.height * 0.42)), [{ t: g }]);
+                    if (g) label(cx, b.bottom + sy + 1, false, glSize, [{ t: g }]);
                 }
                 // (the word's characters in their tone colours)
                 const cols = (parts.h || []).flatMap(sg => [...sg.t].map(() => sg.c || null));

@@ -16,7 +16,9 @@ struct ConvItem {
     /// the guess is shaky (about 80 % or less): shown with an orange underline
     var unsure: Bool { (likely ?? 1) < 0.82 }
     var isWord: Bool { raw == nil && !space && !newline }
-    var current: Opt { opts[min(sel, opts.count - 1)] }
+    /// a reading of one 腔口 chosen for it (轉換: 選腔口的讀音), over the one of the place in 設定
+    var pinned: Opt? = nil
+    var current: Opt { pinned ?? opts[min(sel, opts.count - 1)] }
 }
 
 enum LatinMode: String, CaseIterable { case auto, lat, tl, poj }
@@ -327,8 +329,9 @@ final class ConvertEngine {
         // choice for this word, then how common each reading is in the examples
         var byYou = Set<Int>()        // (picked as you picked before between the same neighbours: the 輕聲 rule below leaves it)
         for k in res.items.indices where res.items[k].opts.count > 1 {
-            // (歌詞: what you picked for this word in this song, first of all)
-            if let s = songKey, let want = mem["s:" + s + "|" + memKey(res.items[k])],
+            // (歌詞: what you picked for this very place in this song (which time the word comes in it), first of all;
+            // then a pick from before, for the word anywhere in the song)
+            if let s = songKey, let want = mem[songPlaceKey(s, res.items, k)] ?? mem["s:" + s + "|" + memKey(res.items[k])],
                let at = res.items[k].opts.firstIndex(where: { optID($0) == want }) {
                 res.items[k].sel = at; byYou.insert(k); continue
             }
@@ -445,10 +448,24 @@ final class ConvertEngine {
     /// your choice for item k: remembered for this word, and for this word between these neighbours
     func remember(_ items: [ConvItem], _ k: Int) {
         let it = items[k]
-        mem[memKey(it)] = optID(it.current)
-        mem[ctxMemKey(items, k)] = optID(it.current)
-        if let s = songKey { mem["s:" + s + "|" + memKey(it)] = optID(it.current) }
+        if let s = songKey {
+            // (歌詞: the pick is for this place only: the same word elsewhere in the song keeps its own reading, and
+            // it isn't learnt for other text)
+            mem[songPlaceKey(s, items, k)] = optID(it.current)
+            mem["s:" + s + "|" + memKey(it)] = nil
+        } else {
+            mem[memKey(it)] = optID(it.current)
+            mem[ctxMemKey(items, k)] = optID(it.current)
+        }
         UserDefaults.standard.set(mem, forKey: "ff-picks")
+    }
+
+    /// 歌詞: one place of a word in a song: which time in the song the word comes
+    private func songPlaceKey(_ song: String, _ items: [ConvItem], _ k: Int) -> String {
+        let mk = memKey(items[k])
+        var n = 0
+        for j in 0..<k where items[j].opts.count > 1 && memKey(items[j]) == mk { n += 1 }
+        return "s:" + song + "|#" + String(n) + "|" + mk
     }
 
     private func ctxMemKey(_ items: [ConvItem], _ k: Int) -> String {

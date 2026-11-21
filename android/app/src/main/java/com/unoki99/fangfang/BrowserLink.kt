@@ -35,6 +35,18 @@ object BrowserImport {
     @Suppress("UNCHECKED_CAST")
     fun handle(uri: Uri): Int {
         if (uri.scheme != "fangfangcards") return 0
+        // (我的進度: the minutes watched with the subtitle panel, by day; and each video's 懂 %,
+        // {"yt:abc123": [its name, address, %, when in seconds]}), as on the iPhone / iPad
+        if (Store.loaded) {
+            uri.getQueryParameter("w")?.let { unpack(it) }?.let { try { JReader(it).any() as? Map<String, Any?> } catch (_: Exception) { null } }
+                ?.forEach { (day, m) -> (m as? Number)?.toDouble()?.let { Store.addListening(it, 1, day) } }
+            uri.getQueryParameter("vk")?.let { unpack(it) }?.let { try { JReader(it).any() as? Map<String, Any?> } catch (_: Exception) { null } }
+                ?.forEach { (id, v) ->
+                    val l = v as? List<Any?> ?: return@forEach
+                    if (l.size >= 4) Store.noteSeen(id, l[0] as? String ?: "", l[1] as? String ?: "",
+                        (l[2] as? Number)?.toDouble() ?: 0.0, (l[3] as? Number)?.toDouble() ?: 0.0)
+                }
+        }
         val ops = uri.getQueryParameter("ops")?.let { unpack(it) }?.let { try { JReader(it).any() as? List<Any?> } catch (_: Exception) { null } }
             ?.mapNotNull { (it as? List<Any?>)?.map { x -> x as? String ?: "" } } ?: return 0
         // 影片詞組: the words chosen from one video go into its group (not the ones marked 認識)

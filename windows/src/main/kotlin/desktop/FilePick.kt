@@ -6,7 +6,7 @@ import java.io.File
 import javax.swing.JFileChooser
 import javax.swing.UIManager
 
-/** Windows' own Save / Open dialogs */
+/** the computer's own Save / Open dialogs (Windows', a Mac's) */
 object FilePick {
     var window: Frame? = null
     private var lastDir: String? = System.getProperty("user.home") + File.separator + "Documents"
@@ -30,6 +30,18 @@ object FilePick {
     }
 
     fun folder(): File? {
+        if (Os.mac) {
+            // (a Mac: its own folder dialog)
+            System.setProperty("apple.awt.fileDialogForDirectories", "true")
+            try {
+                val d = FileDialog(window, "選擇資料夾", FileDialog.LOAD)
+                d.directory = lastDir
+                d.isVisible = true
+                val f = d.file ?: return null
+                lastDir = d.directory
+                return File(d.directory, f)
+            } finally { System.setProperty("apple.awt.fileDialogForDirectories", "false") }
+        }
         try { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) } catch (_: Exception) {}
         val c = JFileChooser(lastDir)
         c.fileSelectionMode = JFileChooser.DIRECTORIES_ONLY

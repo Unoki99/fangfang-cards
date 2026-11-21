@@ -648,7 +648,7 @@ struct CharSideCard: View {
                     ForEach(Array(card.d.prefix(small ? 3 : 4).enumerated()), id: \.offset) { i, d in
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             NumBadge(n: i + 1)
-                            Text(d.t).ffFont(small ? .footnote : .subheadline).foregroundStyle(T.glyph).lineLimit(2)
+                            Text(shownDef(card.k, i, d.t)).ffFont(small ? .footnote : .subheadline).foregroundStyle(T.glyph).lineLimit(2)
                         }
                     }
                 }

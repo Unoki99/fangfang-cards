@@ -75,13 +75,30 @@ compose.desktop {
         mainClass = "com.unoki99.fangfang.desktop.MainKt"
         jvmArgs += listOf("-Xss16m", "-Dfile.encoding=UTF-8", "-Dsun.stdout.encoding=UTF-8")
         nativeDistributions {
-            targetFormats(TargetFormat.Msi)
+            targetFormats(TargetFormat.Msi, TargetFormat.Dmg)
             packageName = "FangfangCards"
             packageVersion = "1.0.0"
             description = "方方詞卡"
             vendor = "Unoki99"
             // (every part of Java: HTTPS, locales, sound)
             includeAllModules = true
+            // the Mac: the same program as a Mac app (install-mac.sh builds it on the Mac and puts it in Applications).
+            // fangfangcards:// links (the Firefox add-on's 傳到 App) open it, as on Windows
+            macOS {
+                iconFile.set(project.file("icon.icns"))
+                bundleID = "com.unoki99.fangfangcards.desktop"
+                appCategory = "public.app-category.education"
+                infoPlist {
+                    extraKeysRawXml = """
+                        <key>CFBundleURLTypes</key>
+                        <array><dict>
+                            <key>CFBundleURLName</key><string>方方詞卡</string>
+                            <key>CFBundleURLSchemes</key><array><string>fangfangcards</string></array>
+                        </dict></array>
+                        <key>NSHighResolutionCapable</key><true/>
+                    """
+                }
+            }
             windows {
                 iconFile.set(project.file("icon.ico"))
                 menuGroup = "方方詞卡"

@@ -209,7 +209,10 @@ object OwnLyrics {
 
     /** (the backup's sync) the 歌詞 folder: lyrics newer there come in, ours go out, deleted ones go everywhere;
      *  how many came in. The same rules as the iPhone / iPad app's. The iPad's own songs (a number) are only read. */
+    /** the 歌詞 folder last written to (where your lyrics are): null, no backup folder yet */
+    var lastDir: File? = null
     fun sync(dir: File): Int {
+        lastDir = dir
         load()
         dir.mkdirs()
         val files = HashMap<String, File>()

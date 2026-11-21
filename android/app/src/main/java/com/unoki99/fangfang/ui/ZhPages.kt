@@ -58,6 +58,9 @@ import kotlin.math.*
 
 // MARK: - 華語: 詞典 and 轉換
 
+/** (the word list of 四川話's own words, opened as a 詞類 page) */
+internal const val SICHUAN_WORDS = "\u0001四川話"
+
 private val ZH_PLACE_FILL = Color(0xFF4C3A5B)
 private val ZH_PLACE_EDGE = Color(0xFF7B3C9B)
 
@@ -129,13 +132,13 @@ private fun ZhLookupList(z: ZhDict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             val nav = LocalNav.current
-            SearchField(query, { query = it }, if (z.isJa) tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") else if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
+            SearchField(query, { query = it }, if (z.isSv) tr("瑞典文、英文或中文，例如：läsa、bilarna、read、汽車") else if (z.isJa) tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") else if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
             // 日語: 助詞 and 實驗室 (no 部首查字: the radicals are the 華語 data's)
             // the order of every language: 部首查字, 依詞類列出, 單詞比較, the language's own, 依常用度列出
             // (日語: no 部首查字, the radicals are the 華語 data's)
             val tiles = buildList<@Composable (Modifier) -> Unit> {
-                if (!z.isJa) add { m -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(true)) } }
+                if (!z.isJa && !z.isSv) add { m -> TileButton(Icons.Filled.GridView, tr("部首查字"), m) { nav.push(Route.Radicals(true)) } }
                 add { m -> TileButton(Icons.AutoMirrored.Filled.List, tr("依詞類列出"), m) { nav.push(Route.ZhClasses) } }
                 add { m -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.ZhCompare) } }
                 if (z.isJa) {
@@ -143,10 +146,15 @@ private fun ZhLookupList(z: ZhDict) {
                     add { m -> TileButton(Icons.Filled.Tune, tr("實驗室"), m) { nav.push(Route.JaLab(null)) } }
                 }
                 add { m -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m) { nav.push(Route.FreqBands(true)) } }
+                // 四川話's own words (耍朋友, 日白 …), when 讀音 is 四川話
+                if (z.lang == 1 && place == 2 && z.sichuanWords.isNotEmpty())
+                    add { m -> TileButton(Icons.Filled.Landscape, tr("四川話的詞"), m) { nav.push(Route.ZhClass(SICHUAN_WORDS)) } }
             }
             TileGrid(tiles.size) { i, m -> tiles[i](m) }
         }
         if (query.isEmpty()) item {
+            if (z.isSv) Txt(tr("可以查瑞典文（變化過的形也可以：bilarna → bil）、英文（read）或中文的意思（汽車）。\n每個詞分成詞素：詞根、前綴、後綴、連接音和詞尾各用一種顏色。點進一個詞，再點它的一個部分，看那個部分的意思和作用。\n* 代表一個以上的字母，? 代表剛好一個：*het → het 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isJa) Txt(tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isHak) Txt(tr("可以查漢字、客語拼音（不用打聲調：siid fan）、華語的意思（吃飯）或英文（eat）。\n* 代表一個以上的字，? 代表剛好一個字：\n*仔 → 仔結尾\u3000食* → 食開頭\n打聲調類別的數字找聲調組合：1 陰平、2 上聲、3 去聲、4 陰入、5 陽平、7 陽去、8 陽入，例如 8-3。\n讀音照選的腔顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
@@ -156,14 +164,20 @@ private fun ZhLookupList(z: ZhDict) {
             Txt(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
         } else if (f.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        // 瑞典語: a word the dictionary doesn't have, worked out; words found through a 華語 word's English
+        f.svEst?.let { est -> if (est.parts.size > 1 || est.steps.isNotEmpty()) item { Box(Modifier.padding(8.dp)) { SvEstimateBlock(z, est) } } }
         zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
-        zhItems(z, tr("華語「{0}」的粵語講法", query), f.mandarin)
+        zhItems(z, if (z.isYue) tr("華語「{0}」的粵語講法", query) else tr("華語「{0}」的四川話講法", query), f.mandarin)
         if (f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true, query = query)
         zhItems(z, "「$query」", f.words)
         for ((i, w) in f.parts.withIndex()) zhItems(z, "「$w」", f.partWords[i])
         zhItems(z, tr("開頭是「{0}」", query), f.starts)
         if (!f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true, query = query)
         zhItems(z, tr("裡面有「{0}」", query), f.contains)
+        if (f.svVia.isNotEmpty()) {
+            item { Txt(tr("這些詞是照「{0}」在 CC-CEDICT 裡的英文意思（{1}），再用英文找瑞典文，不一定是同一個意思。", query, f.svViaEnglish), ff(FF.Caption), T.muted, Modifier.padding(8.dp)) }
+            zhItems(z, tr("由英文推測：「{0}」", query), f.svVia)
+        }
         zhItems(z, tr("解釋裡有「{0}」", query), f.defs)
         item { Spacer(Modifier.height(40.dp)) }
     }
@@ -200,6 +214,7 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             Txt(remember(e.k, zk) { z.hanText(e.h, e.syl(place), T.glyph.argbInt()).annotated() }, sz(20f, FontWeight.SemiBold))
             Txt(remember(e.k, zk) { z.reading(e.syl(place), rom).annotated() }, lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
             if (e.spec != 0) ZhSpecChip(e.spec)
+            if (z.lang == 1 && place == 2) sichuanKind(e)?.let { SichuanChip(it, small = true) }
             if (e.level(list) > 0) Txt(UILang.label(Lang.levelName(list, e.level(list))), ff(FF.Caption2, FontWeight.Bold), T.greenInk)
             Spacer(Modifier.weight(0.01f))
             if (Store.isSaved(e.k)) Icon(Icons.Filled.Bookmark, null, tint = T.oliveInk, modifier = Modifier.size(14.dp))
@@ -234,7 +249,33 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
 }
 
 @Composable
-fun ZhSpecChip(spec: Int) = Chip(if (spec == 1) tr("臺灣用語") else tr("大陸用語"), ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
+fun ZhSpecChip(spec: Int) = Chip(if (spec == 1) tr("臺灣用語") else if (spec == Sichuan.spec) tr("四川話") else tr("大陸用語"), ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
+
+/** 四川話: a word without a 四川話 reading (orange: the 普通話 one is shown), with one guessed from its characters
+ *  (pink), or with one predicted from the sound changes (yellow); Wiktionary's: nothing (null) */
+fun sichuanKind(e: ZhEntry): Int? = if (e.sc == null) 0 else if (e.scKind == 0) null else e.scKind
+private fun sichuanColours(kind: Int): Triple<Color, Color, Color> = when (kind) {
+    1 -> Triple(Color(0xFF5A2346), Color(ToneColors.pink), Color(0xFFFFC9E4))
+    2 -> Triple(Color(0xFF57501A), Color(ToneColors.yellow), Color(0xFFFFF1A8))
+    else -> Triple(Color(0xFF5C3F1A), Color(ToneColors.orange), Color(0xFFFFD29A))
+}
+@Composable
+fun SichuanChip(kind: Int, small: Boolean = false) {
+    val c = sichuanColours(kind)
+    val k = kind.coerceIn(0, 2)
+    Chip(if (small) listOf(tr("普通話"), tr("推算"), tr("預測"))[k] else listOf(tr("標準讀音（普通話）"), tr("推算的四川話讀音"), tr("預測的四川話讀音"))[k],
+        c.first, c.second, c.third)
+}
+@Composable
+fun SichuanNote(kind: Int) {
+    val c = sichuanColours(kind)
+    Txt(listOf(tr("這個詞沒有四川話的讀音資料，這裡是標準讀音（普通話）。"),
+        tr("四川話讀音是推算的：照每個字在其他詞裡的四川話讀音拼起來，可能不對。"),
+        tr("四川話讀音是預測的：有的字沒有任何四川話讀音的資料，照普通話和四川話一般的語音對應（聲母、韻母、聲調，入聲字照粵語判斷）推出來的，常常會錯。"))[kind.coerceIn(0, 2)],
+        ff(FF.Footnote), c.third,
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(c.first.copy(alpha = 0.9f))
+            .border(1.5.dp, c.second, RoundedCornerShape(10.dp)).padding(horizontal = 10.dp, vertical = 7.dp))
+}
 
 // MARK: one entry
 
@@ -289,14 +330,16 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
     val nav = LocalNav.current
     val zk = zhKey()
     val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value
-    val syl = e.syl(place)
+    val syl = remember(e.k, place) { if (z.isSv) z.svSyl(e) else e.syl(place) }
     Store.rev
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // tap a character to see it on its own (the entry with the same reading)
                 val h = remember(e.k, zk) { z.hanText(e.h, syl, T.glyph.argbInt()).annotated() }
-                TappableHeadword(h, remember(e.k, place) { zhCharKeys(z, e, syl) }) { k -> nav.push(Route.ZhEntry(k)) }
+                // (瑞典語: the word in its morphemes' colours; its parts are below)
+                if (z.isSv) Txt(h, lat(34f).copy(fontWeight = FontWeight.SemiBold), modifier = Modifier.weight(1f, fill = false))
+                else TappableHeadword(h, remember(e.k, place) { zhCharKeys(z, e, syl) }) { k -> nav.push(Route.ZhEntry(k)) }
                 PlayButton(e.audio ?: ("tts:" + e.h))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -306,28 +349,34 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 MarkButtons(e.k)
             }
             Txt(remember(e.k, zk) { z.reading(syl, rom).annotated() }, lat(22f), T.greenInk)
-            // the other reading system, small
-            Txt(remember(e.k, zk) { z.reading(syl, if (rom == 0) 1 else 0).annotated() }, ff(FF.Subheadline), T.purpleInk)
+            // the other reading system, small (瑞典語: none)
+            if (!z.isSv) Txt(remember(e.k, zk) { z.reading(syl, if (rom == 0) 1 else 0).annotated() }, ff(FF.Subheadline), T.purpleInk)
             // 客語: how the other accents say it
             if (z.isHak) HakAccentRows(z, e, rom)
-            // 臺灣 and 大陸 say it differently
-            e.lu?.let { lu ->
-                val other = if (place == 1) e.tw else lu
+            // 臺灣, 大陸 (and 四川話) say it differently
+            val otherReadings = remember(e.k, place) {
+                listOfNotNull(0 to e.tw, e.lu?.let { 1 to it }, e.sc?.let { 2 to it })
+                    .filter { it.first != place && it.second != syl }.distinctBy { it.second }
+            }
+            for ((i, other) in otherReadings) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Chip(if (place == 1) tr("臺灣") else tr("大陸"), ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
+                    Chip(tr(listOf("臺灣", "大陸", "四川話")[i]), ZH_PLACE_FILL, ZH_PLACE_EDGE, T.purpleInk)
                     Txt(z.reading(other, rom).annotated(), lat(17f), T.greenInk)
                     Txt(z.reading(other, if (rom == 0) 1 else 0).annotated(), ff(FF.Footnote), T.purpleInk)
                 }
             }
-            if (!z.isJa) InputCodesRow(e.h)
+            if (z.lang == 1 && place == 2) sichuanKind(e)?.let { SichuanNote(it) }
+            if (!z.isJa && !z.isSv) InputCodesRow(e.h)
             // the English meanings, one per line (日語: the meanings are English already)
             // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
             if (!z.isJa) {
                 val zhShort = if (z.isYue || z.lang == 5) emptyList() else e.senses.mapNotNull { s -> shortMeaning(s.text).takeIf { it.isNotEmpty() }?.let { s.n to it } }
                 MeaningsOverview(zhShort, if (z.isHak) tr("客") else tr("華"), e.enList)
             }
+            // 瑞典語: its Chinese meanings, its parts (tap one), its forms
+            if (z.isSv) SvWordExtras(z, e)
             // 粵語: the 華語 word(s) with the same meaning
-            if (e.eq.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (e.eq.isNotEmpty() && !z.isSv) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Chip(if (z.isJa) tr("也寫") else tr("華"), T.blue, T.blueEdge, T.blueInk)
                 Txt(e.eq.joinToString("、"), ff(FF.Body), T.glyph)
             }
@@ -379,14 +428,15 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         // 日語: the kanji of the word, and its 活用
         if (z.isJa) JaWordExtras(z, e)
         // a single character: 說文解字 (when installed)
-        if (e.h.cpCount == 1 && !z.isJa) ShuowenBlock(e.h)
+        if (e.h.cpCount == 1 && !z.isJa && !z.isSv) ShuowenBlock(e.h)
         if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),
             ff(FF.Caption), T.muted)
-        Txt(if (z.isJa) tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。") else if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
+        Txt(if (z.isSv) tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）、維基詞典（kaikki.org，CC BY-SA）、FrequencyWords（CC BY-SA 4.0）、CC-CEDICT（CC BY-SA）。詞素依規則推算，可能有誤。")
+            else if (z.isJa) tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。") else if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
             else if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
             else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
         // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
-        val ci = if (e.h.cpCount == 1 && !z.isHak && !z.isJa) z.charIndex[e.h] else null
+        val ci = if (e.h.cpCount == 1 && !z.isHak && !z.isJa && !z.isSv) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
         if (reading != null) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.4f)).padding(12.dp),
@@ -406,6 +456,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
 /** an example sentence: 漢字 (tap a word to see it in the dictionary; the whole word is the button), reading, where it's from; ▶ reads it aloud */
 @Composable
 fun ZhExampleBlock(z: ZhDict, ex: ZhEx) {
+    if (z.isSv) { SvExampleBlock(z, ex); return }
     // 日語: the sentence in its script colours and its English (Tatoeba's, through JMdict)
     if (z.isJa) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -600,7 +651,9 @@ fun levelColor(level0: Int): Color {
 
 /** One glass tube with two potions: 熟悉 from the left in the level's colour, 不熟 from the right in a pale one; the glass between is what hasn't been seen yet */
 @Composable
-fun SplitPotionBar(known: Double, unknown: Double, tint: Color, height: Dp = 24.dp, label: String = tr("進度"), modifier: Modifier = Modifier) {
+/** tint: one colour for the bar (a level's colour): 熟悉 in it, 不熟 in a pale version of it; null = blue and orange
+ *  (熟悉 blue, 不熟 orange, as the words beside it), the same as the iPhone / iPad */
+fun SplitPotionBar(known: Double, unknown: Double, tint: Color?, height: Dp = 24.dp, label: String = tr("進度"), modifier: Modifier = Modifier) {
     val k = remember { Animatable(0f) }
     val u = remember { Animatable(0f) }
     LaunchedEffect(known) { k.animateTo(known.toFloat(), spring(dampingRatio = 0.62f, stiffness = 60f)) }
@@ -621,8 +674,10 @@ fun SplitPotionBar(known: Double, unknown: Double, tint: Color, height: Dp = 24.
         val uEdge = if (uv > 0.001f) max(w * min(uv, 1f), 8f) else 0f
         clipPath(tube) {
             drawRect(Color.Black.copy(alpha = 0.35f))
-            side(kEdge, true, Brush.horizontalGradient(listOf(tint.copy(alpha = 0.7f), tint), 0f, w), 0f, time)
-            side(uEdge, false, Brush.horizontalGradient(listOf(tint.copy(alpha = 0.22f), tint.copy(alpha = 0.35f)), 0f, w), 1.7f, time)
+            val kTint = tint ?: Color(0xFF6EAAFF)
+            side(kEdge, true, Brush.horizontalGradient(listOf(kTint.copy(alpha = 0.7f), kTint), 0f, w), 0f, time)
+            if (tint != null) side(uEdge, false, Brush.horizontalGradient(listOf(tint.copy(alpha = 0.22f), tint.copy(alpha = 0.35f)), 0f, w), 1.7f, time)
+            else side(uEdge, false, Brush.horizontalGradient(listOf(Color(0xFFFFA94D).copy(alpha = 0.75f), Color(0xFFFFA94D)), 0f, w), 1.7f, time)
         }
         drawPath(tube, Color.White.copy(alpha = 0.28f), style = Stroke(1.5f * density))
         drawRoundRect(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.Transparent), startY = 3f, endY = 3f + 6 * density),

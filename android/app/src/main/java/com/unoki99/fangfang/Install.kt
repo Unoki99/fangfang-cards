@@ -31,6 +31,8 @@ import kotlin.coroutines.resumeWithException
 
 /** where the dictionaries' data files are: installed in the app, or (built by hand) in its assets */
 object DataFiles {
+    // (華語: the 四川話 readings, zh_sc.json, when that's there: the computer version makes it)
+    init { com.unoki99.fangfang.engine.Sichuan.source = { reader("zh_sc") } }
     val folder: File get() = File(Store.app.filesDir, "Dictionaries").apply { mkdirs() }
     fun installed(name: String) = File(folder, "$name.json")
     fun isInstalled(name: String) = installed(name).exists()
@@ -94,7 +96,7 @@ class DictPack(
             "taigi", "buildTaigi", "教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 臺灣）、rime-essay 字頻", "約 15 MB",
             bundled = mapOf("own" to "twown.json"),
             // (3: 方言詞; 4: 的 --ê and 的 ê, words of their own; 6: local readings told apart by meaning, 合音 entries)
-            dataVersion = 7)
+            dataVersion = 8)
 
         val mandarin = DictPack("zh", 1, "華語", listOf("zh", "inputcodes"),
             listOf(Source("dict-csld.json", G + "g0v/moedict-data-csld/master/dict-csld.json", arg = "csld"),
@@ -144,7 +146,21 @@ class DictPack(
             listOf(Source("swjz.xml", G + "cjkvi/cjkvi-dict/master/swjz.xml", arg = "src")),
             "shuowen", "buildShuowen", "段玉裁《說文解字注》（cjkvi-dict，GPLv2）：單字詞條下面顯示說文的解釋、段注和六書", "約 6 MB")
 
-        val all = listOf(taigi, mandarin, cantonese, hakka, japanese, shuowen)
+        /** 瑞典語 (the computer version only): Folkets lexikon (KTH, CC BY-SA 2.5), FrequencyWords (CC BY-SA 4.0) for the
+         *  common words, the Chinese meanings from the Chinese Wiktionary (kaikki.org, CC BY-SA) and CC-CEDICT (華語
+         *  guessed from the English). The converter (install/swedish.js) is only in the computer version. */
+        val swedish = DictPack("sv", 5, "瑞典語", listOf("sv"),
+            listOf(Source("folkets.xml", G + "antonlisq/convert-dict/main/folkets_sv_en_public.xml", arg = "folkets2"),
+                Source("sv_50k.txt", G + "hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt", optional = true, arg = "freq"),
+                Source(cedict.file, cedict.url, optional = true, arg = "cedict"),
+                Source(essay.file, essay.url, optional = true, arg = "essay"),
+                Source("zhwikt-sv.jsonl", "https://kaikki.org/zhwiktionary/%E7%91%9E%E5%85%B8%E8%AA%9E/kaikki.org-dictionary-%E7%91%9E%E5%85%B8%E8%AA%9E.jsonl", optional = true, arg = "zhwikt")),
+            "swedish", "buildSwedish",
+            "Folkets lexikon（KTH，CC BY-SA 2.5）、FrequencyWords 詞頻（CC BY-SA 4.0）、維基詞典的中文解釋（kaikki.org，CC BY-SA）、CC-CEDICT（由英文推測的中文解釋，CC BY-SA）；詞素依規則推算",
+            "約 95 MB（中文解釋佔大部分）", dataVersion = 3)
+
+        val all: List<DictPack> get() = if (com.unoki99.fangfang.engine.EngineSettings.desktop) listOf(taigi, mandarin, cantonese, hakka, japanese, swedish, shuowen)
+            else listOf(taigi, mandarin, cantonese, hakka, japanese, shuowen)
 
         /** the copies of the original files in this project's data repository on GitHub, unoki99/fangfang-data
          *  (unchanged, one folder per dictionary, and common for files more than one uses), the same as the iPhone

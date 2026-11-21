@@ -12,6 +12,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -36,7 +38,7 @@ import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
 
-// 方方詞卡 for Windows: the window, with the same screens as the Android app (App(), AppRoot.kt). Esc (or the mouse's
+// 方方詞卡 for Windows and the Mac: the window, with the same screens as the Android app (App(), AppRoot.kt). Esc (or the mouse's
 // back button) is Android's back. Started again with a link (fangfangcards://… from the Firefox add-on's 傳到 App), it
 // hands the link to the one already open (Links.kt).
 
@@ -46,6 +48,9 @@ object Note {
 }
 
 fun main(args: Array<String>) {
+    // (the computer version: 瑞典語 and 四川話 too)
+    com.unoki99.fangfang.engine.EngineSettings.desktop = true
+    FreezeWatch.start()
     // a crash is written down, and shown the next time the program opens (so it can be sent to be fixed)
     val crashFile = File(DesktopContext.filesDir, "last-crash.txt")
     Thread.setDefaultUncaughtExceptionHandler { t, e ->
@@ -71,18 +76,33 @@ fun main(args: Array<String>) {
         if (t.isNotBlank()) Store.zhError = "上次當掉了（可以把這段傳給 Claude）：\n$t"
     }
     Links.pending.addAll(args.filter { it.startsWith("fangfangcards:") })
+    if (Os.mac) {
+        // (a Mac hands a fangfangcards:// link to the app that's open, instead of starting it with the link)
+        try {
+            java.awt.Desktop.getDesktop().setOpenURIHandler { e ->
+                javax.swing.SwingUtilities.invokeLater { Links.pending.add(e.uri.toString()); Links.version++ }
+            }
+        } catch (_: Exception) {}
+        // (⌘Q: saved and backed up first, as closing the window does)
+        try {
+            java.awt.Desktop.getDesktop().setQuitHandler { _, r ->
+                Quitting.prepare()
+                r.performQuit()
+            }
+        } catch (_: Exception) {}
+    }
 
     val icon = try { Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")?.use { BitmapPainter(loadImageBitmap(it)) } } catch (_: Exception) { null }
 
     application {
         val state = rememberWindowState(size = DpSize(1280.dp, 880.dp), position = WindowPosition(Alignment.Center))
         fun quit() {
-            try { Store.saveNow() } catch (_: Exception) {}
-            try { Backup.syncNow() } catch (_: Exception) {}
-            try { Radio.stop() } catch (_: Exception) {}
+            Quitting.prepare()
             exitApplication()
         }
         Window(onCloseRequest = ::quit, state = state, title = "方方詞卡", icon = icon,
+            // (歌詞對時's 對時間 open: its keys first, before any button or field: 空白鍵, Enter, ↑ ↓, Backspace, Ctrl+Z)
+            onPreviewKeyEvent = { e -> EditorKeys.handler?.invoke(e) ?: false },
             // (Escape: back. ← →: the card deck on screen swiped, like its buttons; not when a text field has them)
             onKeyEvent = { e ->
                 if (e.type != KeyEventType.KeyDown) false
@@ -90,6 +110,14 @@ fun main(args: Array<String>) {
                     Key.Escape -> Back.go()
                     Key.DirectionLeft -> SwipeKeys.arrow(false)
                     Key.DirectionRight -> SwipeKeys.arrow(true)
+                    // (⌘+ ⌘− ⌘0 / Ctrl: the app's text size bigger, smaller, back to 100%, as on the iPad and the Mac)
+                    Key.Equals, Key.Plus, Key.NumPadAdd -> if (e.isCtrlPressed || e.isMetaPressed) {
+                        Prefs.textSize.value = (Prefs.textSize.value + 1).coerceAtMost(TextSize.names.size - 1); true } else false
+                    Key.Minus, Key.NumPadSubtract -> if (e.isCtrlPressed || e.isMetaPressed) {
+                        Prefs.textSize.value = (Prefs.textSize.value - 1).coerceAtLeast(0); true } else false
+                    Key.Zero, Key.NumPad0 -> if (e.isCtrlPressed || e.isMetaPressed) { Prefs.textSize.value = 0; true } else false
+                    // (⌘F / Ctrl+F: the cursor into the search field on screen)
+                    Key.F -> if (e.isCtrlPressed || e.isMetaPressed) SearchFocus.focus() else false
                     else -> false
                 }
             }) {
@@ -102,9 +130,14 @@ fun main(args: Array<String>) {
                     override fun windowGainedFocus(e: WindowEvent?) {
                         if (!Store.loaded) return
                         val now = System.currentTimeMillis()
-                        if (now - lastSync > 120_000) { lastSync = now; try { Backup.syncNow() } catch (_: Exception) {}; BrowserImport.apply() }
+                        // (away from the window: a backup folder iCloud keeps can take long to read, and the window froze)
+                        if (now - lastSync > 120_000) { lastSync = now; FocusWork.run { try { Backup.syncNow() } catch (_: Exception) {}; javax.swing.SwingUtilities.invokeLater { BrowserImport.apply() } } }
                     }
-                    override fun windowLostFocus(e: WindowEvent?) { if (Store.loaded) try { Store.saveNow() } catch (_: Exception) {} }
+                    override fun windowLostFocus(e: WindowEvent?) {
+                        if (!Store.loaded) return
+                        val text = try { Store.progressJson() } catch (_: Exception) { null } ?: return
+                        FocusWork.run { try { Store.writeProgress(text) } catch (_: Exception) {} }
+                    }
                 }
                 window.addWindowFocusListener(l)
                 onDispose { window.removeWindowFocusListener(l) }
@@ -137,16 +170,81 @@ fun main(args: Array<String>) {
         // 浮動歌詞: the line being sung in a small window of its own, over everything (drag it anywhere)
         if (UI.lyricsFloat) {
             val fs = rememberWindowState(size = DpSize(floatingLyricsWidth().dp, floatingLyricsHeight().dp), position = WindowPosition(Alignment.BottomCenter))
-            // (the letters' size or the reading changed in YouTube 歌詞: the window just as tall as its lines)
-            LaunchedEffect(Prefs.lyricsFloatSize.value, Prefs.lyricsFloatReadings.value) {
-                fs.size = DpSize(maxOf(fs.size.width.value, floatingLyricsWidth()).dp, floatingLyricsHeight().dp)
+            // (just as tall as its lines, for the letters' size and the reading set in YouTube 歌詞; a word clicked: taller,
+            // sliding down to show its entry, and kept on the screen)
+            val wantH = floatingLyricsHeight() + if (FloatWord.key != null) FLOAT_DICT_HEIGHT else 0f
+            val h by androidx.compose.animation.core.animateFloatAsState(wantH, androidx.compose.animation.core.tween(260), label = "float")
+            LaunchedEffect(h, Prefs.lyricsFloatWidth.value) {
+                // (the width set in YouTube 歌詞; the height the lines' own: smaller letters, a smaller window too)
+                fs.size = DpSize(floatingLyricsWidth().dp, h.dp)
+                val p = fs.position
+                if (p is WindowPosition.Absolute) {
+                    val screen = java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds
+                    // (the screen in the same units as the window's: Java gives them already scaled)
+                    val bottom = (screen.y + screen.height).toFloat()
+                    if (p.y.value + h > bottom) fs.position = WindowPosition(p.x, maxOf(0f, bottom - h).dp)
+                }
             }
-            Window(onCloseRequest = { UI.lyricsFloat = false }, state = fs, title = "浮動歌詞", icon = icon,
+            Window(onCloseRequest = { UI.lyricsFloat = false; FloatWord.key = null }, state = fs, title = "浮動歌詞", icon = icon,
                 alwaysOnTop = true, undecorated = true, transparent = true, resizable = false) {
                 WindowDraggableArea(Modifier.fillMaxSize()) {
                     FloatingLyrics { UI.lyricsFloat = false }
                 }
             }
         }
+    }
+}
+
+/** when the program stops answering (the window frozen) for 8 seconds: what every part of it was doing is written to
+ *  freeze-….txt next to the progress (~/Library/Application Support/FangfangCards on a Mac, %LOCALAPPDATA%\FangfangCards on
+ *  Windows), to send to be fixed. The last 3 are kept */
+object FreezeWatch {
+    @Volatile private var answered = System.currentTimeMillis()
+    @Volatile private var written = 0L
+    fun start() {
+        Thread({
+            while (true) {
+                try {
+                    Thread.sleep(2000)
+                    javax.swing.SwingUtilities.invokeLater { answered = System.currentTimeMillis() }
+                    val now = System.currentTimeMillis()
+                    if (now - answered > 8000 && now - written > 60000) { written = now; write(now - answered) }
+                } catch (_: Throwable) {}
+            }
+        }, "freeze-watch").apply { isDaemon = true }.start()
+    }
+    private fun write(ms: Long) {
+        val dir = DesktopContext.base.apply { mkdirs() }
+        val f = File(dir, "freeze-" + java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(java.util.Date()) + ".txt")
+        val sb = StringBuilder("方方詞卡 stopped answering for ${ms / 1000} s (${Os.name})\n\n")
+        // (the window's thread first: the one that's stuck)
+        val all = Thread.getAllStackTraces().entries.sortedBy { if (it.key.name.startsWith("AWT-EventQueue")) 0 else 1 }
+        for ((t, st) in all) {
+            sb.append("\"").append(t.name).append("\" ").append(t.state).append('\n')
+            for (e in st.take(60)) sb.append("    at ").append(e).append('\n')
+            sb.append('\n')
+        }
+        try {
+            f.writeText(sb.toString())
+            dir.listFiles { x -> x.name.startsWith("freeze-") }?.sortedByDescending { it.name }?.drop(3)?.forEach { it.delete() }
+        } catch (_: Exception) {}
+    }
+}
+
+/** what switching to and from the window does (saving, the backup folder): one thing at a time, away from the window */
+object FocusWork {
+    private val pool = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "focus-work").apply { isDaemon = true } }
+    fun run(f: () -> Unit) { pool.execute(f) }
+}
+
+/** quitting quickly: saved, this computer's backup file written (at most 3 seconds), the radio stopped; and the
+ *  program ended for sure 2 seconds later (something still running kept it open a long while) */
+object Quitting {
+    fun prepare() {
+        try { Store.saveNow() } catch (_: Exception) {}
+        val t = Thread({ try { Backup.writeOwn() } catch (_: Exception) {} }, "quit-backup").apply { isDaemon = true; start() }
+        try { t.join(3000) } catch (_: Exception) {}
+        try { Radio.stop() } catch (_: Exception) {}
+        Thread({ try { Thread.sleep(2000) } catch (_: Exception) {}; Runtime.getRuntime().halt(0) }, "quit-end").apply { isDaemon = true; start() }
     }
 }

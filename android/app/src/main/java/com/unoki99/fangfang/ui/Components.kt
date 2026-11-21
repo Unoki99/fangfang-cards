@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import com.unoki99.fangfang.Player
 import com.unoki99.fangfang.Prefs
 
@@ -142,7 +143,7 @@ fun Modifier.surface(shape: Shape = RoundedCornerShape(18.dp), fill: Color = T.f
 
 @Composable
 fun SoftButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
-    OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled, shape = RoundedCornerShape(12.dp),
+    OutlinedButton(onClick = onClick, modifier = modifier.hand(), enabled = enabled, shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.outlinedButtonColors(containerColor = T.fn.copy(alpha = 0.85f), contentColor = T.glyph,
             disabledContainerColor = T.fn.copy(alpha = 0.5f), disabledContentColor = T.muted),
         border = BorderStroke(1.dp, T.fnEdge), content = content)
@@ -151,7 +152,7 @@ fun SoftButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Bool
 @Composable
 fun ProminentButton(onClick: () -> Unit, modifier: Modifier = Modifier, tint: Color = T.btnEdge, enabled: Boolean = true,
                     content: @Composable RowScope.() -> Unit) {
-    Button(onClick = onClick, modifier = modifier, enabled = enabled, shape = RoundedCornerShape(12.dp),
+    Button(onClick = onClick, modifier = modifier.hand(), enabled = enabled, shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = tint, contentColor = Color.White,
             disabledContainerColor = tint.copy(alpha = 0.35f), disabledContentColor = Color.White.copy(alpha = 0.6f)),
         content = content)
@@ -169,7 +170,7 @@ fun IconLabel(icon: ImageVector, text: String, style: TextStyle = ff(FF.Headline
 fun CapsuleButton(text: String, icon: ImageVector?, on: Boolean, fill: Color, edge: Color, ink: Color, onClick: () -> Unit) {
     Row(
         Modifier.clip(CircleShape).background(if (on) fill else T.fn.copy(alpha = 0.8f)).border(1.5.dp, if (on) edge else T.fnEdge, CircleShape)
-            .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp),
+            .hand().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { Icon(icon, null, tint = if (on) ink else T.glyph, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)) }
@@ -187,7 +188,7 @@ fun PlayButton(path: String, size: Dp = 34.dp) {
     val fill = if (bad) T.rust else if (on) T.btnEdge else T.btn.copy(alpha = 0.6f)
     val edge = if (bad) T.rustEdge else T.btnEdge
     Box(
-        Modifier.size(size).clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { Player.play(path) },
+        Modifier.size(size).clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).hand().clickable { Player.play(path) },
         contentAlignment = Alignment.Center,
     ) {
         Icon(Icons.Filled.PlayArrow, tr("播放"), tint = T.glyph, modifier = Modifier.size(size * 0.55f))
@@ -239,12 +240,13 @@ fun PlaceMenu() {
     val yue = store.isYue
     val hak = store.isHak
     val ja = store.isJa
+    val sv = store.isSv
     var accent by Prefs.hakAccent
-    val fill = if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.twFill
-    val edge = if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.twEdge
-    val ink = if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.twInk
+    val fill = if (sv) SV_FILL else if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.twFill
+    val edge = if (sv) SV_EDGE else if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.twEdge
+    val ink = if (sv) SV_INK else if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.twInk
     val hakNames = com.unoki99.fangfang.engine.Lang.hakAccents
-    val name = if (ja) "日語" else if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames.getOrElse(zhPlace) { "臺灣" }
+    val name = if (sv) "瑞典語" else if (ja) "日語" else if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames.getOrElse(zhPlace) { "臺灣" }
         else "台・" + (if (place in PLACE_NAMES.indices) PLACE_NAMES[place].take(2) else "通行")
     Box {
         Row(Modifier.clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { open = true }
@@ -264,7 +266,9 @@ fun PlaceMenu() {
             item(tr("粵語"), store.lang == 2) { store.setLanguage(2); open = false }
             item(tr("客語"), store.lang == 3) { store.setLanguage(3); open = false }
             item(tr("日語"), store.lang == 4) { store.setLanguage(4); open = false }
-            if (yue || ja) {
+            // (瑞典語: the computer version only)
+            if (com.unoki99.fangfang.engine.Lang.count > 5) item(tr("瑞典語"), store.lang == 5) { store.setLanguage(5); open = false }
+            if (yue || ja || sv) {
                 // (粵語: one reading)
             } else if (hak) {
                 HorizontalDivider(color = T.fnEdge)
@@ -294,8 +298,12 @@ fun ToneMenu() {
     Box {
         Row(Modifier.clip(CircleShape).background(T.fn).border(2.dp, T.fnEdge, CircleShape).clickable { open = true }
             .padding(horizontal = 9.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (system == 0) Text(if (com.unoki99.fangfang.Store.isJa) tr("色") else tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
-            else if (com.unoki99.fangfang.Store.isJa) {
+            if (system == 0) Text(if (com.unoki99.fangfang.Store.isJa || com.unoki99.fangfang.Store.isSv) tr("色") else tr("調"), style = ff(FF.Subheadline, FontWeight.Bold), color = T.muted)
+            else if (com.unoki99.fangfang.Store.isSv) {
+                // 瑞典語: root, second root, prefix, suffix, linking letter, ending
+                Prefs.svColors.forEach { it.value }
+                for (i in 0 until 6) Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.SvColors.color(i)), CircleShape))
+            } else if (com.unoki99.fangfang.Store.isJa) {
                 // 日語: kanji, hiragana, katakana, particles, suffixes
                 Prefs.jaColors.forEach { it.value }
                 for (i in 0 until 5) Box(Modifier.size(5.dp).background(Color(com.unoki99.fangfang.engine.JaColors.color(i)), CircleShape))
@@ -310,7 +318,8 @@ fun ToneMenu() {
             }
         }
         DropdownMenu(open, { open = false }, containerColor = T.fn) {
-            val choices = if (com.unoki99.fangfang.Store.isJa) listOf(0 to tr("文字顏色關"), 7 to tr("文字顏色開"))
+            val choices = if (com.unoki99.fangfang.Store.isSv) listOf(0 to tr("詞素顏色關"), 7 to tr("詞素顏色開"))
+                else if (com.unoki99.fangfang.Store.isJa) listOf(0 to tr("文字顏色關"), 7 to tr("文字顏色開"))
                 else listOf(0 to tr("關"), 7 to tr("七聲（1 2 3 4 5 7 8）"), 5 to tr("五聲（1=8、3=4）"))
             for ((v, name) in choices) {
                 DropdownMenuItem(text = { Text(name, color = if (system == v) T.greenInk else T.glyph) },
@@ -345,7 +354,10 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, close: Boolean = false, 
             IconButton(onClick = onBack) {
                 Icon(if (close) Icons.Filled.Close else Icons.AutoMirrored.Filled.ArrowBack, if (close) tr("結束") else tr("返回"), tint = T.glyph)
             }
-        } else Spacer(Modifier.width(12.dp))
+        } else {
+            // (the main pages: 我的進度 at the top left, as on the iPhone / iPad)
+            IconButton(onClick = { UI.profileOpen = true }, Modifier.hand()) { Icon(Icons.Filled.AccountCircle, tr("我的進度"), tint = T.glyph) }
+        }
         Text(title, style = ff(FF.Headline), color = T.glyph, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         extra()
         Spacer(Modifier.width(4.dp))
@@ -371,10 +383,16 @@ fun RowDivider() = HorizontalDivider(color = T.fnEdge.copy(alpha = 0.6f), thickn
 
 /** a search field in the app's style */
 @Composable
-fun SearchField(value: String, onChange: (String) -> Unit, hint: String, modifier: Modifier = Modifier, fontSize: TextUnit = 18.sp, family: FontFamily? = null) {
+fun SearchField(value: String, onChange: (String) -> Unit, hint: String, modifier: Modifier = Modifier, fontSize: TextUnit = 18.sp, family: FontFamily? = null,
+                onSubmit: (() -> Unit)? = null) {
     val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    // (with a keyboard: ⌘F / Ctrl+F puts the cursor in the search field on screen)
+    DisposableEffect(focus) { SearchFocus.add(focus); onDispose { SearchFocus.remove(focus) } }
     TextField(
         value, onChange, modifier = modifier.fillMaxWidth().focusRequester(focus), singleLine = true,
+        // (Enter searches, where there's a button to search with)
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = if (onSubmit != null) androidx.compose.ui.text.input.ImeAction.Search else androidx.compose.ui.text.input.ImeAction.Default),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(onSearch = { onSubmit?.invoke() }, onDone = { onSubmit?.invoke() }),
         placeholder = { Text(hint, color = T.muted, style = TextStyle(fontSize = 15.sp)) },
         textStyle = TextStyle(fontSize = fontSize, color = T.glyph, fontFamily = family),
         leadingIcon = { Icon(Icons.Filled.Search, null, tint = T.muted) },
@@ -384,6 +402,22 @@ fun SearchField(value: String, onChange: (String) -> Unit, hint: String, modifie
             focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = T.greenInk),
     )
 }
+
+/** the search fields on screen, the last one shown first: ⌘F / Ctrl+F (the Windows / Mac program) goes to it */
+object SearchFocus {
+    private val list = ArrayList<FocusRequester>()
+    fun add(f: FocusRequester) { synchronized(list) { list.remove(f); list.add(f) } }
+    fun remove(f: FocusRequester) { synchronized(list) { list.remove(f) } }
+    /** true: a search field got the cursor */
+    fun focus(): Boolean {
+        val l = synchronized(list) { list.toList() }
+        for (f in l.asReversed()) if (try { f.requestFocus(); true } catch (_: Exception) { false }) return true
+        return false
+    }
+}
+
+/** with a mouse: the hand over something to click */
+fun Modifier.hand(): Modifier = this.pointerHoverIcon(androidx.compose.ui.input.pointer.PointerIcon.Hand)
 
 /** the ⓧ at the end of a text field while it has text: empties it and puts the cursor back in it */
 @Composable

@@ -297,7 +297,12 @@ for k in order:
     han, rc = k.split("\t")
     lines, stds, sibs = [], [], []
     for zh, std, say, sib in w["groups"]:
-        t = ("看" + "、".join("「" + x.split("\t")[0] + "」" for x in std) + "。") if std else \
+        # (the meaning first: the usual words' meaning with its 華語 in it (妻子), else that 華語; then the usual
+        # words to see: 看「某」…)
+        ls = [re.sub(r"^\d+\.\s*", "", l) for x in std if x in defs_m for l in defs_t[defs_m[x]].split("\n")]
+        ls = [l for l in ls if l and "看「" not in l]
+        sd = next((l for l in ls if zh in l), ls[0] if ls else zh + "。")
+        t = (sd + "看" + "、".join("「" + x.split("\t")[0] + "」" for x in std) + "。") if std else \
             "華語：" + zh + "。" + ("各地講法：" + "、".join(say) + "。" if say else "")
         if t in lines: continue
         lines.append(t); stds.append(std)
@@ -444,7 +449,7 @@ chars = {ch for h, _ in words for ch in h}
 freq = {ch: round(math.log(counts[ch]), 1) for ch in sorted(chars) if counts[ch] > 0}
 
 out = {
-    "v": 7, "words": words, "syl": syl, "tl": tl, "pj": pj,
+    "v": 8, "words": words, "syl": syl, "tl": tl, "pj": pj,
     "defs": {"t": defs_t, "m": defs_m}, "pos": pos, "ex": ex, "reg": reg, "own": own, "au": au,
     "gl": [[k, v] for k, v in gl.items()], "freq": freq, "dex": dex, "ctx": ctx, "dia2": dia2, "sdia": sdia,
     "places": D["places"], "g1": D["g1"], "types": D["types"], "cats": D["cats"],

@@ -65,7 +65,22 @@ fun PlaceWordsPage(d: Dict, place: Int, onBack: () -> Unit) {
     val rom = Prefs.rom.value
     var query by remember { mutableStateOf("") }
     val all = remember(place) { PlaceWords.words(d, place) }
-    val list = if (query.isEmpty()) all else all.filter { w -> w.han.contains(query) || w.zh.any { it.contains(query) } || w.usual.any { it.contains(query) } }
+    // (a spelling too, as in the dictionary: 皓羅, 台羅, 白話字 or 方音, with or without the tones: the words it finds)
+    var spelled by remember { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(query, place) {
+        val q = query.trim()
+        if (q.isEmpty() || !q.codePoints().anyMatch { ConvertEngine.isZy(it) || ConvertEngine.isLatinLetter(it) }) { spelled = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(200)
+        spelled = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val r = Lookup.run(d, q, place, Prefs)
+            (r.taigi + Lookup.run(d, q, -1, Prefs).taigi).toHashSet()
+        }
+    }
+    val sp = spelled
+    val list = if (query.isEmpty()) all else if (sp != null) all.filter { w ->
+        val k = d.keyOf(Opt(w.han, w.codes.split(" ").filter { it.isNotEmpty() }))
+        (k != null && k in sp) || sp.any { Dict.hanOf(it) == w.han || Dict.hanOf(it) in w.usual }
+    } else all.filter { w -> w.han.contains(query) || w.zh.any { it.contains(query) } || w.usual.any { it.contains(query) } }
     val only = list.filter { it.others.isEmpty() }; val shared = list.filter { it.others.isNotEmpty() }
     val name = UILang.label((d.raw.places.getOrNull(place) ?: "").take(2))
     @Composable fun PwRow(w: PlaceWord) {
@@ -95,7 +110,7 @@ fun PlaceWordsPage(d: Dict, place: Int, onBack: () -> Unit) {
         TopBar(PlaceWords.title(d, place), onBack, settings = false)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
             item {
-                SearchField(query, { query = it }, tr("台語漢字（這裡的或一般的講法）或華語"))
+                SearchField(query, { query = it }, tr("台語漢字或拼音（這裡的或一般的講法）或華語"))
                 Txt(tr("教育部辭典的「詞彙比較」（各地講法）裡，只記在這個地方，或這裡和另外一個地方的詞。只比較這 10 個地方，而且只有調查過的意思。"),
                     ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
             }

@@ -171,6 +171,8 @@ const TwCode = (() => {
         if (!parse(code)) return null;
         let [head, body, tail, nas, tone] = letters(code, false);
         const nn = nas ? "nn" : "";
+        // (the nasal oo is written onn: a nasal o is always the open one)
+        if (nas && body.endsWith("oo")) body = body.slice(0, -1);
         if (body) {
             let pos;
             if (body.includes("a")) pos = body.indexOf("a");
@@ -945,7 +947,15 @@ function buildTaigi(a) {
             // (a meaning each: 看 the usual words; none in the dictionary: its 華語 and what the places say)
             const lines = [], stds = [], sibs = [];
             for (const [zh, std, say, sib] of w.groups) {
-                const t = std.length ? "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。"
+                // (the meaning first: the usual words' meaning with its 華語 in it (妻子), else that 華語; then the usual
+                // words to see: 看「某」…)
+                const ls = [];
+                for (const x of std) if (defsM[x] !== undefined) for (const l of defsT[defsM[x]].split("\n")) {
+                    const m = l.replace(/^\d+\.\s*/, "");
+                    if (m && !m.includes("看「")) ls.push(m);
+                }
+                const sd = ls.find(l => l.includes(zh)) || ls[0] || (zh + "。");
+                const t = std.length ? sd + "看" + std.map(x => "「" + x.split("\t")[0] + "」").join("、") + "。"
                     : "華語：" + zh + "。" + (say.length ? "各地講法：" + say.join("、") + "。" : "");
                 if (lines.includes(t)) continue;
                 lines.push(t); stds.push(std);
@@ -1112,7 +1122,7 @@ function buildTaigi(a) {
     }
     const mapObj = m => { const o = {}; for (const [k, v] of m) o[k] = v; return o; };
     const dict = {
-        v: 7, words, syl: sylT, tl, pj,
+        v: 8, words, syl: sylT, tl, pj,
         defs: { t: defsT, m: defsM }, pos: posM, ex, reg, own, au,
         gl: Array.from(gl), freq, dex, ctx, dia2, sdia,
         places: D.places, g1: D.g1, types: D.types, cats: D.cats,

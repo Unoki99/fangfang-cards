@@ -42,7 +42,7 @@ object ZhSpeech {
                 return true
             }
         } else {
-        val loc = if (Prefs.zhPlace.value == 1) Locale.CHINA else Locale.TAIWAN
+        val loc = if (Prefs.zhPlace.value >= 1) Locale.CHINA else Locale.TAIWAN
         val ok = t.setLanguage(loc)
         if (ok in bad) {
             val o2 = t.setLanguage(Locale.CHINESE)

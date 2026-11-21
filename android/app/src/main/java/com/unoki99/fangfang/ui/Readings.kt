@@ -31,7 +31,7 @@ private fun rememberZhDict(kind: Int): ZhDict? {
     val loaded by produceState<ZhDict?>(have, kind, have) {
         if (value != null) return@produceState
         value = withContext(Dispatchers.Default) {
-            try { com.unoki99.fangfang.DataFiles.reader(listOf("zh", "zh", "yue", "hak", "ja")[kind.coerceIn(0, 4)])?.let { ZhDict(it) } }
+            try { com.unoki99.fangfang.DataFiles.reader(listOf("zh", "zh", "yue", "hak", "ja", "sv")[kind.coerceIn(0, 5)])?.let { ZhDict(it) } }
             catch (_: Exception) { null }
         }
     }
@@ -163,6 +163,9 @@ private fun zhRows(d: ZhDict?, q: String, kind: Int, mode: Int): List<ReadingRow
             out.add(ReadingRow(1, tr("華") + "・" + tr("臺灣") + alt, d.reading(e.tw, mode).annotated(), d.readingPlain(e.tw, 1 - mode)))
             val lu = e.lu
             if (lu != null && lu != e.tw) out.add(ReadingRow(1, tr("華") + "・" + tr("大陸") + alt, d.reading(lu, mode).annotated(), d.readingPlain(lu, 1 - mode)))
+            // 四川話 (zh_sc.json: the computer version)
+            e.sc?.let { sc -> out.add(ReadingRow(1, tr("四川話") + (if (e.scKind == 1) "（" + tr("推算") + "）" else if (e.scKind == 2) "（" + tr("預測") + "）" else "") + alt,
+                d.reading(sc, mode).annotated(), d.readingPlain(sc, 1 - mode))) }
         } else out.add(ReadingRow(2, tr("粵語") + alt, d.reading(e.tw, mode).annotated(), d.readingPlain(e.tw, 1 - mode)))
         if (out.size >= 6) break
     }

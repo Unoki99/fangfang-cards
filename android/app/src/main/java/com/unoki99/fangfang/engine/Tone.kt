@@ -66,6 +66,10 @@ object EngineSettings {
     @Volatile var hak = false
     /** 日語 shown (Store) */
     @Volatile var ja = false
+    /** 瑞典語 shown (Store; the computer version only) */
+    @Volatile var sv = false
+    /** the computer version (Windows / Mac): 瑞典語 and 四川話 there */
+    @Volatile var desktop = false
     /** 客語: the accent (0 四縣, 1 海陸, 2 大埔, 3 饒平, 4 詔安, 5 南四縣) */
     @Volatile var hakAccent = 0
     /** 華語 or 粵語 shown (Store) */

@@ -226,7 +226,6 @@ enum ToneColors {
         lock.lock(); caches = [:]; lock.unlock()
         UserDefaults.standard.set(UserDefaults.standard.integer(forKey: versionKey) + 1, forKey: versionKey)
         Store.shared.objectWillChange.send()
-        WidgetBridge.rebuildIfNeeded(Store.shared)
     }
 
     /// changes every time a colour is picked (pages that show tone colours redraw)

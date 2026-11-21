@@ -415,9 +415,9 @@ fun ZhWordClassListPage(z: ZhDict, onBack: () -> Unit) {
 fun ZhWordClassPage(z: ZhDict, cls: String, onBack: () -> Unit) {
     val nav = LocalNav.current
     var list by remember { mutableStateOf<List<Int>?>(null) }
-    LaunchedEffect(cls) { list = withContext(Dispatchers.Default) { z.wordsOfClass(cls) } }
+    LaunchedEffect(cls) { list = withContext(Dispatchers.Default) { if (cls == SICHUAN_WORDS) z.sichuanWords else z.wordsOfClass(cls) } }
     Column(Modifier.fillMaxSize()) {
-        TopBar(cls, onBack, settings = false)
+        TopBar(if (cls == SICHUAN_WORDS) tr("四川話的詞") else cls, onBack, settings = false)
         val l = list
         if (l == null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = T.greenInk) }
         else LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
@@ -456,7 +456,7 @@ fun CharMeter(onClick: () -> Unit) {
             Txt(tr("熟悉 {0}", p.known.size), ff(FF.Subheadline, FontWeight.SemiBold), Color(0xFF6EAAFF))
             Txt(tr("不熟 {0}", p.unknown.size), ff(FF.Subheadline, FontWeight.SemiBold), Color(0xFFFFA94D))
         }
-        SplitPotionBar(k, u, Color(0xFF6EAAFF), label = tr("認識的漢字"))
+        SplitPotionBar(k, u, null, label = tr("認識的漢字"))
         Txt(tr("熟悉的詞裡的字都算認識（就算它也在不熟的詞裡）；只在不熟的詞裡出現的字算不熟。還沒看 {0} 字（所有詞卡和漢字卡裡的字，每個字只算一次）。", total - p.known.size - p.unknown.size),
             ff(FF.Caption), T.muted)
     }
@@ -486,7 +486,7 @@ fun ZhCharListPage(onBack: () -> Unit) {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     val total = sets.all.size
                     SplitPotionBar(if (total > 0) sets.known.size.toDouble() / total else 0.0, if (total > 0) sets.unknown.size.toDouble() / total else 0.0,
-                        Color(0xFF6EAAFF), label = tr("認識的漢字"))
+                        null, label = tr("認識的漢字"))
                     Segmented(listOf(0 to tr("全部 {0}", total), 1 to tr("熟悉 {0}", sets.known.size), 2 to tr("不熟 {0}", sets.unknown.size), 3 to tr("沒看過")), filter, { filter = it })
                     SearchField(query, { query = it }, tr("找字，例如：愛"), fontSize = 18.sp)
                     if (query.isNotEmpty() && shown.isEmpty()) Txt(tr("這裡沒有「{0}」。", query), ff(FF.Footnote), T.muted)
@@ -630,34 +630,40 @@ fun ToneColorPickerPage(onBack: () -> Unit) {
 @Composable
 fun ToneColorPickerBody(initial: Int? = null) {
     /** 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語 (kanji, hiragana, katakana, particles, suffixes: the same balls) */
-    var which by remember { mutableStateOf((initial ?: Store.lang).coerceIn(0, 4)) }
+    var which by remember { mutableStateOf((initial ?: Store.lang).coerceIn(0, Lang.count - 1)) }
     val zh = which == 1
     var tone by remember { mutableStateOf<Int?>(null) }
     // (read so the page redraws when a colour changes)
     val sig = Prefs.toneColorsTw.value + Prefs.toneColorsZh.value + Prefs.toneColorsYue.value + Prefs.toneColorsHak.value +
-        Prefs.jaColors.joinToString(",") { it.value.toString() }
+        Prefs.jaColors.joinToString(",") { it.value.toString() } + Prefs.svColors.joinToString(",") { it.value.toString() }
     fun reload() = ToneColors.load(Prefs.toneColorsTw.value, Prefs.toneColorsZh.value, Prefs.toneColorsYue.value, Prefs.toneColorsHak.value)
     fun save(m: Map<Int, Int>) {
         if (which == 4) { for ((i, p) in Prefs.jaColors.withIndex()) p.value = m[i]?.let { it and 0xFFFFFF } ?: -1; return }
+        if (which == 5) { for ((i, p) in Prefs.svColors.withIndex()) p.value = m[i]?.let { it and 0xFFFFFF } ?: -1; return }
         when (which) { 3 -> Prefs.toneColorsHak.value = ToneColors.encode(m); 2 -> Prefs.toneColorsYue.value = ToneColors.encode(m); 1 -> Prefs.toneColorsZh.value = ToneColors.encode(m); else -> Prefs.toneColorsTw.value = ToneColors.encode(m) }
         reload()
     }
     fun picked(): Map<Int, Int> = if (which == 4) Prefs.jaColors.withIndex().filter { it.value.value != -1 }.associate { it.index to it.value.value }
+        else if (which == 5) Prefs.svColors.withIndex().filter { it.value.value != -1 }.associate { it.index to it.value.value }
         else ToneColors.picked(which)
     fun set(t: Int, c: Int?) {
         val m = HashMap(picked())
         if (c == null) m.remove(t) else m[t] = c
         save(m)
     }
-    fun colorOf(t: Int) = if (which == 4) Color(JaColors.color(t)) else Color(ToneColors.colorOf(which, t))
+    fun colorOf(t: Int) = if (which == 5) Color(SvColors.color(t)) else if (which == 4) Color(JaColors.color(t)) else Color(ToneColors.colorOf(which, t))
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         run {
             key(sig) {
-                Segmented(listOf(0 to tr("台語"), 1 to tr("華語"), 2 to tr("粵語"), 3 to tr("客語"), 4 to tr("日語")), which, { which = it; tone = null })
+                Segmented(Lang.names.mapIndexed { i, n -> i to tr(n) }, which, { which = it; tone = null })
                 SectionTitle(tr("看起來"))
                 ListCard {
                     Row(Modifier.fillMaxWidth().padding(vertical = 12.dp, horizontal = 6.dp), horizontalArrangement = Arrangement.Center) {
-                        if (which == 4) {
+                        if (which == 5) {
+                            // 瑞典語: o|be|tal|d (prefix, prefix, root, ending), arbet|s|lös|het (root, link, suffix, suffix), sjuk|hus (two roots)
+                            val ms = listOf(listOf("o:p", "be:p", "tal:r", "d:e"), listOf("arbet:r", "s:l", "lös:s", "het:s"), listOf("sjuk:r", "hus:r"))
+                            Txt(ms.map { SvColors.styledOf(SvMorpheme.parse(it), null, true) }.reduce { a, b -> a + styled(" ") + b }.annotated(), lat(24f))
+                        } else if (which == 4) {
                             // a sentence with every kind: kanji, hiragana, katakana, particles, a suffix
                             Txt(JaInk.styled(JaInk.marked("猫[が]ミルク[を]飲み{ます}。")).annotated(), sz(28f))
                         } else if (which == 3) {
@@ -692,15 +698,15 @@ fun ToneColorPickerBody(initial: Int? = null) {
                         }
                     }
                 }
-                SectionTitle(if (which == 4) tr("每種文字（點一下選顏色）") else tr("每個聲調（點一下選顏色）"))
+                SectionTitle(if (which == 5) tr("每種詞素（點一下選顏色）") else if (which == 4) tr("每種文字（點一下選顏色）") else tr("每個聲調（點一下選顏色）"))
                 ListCard {
-                    val tones = if (which == 4) (0 until 5).toList() else ToneColors.tones(which)
+                    val tones = if (which == 5) (0 until 6).toList() else if (which == 4) (0 until 5).toList() else ToneColors.tones(which)
                     for ((i, t) in tones.withIndex()) {
                         if (i > 0) RowDivider()
                         Row(Modifier.fillMaxWidth().clickable { tone = if (tone == t) null else t }.padding(14.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             Box(Modifier.size(22.dp).clip(CircleShape).background(colorOf(t)))
-                            Txt(if (which == 4) tr(JaColors.names[t]) else if (which == 3) tr(mapOf(1 to "陰平", 2 to "上聲", 3 to "去聲", 4 to "陰入", 5 to "陽平", 7 to "陽去", 8 to "陽入")[t] ?: "")
+                            Txt(if (which == 5) tr(SvColors.names[t]) else if (which == 4) tr(JaColors.names[t]) else if (which == 3) tr(mapOf(1 to "陰平", 2 to "上聲", 3 to "去聲", 4 to "陰入", 5 to "陽平", 7 to "陽去", 8 to "陽入")[t] ?: "")
                                 else if (t == 0) (if (zh) tr("輕聲") else tr("輕聲（--）")) else tr("第 {0} 聲", t), ff(FF.Body), modifier = Modifier.weight(1f))
                             if (picked().containsKey(t)) TextButton(onClick = { set(t, null) }) { Text(tr("原本的"), color = T.muted) }
                         }

@@ -31,6 +31,18 @@ object BrowserImport {
     @Suppress("UNCHECKED_CAST")
     fun handle(uri: Uri): Int {
         if (uri.scheme != "fangfangcards") return 0
+        // (我的進度: the minutes watched with the subtitle panel, by day; and each video's 懂 %,
+        // {"yt:abc123": [its name, address, %, when in seconds]}), as on the iPhone / iPad
+        if (Store.loaded) {
+            uri.getQueryParameter("w")?.let { unpack(it) }?.let { try { JReader(it).any() as? Map<String, Any?> } catch (_: Exception) { null } }
+                ?.forEach { (day, m) -> (m as? Number)?.toDouble()?.let { Store.addListening(it, 1, day) } }
+            uri.getQueryParameter("vk")?.let { unpack(it) }?.let { try { JReader(it).any() as? Map<String, Any?> } catch (_: Exception) { null } }
+                ?.forEach { (id, v) ->
+                    val l = v as? List<Any?> ?: return@forEach
+                    if (l.size >= 4) Store.noteSeen(id, l[0] as? String ?: "", l[1] as? String ?: "",
+                        (l[2] as? Number)?.toDouble() ?: 0.0, (l[3] as? Number)?.toDouble() ?: 0.0)
+                }
+        }
         val ops = uri.getQueryParameter("ops")?.let { unpack(it) }?.let { try { JReader(it).any() as? List<Any?> } catch (_: Exception) { null } }
             ?.mapNotNull { (it as? List<Any?>)?.map { x -> x as? String ?: "" } } ?: return 0
         val groups = uri.getQueryParameter("gr")?.let { unpack(it) }?.let { try { JReader(it).any() as? Map<String, Any?> } catch (_: Exception) { null } }
@@ -88,6 +100,16 @@ object BrowserKnown {
 
     /** opens the page in Firefox (where the add-on is), or the usual browser when Firefox isn't there */
     fun open(ctx: Context, url: String) {
+        if (com.unoki99.fangfang.desktop.Os.mac) {
+            // (a Mac: in Firefox when it's there, else the usual browser)
+            try {
+                if (File("/Applications/Firefox.app").isDirectory || File(System.getProperty("user.home"), "Applications/Firefox.app").isDirectory) {
+                    ProcessBuilder("open", "-a", "Firefox", url).start(); return
+                }
+            } catch (_: Exception) {}
+            try { java.awt.Desktop.getDesktop().browse(java.net.URI(url)) } catch (_: Exception) {}
+            return
+        }
         val firefox = listOfNotNull(System.getenv("ProgramFiles"), System.getenv("ProgramFiles(x86)"), System.getenv("LOCALAPPDATA")?.let { "$it\\Programs" })
             .map { File(it, "Mozilla Firefox\\firefox.exe") }.firstOrNull { it.isFile }
         try {

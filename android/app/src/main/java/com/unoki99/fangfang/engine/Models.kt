@@ -232,16 +232,23 @@ class Progress(
     val groupWords: HashMap<String, Double> = HashMap(),
     /** 自訂: a word's meaning and example sentence, when it has them (key -> [meaning, example]) */
     val ownInfo: HashMap<String, MutableList<String>> = HashMap(),
+    /** 我的進度: minutes listened to the radio and watched with the browser add-on's subtitle panel, per day
+     *  ("2026-11-14" -> [radio, video]; this device's own, as on the iPhone / iPad) */
+    val listen: HashMap<String, MutableList<Double>> = HashMap(),
+    /** 影片懂多少: each video's 懂 % when it was last watched in the add-on (id -> [%, when (s)]); synced */
+    val seen: HashMap<String, MutableList<Double>> = HashMap(),
 ) {
     fun copy() = Progress(HashMap(status), HashMap(added), HashMap(streak), HashMap(saved), HashMap(own),
         HashMap(senses), HashMap(week), HashMap(weekStart),
         HashMap(srs.mapValues { it.value.toMutableList() }), HashMap(log.mapValues { it.value.toMutableList() }),
         HashMap(groupTime), HashMap(groupInfo.mapValues { it.value.toMutableList() }), HashMap(groupWords),
-        HashMap(ownInfo.mapValues { it.value.toMutableList() }))
+        HashMap(ownInfo.mapValues { it.value.toMutableList() }), HashMap(listen.mapValues { it.value.toMutableList() }),
+        HashMap(seen.mapValues { it.value.toMutableList() }))
 
     fun toJson(): String = JWriter.any(mapOf("status" to status, "added" to added, "streak" to streak, "saved" to saved, "own" to own,
         "senses" to senses, "week" to week, "weekStart" to weekStart, "srs" to srs, "log" to log,
-        "groupTime" to groupTime, "groupInfo" to groupInfo, "groupWords" to groupWords, "ownInfo" to ownInfo))
+        "groupTime" to groupTime, "groupInfo" to groupInfo, "groupWords" to groupWords, "ownInfo" to ownInfo,
+        "listen" to listen, "seen" to seen))
 
     companion object {
         fun parse(text: String): Progress {
@@ -263,6 +270,8 @@ class Progress(
                     "groupInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.groupInfo[w] = l }
                     "groupWords" -> j.obj { w -> p.groupWords[w] = j.nextDouble() }
                     "ownInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.ownInfo[w] = l }
+                    "listen" -> j.obj { w -> val l = ArrayList<Double>(); j.arr { l.add(j.nextDouble()) }; p.listen[w] = l }
+                    "seen" -> j.obj { w -> val l = ArrayList<Double>(); j.arr { l.add(j.nextDouble()) }; p.seen[w] = l }
                     else -> j.skip()
                 }
             }

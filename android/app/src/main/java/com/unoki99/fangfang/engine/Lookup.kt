@@ -175,6 +175,21 @@ object Lookup {
         return r
     }
 
+    /** 各地講法: each comparison (詞彙比較: a 華語 meaning) with the words the places say for it (the first six) */
+    private fun placeGroups(hits: List<CmpEntry>): List<PlaceGroup> {
+        val places = ArrayList<PlaceGroup>()
+        for (e in hits.take(6)) {
+            val order = ArrayList<String>(); val by = HashMap<String, MutableList<Int>>()
+            for (row in e.rows) {
+                val k = row.han + "\t" + row.codes
+                if (by[k] == null) order.add(k)
+                by.getOrPut(k) { ArrayList() }.add(row.place)
+            }
+            places.add(PlaceGroup(e.zh, order.map { PlaceRow(Dict.hanOf(it), Dict.codesOf(it), by[it]!!) }))
+        }
+        return places
+    }
+
     private fun run0(d: Dict, q0: String, place: Int, prefs: KeyValue, split: Boolean = true): LookupResult {
         val q = q0.trim()
         val r = LookupResult()
@@ -192,6 +207,12 @@ object Lookup {
         if (q.codePoints().anyMatch { ConvertEngine.isZy(it) || ConvertEngine.isLatinLetter(it) }) {
             r.taigi = d.withLocal(taigi(d, q, prefs))
             addSentences(d, r, r.taigi)
+            // 各地講法 (詞彙比較) by a spelling too: the comparisons the words found are in (the first few words)
+            val want = r.taigi.take(12)
+            val wantKeys = want.toHashSet(); val wantHan = want.map { Dict.hanOf(it) }.toHashSet()
+            val inCmp = d.raw.cmp.filter { e -> e.rows.any { (it.han + "\t" + it.codes) in wantKeys } } +
+                d.raw.cmp.filter { e -> e.rows.none { (it.han + "\t" + it.codes) in wantKeys } && e.rows.any { it.han in wantHan } }
+            r.places = placeGroups(inCmp.distinct())
             // (letters: maybe English too; a section of its own, after the 台語 results)
             if (q.codePoints().noneMatch { ConvertEngine.isZy(it) }) {
                 val seen = r.taigi.toHashSet()
@@ -241,17 +262,7 @@ object Lookup {
         r.defs = m.sortedByDescending { rank(it) }.take(60)
         var hits = d.raw.cmp.filter { it.zh == q }
         if (hits.size < 6) hits = hits + d.raw.cmp.filter { it.zh != q && it.zh.contains(q) }.take(6 - hits.size)
-        val places = ArrayList<PlaceGroup>()
-        for (e in hits.take(6)) {
-            val order = ArrayList<String>(); val by = HashMap<String, MutableList<Int>>()
-            for (row in e.rows) {
-                val k = row.han + "\t" + row.codes
-                if (by[k] == null) order.add(k)
-                by.getOrPut(k) { ArrayList() }.add(row.place)
-            }
-            places.add(PlaceGroup(e.zh, order.map { PlaceRow(Dict.hanOf(it), Dict.codesOf(it), by[it]!!) }))
-        }
-        r.places = places
+        r.places = placeGroups(hits)
         // (each 方言詞 right after the usual word it points to: 臭柿仔 → 柑仔得 金門)
         r.exact = d.withLocal(r.exact)
         val shown = r.exact.toHashSet()

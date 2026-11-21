@@ -360,7 +360,7 @@ fun WordCard(card: Card, isTop: Boolean) {
                     for ((i, d) in card.d.take(3).withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         NumBadge(i + 1)
                         if (d.p.isNotEmpty()) Chip(d.p)
-                        Txt(d.t, ff(FF.Body), T.glyph, maxLines = if (exs.size > 1) 2 else 3)
+                        Txt(shownDef(card.k, i, d.t), ff(FF.Body), T.glyph, maxLines = if (exs.size > 1) 2 else 3)
                     }
                     if (card.d.size > 3) Txt(tr("還有 {0} 個意思", card.d.size - 3), ff(FF.Caption), T.muted)
                 }
@@ -441,7 +441,7 @@ private fun CardDetail(card: Card) {
                 Txt(when (Store.status(card)) { 1 -> tr("熟悉"); 2 -> tr("不熟（連續答對 {0} 次）", Store.streak(card)); else -> tr("還沒看過") }, ff(FF.Caption), T.muted)
             }
             for ((i, d) in card.d.withIndex()) Panel {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { NumBadge(i + 1); if (d.p.isNotEmpty()) Chip(d.p); Txt(d.t, ff(FF.Body), T.glyph) }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { NumBadge(i + 1); if (d.p.isNotEmpty()) Chip(d.p); Txt(shownDef(card.k, i, d.t), ff(FF.Body), T.glyph) }
                 for (x in d.x) Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PlayButton(Audio.examplePath(x.n), 28.dp)
                     Column {
@@ -513,8 +513,9 @@ fun UnknownTab() {
                     // what each does; 遊戲 and 怎麼練習 across the whole width
                     val tiles = listOfNotNull(
                         PT(tr("開始練習"), Icons.Filled.School, all.isNotEmpty() || due.isNotEmpty(), Practice.STUDY),
-                        PT(tr("手寫練習"), Icons.Filled.Edit, true, Practice.HANDWRITING),
-                        PT(tr("自由寫字"), Icons.Filled.GridOn, true, Practice.FREE_WRITING),
+                        // (瑞典語: no characters to write)
+                        PT(tr("手寫練習"), Icons.Filled.Edit, !Store.isSv, Practice.HANDWRITING),
+                        PT(tr("自由寫字"), Icons.Filled.GridOn, !Store.isSv, Practice.FREE_WRITING),
                         // (華語: 四字格 from their meaning)
                         if (Store.lang == 1) PT(tr("四字格手寫"), Icons.Filled.Apps, Store.zh != null, Practice.IDIOM_WRITE) else null,
                     )
@@ -523,10 +524,10 @@ fun UnknownTab() {
                         G(tr("滑卡練習"), tr("像「新詞」一樣滑卡片：往右是會，往左是不會。"), Icons.Filled.Swipe, all.isNotEmpty() || due.isNotEmpty(), Practice.SWIPE),
                         G(tr("例句填空"), tr("看例句，把空著的詞選回去。"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
                         G(tr("排句子"), tr("例句被打亂了，照意思把詞排回去。"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
-                        G(tr("看字排讀音"), tr("只看漢字，把讀音照順序排。"), Icons.Filled.MenuBook, all.isNotEmpty(), Practice.READING),
+                        G(tr("看字排讀音"), tr("只看漢字，把讀音照順序排。"), Icons.Filled.MenuBook, all.isNotEmpty() && !Store.isSv, Practice.READING),
                         if (Store.isJa) G(tr("助詞練習"), tr("選句子裡缺的助詞。"), Icons.Filled.Extension, true, Practice.JA_PARTICLES)
-                        else G(tr("聲調練習"), tr("聽發音，選聲調對的拼法。"), Icons.Filled.GraphicEq, !Store.isHak, Practice.TONES),
-                        if (Store.isJa) null else G(tr("聲調色球"), tr("聽一個詞，照每個字的聲調點顏色球。"), Icons.Filled.BubbleChart, true, Practice.TONE_GAME),
+                        else G(tr("聲調練習"), tr("聽發音，選聲調對的拼法。"), Icons.Filled.GraphicEq, !Store.isHak && !Store.isSv, Practice.TONES),
+                        if (Store.isJa) null else G(tr("聲調色球"), tr("聽一個詞，照每個字的聲調點顏色球。"), Icons.Filled.BubbleChart, !Store.isSv, Practice.TONE_GAME),
                         G(tr("翻牌配對"), tr("一次翻兩張牌，把漢字和它的讀音配起來。"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         G(tr("掉下來的字"), tr("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
                     )
@@ -584,7 +585,8 @@ fun UnknownTab() {
 @Composable
 fun KnownTab() {
     Store.rev
-    var mode by remember { mutableIntStateOf(0) }
+    // (卡片複習 / 列表 / 學習進度 stays when the word list (HSK ⇄ TOCFL) or the theme changes)
+    var mode by rememberKept("known.mode") { 0 }
     var reviewKeys by remember { mutableStateOf<List<String>>(emptyList()) }
     var pos by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
@@ -769,7 +771,7 @@ private fun CharSideCard(card: Card, small: Boolean) {
             if (en != null) for ((i, t) in en.take(n).withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 EnNum(i + 1); Txt(t, ff(if (small) FF.Footnote else FF.Subheadline), T.glyph, maxLines = 2)
             } else for ((i, d) in card.d.take(n).withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                NumBadge(i + 1); Txt(d.t, ff(if (small) FF.Footnote else FF.Subheadline), T.glyph, maxLines = 2)
+                NumBadge(i + 1); Txt(shownDef(card.k, i, d.t), ff(if (small) FF.Footnote else FF.Subheadline), T.glyph, maxLines = 2)
             }
         }
     }
@@ -904,4 +906,15 @@ private fun CardDust(bursts: List<CardBurst>, modifier: Modifier) {
             }
         }
     }
+}
+
+/** a card's meaning as shown: a local word's (家內, 看「某」…) the meaning of the usual words it points to, as in its
+ *  dictionary entry (the cards' file has only the pointer) */
+fun shownDef(key: String, i: Int, t: String): String {
+    if (!t.contains("看「")) return t
+    val d = Store.dict ?: return t
+    if (d.raw.loc?.get(key) == null) return t
+    val s = d.senses(key).getOrNull(i) ?: return t
+    if (s.see.isEmpty()) return t
+    return s.text + "（" + com.unoki99.fangfang.tr("看") + "：" + s.see.joinToString("、") { com.unoki99.fangfang.engine.Dict.hanOf(it) } + "）"
 }

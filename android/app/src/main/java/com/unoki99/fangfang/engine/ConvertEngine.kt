@@ -16,7 +16,9 @@ data class ConvItem(
 ) {
     val unsure: Boolean get() = (likely ?: 1.0) < 0.82
     val isWord: Boolean get() = raw == null && !space && !newline
-    val current: Opt get() = opts[minOf(sel, opts.size - 1)]
+    /** a reading of one 腔口 chosen for it (轉換: 選腔口的讀音), over the one of the place in 設定 */
+    var pinned: Opt? = null
+    val current: Opt get() = pinned ?: opts[minOf(sel, opts.size - 1)]
 }
 
 enum class LatinMode(val raw: String) { AUTO("auto"), LAT("lat"), TL("tl"), POJ("poj");
@@ -351,10 +353,11 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
         for (k in res.items.indices) {
             val it = res.items[k]
             if (it.opts.size <= 1) continue
-            // (歌詞: what you picked for this word in this song, first of all)
+            // (歌詞: what you picked for this very place in this song (the line, and which time the word comes in
+            // it), first of all; then a pick from before, for the word anywhere in the song)
             val song = songKey
             if (song != null) {
-                val want = mem["s:" + song + "|" + memKey(it)]
+                val want = mem[songPlaceKey(song, text, res.items, k)] ?: mem["s:" + song + "|" + memKey(it)]
                 val at = if (want != null) it.opts.indexOfFirst { o -> optID(o) == want } else -1
                 if (at >= 0) { it.sel = at; byYou.add(k); continue }
             }
@@ -463,12 +466,28 @@ class ConvertEngine(val d: Dict, private val prefs: KeyValue) {
     private fun memKey(it: ConvItem) =
         if (it.src == "han") "h:" + (it.opts[0].han ?: "") else "c:" + (it.opts[0].codes ?: emptyList()).joinToString(" ") + ":" + it.opts.size
 
-    fun remember(items: List<ConvItem>, k: Int) {
+    /** line: 歌詞, the line the word is in: the pick is for this place only (the same word elsewhere in the song keeps
+     *  its own reading), and it isn't learnt for other text */
+    fun remember(items: List<ConvItem>, k: Int, line: String? = null) {
         val it = items[k]
-        mem[memKey(it)] = optID(it.current)
-        mem[ctxMemKey(items, k)] = optID(it.current)
-        songKey?.let { mem["s:" + it + "|" + memKey(items[k])] = optID(items[k].current) }
+        val song = songKey
+        if (song != null && line != null) {
+            mem[songPlaceKey(song, line, items, k)] = optID(it.current)
+            mem.remove("s:" + song + "|" + memKey(it))
+        } else {
+            mem[memKey(it)] = optID(it.current)
+            mem[ctxMemKey(items, k)] = optID(it.current)
+            song?.let { s -> mem["s:" + s + "|" + memKey(it)] = optID(it.current) }
+        }
         prefs.putString("ff-picks", JWriter.any(mem))
+    }
+
+    /** 歌詞: one place of a word in a song: the line and which time in the line the word comes */
+    private fun songPlaceKey(song: String, line: String, items: List<ConvItem>, k: Int): String {
+        val mk = memKey(items[k])
+        var n = 0
+        for (j in 0 until k) if (items[j].opts.size > 1 && memKey(items[j]) == mk) n++
+        return "s:" + song + "|" + line.trim() + "#" + n + "|" + mk
     }
 
     private fun ctxMemKey(items: List<ConvItem>, k: Int) =

@@ -17,7 +17,10 @@ import com.unoki99.fangfang.engine.*
  *  台語 words with more than one reading: the readings to pick from (漢字 and reading), the one chosen, and pick(i) */
 internal class LyricWord(val text: AnnotatedString, val letters: Int, val open: (() -> Unit)?,
                          val choices: List<Pair<String, AnnotatedString>> = emptyList(), val chosen: Int = 0,
-                         val pick: ((Int) -> Unit)? = null)
+                         val pick: ((Int) -> Unit)? = null, val key: String? = null, val zh: Boolean = false)
+
+/** where a word clicked in the lyrics opens: the app's sheet (null), or somewhere else (浮動歌詞: under its lines) */
+internal val LocalLyricOpen = androidx.compose.runtime.staticCompositionLocalOf<((LyricWord) -> Unit)?> { null }
 
 /** the readings picked in a song's lyrics (台語): kept for that song (title and singer, or the YouTube video) and
  *  used wherever its lyrics show, like on the iPhone / iPad. version: a pick made (the lyrics drawn again) */
@@ -66,17 +69,65 @@ private fun letters(s: String): Int {
 
 /** read the lyrics with the 華語 / 粵語 / 客語 dictionary (the app on it, and the song not tagged 台語); else as 台語
  *  (its dictionary is always there) */
-private fun readAsZh(z: ZhDict?): Boolean = z != null && Store.isZh && (LyricPicks.lang ?: Store.lang) != 0
+private fun readAsZh(z: ZhDict?): Boolean = z != null && (z !== Store.zh || (Store.isZh && (LyricPicks.lang ?: Store.lang) != 0))
+
+/** the dictionary that reads the lyrics: the song's language's (on the computer, whatever the app is on), else the
+ *  app's; null: 台語 */
+private fun lyricZh(): ZhDict? {
+    val tag = LyricPicks.lang
+    if (EngineSettings.desktop && tag != null) return if (tag == 0) null else LyricDicts.get(tag)
+    return Store.zh
+}
+
+/** 歌的語言 on the computer: the dictionary of the song's language, read for the lyrics alone (the app's own stays as
+ *  it is). One kept besides the app's. version (LyricPicks') bumped when it's read */
+object LyricDicts {
+    @Volatile private var held: ZhDict? = null
+    @Volatile private var loading = -1
+    fun get(lang: Int): ZhDict? {
+        Store.zh?.let { if (it.lang == lang) return it }
+        held?.let { if (it.lang == lang) return it }
+        val name = listOf("zh", "zh", "yue", "hak", "ja", "sv").getOrNull(lang) ?: return null
+        if (loading != lang && DataFiles.has(name)) {
+            loading = lang
+            Thread {
+                val d = try { DataFiles.reader(name)?.let { ZhDict(it, Prefs.hakAccent.value.coerceIn(0, 5)) } } catch (_: Throwable) { null }
+                held = d ?: held
+                loading = -1
+                LyricPicks.version++
+            }.apply { isDaemon = true }.start()
+        }
+        return null
+    }
+    /** the dictionary a word's key is of, when it's the lyrics' one and not the app's */
+    fun forKey(k: String): ZhDict? {
+        val kind = Lang.kind(k)
+        if (Store.zh?.lang == kind) return null
+        return held?.takeIf { it.lang == kind }
+    }
+}
 
 /** the line's words, in their tone colours when those are on */
 internal fun lyricWords(line: String): List<LyricWord> = try {
-    val z = Store.zh; val d = Store.dict
+    val z = lyricZh(); val d = Store.dict
     if (d == null) Store.loadDict()
-    if (readAsZh(z)) {
+    if (readAsZh(z) && z!!.isSv) {
+        // 瑞典語: each word in its morphemes' colours (tap it to open it)
+        val colours = Prefs.toneSys.value != 0
+        line.split(" ").filter { it.isNotEmpty() }.map { w ->
+            val (lead, core, tail) = svSplitWord(w)
+            val ms = if (core.isEmpty()) emptyList() else z.svMorphemes(core)
+            val k = if (core.isEmpty()) null else z.svKey(core)
+            val st = styled(lead, T.glyph.argbInt()) + (if (ms.isEmpty()) styled(core, T.glyph.argbInt()) else SvColors.styledOf(ms, T.glyph.argbInt(), colours)) +
+                styled("$tail ", T.glyph.argbInt())
+            val t = st.annotated()
+            LyricWord(t, letters(t.text), if (k != null) ({ UI.open(Sheet.ZhWord(k)) }) else null, key = k, zh = true)
+        }
+    } else if (readAsZh(z)) {
         z!!.convertPieces(line).map { p ->
             val k = if (p.tw != null) z.entryFor(p)?.k else null
             val t = z.sentenceHan(listOf(p), Prefs.zhPlace.value, T.glyph.argbInt()).annotated()
-            LyricWord(t, letters(t.text), if (k != null) ({ UI.open(Sheet.ZhWord(k)) }) else null)
+            LyricWord(t, letters(t.text), if (k != null) ({ UI.open(Sheet.ZhWord(k)) }) else null, key = k, zh = true)
         }
     } else if (d != null) {
         val e = twEngine(d)
@@ -98,23 +149,24 @@ internal fun lyricWords(line: String): List<LyricWord> = try {
             val item = items.getOrNull(ii)
             if (item != null && item.opts.size > 1 && LyricPicks.songKey != null) {
                 val ch = item.opts.map { o -> (o.han ?: "") to e.wordPieces(o, 1, rom, place).let { ps -> AnnotatedString(ps.joinToString("") { x -> x.first }) } }
-                LyricWord(a, letters(t), if (k != null) ({ UI.openWord(k) }) else null, ch, item.sel) { j ->
+                LyricWord(a, letters(t), if (k != null) ({ UI.openWord(k) }) else null, ch, item.sel, key = k, pick = { j ->
                     if (j in item.opts.indices) {
                         item.sel = j; item.likely = null
                         e.songKey = LyricPicks.songKey
-                        e.remember(items, ii)
+                        e.remember(items, ii, line)
                         LyricPicks.version++
                     }
-                }
-            } else LyricWord(a, letters(t), if (k != null) ({ UI.openWord(k) }) else null)
+                })
+            } else LyricWord(a, letters(t), if (k != null) ({ UI.openWord(k) }) else null, key = k)
         }
     } else emptyList()
 } catch (_: Exception) { emptyList() }
 
 /** the line's reading (華語: 拼音／注音; 台語: in the spelling chosen), in tone colours when they're on */
 internal fun lyricReading(line: String): AnnotatedString? = try {
-    val z = Store.zh; val d = Store.dict
-    if (readAsZh(z)) z!!.sentence(z.convertPieces(line), Prefs.zhRom.value, Prefs.zhPlace.value).annotated()
+    val z = lyricZh(); val d = Store.dict
+    if (readAsZh(z) && z!!.isSv) (if (Prefs.zhRom.value == 0) z.svSentence(line, true, T.greenInk.argbInt()).annotated() else null)
+    else if (readAsZh(z)) z!!.sentence(z.convertPieces(line), Prefs.zhRom.value, Prefs.zhPlace.value).annotated()
     else if (d != null) {
         val e = twEngine(d)
         e.songKey = LyricPicks.songKey
@@ -134,3 +186,21 @@ internal fun lyricReading(line: String): AnnotatedString? = try {
         }
     } else null
 } catch (_: Exception) { null }
+
+
+/** 歌詞 in 簡體 shown in 正體 (華語, 粵語, 客語; the app on 正體), as on the iPhone / iPad: the dictionary's words are
+ *  正體, so the words are found and read too. keepSimplified: as the lyrics were written (the 簡 / 繁 button) */
+object LyricsScript {
+    var keepSimplified by mutableStateOf(false)
+    private fun langNow() = LyricPicks.lang ?: Store.lang
+    /** whether the lyrics are shown changed (only when they had 簡體 in them) */
+    fun applies(): Boolean = langNow() in 1..3 && !Prefs.simplified.value
+    fun shown(text: String): String = if (keepSimplified || !applies()) text else traditional(text)
+    fun traditional(text: String): String {
+        val sb = StringBuilder()
+        text.codePoints().forEach { sb.appendCodePoint(Simp.reverse(it) ?: it) }
+        return sb.toString()
+    }
+    /** there's something to switch (the lyrics have 簡體 characters) */
+    fun canSwitch(text: String): Boolean = applies() && traditional(text) != text
+}

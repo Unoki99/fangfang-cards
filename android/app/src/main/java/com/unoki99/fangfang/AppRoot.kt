@@ -53,6 +53,8 @@ fun App() {
 @Composable
 private fun Root() {
     LaunchedEffect(Unit) { Store.load() }
+    // (設定 closed: it opens on its first page next time)
+    LaunchedEffect(UI.settingsOpen) { if (!UI.settingsOpen) Kept.map.remove("settings.page") }
     // a place or tone colours chosen: the dictionary is needed (local readings, word classes)
     val place = Prefs.place.value; val tones = Prefs.toneSys.value; val rom = Prefs.rom.value
     LaunchedEffect(place, tones, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value, Prefs.hongimSpaceAll.value) {
@@ -94,6 +96,7 @@ private fun Root() {
     UI.practice?.let { PracticeHost(it) }
     if (UI.radioOpen) RadioScreen()
     if (UI.settingsOpen) SettingsScreen()
+    if (UI.profileOpen) { BackHandler { UI.profileOpen = false }; ProfileScreen { UI.profileOpen = false } }
     Sheets()
     // the very first time: which language to learn (later: 設定 → 語言). Not asked of someone who used the app
     // before this question was added.

@@ -149,7 +149,6 @@ final class Store: ObservableObject {
     func save(syncChars: Bool = true) {
         // (a swipe does its own word's characters only: going through every 熟悉 word each time was slow)
         if syncChars { syncCharCards() }
-        WidgetBridge.progressChanged(self)
         saveTask?.cancel()
         saveTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 700_000_000)
@@ -301,7 +300,6 @@ final class Store: ObservableObject {
         } else if lang == 0 {
             other = deck
         }
-        WidgetBridge.rebuildIfNeeded(self)      // the widgets can have the 華語 levels now
     }
 
     func clearZhError() { zhError = nil }

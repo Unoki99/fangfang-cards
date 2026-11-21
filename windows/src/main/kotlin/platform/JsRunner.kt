@@ -5,18 +5,10 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
-// (Windows) the dictionaries' converters (install/*.js, the same as the Android and iPhone apps') run by Node.js:
+// (Windows, Mac) the dictionaries' converters (install/*.js, the same as the Android and iPhone apps') run by Node.js:
 // install-windows.bat downloads one into %LOCALAPPDATA%\FangfangCards\node when the computer has none.
 object JsRunner {
-    private fun node(): File? {
-        val path = System.getenv("PATH") ?: ""
-        for (d in path.split(File.pathSeparator)) {
-            val f = File(d.trim('"'), "node.exe")
-            if (f.isFile) return f
-        }
-        val own = File(com.unoki99.fangfang.desktop.DesktopContext.base, "node")
-        return own.walkTopDown().maxDepth(3).firstOrNull { it.name.equals("node.exe", true) && it.isFile }
-    }
+    private fun node(): File? = com.unoki99.fangfang.desktop.Os.find("node", File(com.unoki99.fangfang.desktop.DesktopContext.base, "node"))
 
     private const val RUNNER = """
 "use strict";
@@ -63,7 +55,7 @@ vm.runInContext(fn + "(__args)", ctx);
 
     /** runs install/<script>.js's function with args; progress: (0…1, what it's doing) */
     suspend fun run(script: String, function: String, args: JSONObject, progress: (Double, String) -> Unit) = withContext(Dispatchers.IO) {
-        val node = node() ?: throw Exception(tr("要用 Node.js 整理詞典：先執行一次 install-windows.bat（它會下載 Node.js），或從 nodejs.org 安裝。"))
+        val node = node() ?: throw Exception(tr("要用 Node.js 整理詞典：先執行一次 {0}（它會下載 Node.js），或從 nodejs.org 安裝。", com.unoki99.fangfang.desktop.Os.installer))
         val work = File(Store.app.cacheDir, "js-" + System.nanoTime()).apply { mkdirs() }
         try {
             // the converters, out of the program's own files

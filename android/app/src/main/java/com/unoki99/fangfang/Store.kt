@@ -58,6 +58,8 @@ object Store {
     val isYue: Boolean get() = lang == 2
     val isHak: Boolean get() = lang == 3
     val isJa: Boolean get() = lang == 4
+    /** 瑞典語 (the computer version only) */
+    val isSv: Boolean get() = lang == 5
     /** which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3) */
     private val zhKind: Int get() = zh?.lang ?: 1
     /** a hint to show (粵語 without a Cantonese voice on the device) */
@@ -198,6 +200,10 @@ object Store {
         writeAtomic(progressFile, progress.toJson())
     }
 
+    /** the progress as text, made now (on the window's thread), to write elsewhere: writeProgress */
+    fun progressJson(): String? { saveJob?.cancel(); return if (loaded) progress.toJson() else null }
+    @Synchronized fun writeProgress(text: String) = writeAtomic(progressFile, text)
+
     fun writeAtomic(f: File, text: String) {
         val tmp = File(f.parentFile, f.name + ".tmp")
         tmp.writeText(text)
@@ -225,14 +231,14 @@ object Store {
     /** the spelling shown for 華語 / 粵語 (Prefs.zhRom) is kept apart for each */
     private fun shownRom(l: Int) {
         val was = lang
-        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value; 4 -> Prefs.jaRom.value = Prefs.zhRom.value }
-        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value; 4 -> Prefs.zhRom.value = Prefs.jaRom.value }
+        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value; 4 -> Prefs.jaRom.value = Prefs.zhRom.value; 5 -> Prefs.svRom.value = Prefs.zhRom.value }
+        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value; 4 -> Prefs.zhRom.value = Prefs.jaRom.value; 5 -> Prefs.zhRom.value = Prefs.svRom.value }
     }
 
     private fun shown(l: Int) {
         shownRom(l)
         lang = l; isZh = l != 0
-        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.ja = l == 4; EngineSettings.zhShown = l != 0
+        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.ja = l == 4; EngineSettings.sv = l == 5; EngineSettings.zhShown = l != 0
         undoStack.clear(); canUndo = false
         changed()
         // (words from the browser add-on waiting for this language)
@@ -307,7 +313,7 @@ object Store {
         val list = Prefs.zhList.value
         val accent = Prefs.hakAccent.value.coerceIn(0, 5)
         val j = scope.async(Dispatchers.Default) {
-            val name = listOf("zh", "zh", "yue", "hak", "ja")[kind.coerceIn(0, 4)]
+            val name = listOf("zh", "zh", "yue", "hak", "ja", "sv")[kind.coerceIn(0, 5)]
             // (the dictionary shown before is let go first: two big ones at once don't fit in memory)
             if (have == null && zh != null) { withContext(Dispatchers.Main) { zh = null }; System.gc() }
             val d = have ?: ZhDict(DataFiles.reader(name) ?: throw java.io.FileNotFoundException("$name.json"), accent).also { d ->
@@ -586,7 +592,7 @@ object Store {
 
     // MARK: 本週學習 (this week's words)
 
-    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak", "ja")[lang.coerceIn(0, 4)]
+    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak", "ja", "sv")[lang.coerceIn(0, 5)]
 
     /** this week's words (in the language shown), in the order they were picked */
     val weekCards: List<Card> get() {
@@ -1121,7 +1127,12 @@ object Store {
         return d.alsoSaid(card.k, place).map { Pair(d.codes(it, r, place), d.codes(it, 3, place)) }
     }
 
-    private fun zhSyl(card: Card): List<String> = if (Prefs.zhPlace.value == 1) (card.zl ?: card.zs!!) else card.zs!!
+    private fun zhSyl(card: Card): List<String> = when (Prefs.zhPlace.value) {
+        // (四川話: the dictionary entry's reading, when it has one)
+        2 -> zh?.entry(card.k)?.sc ?: card.zl ?: card.zs!!
+        1 -> card.zl ?: card.zs!!
+        else -> card.zs!!
+    }
 
     fun cardHan(card: Card, place: Int, base: Int): Styled {
         val z = zh
@@ -1168,6 +1179,8 @@ object Store {
 
     fun exampleRom(card: Card, x: Example, rom: Int, place: Int): Styled {
         val z = zh
+        // 瑞典語: the sentence with its words split into morphemes (sam-tyck-lig-a)
+        if (card.isZh && z != null && z.isSv) return if (Prefs.zhRom.value == 0) z.svSentence(x.h, true, null) else emptyList()
         if (x.w != null && z != null) return z.sentence(ZhDict.pieces(x.h, x.w), Prefs.zhRom.value, Prefs.zhPlace.value)
         // (客語: the sentences have no reading of their own: the dictionary's words, as in 轉換)
         if (card.isZh) return if (z != null) z.sentence(examplePieces(z, card, x.h), Prefs.zhRom.value, Prefs.zhPlace.value) else styled("")
@@ -1182,6 +1195,8 @@ object Store {
 
     fun exampleHan(card: Card, x: Example, place: Int, base: Int): Styled {
         val z = zh
+        // 瑞典語: each word in its morphemes' colours
+        if (card.isZh && z != null && z.isSv) return z.svSentence(x.h, false, base)
         if (x.w != null && z != null) return z.sentenceHan(ZhDict.pieces(x.h, x.w), Prefs.zhPlace.value, base)
         if (card.isZh) return if (z != null) z.sentenceHan(examplePieces(z, card, x.h), Prefs.zhPlace.value, base) else styled(x.h, base)
         val d = dict
@@ -1194,6 +1209,7 @@ object Store {
 
     fun blankRom(card: Card, x: Example, rom: Int, place: Int): Styled? {
         val z = zh
+        if (card.isZh && z != null && z.isSv) return null
         if (x.w != null && z != null) return z.sentence(ZhDict.pieces(x.h, x.w), Prefs.zhRom.value, Prefs.zhPlace.value, blank = card.h)
         if (card.isZh) return z?.sentence(examplePieces(z, card, x.h), Prefs.zhRom.value, Prefs.zhPlace.value, blank = card.h)
         val r = rom.coerceIn(0, 2)
@@ -1476,6 +1492,11 @@ object Store {
             }
             for ((k, i) in gi) if (progress.groupInfo[k] == null) progress.groupInfo[k] = i
             for ((k, t) in dmap("groupWords")) if (Math.abs(t) > Math.abs(progress.groupWords[k] ?: 0.0)) progress.groupWords[k] = t
+            // 影片懂多少: each video's newest
+            for ((k, v) in (obj["seen"] as? Map<String, Any?>) ?: emptyMap()) {
+                val l = (v as? List<Any?>)?.mapNotNull { (it as? Number)?.toDouble() } ?: continue
+                if (l.size >= 2 && l[1] > (progress.seen[k]?.getOrNull(1) ?: 0.0)) progress.seen[k] = l.take(2).toMutableList()
+            }
         }
         val oi = if (from == 0) (obj["ownInfo"] as? Map<String, Any?>)?.mapNotNull { (k, v) ->
             (v as? List<Any?>)?.let { l -> k to l.map { (it as? String) ?: "" }.toMutableList() }
@@ -1542,6 +1563,23 @@ object Store {
         return "已匯入，更新了 $n 個詞。"
     }
 
+    /** 我的進度: listening time (radio = 0, video = 1), added to a day ("2026-11-14"; null: today) */
+    fun addListening(minutes: Double, kind: Int, day: String? = null) {
+        if (minutes <= 0 || kind !in 0..1) return
+        val d = day ?: java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val v = progress.listen.getOrPut(d) { mutableListOf(0.0, 0.0) }
+        while (v.size < 2) v.add(0.0)
+        v[kind] += minutes
+        save()
+    }
+    /** the browser add-on's 懂 % of a video when it was last watched (and its name and address, if the app has none yet) */
+    fun noteSeen(id: String, name: String, url: String, pct: Double, at: Double) {
+        if (id.isEmpty() || at <= (progress.seen[id]?.getOrNull(1) ?: 0.0)) return
+        progress.seen[id] = mutableListOf(pct, at)
+        if (progress.groupInfo[id] == null) progress.groupInfo[id] = mutableListOf(name.ifEmpty { id }, url, "")
+        save()
+    }
+
     fun backupData(): String {
         val exported = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US)
             .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date())
@@ -1549,7 +1587,8 @@ object Store {
             "status" to progress.status, "added" to progress.added, "streak" to progress.streak,
             "saved" to progress.saved, "own" to progress.own, "ownInfo" to progress.ownInfo, "senses" to progress.senses,
             "week" to progress.week, "weekStart" to progress.weekStart, "srs" to progress.srs, "log" to progress.log,
-            "groupTime" to progress.groupTime, "groupInfo" to progress.groupInfo, "groupWords" to progress.groupWords), pretty = true)
+            "groupTime" to progress.groupTime, "groupInfo" to progress.groupInfo, "groupWords" to progress.groupWords,
+            "seen" to progress.seen), pretty = true)
     }
 
     @Suppress("UNCHECKED_CAST")

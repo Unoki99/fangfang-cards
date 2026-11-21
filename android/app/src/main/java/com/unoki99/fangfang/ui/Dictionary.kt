@@ -97,8 +97,6 @@ fun DictEntryBody(d: Dict, key: String) {
             Txt(r, lat(22f), T.greenInk)
             val z = remember(key, tk) { d.wordText(key, 3, place).annotated() }
             Txt(z, sz(19f), T.purpleInk)
-            // every 腔口's reading, the one chosen in colour (guessed ones marked 推測)
-            TwPlaceRows(d, key)
             InputCodesRow(han)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 d.raw.reg[key]?.let { RegChip(it) }
@@ -188,13 +186,22 @@ fun DictEntryBody(d: Dict, key: String) {
                 Txt(tr("英文解釋：維基詞典（CC BY-SA）"), ff(FF.Caption2), T.muted)
             }
         }
-        if (zhShort.isNotEmpty() || en.isNotEmpty()) androidx.compose.foundation.layout.BoxWithConstraints {
-            if (zhShort.isNotEmpty() && en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                zhCol(Modifier.weight(1f)); enCol(Modifier.weight(1f))
-            } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (zhShort.isNotEmpty()) zhCol(Modifier)
-                if (en.isNotEmpty()) enCol(Modifier)
-            }
+        @Composable fun meanings() {
+            if (zhShort.isNotEmpty() || en.isNotEmpty()) androidx.compose.foundation.layout.BoxWithConstraints {
+                if (zhShort.isNotEmpty() && en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+                    zhCol(Modifier.weight(1f)); enCol(Modifier.weight(1f))
+                } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (zhShort.isNotEmpty()) zhCol(Modifier)
+                    if (en.isNotEmpty()) enCol(Modifier)
+                }
+            } else Txt(tr("沒有簡短的解釋。往左滑看各地讀音。"), ff(FF.Footnote), T.muted)
+        }
+        // the short meanings, and every 腔口's reading (swipe, or tap the tabs): the two take the same room, so
+        // nothing moves when you switch
+        if (d.raw.places.isEmpty()) meanings()
+        else SwipePages(listOf(tr("解釋"), tr("各地讀音")), "entry.page") { page ->
+            if (page == 0) meanings()
+            else Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { TwPlacesAndMap(d, key) }
         }
         val senses = remember(key) { d.senses(key) }
         for (s in senses) SenseBlock(d, key, s)
@@ -263,6 +270,8 @@ private fun SenseBlock(d: Dict, key: String, s: DictSense) {
             }
             SenseSaveButton(SavedSense(key, s.n - 1))
         }
+        // a local word: the usual words its meaning comes from (看：某、牽手), each opening its entry
+        if (s.see.isNotEmpty()) Box(Modifier.padding(start = 18.dp)) { LinkChips(d, tr("看"), s.see, T.olive, T.oliveEdge, T.oliveInk) }
         // places that read this meaning differently from the word (足「非常、很」: 臺南、高雄、金門 tsok), yellow like 又
         val m = d.raw.sdia?.get(key)?.get((s.n - 1).toString())
         if (!m.isNullOrEmpty()) {
@@ -471,7 +480,7 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
  *  天遮): only the places that say it, not every place nor 通行 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TwPlaceRows(d: Dict, key: String) {
+fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: Int? = null, common: Boolean = true, groups: Boolean = true) {
     if (d.raw.places.isEmpty()) return
     val rom = Prefs.rom.value.coerceIn(0, 2)
     val place = Prefs.place.value
@@ -479,33 +488,36 @@ fun TwPlaceRows(d: Dict, key: String) {
     val local = d.raw.loc?.get(key)?.filter { it < d.raw.places.size }
     val all = local ?: d.raw.places.indices.toList()
     @Composable fun cell(p: Int, m: Modifier = Modifier) {
-        val mine = p == place
+        val mine = if (picked != null) p == picked else p == place
         val guessed = p >= 0 && d.guessedSyllables(key, p).isNotEmpty()
         val name = if (p < 0) tr("通行") else tr(d.raw.places[p].take(2))
-        Column(m, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        // (as wide as its widest line: the name and the readings are never squeezed or broken onto two lines; a cell
+        // that doesn't fit goes on the next line)
+        Column(m.width(IntrinsicSize.Max).then(if (onPick != null) Modifier.clip(RoundedCornerShape(10.dp))
+            .background(if (mine) T.twFill.copy(alpha = 0.35f) else T.fn.copy(alpha = 0.45f)).clickable { onPick(p) }.hand().padding(6.dp) else Modifier),
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
                 Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
                 if (guessed) Txt(tr("推測"), ff(FF.Caption2), T.muted)
             }
-            Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk)
-            Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk)
-            if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p) + (if (d.isContraction(x, key)) tr("（合音）") else ""), ff(FF.Caption2), T.muted)
+            Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk, maxLines = 1)
+            Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk, maxLines = 1)
+            if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p) + (if (d.isContraction(x, key)) tr("（合音）") else ""), ff(FF.Caption2), T.muted, maxLines = 1)
         }
     }
     // 通行 first; then the places by 腔 (偏泉腔, 混合腔, 偏漳腔), three to a row (two when the readings are long)
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (local == null) cell(-1)
-        for (k in listOf("泉", "混", "漳")) {
+        if (local == null && common) cell(-1)
+        if (groups) for (k in listOf("泉", "混", "漳")) {
             val ps = all.filter { d.raw.places[it].contains(k) }
             if (ps.isEmpty()) continue
-            val long = ps.any { d.wordText(key, rom, it).plain().length > 10 }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(24.dp).background(T.fn.copy(alpha = 0.7f), CircleShape), contentAlignment = Alignment.Center) {
                     Txt(tr(k), ff(FF.Caption), T.muted)
                 }
                 // (as many on a line as fit: 4 or 5 on a wide screen, fewer on a phone)
                 FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (p in ps) cell(p, Modifier.widthIn(min = if (long) 120.dp else 78.dp))
+                    for (p in ps) cell(p, Modifier.widthIn(min = 78.dp))
                 }
             }
         }

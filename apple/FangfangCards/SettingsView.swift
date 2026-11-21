@@ -166,7 +166,6 @@ private struct LookSettings: View {
     @AppStorage(TextSize.key) private var textSize = TextSize.standard
     /// 文字大小 while the slider is held (applied when it's let go)
     @State private var textSizeDraft: Double?
-    @AppStorage("widgetBG") private var widgetBG = 0.45
     @AppStorage(ThemeMotion.key) private var themeMotion = true
     @AppStorage(ThemeMotion.saverKey) private var motionSaver = false
     @AppStorage(DictFont.key) private var dictFont = 0
@@ -309,18 +308,6 @@ private struct LookSettings: View {
                     Text(tr("鍵盤：⌘+、⌘−、⌘0"))
                 }
                 .id("textSize")
-            }
-            Section {
-                HStack(spacing: 10) {
-                    Image(systemName: "circle.dashed").foregroundStyle(T.muted)
-                    Slider(value: $widgetBG, in: 0...1, step: 0.05)
-                    Image(systemName: "circle.fill").foregroundStyle(T.muted)
-                    Text(widgetBG < 0.05 ? trs("透明") : (widgetBG > 0.95 ? trs("不透明") : "\(Int((widgetBG * 100).rounded()))%"))
-                        .foregroundStyle(T.muted).monospacedDigit()
-                }
-                .onChange(of: widgetBG) { WidgetBridge.settingsChanged(store) }
-            } header: {
-                Text(tr("小工具背景"))
             }
             Section {
                 Toggle(tr("指到的字放大"), isOn: $swellOn)

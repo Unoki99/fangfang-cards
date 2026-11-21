@@ -47,7 +47,7 @@ struct FangfangCardsApp: App {
                 .tint(AppTint.accent)
                 .macTextSize()
                 // Safari 查詞's 傳到 App: the words chosen there
-                .onOpenURL { url in if !IslandLive.open(url, store) { SafariImport.handle(url, store) } }
+                .onOpenURL { url in SafariImport.handle(url, store) }
                 .onChange(of: store.loaded) { SafariImport.apply(store) }
                 // (a word of the other language: once its dictionary is open)
                 .onChange(of: store.cards.count) { SafariImport.apply(store) }
@@ -55,10 +55,8 @@ struct FangfangCardsApp: App {
         .commands { TextSizeCommands() }
         .onChange(of: scenePhase) { _, phase in
             // pull changes from the other device when the app opens, back up when it closes
-            if phase == .active { store.syncNow(); WidgetBridge.appOpened(store); SafariImport.apply(store); IslandLive.end(); IslandLive.takeKnown(store) }
-            // (動態島: started while the app is still on screen, as it's leaving: iOS starts one only from the front)
-            else if phase == .inactive { IslandLive.start(store) }
-            else if phase == .background { store.saveNow(); store.syncNow(); WidgetBridge.flush(store) }
+            if phase == .active { store.syncNow(); SafariImport.apply(store) }
+            else if phase == .background { store.saveNow(); store.syncNow() }
         }
     }
 }
@@ -149,8 +147,6 @@ struct RootView: View {
                 .padding(.top, 64)
             }
         }
-        // (the Dynamic Island tapped: the word on it)
-        .sheet(item: $router.islandEntry) { e in IslandEntrySheet(key: e.key).environmentObject(store) }
         .overlay {
             // loading the 華語 dictionary (the first time 華語 is chosen)
             // (a small note at the bottom, not in the way: the app can be used meanwhile)
@@ -177,27 +173,11 @@ struct RootView: View {
             Button(tr("好")) { store.clearZhError() }
         } message: { Text(store.zhError ?? "") }
         // a place chosen anywhere: load the dictionary (guessed readings, example sentences)
-        .onChange(of: place) {
-            if place >= 0 { store.loadDict() }
-            WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store)
-        }
-        // the 分類 widgets: new spelling, the word list once loaded, local readings once the dictionary is there
-        .onChange(of: rom) { if rom == 3 { store.loadDict() }; WidgetBridge.writeState(store) }
+        .onChange(of: place) { if place >= 0 { store.loadDict() } }
+        // (方音 needs the dictionary's local readings)
+        .onChange(of: rom) { if rom == 3 { store.loadDict() } }
         // 聲調顏色 needs the dictionary (word classes, readings in sentences)
-        .onChange(of: toneSys) { if toneSys != 0 { store.loadDict() }; WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: toneMarks) { WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: hongimTone1) { WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: hongimTone1Space) { WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: hongimAll) { WidgetBridge.rebuildIfNeeded(store) }
-        // 華語 words on the widgets: their meaning, reading and word list
-        .onChange(of: zhEnglish) { WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: store.zhList) { WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: store.zhRom) { WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: store.zhPlace) { WidgetBridge.writeState(store); WidgetBridge.rebuildIfNeeded(store) }
-        .onChange(of: store.loaded) { WidgetBridge.appOpened(store) }
-        .onChange(of: store.dict != nil) { WidgetBridge.rebuildIfNeeded(store) }
-        // (another language's dictionary opened: its 分類 for the widgets too)
-        .onChange(of: store.zh?.lang) { WidgetBridge.rebuildIfNeeded(store) }
+        .onChange(of: toneSys) { if toneSys != 0 { store.loadDict() } }
     }
 }
 

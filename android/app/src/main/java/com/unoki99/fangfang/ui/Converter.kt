@@ -56,7 +56,42 @@ object ConvModel {
     fun run() {
         val e = engine ?: return
         e.latinMode = LatinMode.of(Prefs.latin.value)
-        result = e.convert(Prefs.convText.value)
+        val r = e.convert(Prefs.convText.value)
+        // (the 腔口 readings chosen stay with their words while you write)
+        if (pins.isNotEmpty()) for (it in r.items) if (it.opts.isNotEmpty()) e.d.keyOf(it.current)?.let { k -> pins[k]?.let { o -> it.pinned = o } }
+        result = r
+        version++
+    }
+
+    /** 轉換: words said the way of one 腔口 (the word's key → that reading), and which 腔口 */
+    private val pins = HashMap<String, Opt>()
+    val pinPlace = HashMap<String, Int>()
+
+    /** item's word said the way place says it (-1: 通行) */
+    fun pin(item: Int, place: Int) {
+        val r = result
+        if (item !in r.items.indices) return
+        val it = r.items[item]
+        it.pinned = null
+        val d = engine?.d ?: return
+        val k = d.keyOf(it.current) ?: return
+        val han = it.current.han ?: return
+        val codes = d.codesFor(k, place)
+        val o = Opt(han, codes.split(' ').filter { c -> c.isNotEmpty() }, parent = k,
+            label = if (place < 0) null else d.raw.places.getOrNull(place)?.take(2), tokens = d.tokensFor(k, place).joinToString(" "))
+        pins[k] = o; pinPlace[k] = place
+        for (x in r.items) if (x.opts.isNotEmpty() && x.pinned == null && d.keyOf(x.current) == k) x.pinned = o
+        version++
+    }
+
+    /** the 腔口 reading of item's word taken off (the place in 設定 again) */
+    fun unpin(item: Int) {
+        val r = result
+        if (item !in r.items.indices) return
+        val o = r.items[item].pinned ?: return
+        val k = o.parent ?: return
+        pins.remove(k); pinPlace.remove(k)
+        for (x in r.items) if (x.pinned?.parent == k) x.pinned = null
         version++
     }
 
@@ -85,6 +120,7 @@ object ConvModel {
     fun choose(item: Int, opt: Int) {
         val r = result
         if (item !in r.items.indices) return
+        if (r.items[item].pinned != null) unpin(item)
         r.items[item].sel = opt
         r.items[item].likely = null
         engine?.remember(r.items, item)
@@ -186,6 +222,15 @@ private fun ConvertPane(d: Dict) {
                     IconLabel(if (all) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                         if (all) tr("這段的詞都收藏了") else tr("收藏這段所有的詞（{0}）", keys.count { !Store.isSaved(it) }), ff(FF.Subheadline))
                 }
+            }
+            // 選讀音的時候也選腔口: some say a word another place's way, whatever the place they speak
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.55f)).clickable { Prefs.convAnyPlace.value = !Prefs.convAnyPlace.value }
+                .padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Txt(tr("選讀音時也選腔口"), ff(FF.Subheadline), T.glyph)
+                    Txt(tr("選了讀音以後，再選要用哪個地方的講法（不限設定的腔口）。"), ff(FF.Caption), T.muted)
+                }
+                Switch(Prefs.convAnyPlace.value, { Prefs.convAnyPlace.value = it })
             }
             Txt(tr("點詞可以看意思、換讀音、收藏、加到「不熟」。按住再滑過去，放開就打開那個詞。下面有彩色星星 = 已收藏或在「不熟」，藍色星星 = 收藏了這個詞的某個意思。橘色 = 字典裡找不到，或讀音不太確定（猜對的機會約 80% 以下），點一下可以確認。"),
                 ff(FF.Caption), T.muted)
@@ -386,6 +431,8 @@ fun ConvWordSheet(d: Dict, index: Int) {
     ConvModel.version
     val rom = Prefs.rom.value; val place = Prefs.place.value
     var addingOwn by remember { mutableStateOf(false) }
+    // (轉換's setting: after choosing a reading, which 腔口's way of saying it)
+    var placePick by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { UI.closeSheet() }) { Text(tr("完成"), color = T.btnInk) }
@@ -404,9 +451,9 @@ fun ConvWordSheet(d: Dict, index: Int) {
                 for ((i, o) in it.opts.withIndex()) {
                     val on = i == it.sel
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (on) T.btn.copy(alpha = 0.6f) else T.fn.copy(alpha = 0.6f))
-                        .clickable { ConvModel.choose(index, i) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                        .clickable { ConvModel.choose(index, i); if (Prefs.convAnyPlace.value) placePick = true }.padding(horizontal = 10.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        RadioButton(on, { ConvModel.choose(index, i) }, colors = RadioButtonDefaults.colors(selectedColor = T.greenInk, unselectedColor = T.muted))
+                        RadioButton(on, { ConvModel.choose(index, i); if (Prefs.convAnyPlace.value) placePick = true }, colors = RadioButtonDefaults.colors(selectedColor = T.greenInk, unselectedColor = T.muted))
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Txt(o.han ?: "—", sz(20f, FontWeight.SemiBold), T.glyph)
@@ -421,6 +468,16 @@ fun ConvWordSheet(d: Dict, index: Int) {
                         }
                     }
                 }
+            }
+            // the 腔口 whose reading it has (轉換's setting on: choose another; a word with one reading too)
+            val pk = d.keyOf(it.current)
+            if (Prefs.convAnyPlace.value && pk != null && it.current.codes != null && d.raw.places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                val pp = it.pinned?.let { o -> ConvModel.pinPlace[o.parent] }
+                Txt(if (it.pinned == null) tr("讀音：設定的腔口") else tr("讀音：{0}", if (pp == null || pp < 0) tr("通行") else tr(d.raw.places[pp].take(2))),
+                    ff(FF.Footnote), T.muted)
+                CapsuleButton(tr("選腔口的讀音"), Icons.Filled.Place, false, T.twFill, T.twEdge, T.twInk) { placePick = true }
+                if (it.pinned != null) TextButton(onClick = { ConvModel.unpin(index) }) { Text(tr("用設定的腔口"), color = T.btnInk) }
             }
             it.current.han?.let { h -> Sayings(d, h, if (it.src == "han") index else -1) }
             val k = d.keyOf(it.current)
@@ -440,6 +497,20 @@ fun ConvWordSheet(d: Dict, index: Int) {
                 }
             }
             Spacer(Modifier.height(60.dp))
+        }
+        if (placePick) {
+            val k = d.keyOf(it.current)
+            if (k == null || it.current.codes == null) placePick = false
+            else AlertDialog(onDismissRequest = { placePick = false }, containerColor = T.bg,
+                title = { Txt(tr("「{0}」各地的讀音", it.current.han ?: ""), ff(FF.Headline), T.glyph) },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Txt(tr("點一個腔口，這段文字裡的這個詞就用那裡的講法。"), ff(FF.Footnote), T.muted)
+                        TwPlaceRows(d, k, onPick = { p -> ConvModel.pin(index, p); placePick = false },
+                            picked = it.pinned?.let { o -> ConvModel.pinPlace[o.parent] } ?: Prefs.place.value)
+                    }
+                },
+                confirmButton = { TextButton(onClick = { placePick = false }) { Text(tr("完成"), color = T.btnInk) } })
         }
         if (addingOwn) AddOwnWordDialog(d, it.current.han ?: "", it.current.codes?.let { c -> d.codes(c.joinToString(" "), 1, -1) } ?: "") {
             addingOwn = false; ConvModel.run()

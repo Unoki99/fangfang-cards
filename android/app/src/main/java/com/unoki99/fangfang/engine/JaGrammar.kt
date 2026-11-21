@@ -527,6 +527,21 @@ object JaGrammar {
             "いて" to "く", "いた" to "く", "いで" to "ぐ", "いだ" to "ぐ", "して" to "す", "した" to "す",
             "って" to "う", "った" to "う", "って" to "つ", "った" to "つ", "って" to "る", "った" to "る", "って" to "く", "った" to "く",
             "んで" to "む", "んだ" to "む", "んで" to "ぶ", "んだ" to "ぶ", "んで" to "ぬ", "んだ" to "ぬ",
+            // (the て / た form with more after it: back to the て / た form first, then the step above. 書いてる →
+            // 書いて → 書く; 飲んじゃった → 飲んで → 飲む)
+            "ている" to "て", "てる" to "て", "ていた" to "て", "てた" to "て", "ています" to "て", "てます" to "て",
+            "ちゃう" to "て", "ちゃった" to "て", "ちゃって" to "て", "てしまう" to "て", "てしまった" to "て",
+            "ていく" to "て", "てく" to "て", "てくる" to "て", "てきた" to "て", "てくれる" to "て", "てくれ" to "て",
+            "てあげる" to "て", "てもらう" to "て", "てほしい" to "て", "ても" to "て", "てから" to "て", "てて" to "て",
+            "でいる" to "で", "でる" to "で", "でいた" to "で", "でた" to "で", "じゃう" to "で", "じゃった" to "で",
+            "でしまう" to "で", "でしまった" to "で", "でいく" to "で", "でく" to "で", "でくる" to "で", "でも" to "で",
+            "たら" to "た", "たり" to "た", "だら" to "だ", "だり" to "だ", "たって" to "た", "だって" to "だ",
+            // (not: back to ない, then ない back to the word)
+            "なくて" to "ない", "なければ" to "ない", "なきゃ" to "ない", "なくちゃ" to "ない", "ないで" to "ない",
+            "なかったら" to "ない", "ずに" to "ない", "ず" to "ない",
+            // (polite, wanting, too much)
+            "ましょう" to "ます", "ませんか" to "ます", "たかった" to "たい", "たくない" to "たい", "たくて" to "たい",
+            "すぎる" to "る", "すぎた" to "る",
         )
         for ((u, row) in rows) {
             r += row[1] + "ませんでした" to u; r += row[1] + "ました" to u; r += row[1] + "ません" to u
@@ -534,8 +549,29 @@ object JaGrammar {
             r += row[0] + "なかった" to u; r += row[0] + "ない" to u; r += row[0] + "れる" to u; r += row[0] + "せる" to u
             r += row[0] + "される" to u; r += row[3] + "ば" to u; r += row[3] + "る" to u; r += row[4] + "う" to u
             r += row[3] to u
+            r += row[1] + "すぎる" to u; r += row[1] + "そう" to u
         }
         r.sortedByDescending { it.first.length }
+    }
+
+    /** the endings that only an 一段 verb, or only a 五段 one, has (食べ+ない, 書か+ない): a word read back to its
+     *  dictionary form has to be of a class that has the ending used (いらない is 要る, not いる) */
+    private val ichidanEnds = setOf("ませんでした", "ました", "ません", "ます", "なかった", "ない", "させられる", "られる", "させる",
+        "たい", "よう", "れば", "ている", "た", "て", "ろ", "ながら", "すぎる", "すぎた")
+    private val godanEnds: Set<String> = run {
+        val g = HashSet<String>(listOf("いて", "いた", "いで", "いだ", "して", "した", "って", "った", "んで", "んだ"))
+        for ((_, row) in rows) {
+            for (x in listOf("ませんでした", "ました", "ません", "ます", "たい", "ながら", "すぎる", "そう")) g.add(row[1] + x)
+            for (x in listOf("なかった", "ない", "れる", "せる", "される")) g.add(row[0] + x)
+            g.add(row[3] + "ば"); g.add(row[3] + "る"); g.add(row[4] + "う"); g.add(row[3])
+        }
+        g
+    }
+    /** a word of this class can have this ending (classes other than the verbs: no check) */
+    fun fits(c: JaClass, end: String): Boolean = when (c) {
+        JaClass.Ichidan -> end in ichidanEnds
+        is JaClass.Godan -> end in godanEnds
+        else -> true
     }
 
     /** the dictionary forms a word can be a form of (two steps: 食べさせなかった → 食べさせる → 食べる) */

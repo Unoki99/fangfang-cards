@@ -90,6 +90,8 @@ struct DictSense {
     let ex: [[String]]          // [漢字, template, 華語, audio name]
     let syn: [String]           // keys
     let ant: [String]
+    /// a local word (方言詞): the usual words its meaning was taken from (看：某、牽手)
+    var see: [String] = []
 }
 
 /// a reading choice for a word in the converter
@@ -330,13 +332,21 @@ final class Dict: @unchecked Sendable {
 
     // MARK: rendering (same rules as fangcore.js)
 
+    /// 台羅: the nasal oo is written onn (hōnn, not hōonn): a nasal o is always the open one
+    static func tlStandard(_ s: String) -> String {
+        guard s.contains("nn") else { return s }
+        let d = s.decomposedStringWithCanonicalMapping
+        let r = d.replacingOccurrences(of: "([oO])([\\u0300-\\u036f]*)o(?=nn)", with: "$1$2", options: .regularExpression)
+        return r == d ? s : r.precomposedStringWithCanonicalMapping
+    }
+
     /// sys: 0 皓羅, 1 台羅, 2 白話字, 3 方音; place: -1 = 通行
     func syl(_ c: String, _ sys: Int, _ place: Int) -> String {
         guard let s = raw.syl[c] else { return c }
         switch sys {
         // with a place chosen, 台羅 o is ㄛ — except in 臺南 and 高雄, where o is always said ㄜ
         case 3: return HongimTone1.syllable(place >= 0 && c.contains("ø") && !orPlaces.contains(place) ? s[0].replacingOccurrences(of: "ㄜ", with: "ㄛ") : s[0])
-        case 1: return raw.tl[c]?.first ?? s[1]
+        case 1: return raw.tl[c]?.first.map(Self.tlStandard) ?? s[1]
         case 2: return raw.pj[c] ?? s[1]
         default: return s[1]
         }
@@ -344,8 +354,36 @@ final class Dict: @unchecked Sendable {
     func isCode(_ t: String) -> Bool { raw.syl[t] != nil }
 
     func codesFor(_ key: String, _ place: Int) -> String {
+        let c = statedCodes(key, place)
+        // (新竹, which says -ir and -i both: the -ir one first, the -i one 也講)
+        if place >= 0, !c.contains("ɨ"), irAndI(place), let v = irVariant(key, c), v.contains("ɨ") { return v }
+        return c
+    }
+
+    /// a place's reading as the dictionary has it (no -ir / -i swapped)
+    private func statedCodes(_ key: String, _ place: Int) -> String {
         if place >= 0, let d = raw.dia[key]?[String(place)] { return d }
         return Dict.codesOf(key)
+    }
+
+    /// places that say -ir and -i both (新竹: 去 khìr and khì): neither is the only one there
+    func irAndI(_ place: Int) -> Bool { place >= 0 && place < raw.places.count && raw.places[place].hasPrefix("新竹") }
+
+    /// a reading with -ir as -i (khìr → khì), or with -i as the -ir another place says (khì → khìr); nil: none
+    private func irVariant(_ key: String, _ shown: String) -> String? {
+        if shown.contains("ɨ") { return shown.replacingOccurrences(of: "ɨ", with: "i") }
+        let mine = shown.split(separator: " ").map(String.init)
+        for p in raw.places.indices where !irAndI(p) {
+            let o = statedCodes(key, p).split(separator: " ").map(String.init)
+            guard o.count == mine.count, o.contains(where: { $0.contains("ɨ") }) else { continue }
+            var changed = false
+            let out = mine.indices.map { j -> String in
+                if o[j].contains("ɨ") && o[j].replacingOccurrences(of: "ɨ", with: "i") == mine[j] { changed = true; return o[j] }
+                return mine[j]
+            }
+            if changed { return out.joined(separator: " ") }
+        }
+        return nil
     }
 
     func tokensFor(_ key: String, _ place: Int, codes: String? = nil) -> [String] {
@@ -391,7 +429,7 @@ final class Dict: @unchecked Sendable {
 
     /// the place says the word differently from 通行 (not counting 臺南/高雄 o → or)
     func differsFromCommon(_ key: String, _ place: Int) -> Bool {
-        guard place >= 0, let dc = raw.dia[key]?[String(place)] else { return false }
+        guard place >= 0, let dc = irAndI(place) ? codesFor(key, place) : raw.dia[key]?[String(place)] else { return false }
         let a = Dict.codesOf(key).split(separator: " ").map(String.init), b = dc.split(separator: " ").map(String.init)
         guard a.count == b.count else { return true }
         return b.indices.contains { !sameSound(a[$0], b[$0], place) }
@@ -936,7 +974,11 @@ final class Dict: @unchecked Sendable {
     /// the place's other way(s) of saying the word, as codes
     func alsoSaid(_ key: String, _ place: Int) -> [String] {
         guard place >= 0 else { return [] }
-        return raw.dia2?[key]?[String(place)] ?? []
+        let base = raw.dia2?[key]?[String(place)] ?? []
+        guard irAndI(place) else { return base }
+        let shown = codesFor(key, place)
+        guard let other = irVariant(key, shown), other != shown, !base.contains(other) else { return base }
+        return base + [other]
     }
 
     func others(_ key: String, _ place: Int) -> [(label: String, codes: String, tokens: String?)] {
@@ -1004,9 +1046,57 @@ final class Dict: @unchecked Sendable {
             var text = line
             if let r = line.range(of: #"^\d+\.\s*"#, options: .regularExpression) { text = String(line[r.upperBound...]) }
             let exs = (raw.ex[key].flatMap { i < $0.count ? $0[i] : nil }) ?? []
+            let syn = sy[String(i)] ?? []
+            let see = raw.loc?[key] != nil ? seeWords(key, text, syn) : []
+            if !see.isEmpty {
+                // a local word (家內): the meaning of the usual words it points to (看「某」、「牽手」), then 看： them
+                return DictSense(n: i + 1, pos: i < pos.count ? pos[i] : "", text: localMeaning(key, text, see), ex: exs,
+                                 syn: syn.filter { !see.contains($0) }, ant: an[String(i)] ?? [], see: see)
+            }
             return DictSense(n: i + 1, pos: i < pos.count ? pos[i] : "", text: text, ex: exs,
-                             syn: sy[String(i)] ?? [], ant: an[String(i)] ?? [])
+                             syn: syn, ant: an[String(i)] ?? [])
         }
+    }
+
+    private static let seeRe = try! NSRegularExpression(pattern: "看((?:「[^」]+」、?)+)。?\\s*$")
+    private static let seeWordRe = try! NSRegularExpression(pattern: "「([^」]+)」")
+
+    /// the usual words a local word's meaning points to (看「某」、「牽手」): their keys
+    private func seeWords(_ key: String, _ text: String, _ syn: [String]) -> [String] {
+        let ns = text as NSString
+        guard let m = Dict.seeRe.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return [] }
+        let inner = ns.substring(with: m.range(at: 1))
+        let hans = Dict.seeWordRe.matches(in: inner, range: NSRange(location: 0, length: (inner as NSString).length))
+            .map { (inner as NSString).substring(with: $0.range(at: 1)) }
+        var out: [String] = []
+        for h in hans {
+            let k = syn.first { Dict.hanOf($0) == h && $0 != key }
+                ?? hanMap[h]?.map { h + "\t" + $0 }.first { raw.defs.m[$0] != nil && $0 != key }
+            if let k, !out.contains(k) { out.append(k) }
+        }
+        return out
+    }
+
+    /// a local word's meaning: what's before 看「…」 (the 華語 word, 妻子), else from the usual words' meanings: the one
+    /// with the word's 華語 meaning (詞彙比較) in it, else their first
+    private func localMeaning(_ key: String, _ text: String, _ see: [String]) -> String {
+        let ns = text as NSString
+        let at = Dict.seeRe.firstMatch(in: text, range: NSRange(location: 0, length: ns.length))?.range.location ?? 0
+        var before = ns.substring(to: at).trimmingCharacters(in: .whitespaces)
+        while before.hasSuffix("。") { before.removeLast() }
+        let han = Dict.hanOf(key)
+        let zh = before.isEmpty ? (raw.cmp.first { $0.rows.contains { $0.han == han } }?.zh ?? "") : before
+        var all: [String] = []
+        for k in see {
+            guard let di = raw.defs.m[k] else { continue }
+            for line in raw.defs.t[di].components(separatedBy: "\n") {
+                var t = line
+                if let r = line.range(of: #"^\d+\.\s*"#, options: .regularExpression) { t = String(line[r.upperBound...]) }
+                if !t.isEmpty && !t.contains("看「") { all.append(t) }
+            }
+        }
+        if !zh.isEmpty, let b = all.first(where: { $0.contains(zh) }) { return b }
+        return all.first ?? (zh.isEmpty ? text : zh + "。")
     }
     /// whole-word links that are not already shown under a meaning
     func wordLinks(_ key: String) -> (syn: [String], ant: [String]) {
@@ -1079,4 +1169,13 @@ final class Dict: @unchecked Sendable {
         }
         return out
     }
+}
+
+/// a card's meaning as shown: a local word's (家內, 看「某」…) the meaning of the usual words it points to, as in its
+/// dictionary entry (the cards' file made before data version 8 has only the pointer)
+@MainActor func shownDef(_ key: String, _ i: Int, _ t: String) -> String {
+    guard t.contains("看「"), let d = Store.shared.dict, d.raw.loc?[key] != nil else { return t }
+    let ss = d.senses(key)
+    guard i < ss.count, !ss[i].see.isEmpty else { return t }
+    return ss[i].text + "（" + tr("看") + "：" + ss[i].see.map { Dict.hanOf($0) }.joined(separator: "、") + "）"
 }

@@ -201,6 +201,7 @@ def code_to_tl(code):
     if not parse(code): return None
     head, body, tail, nas, tone = _letters(code)
     nn = "nn" if nas else ""
+    if nas and body.endswith("oo"): body = body[:-1]       # the nasal oo is written onn
     if body:
         if "a" in body: pos = body.index("a")
         elif "oo" in body: pos = body.index("oo")

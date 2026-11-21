@@ -158,7 +158,7 @@ fun ToneGameScreen(stars: StarField, onClose: () -> Unit) {
                                 if (done) {
                                     Txt(remember(q.id) { Store.cardHan(q.card, place, T.blueInk.argbInt()).annotated() }, sz(40f, FontWeight.Medium), T.blueInk)
                                     Txt(remember(q.id) { Store.cardRom(q.card, rom, place).annotated() }, lat(18f), T.greenInk)
-                                    q.card.d.firstOrNull()?.t?.let { Txt(it, ff(FF.Subheadline), T.muted, maxLines = 2) }
+                                    q.card.d.firstOrNull()?.t?.let { Txt(shownDef(q.card.k, 0, it), ff(FF.Subheadline), T.muted, maxLines = 2) }
                                 }
                             }
                         }
