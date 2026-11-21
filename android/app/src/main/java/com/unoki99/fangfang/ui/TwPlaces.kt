@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -74,7 +75,12 @@ fun SwipePages(titles: List<String>, keptId: String, content: @Composable (Int) 
         ) { measurables, constraints ->
             val w = constraints.maxWidth
             val ps = measurables.map { it.measure(Constraints(minWidth = w, maxWidth = w)) }
-            val h = ps.maxOf { it.height }
+            // (as tall as the page shown, not the taller one: going from one to the other while swiping)
+            val a = at.value.coerceIn(0f, (ps.size - 1).toFloat())
+            val lo = kotlin.math.floor(a).toInt()
+            val hi = minOf(lo + 1, ps.size - 1)
+            val f = a - lo
+            val h = (ps[lo].height + (ps[hi].height - ps[lo].height) * f).roundToInt()
             layout(w, h) {
                 for ((i, p) in ps.withIndex()) p.placeRelative(((i - at.value) * w).roundToInt(), 0)
             }
@@ -179,16 +185,18 @@ private fun MapSpot(d: Dict, key: String, p: Int, on: Boolean, boxW: Int, boxH: 
     val dot = 10f * density.density
     val gap = 8f * density.density
     val up = 9f * density.density
+    // (the dot in its 腔's colour: every place's with 通行 in 設定, else only the place chosen)
+    val lit = if (on && twLit(p, Prefs.place.value)) twGroupColor(d, p) else null
     Box(Modifier.offset { IntOffset((x - dot / 2).roundToInt(), (y - dot / 2).roundToInt()) }.size(10.dp)
-        .background(if (mine) T.twInk else if (on) T.greenInk else T.muted.copy(alpha = 0.4f), CircleShape))
+        .background(lit ?: if (on) T.muted.copy(alpha = 0.75f) else T.muted.copy(alpha = 0.3f), CircleShape))
     val reading = remember(key, p, tk) { if (on) d.wordText(key, rom, p).plain() else "" }
     var lw by remember { mutableIntStateOf(0) }
     val lx = if (s.third == -1) x - gap - lw else if (s.third == 1) x + gap else x - lw / 2f
     val ly = if (s.third == 0) y + gap else y - up
     Column(Modifier.offset { IntOffset(lx.roundToInt(), ly.roundToInt()) }.onSizeChanged { lw = it.width },
         horizontalAlignment = if (s.third == -1) Alignment.End else if (s.third == 1) Alignment.Start else Alignment.CenterHorizontally) {
-        Txt(tr(name), ff(FF.Caption2, FontWeight.Bold), if (mine) T.twInk else if (on) T.glyph else T.muted.copy(alpha = 0.6f), maxLines = 1)
-        if (reading.isNotEmpty()) Txt(reading, lat(11f), if (mine) T.twInk else T.greenInk, maxLines = 1)
+        Txt(tr(name), ff(FF.Caption2, FontWeight.Bold), if (mine) (lit ?: T.twInk) else if (on) T.glyph else T.muted.copy(alpha = 0.6f), maxLines = 1)
+        if (reading.isNotEmpty()) Txt(reading, lat(11f), if (mine) (lit ?: T.twInk) else T.greenInk, maxLines = 1)
     }
 }
 
@@ -213,3 +221,20 @@ fun TwPlacesAndMap(d: Dict, key: String) {
     }
     Txt(tr("地圖上的點是辭典記錄各地讀音的地方，不是腔口的界線。"), ff(FF.Caption2), T.muted)
 }
+
+/** the three 腔 the places lean to, each in a colour of its own: 泉 teal (台語's 6th tone), 混 orange, 漳 purple */
+fun twKindColor(kind: String): Color = when (kind) {
+    "泉" -> Color(0xFF4FD8C4)
+    "混" -> Color(0xFFFFA94D)
+    else -> Color(0xFFC39BFF)
+}
+
+/** a place's 腔 colour (none for 通行) */
+fun twGroupColor(d: Dict, p: Int): Color? {
+    val n = d.raw.places.getOrNull(p) ?: return null
+    for (k in listOf("泉", "混", "漳")) if (n.contains(k)) return twKindColor(k)
+    return null
+}
+
+/** in colour: every place when 通行 is the one chosen, else only the chosen place */
+fun twLit(p: Int, chosen: Int): Boolean = chosen == -1 || (p >= 0 && p == chosen)

@@ -360,6 +360,43 @@ final class Dict: @unchecked Sendable {
         return c
     }
 
+    /// how many syllables a word has (its 輕聲 mark not counted)
+    func sylCount(_ key: String) -> Int { Dict.codesOf(key).split(separator: " ").count }
+
+    /// 轉換, one 字 at a time: a word whose 字 and syllables pair up one to one (and more than one of them)
+    func canSplit(_ key: String) -> Bool {
+        let n = sylCount(key)
+        return n > 1 && Dict.hanOf(key).count == n
+    }
+
+    /// a word the dictionary has no place readings for (轉換 put it together from its 字): each 字 as the place
+    /// says it; nil when the dictionary has the word's own
+    func composedCodes(_ key: String, _ place: Int) -> String? {
+        guard place >= 0, raw.dia[key] == nil, canSplit(key) else { return nil }
+        return (0..<sylCount(key)).map { sylAt(key, $0, place).code }.joined(separator: " ")
+    }
+
+    /// syllable j of a word as place says it, and whether that's a guess. The word's own place readings when the
+    /// dictionary has them; else that 字's own (charKey: the 字's entry it came from)
+    func sylAt(_ key: String, _ j: Int, _ place: Int) -> (code: String, guessed: Bool, charKey: String?) {
+        let base = Dict.codesOf(key).split(separator: " ").map(String.init)
+        guard base.indices.contains(j) else { return ("", false, nil) }
+        if place < 0 { return (base[j], false, nil) }
+        if raw.dia[key] != nil {
+            let c = codesFor(key, place).split(separator: " ").map(String.init)
+            if c.count == base.count { return (c[j], guessedSyllables(key, place).contains(j), nil) }
+            return (base[j], false, nil)
+        }
+        let han = Array(Dict.hanOf(key))
+        guard han.count == base.count else { return (base[j], false, nil) }
+        let k0 = String(han[j]) + "\t" + base[j]
+        let ck = baseKeys.contains(k0) ? k0 : (altParent[k0] ?? k0)
+        guard raw.dia[ck] != nil, sylCount(ck) == 1 else { return (base[j], false, nil) }
+        let c = codesFor(ck, place).split(separator: " ").map(String.init)
+        guard c.count == 1 else { return (base[j], false, nil) }
+        return (c[0], !guessedSyllables(ck, place).isEmpty, ck)
+    }
+
     /// a place's reading as the dictionary has it (no -ir / -i swapped)
     private func statedCodes(_ key: String, _ place: Int) -> String {
         if place >= 0, let d = raw.dia[key]?[String(place)] { return d }

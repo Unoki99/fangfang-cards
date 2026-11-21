@@ -31,6 +31,7 @@ extension View {
         navigationDestination(for: DictKey.self) { DictEntryView(dict: d, key: $0.k) }
             .navigationDestination(for: MoreRoute.self) { MorePage(dict: d, route: $0) }
             .navigationDestination(for: CatRef.self) { CategoryWordsView(dict: d, cat: $0.i) }
+            .navigationDestination(for: TwFreqRef.self) { TwFreqDestination(dict: d, level: $0.level) }
     }
 }
 
@@ -255,27 +256,59 @@ final class ConvModel: ObservableObject {
     /// 轉換: words said the way of one 腔口 (the word's key → that reading), and which 腔口
     private var pins: [String: Opt] = [:]
     private(set) var pinPlace: [String: Int] = [:]
+    /// a word whose 字 were given 腔口 one by one: each 字's place (-1: 通行, -2: the place in 設定)
+    private(set) var sylPlace: [String: [Int]] = [:]
 
     /// item's word said the way place says it (-1: 通行)
     func pin(_ item: Int, _ place: Int) {
         guard result.items.indices.contains(item), let d = engine?.d else { return }
-        result.items[item].pinned = nil
         let it = result.items[item]
         guard let k = d.keyOf(it.current), let han = it.current.han else { return }
-        let codes = d.codesFor(k, place).split(separator: " ").map(String.init)
+        // (a word put together from its 字: each 字 as the place says it)
+        let cs = d.composedCodes(k, place) ?? d.codesFor(k, place)
+        let codes = cs.split(separator: " ").map(String.init)
         let o = Opt(han: han, codes: codes, parent: k,
                     label: place < 0 ? nil : (place < d.raw.places.count ? String(d.raw.places[place].prefix(2)) : nil),
-                    tokens: d.tokensFor(k, place).joined(separator: " "))
+                    tokens: d.tokensFor(k, place, codes: cs).joined(separator: " "))
+        sylPlace[k] = nil
+        apply(k, o, place)
+    }
+
+    /// 轉換, one 字 of a word: syllable j of item's word said the way place says it (-1: 通行, -2: the place in
+    /// 設定, `setting`); the other 字 keep theirs. Every 字 the same place: the whole word's reading of that place
+    func pinSyl(_ item: Int, _ j: Int, _ place: Int, setting: Int) {
+        guard result.items.indices.contains(item), let d = engine?.d else { return }
+        let it = result.items[item]
+        guard let k = d.keyOf(it.current), let han = it.current.han else { return }
+        let n = d.sylCount(k)
+        var ps = sylPlace[k] ?? Array(repeating: pinPlace[k] ?? -2, count: n)
+        if ps.count != n { ps = Array(repeating: -2, count: n) }
+        guard ps.indices.contains(j) else { return }
+        ps[j] = place
+        if ps.allSatisfy({ $0 == -2 }) { unpin(item); return }
+        if let f = ps.first, f != -2, ps.allSatisfy({ $0 == f }) { pin(item, f); return }
+        let codes = ps.indices.map { d.sylAt(k, $0, ps[$0] == -2 ? setting : ps[$0]).code }
+        let o = Opt(han: han, codes: codes, parent: k, label: nil,
+                    tokens: d.tokensFor(k, -1, codes: codes.joined(separator: " ")).joined(separator: " "))
+        sylPlace[k] = ps
+        apply(k, o, nil)
+    }
+
+    /// (the reading put on every time the word comes in the text, those 腔口-picked before too)
+    private func apply(_ k: String, _ o: Opt, _ place: Int?) {
+        guard let d = engine?.d else { return }
         pins[k] = o; pinPlace[k] = place
-        for i in result.items.indices where !result.items[i].opts.isEmpty && result.items[i].pinned == nil && d.keyOf(result.items[i].current) == k {
-            result.items[i].pinned = o
+        for i in result.items.indices where !result.items[i].opts.isEmpty {
+            if result.items[i].pinned?.parent == k || (result.items[i].pinned == nil && d.keyOf(result.items[i].current) == k) {
+                result.items[i].pinned = o
+            }
         }
     }
 
     /// the 腔口 reading of item's word taken off (the place in 設定 again)
     func unpin(_ item: Int) {
         guard result.items.indices.contains(item), let k = result.items[item].pinned?.parent else { return }
-        pins[k] = nil; pinPlace[k] = nil
+        pins[k] = nil; pinPlace[k] = nil; sylPlace[k] = nil
         for i in result.items.indices where result.items[i].pinned?.parent == k { result.items[i].pinned = nil }
     }
 
@@ -767,6 +800,8 @@ struct WordSheet: View {
     /// 轉換's setting: after choosing a reading, which 腔口's way of saying it
     @AppStorage("convAnyPlace") private var anyPlace = false
     @State private var placePick = false
+    /// the place sheet: the whole word (-1) or one 字 of it
+    @State private var sylPick = -1
 
     var body: some View {
         if inSheet {
@@ -792,12 +827,11 @@ struct WordSheet: View {
                     ScrollView(.vertical) {
                         VStack(alignment: .leading, spacing: 14) {
                             if it.opts.count > 1 { options(it) }
-                            // the 腔口 whose reading it has (轉換's setting on: choose another; a word with one reading too)
+                            // the 腔口 whose reading it has (轉換's setting on: choose another, for the whole word or
+                            // one 字 of it; a word with one reading too)
                             if anyPlace, let pk = dict.keyOf(it.current), it.current.codes != nil, !dict.raw.places.isEmpty {
-                                let pp = it.pinned.flatMap { model.pinPlace[$0.parent ?? ""] }
                                 HStack(spacing: 8) {
-                                    Text(it.pinned == nil ? trs("讀音：設定的腔口")
-                                         : trs("讀音：") + ((pp ?? -1) < 0 ? trs("通行") : trs(String(dict.raw.places[pp!].prefix(2)))))
+                                    Text(pinText(it, pk))
                                         .ffFont(.footnote).foregroundStyle(T.muted)
                                     Button { placePick = true } label: {
                                         Label(tr("選腔口的讀音"), systemImage: "mappin.and.ellipse").ffFont(.subheadline, .semibold)
@@ -807,22 +841,7 @@ struct WordSheet: View {
                                     .buttonStyle(.plain)
                                     if it.pinned != nil { Button(tr("用設定的腔口")) { withAnimation(.snappy) { model.unpin(index) } } }
                                 }
-                                .sheet(isPresented: $placePick) {
-                                    NavigationStack {
-                                        ScrollView {
-                                            VStack(alignment: .leading, spacing: 10) {
-                                                Text(tr("點一個腔口，這段文字裡的這個詞就用那裡的講法。")).ffFont(.footnote).foregroundStyle(T.muted)
-                                                TwPlaceRows(dict: dict, key: pk, onPick: { p in model.pin(index, p); placePick = false },
-                                                            picked: pp ?? place)
-                                            }
-                                            .padding()
-                                        }
-                                        .navigationTitle(trs("各地的讀音"))
-                                        .navigationBarTitleDisplayMode(.inline)
-                                        .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { placePick = false } } }
-                                    }
-                                    .presentationDetents([.medium, .large])
-                                }
+                                .sheet(isPresented: $placePick) { placeSheet(pk) }
                             }
                             if let h = it.current.han { sayings(h, canSwap: it.src == "han") }
                             if let k = dict.keyOf(it.current), dict.baseKeys.contains(k) || dict.raw.defs.m[k] != nil {
@@ -878,6 +897,78 @@ struct WordSheet: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .appBackground()
             .navigationBarTitleDisplayMode(.inline)
+            // (轉換's setting on: a word with one reading has nothing to choose first, so the 腔口 straight away)
+            .onAppear {
+                guard anyPlace, model.result.items.indices.contains(index), !dict.raw.places.isEmpty else { return }
+                let it = model.result.items[index]
+                if it.opts.count <= 1, it.current.codes != nil, it.current.han != nil { placePick = true }
+            }
+    }
+
+    /// which 腔口's reading the word has: the one in 設定, one place, or each 字 its own (家 鹿港・內 通行)
+    private func pinText(_ it: ConvItem, _ pk: String) -> String {
+        guard it.pinned != nil else { return trs("讀音：設定的腔口") }
+        func name(_ p: Int) -> String {
+            p == -2 ? trs("設定") : p < 0 || p >= dict.raw.places.count ? trs("通行") : trs(String(dict.raw.places[p].prefix(2)))
+        }
+        if let ps = model.sylPlace[pk] {
+            let hs = Array(Dict.hanOf(pk))
+            let parts = ps.indices.map { (hs.indices.contains($0) ? String(hs[$0]) : "") + " " + name(ps[$0]) }
+            return trs("讀音：") + parts.joined(separator: "・")
+        }
+        return trs("讀音：") + name(model.pinPlace[pk] ?? -1)
+    }
+
+    /// the 腔口 to pick: for the whole word, or (a word of more than one 字) for one 字 of it
+    private func placeSheet(_ pk: String) -> some View {
+        let split = dict.canSplit(pk)
+        let hs = Array(Dict.hanOf(pk))
+        let j = split && sylPick < hs.count ? sylPick : -1
+        let picked = pickedPlace(pk, j)
+        return NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    if split {
+                        HStack(spacing: 6) {
+                            sylChip(trs("整個詞"), j < 0) { sylPick = -1 }
+                            ForEach(hs.indices, id: \.self) { i in sylChip(String(hs[i]), j == i) { sylPick = i } }
+                        }
+                    }
+                    Text(j < 0 ? tr("點一個腔口，這段文字裡的這個詞就用那裡的講法。") : tr("點一個腔口，這個字就用那裡的讀音（別的字不變）。"))
+                        .ffFont(.footnote).foregroundStyle(T.muted)
+                    if j < 0 {
+                        TwPlaceRows(dict: dict, key: pk, onPick: { p in model.pin(index, p); placePick = false }, picked: picked)
+                    } else {
+                        TwPlaceRows(dict: dict, key: pk, onPick: { p in withAnimation(.snappy) { model.pinSyl(index, j, p, setting: place) } },
+                                    picked: picked, syl: j)
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle(trs("各地的讀音"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarTrailing) { Button(tr("完成")) { placePick = false } } }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    /// the place lit in the sheet (a word whose 字 have places of their own: none, for the whole word)
+    private func pickedPlace(_ pk: String, _ j: Int) -> Int {
+        let whole = model.pinPlace[pk] ?? place
+        guard let ps = model.sylPlace[pk] else { return whole }
+        if j < 0 { return -99 }
+        guard ps.indices.contains(j) else { return place }
+        return ps[j] == -2 ? place : ps[j]
+    }
+
+    private func sylChip(_ t: String, _ on: Bool, _ tap: @escaping () -> Void) -> some View {
+        Button(action: tap) {
+            Text(t).ffFont(.subheadline, .semibold).foregroundStyle(on ? T.twInk : T.muted)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(Capsule().fill(on ? T.twFill : T.fn.opacity(0.6)))
+                .overlay(Capsule().stroke(on ? T.twEdge : Color.clear, lineWidth: 1.5))
+        }
+        .buttonStyle(.plain)
     }
 
     private func optText(_ o: Opt, _ mode: Int) -> AttributedString {
@@ -2039,12 +2130,9 @@ struct LookupPane: View {
             }.buttonStyle(.plain)))
         }
         // 依常用度列出: the words by how common they are (the 台語 cards' order)
-        t.append(AnyView(NavigationLink {
-            let keys = store.lang == 0 ? store.cards.map(\.k) : []
-            FreqBandsPage(keys: keys) { k in
-                AnyView(EntryLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) })
-            }
-        } label: { TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出")) }.buttonStyle(.plain)))
+        t.append(AnyView(NavigationLink(value: TwFreqRef()) {
+            TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出"))
+        }.buttonStyle(.plain)))
         return t
     }
 
@@ -3848,6 +3936,21 @@ struct PlaceWordsPage: View {
 }
 
 
+/// the three 腔 the places lean to, each in a colour of its own: 泉 teal (台語's 6th tone), 混 orange, 漳 purple
+enum TwGroup {
+    static func color(_ kind: String) -> Color {
+        kind == "泉" ? ToneColors.teal : kind == "混" ? ToneColors.orange : ToneColors.purple
+    }
+    /// a place's 腔 colour (none for 通行)
+    static func color(_ places: [String], _ p: Int) -> Color? {
+        guard p >= 0, p < places.count else { return nil }
+        for k in ["泉", "混", "漳"] where places[p].contains(k) { return color(k) }
+        return nil
+    }
+    /// in colour: every place when 通行 is the one chosen, else only the chosen place
+    static func lit(_ p: Int, _ chosen: Int) -> Bool { chosen == -1 || (p >= 0 && p == chosen) }
+}
+
 /// 台語: 通行 and every 腔口 with its reading; the one chosen in green, the others grey (the way 客語's accents are
 /// shown); a reading the dictionary doesn't give (worked out by rule) is marked 推測
 struct TwPlaceRows: View {
@@ -3859,6 +3962,8 @@ struct TwPlaceRows: View {
     /// the 通行 cell, the three groups (beside the map they're shown apart)
     var common = true
     var groups = true
+    /// 轉換, one 字 at a time: only this syllable of the word (each place's way of saying that 字)
+    var syl: Int? = nil
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
     /// the 腔 the places lean to, in this order
@@ -3877,9 +3982,12 @@ struct TwPlaceRows: View {
                         let ps = all.filter { dict.raw.places[$0].contains(k) }
                         if !ps.isEmpty {
                             HStack(alignment: .top, spacing: 8) {
-                                Text(trs(k)).ffFont(.caption, .bold).foregroundStyle(T.muted)
+                                // (the 腔 in its colour; lit with 通行 chosen, or when the place chosen is one of its)
+                                let on = TwGroup.lit(-2, picked ?? place) || ps.contains(picked ?? place)
+                                Text(trs(k)).ffFont(.caption, .bold).foregroundStyle(on ? T.glyph : T.muted)
                                     .frame(width: 22, height: 24)
-                                    .background(Circle().fill(T.fn.opacity(0.7)))
+                                    .background(Circle().fill(TwGroup.color(k).opacity(on ? 0.55 : 0.18)))
+                                    .overlay(Circle().stroke(TwGroup.color(k).opacity(on ? 1 : 0.4), lineWidth: 1.5))
                                 FlowLayout(spacing: 8) {
                                     ForEach(ps, id: \.self) { p in cell(p).frame(minWidth: 78) }
                                 }
@@ -3892,13 +4000,34 @@ struct TwPlaceRows: View {
     }
     @ViewBuilder private func cell(_ p: Int) -> some View {
         let mine = picked.map { $0 == p } ?? (p == place)
-        let guessed = p >= 0 && !dict.guessedSyllables(key, p).isEmpty
+        // (a place in its 腔's colour: all of them with 通行 chosen, else only the one chosen)
+        let lit = TwGroup.lit(p, picked ?? place) ? TwGroup.color(dict.raw.places, p) : nil
+        let one = syl.map { dict.sylAt(key, $0, p) }
+        // (a word 轉換 put together from its 字: each 字 as the place says it)
+        let made = syl == nil && onPick != nil ? dict.composedCodes(key, p) : nil
+        let guessed = one?.guessed ?? (p >= 0 && !dict.guessedSyllables(key, p).isEmpty)
         let name = p < 0 ? trs("通行") : String(dict.raw.places[p].prefix(2))
         let v = VStack(alignment: .center, spacing: 2) {
             HStack(spacing: 3) {
-                Chip(text: name, fill: mine ? T.twFill : T.fn, edge: mine ? T.twEdge : T.fnEdge, ink: mine ? T.twInk : T.muted)
+                if let lit {
+                    Chip(text: name, fill: lit.opacity(0.28), edge: lit, ink: T.glyph)
+                } else {
+                    Chip(text: name, fill: mine ? T.twFill : T.fn, edge: mine ? T.twEdge : T.fnEdge, ink: mine ? T.twInk : T.muted)
+                }
                 if guessed { Text(tr("推測")).ffFont(.caption2).foregroundStyle(T.muted) }
             }
+            if let one {
+                Text(dict.codes(one.code, rom, p)).latFont(15).foregroundStyle(T.greenInk).lineLimit(1)
+                Text(dict.codes(one.code, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk).hongimLine().lineLimit(1)
+                if p >= 0, let ck = one.charKey {
+                    ForEach(dict.alsoSaid(ck, p), id: \.self) { x in
+                        Text(tr("也講") + " " + dict.codes(x, rom, p)).ffFont(.caption2).foregroundStyle(T.muted).lineLimit(1)
+                    }
+                }
+            } else if let made {
+                Text(dict.codes(made, rom, p)).latFont(15).foregroundStyle(T.greenInk).lineLimit(1)
+                Text(dict.codes(made, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk).hongimLine().lineLimit(1)
+            } else {
             Text(dict.wordText(key, rom, p)).latFont(15).foregroundStyle(T.greenInk).lineLimit(1)
             Text(dict.wordText(key, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk).hongimLine().lineLimit(1)
             if p >= 0 {
@@ -3906,11 +4035,12 @@ struct TwPlaceRows: View {
                     Text(tr("也講") + " " + dict.codes(x, rom, p) + (dict.isContraction(x, key) ? trs("（合音）") : "")).ffFont(.caption2).foregroundStyle(T.muted).lineLimit(1)
                 }
             }
+            }
         }
         .fixedSize()
         if let onPick {
             Button { onPick(p) } label: {
-                v.padding(6).background(RoundedRectangle(cornerRadius: 10).fill(mine ? T.twFill.opacity(0.35) : T.fn.opacity(0.45)))
+                v.padding(6).background(RoundedRectangle(cornerRadius: 10).fill(lit.map { $0.opacity(0.16) } ?? (mine ? T.twFill.opacity(0.35) : T.fn.opacity(0.45))))
             }
             .buttonStyle(.plain)
         } else { v }
@@ -3924,6 +4054,9 @@ struct SwipePages<A: View, B: View>: View {
     let titles: [String]
     @AppStorage("entry.page") private var page = 0
     @State private var pos: Int?
+    /// each page's own height (measured)
+    @State private var heights: [Int: CGFloat] = [:]
+    private var shownHeight: CGFloat? { heights[min(max(page, 0), 1)] }
     let first: A
     let second: B
     init(_ titles: [String], @ViewBuilder first: () -> A, @ViewBuilder second: () -> B) {
@@ -3948,16 +4081,23 @@ struct SwipePages<A: View, B: View>: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 0) {
                     // (a little room inside each page: the boxes' edges (華, 英, 通行) were cut at the top and left,
-                    // and the next page's showed at the right edge; each page is cut at its own edge)
+                    // and the next page's showed at the right edge; each page is cut at its own edge. Each page as
+                    // tall as its own content: the box takes the height of the page shown, not the taller one)
                     first.padding(.horizontal, 4).padding(.vertical, 4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { heights[0] = $0 }
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .containerRelativeFrame(.horizontal).clipped().id(0)
                     second.padding(.horizontal, 4).padding(.vertical, 4)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { heights[1] = $0 }
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .containerRelativeFrame(.horizontal).clipped().id(1)
                 }
                 .scrollTargetLayout()
             }
+            .frame(height: shownHeight, alignment: .top)
+            .animation(.snappy, value: page)
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $pos)
             .onAppear { if pos == nil { pos = min(max(page, 0), titles.count - 1) } }
@@ -4052,11 +4192,13 @@ struct TaiwanMap: View {
                 let name = String(name0.prefix(2))
                 guard let s = Self.spots[name] else { continue }
                 let on = shown.contains(p), mine = p == place
+                // (the dot in its 腔's colour: every place's with 通行 in 設定, else only the place chosen)
+                let lit = on && TwGroup.lit(p, place) ? TwGroup.color(places, p) : nil
                 let c = pt(s.0, s.1)
                 ctx.fill(Path(ellipseIn: CGRect(x: c.x - 5, y: c.y - 5, width: 10, height: 10)),
-                         with: .color(mine ? T.twInk : (on ? T.greenInk : T.muted.opacity(0.4))))
-                let label = Text(trs(name)).font(.system(size: 11, weight: .bold)).foregroundColor(mine ? T.twInk : (on ? T.glyph : T.muted.opacity(0.6)))
-                let rd = Text(readings[p] ?? "").font(.system(size: 11)).foregroundColor(mine ? T.twInk : T.greenInk)
+                         with: .color(lit ?? (on ? T.muted.opacity(0.75) : T.muted.opacity(0.3))))
+                let label = Text(trs(name)).font(.system(size: 11, weight: .bold)).foregroundColor(mine ? (lit ?? T.twInk) : (on ? T.glyph : T.muted.opacity(0.6)))
+                let rd = Text(readings[p] ?? "").font(.system(size: 11)).foregroundColor(mine ? (lit ?? T.twInk) : T.greenInk)
                 switch s.2 {
                 case -1:
                     ctx.draw(label, at: CGPoint(x: c.x - 8, y: c.y - 6), anchor: .trailing)

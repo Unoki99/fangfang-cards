@@ -45,10 +45,17 @@ struct FreqLevelBars: View {
 struct FreqBandsPage: View {
     let keys: [String]
     let row: (String) -> AnyView
+    /// where a step opens: a value for the stack's own navigationDestination (a page pushed by a closure was thrown
+    /// away when a word in it was opened by value: you saw the list again instead of the word)
+    /// (0: by a closure, 1: TwFreqRef, 2: ZhFreqRef. The value's own type, not AnyHashable: a link whose value
+    /// is an AnyHashable found no navigationDestination and did nothing)
+    var link = 0
     @EnvironmentObject var store: Store
 
     /// the words of each step, the most common first (words without a place: none)
-    private var byLevel: [Int: [String]] {
+    private var byLevel: [Int: [String]] { Self.levels(keys, store) }
+
+    static func levels(_ keys: [String], _ store: Store) -> [Int: [String]] {
         var out: [Int: [(Int, String)]] = [:]
         for k in keys {
             let r = store.rankOf(k)
@@ -66,10 +73,16 @@ struct FreqBandsPage: View {
                 ForEach([5, 4, 3, 2, 1], id: \.self) { l in
                     let ks = levels[l] ?? []
                     if !ks.isEmpty {
-                        NavigationLink {
-                            FreqBandPage(keys: ks, level: l, kind: kind, row: row)
-                        } label: {
-                            label(l, ks, kind)
+                        if link == 1 {
+                            NavigationLink(value: TwFreqRef(level: l)) { label(l, ks, kind) }
+                        } else if link == 2 {
+                            NavigationLink(value: ZhFreqRef(level: l)) { label(l, ks, kind) }
+                        } else {
+                            NavigationLink {
+                                FreqBandPage(keys: ks, level: l, kind: kind, row: row)
+                            } label: {
+                                label(l, ks, kind)
+                            }
                         }
                     }
                 }
@@ -144,5 +157,46 @@ struct FreqBandPage: View {
         .navigationTitle(FreqLevels.name(level))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { FreqLevelBars(level: level, kind: kind) } }
+    }
+}
+
+/// 依常用度列出, opened by value (nil: the list of steps; else one step's words), so the words opened from it (by
+/// value too) come on top of it instead of taking it away
+struct TwFreqRef: Hashable { var level: Int? = nil }
+struct ZhFreqRef: Hashable { var level: Int? = nil }
+
+/// 台語: the 台語 cards by how common they are
+struct TwFreqDestination: View {
+    let dict: Dict
+    let level: Int?
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let keys = store.lang == 0 ? store.cards.map(\.k) : []
+        let row: (String) -> AnyView = { k in AnyView(EntryLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) }) }
+        if let l = level {
+            FreqBandPage(keys: FreqBandsPage.levels(keys, store)[l] ?? [], level: l, kind: keys.first.map(Lang.kind) ?? store.lang, row: row)
+        } else {
+            FreqBandsPage(keys: keys, row: row, link: 1)
+        }
+    }
+}
+
+/// 華語 (and the other dictionaries): the dictionary's words by how common they are
+struct ZhFreqDestination: View {
+    let dict: ZhDict
+    let level: Int?
+    @EnvironmentObject var store: Store
+    var body: some View {
+        let keys = dict.entries.map(\.k)
+        let row: (String) -> AnyView = { k in
+            AnyView(Group {
+                if let e = dict.entry(k) { NavigationLink(value: ZhKey(k: k)) { ZhWordRow(dict: dict, entry: e) } }
+            })
+        }
+        if let l = level {
+            FreqBandPage(keys: FreqBandsPage.levels(keys, store)[l] ?? [], level: l, kind: keys.first.map(Lang.kind) ?? store.lang, row: row)
+        } else {
+            FreqBandsPage(keys: keys, row: row, link: 2)
+        }
     }
 }

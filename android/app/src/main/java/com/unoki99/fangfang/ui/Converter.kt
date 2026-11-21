@@ -66,21 +66,53 @@ object ConvModel {
     /** 轉換: words said the way of one 腔口 (the word's key → that reading), and which 腔口 */
     private val pins = HashMap<String, Opt>()
     val pinPlace = HashMap<String, Int>()
+    /** a word whose 字 were given 腔口 one by one: each 字's place (-1: 通行, -2: the place in 設定) */
+    val sylPlace = HashMap<String, List<Int>>()
 
     /** item's word said the way place says it (-1: 通行) */
     fun pin(item: Int, place: Int) {
         val r = result
         if (item !in r.items.indices) return
         val it = r.items[item]
-        it.pinned = null
         val d = engine?.d ?: return
         val k = d.keyOf(it.current) ?: return
         val han = it.current.han ?: return
-        val codes = d.codesFor(k, place)
+        // (a word put together from its 字: each 字 as the place says it)
+        val codes = d.composedCodes(k, place) ?: d.codesFor(k, place)
         val o = Opt(han, codes.split(' ').filter { c -> c.isNotEmpty() }, parent = k,
-            label = if (place < 0) null else d.raw.places.getOrNull(place)?.take(2), tokens = d.tokensFor(k, place).joinToString(" "))
-        pins[k] = o; pinPlace[k] = place
-        for (x in r.items) if (x.opts.isNotEmpty() && x.pinned == null && d.keyOf(x.current) == k) x.pinned = o
+            label = if (place < 0) null else d.raw.places.getOrNull(place)?.take(2), tokens = d.tokensFor(k, place, codes).joinToString(" "))
+        sylPlace.remove(k)
+        apply(d, k, o, place)
+    }
+
+    /** 轉換, one 字 of a word: syllable j of item's word said the way place says it (-1: 通行, -2: the place in
+     *  設定, setting); the other 字 keep theirs. Every 字 the same place: the whole word's reading of that place */
+    fun pinSyl(item: Int, j: Int, place: Int, setting: Int) {
+        val r = result
+        if (item !in r.items.indices) return
+        val it = r.items[item]
+        val d = engine?.d ?: return
+        val k = d.keyOf(it.current) ?: return
+        val han = it.current.han ?: return
+        val n = d.sylCount(k)
+        var ps = sylPlace[k]?.toMutableList() ?: MutableList(n) { pinPlace[k] ?: -2 }
+        if (ps.size != n) ps = MutableList(n) { -2 }
+        if (j !in ps.indices) return
+        ps[j] = place
+        if (ps.all { p -> p == -2 }) { unpin(item); return }
+        val f = ps[0]
+        if (f != -2 && ps.all { p -> p == f }) { pin(item, f); return }
+        val codes = ps.indices.map { i -> d.sylAt(k, i, if (ps[i] == -2) setting else ps[i]).code }
+        val o = Opt(han, codes, parent = k, label = null, tokens = d.tokensFor(k, -1, codes.joinToString(" ")).joinToString(" "))
+        sylPlace[k] = ps
+        apply(d, k, o, null)
+    }
+
+    /** (the reading put on every time the word comes in the text, those 腔口-picked before too) */
+    private fun apply(d: Dict, k: String, o: Opt, place: Int?) {
+        pins[k] = o
+        if (place == null) pinPlace.remove(k) else pinPlace[k] = place
+        for (x in result.items) if (x.opts.isNotEmpty() && (x.pinned?.parent == k || (x.pinned == null && d.keyOf(x.current) == k))) x.pinned = o
         version++
     }
 
@@ -90,7 +122,7 @@ object ConvModel {
         if (item !in r.items.indices) return
         val o = r.items[item].pinned ?: return
         val k = o.parent ?: return
-        pins.remove(k); pinPlace.remove(k)
+        pins.remove(k); pinPlace.remove(k); sylPlace.remove(k)
         for (x in r.items) if (x.pinned?.parent == k) x.pinned = null
         version++
     }
@@ -424,6 +456,74 @@ fun SpeakButton(text: String) {
     }
 }
 
+/** which 腔口's reading the word has: the one in 設定, one place, or each 字 its own (家 鹿港・內 通行) */
+private fun placeName(d: Dict, p: Int): String =
+    if (p == -2) tr("設定") else if (p < 0 || p >= d.raw.places.size) tr("通行") else tr(d.raw.places[p].take(2))
+
+private fun pinText(d: Dict, it: ConvItem, pk: String): String {
+    if (it.pinned == null) return tr("讀音：設定的腔口")
+    val ps = ConvModel.sylPlace[pk] ?: return tr("讀音：{0}", placeName(d, ConvModel.pinPlace[pk] ?: -1))
+    val hs = hanChars(Dict.hanOf(pk))
+    val parts = ps.indices.map { i -> (hs.getOrNull(i) ?: "") + " " + placeName(d, ps[i]) }
+    return tr("讀音：{0}", parts.joinToString("・"))
+}
+
+private fun hanChars(h: String): List<String> {
+    val out = ArrayList<String>()
+    var i = 0
+    while (i < h.length) { val n = Character.charCount(h.codePointAt(i)); out.add(h.substring(i, i + n)); i += n }
+    return out
+}
+
+/** the place lit in the window (a word whose 字 have places of their own: none, for the whole word) */
+private fun pickedPlace(pk: String, j: Int, place: Int): Int {
+    val ps = ConvModel.sylPlace[pk] ?: return ConvModel.pinPlace[pk] ?: place
+    if (j < 0) return -99
+    val p = ps.getOrNull(j) ?: return place
+    return if (p == -2) place else p
+}
+
+/** 轉換's 選腔口的讀音: the 腔口 to pick, for the whole word or (a word of more than one 字) for one 字 of it */
+@Composable
+private fun PlacePickDialog(d: Dict, index: Int, k: String, han: String, onClose: () -> Unit) {
+    ConvModel.version
+    var sylPick by remember(k) { mutableStateOf(-1) }
+    val split = d.canSplit(k)
+    val hs = hanChars(Dict.hanOf(k))
+    val j = if (split && sylPick < hs.size) sylPick else -1
+    val place = Prefs.place.value
+    val picked = pickedPlace(k, j, place)
+    AlertDialog(onDismissRequest = onClose, containerColor = T.bg,
+        title = { Txt(tr("「{0}」各地的讀音", han), ff(FF.Headline), T.glyph) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (split) SylChips(hs, j) { i -> sylPick = i }
+                Txt(if (j < 0) tr("點一個腔口，這段文字裡的這個詞就用那裡的講法。") else tr("點一個腔口，這個字就用那裡的讀音（別的字不變）。"), ff(FF.Footnote), T.muted)
+                if (j < 0) TwPlaceRows(d, k, onPick = { p -> ConvModel.pin(index, p); onClose() }, picked = picked)
+                else TwPlaceRows(d, k, onPick = { p -> ConvModel.pinSyl(index, j, p, place) }, picked = picked, syl = j)
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text(tr("完成"), color = T.btnInk) } })
+}
+
+/** 整個詞 and each 字 of the word, one of them picked */
+@Composable
+private fun SylChips(hs: List<String>, j: Int, onPick: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        SylChip(tr("整個詞"), j < 0, -1, onPick)
+        for (i in hs.indices) SylChip(hs[i], j == i, i, onPick)
+    }
+}
+
+@Composable
+private fun SylChip(t: String, on: Boolean, i: Int, onPick: (Int) -> Unit) {
+    Box(Modifier.clip(RoundedCornerShape(50)).background(if (on) T.twFill else T.fn.copy(alpha = 0.6f))
+        .border(1.5.dp, if (on) T.twEdge else Color.Transparent, RoundedCornerShape(50))
+        .clickable { onPick(i) }.hand().padding(horizontal = 12.dp, vertical = 5.dp)) {
+        Txt(t, ff(FF.Subheadline, FontWeight.SemiBold), if (on) T.twInk else T.muted)
+    }
+}
+
 /** a word in the converted text: pick the reading, see its dictionary entry */
 @Composable
 fun ConvWordSheet(d: Dict, index: Int) {
@@ -469,13 +569,12 @@ fun ConvWordSheet(d: Dict, index: Int) {
                     }
                 }
             }
-            // the 腔口 whose reading it has (轉換's setting on: choose another; a word with one reading too)
+            // the 腔口 whose reading it has (轉換's setting on: choose another, for the whole word or one 字 of it;
+            // a word with one reading too)
             val pk = d.keyOf(it.current)
             if (Prefs.convAnyPlace.value && pk != null && it.current.codes != null && d.raw.places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                val pp = it.pinned?.let { o -> ConvModel.pinPlace[o.parent] }
-                Txt(if (it.pinned == null) tr("讀音：設定的腔口") else tr("讀音：{0}", if (pp == null || pp < 0) tr("通行") else tr(d.raw.places[pp].take(2))),
-                    ff(FF.Footnote), T.muted)
+                Txt(pinText(d, it, pk), ff(FF.Footnote), T.muted)
                 CapsuleButton(tr("選腔口的讀音"), Icons.Filled.Place, false, T.twFill, T.twEdge, T.twInk) { placePick = true }
                 if (it.pinned != null) TextButton(onClick = { ConvModel.unpin(index) }) { Text(tr("用設定的腔口"), color = T.btnInk) }
             }
@@ -501,16 +600,11 @@ fun ConvWordSheet(d: Dict, index: Int) {
         if (placePick) {
             val k = d.keyOf(it.current)
             if (k == null || it.current.codes == null) placePick = false
-            else AlertDialog(onDismissRequest = { placePick = false }, containerColor = T.bg,
-                title = { Txt(tr("「{0}」各地的讀音", it.current.han ?: ""), ff(FF.Headline), T.glyph) },
-                text = {
-                    Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Txt(tr("點一個腔口，這段文字裡的這個詞就用那裡的講法。"), ff(FF.Footnote), T.muted)
-                        TwPlaceRows(d, k, onPick = { p -> ConvModel.pin(index, p); placePick = false },
-                            picked = it.pinned?.let { o -> ConvModel.pinPlace[o.parent] } ?: Prefs.place.value)
-                    }
-                },
-                confirmButton = { TextButton(onClick = { placePick = false }) { Text(tr("完成"), color = T.btnInk) } })
+            else PlacePickDialog(d, index, k, it.current.han ?: "") { placePick = false }
+        }
+        // (轉換's setting on: a word with one reading has nothing to choose first, so the 腔口 straight away)
+        LaunchedEffect(index) {
+            if (Prefs.convAnyPlace.value && it.opts.size <= 1 && it.current.codes != null && it.current.han != null && d.raw.places.isNotEmpty()) placePick = true
         }
         if (addingOwn) AddOwnWordDialog(d, it.current.han ?: "", it.current.codes?.let { c -> d.codes(c.joinToString(" "), 1, -1) } ?: "") {
             addingOwn = false; ConvModel.run()

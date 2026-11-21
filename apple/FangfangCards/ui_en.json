@@ -1806,5 +1806,7 @@
  "台語漢字或拼音（這裡的或一般的講法）或華語": "Taiwanese characters or spelling (this place's word or the usual one), or Mandarin",
  "看": "See",
  "讀音：": "Reading: ",
- "各地的讀音": "Each place's reading"
+ "各地的讀音": "Each place's reading",
+ "整個詞": "Whole word",
+ "點一個腔口，這個字就用那裡的讀音（別的字不變）。": "Tap a place: this character is then said that place's way (the others stay as they are)."
 }

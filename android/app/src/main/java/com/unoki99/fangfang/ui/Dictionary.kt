@@ -483,7 +483,8 @@ private fun SwapControl(d: Dict, han0: String, tpl0: String, zh: String?, place:
  *  天遮): only the places that say it, not every place nor 通行 */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: Int? = null, common: Boolean = true, groups: Boolean = true) {
+fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: Int? = null, common: Boolean = true, groups: Boolean = true,
+    syl: Int? = null) {
     if (d.raw.places.isEmpty()) return
     val rom = Prefs.rom.value.coerceIn(0, 2)
     val place = Prefs.place.value
@@ -492,20 +493,37 @@ fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: I
     val all = local ?: d.raw.places.indices.toList()
     @Composable fun cell(p: Int, m: Modifier = Modifier) {
         val mine = if (picked != null) p == picked else p == place
-        val guessed = p >= 0 && d.guessedSyllables(key, p).isNotEmpty()
+        // (a place in its 腔's colour: all of them with 通行 chosen, else only the one chosen)
+        val lit = if (twLit(p, picked ?: place)) twGroupColor(d, p) else null
+        // (轉換, one 字 at a time: only that 字's syllable, as each place says it)
+        val one = if (syl != null) d.sylAt(key, syl, p) else null
+        // (a word 轉換 put together from its 字: each 字 as the place says it)
+        val made = if (syl == null && onPick != null) d.composedCodes(key, p) else null
+        val guessed = one?.guessed ?: (p >= 0 && d.guessedSyllables(key, p).isNotEmpty())
         val name = if (p < 0) tr("通行") else tr(d.raw.places[p].take(2))
         // (as wide as its widest line: the name and the readings are never squeezed or broken onto two lines; a cell
         // that doesn't fit goes on the next line)
         Column(m.width(IntrinsicSize.Max).then(if (onPick != null) Modifier.clip(RoundedCornerShape(10.dp))
-            .background(if (mine) T.twFill.copy(alpha = 0.35f) else T.fn.copy(alpha = 0.45f)).clickable { onPick(p) }.hand().padding(6.dp) else Modifier),
+            .background(lit?.copy(alpha = 0.16f) ?: if (mine) T.twFill.copy(alpha = 0.35f) else T.fn.copy(alpha = 0.45f)).clickable { onPick(p) }.hand().padding(6.dp) else Modifier),
             horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
+                if (lit != null) Chip(name, lit.copy(alpha = 0.28f), lit, T.glyph)
+                else Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
                 if (guessed) Txt(tr("推測"), ff(FF.Caption2), T.muted)
             }
+            if (one != null) {
+                Txt(d.codes(one.code, rom, p), lat(15f), T.greenInk, maxLines = 1)
+                Txt(d.codes(one.code, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
+                val ck = one.charKey
+                if (p >= 0 && ck != null) for (x in d.alsoSaid(ck, p)) Txt(tr("也講") + " " + d.codes(x, rom, p), ff(FF.Caption2), T.muted, maxLines = 1)
+            } else if (made != null) {
+                Txt(d.codes(made, rom, p), lat(15f), T.greenInk, maxLines = 1)
+                Txt(d.codes(made, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
+            } else {
             Txt(remember(key, p, tk) { d.wordText(key, rom, p).annotated() }, lat(15f), T.greenInk, maxLines = 1)
             Txt(remember(key, p, tk) { d.wordText(key, 3, p).annotated() }, ff(FF.Caption), T.purpleInk, maxLines = 1)
             if (p >= 0) for (x in d.alsoSaid(key, p)) Txt(tr("也講") + " " + d.codes(x, rom, p) + (if (d.isContraction(x, key)) tr("（合音）") else ""), ff(FF.Caption2), T.muted, maxLines = 1)
+            }
         }
     }
     // 通行 first; then the places by 腔 (偏泉腔, 混合腔, 偏漳腔), three to a row (two when the readings are long)
@@ -515,8 +533,12 @@ fun TwPlaceRows(d: Dict, key: String, onPick: ((Int) -> Unit)? = null, picked: I
             val ps = all.filter { d.raw.places[it].contains(k) }
             if (ps.isEmpty()) continue
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(Modifier.size(24.dp).background(T.fn.copy(alpha = 0.7f), CircleShape), contentAlignment = Alignment.Center) {
-                    Txt(tr(k), ff(FF.Caption), T.muted)
+                // (the 腔 in its colour; lit with 通行 chosen, or when the place chosen is one of its)
+                val on = twLit(-2, picked ?: place) || ps.contains(picked ?: place)
+                val kc = twKindColor(k)
+                Box(Modifier.size(24.dp).background(kc.copy(alpha = if (on) 0.55f else 0.18f), CircleShape)
+                    .border(1.5.dp, kc.copy(alpha = if (on) 1f else 0.4f), CircleShape), contentAlignment = Alignment.Center) {
+                    Txt(tr(k), ff(FF.Caption), if (on) T.glyph else T.muted)
                 }
                 // (as many on a line as fit: 4 or 5 on a wide screen, fewer on a phone)
                 FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

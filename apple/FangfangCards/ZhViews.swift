@@ -33,6 +33,7 @@ struct ZhGate<Content: View>: View {
                     .navigationDestination(for: ZhKey.self) { ZhEntryView(dict: d, key: $0.k) }
                     .navigationDestination(for: ZhCompareRef.self) { _ in ZhComparePage(dict: d) }
                     .navigationDestination(for: ZhSpecRef.self) { r in ZhSpecWordsPage(dict: d, spec: r.spec) }
+                    .navigationDestination(for: ZhFreqRef.self) { r in ZhFreqDestination(dict: d, level: r.level) }
                     .navigationDestination(for: ZhClassRef.self) { r in
                         if let c = r.cls { ZhWordClassPage(dict: d, cls: c) } else { ZhWordClassListPage(dict: d) }
                     }
@@ -118,13 +119,9 @@ struct ZhLookupPane: View {
             }.buttonStyle(.plain)))
         }
         // 依常用度列出: the words by how common they are (the dictionary's order)
-        t.append(AnyView(NavigationLink {
-            FreqBandsPage(keys: dict.entries.map(\.k)) { k in
-                AnyView(Group {
-                    if let e = dict.entry(k) { NavigationLink(value: ZhKey(k: k)) { ZhWordRow(dict: dict, entry: e) } }
-                })
-            }
-        } label: { TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出")) }.buttonStyle(.plain)))
+        t.append(AnyView(NavigationLink(value: ZhFreqRef()) {
+            TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出"))
+        }.buttonStyle(.plain)))
         return t
     }
 

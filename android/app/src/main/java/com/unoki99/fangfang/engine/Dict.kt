@@ -491,6 +491,45 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
         return c
     }
 
+    /** how many syllables a word has (its 輕聲 mark not counted) */
+    fun sylCount(key: String): Int = codesOf(key).split(' ').filter { it.isNotEmpty() }.size
+
+    /** 轉換, one 字 at a time: a word whose 字 and syllables pair up one to one (and more than one of them) */
+    fun canSplit(key: String): Boolean {
+        val n = sylCount(key)
+        return n > 1 && hanOf(key).codePointCount(0, hanOf(key).length) == n
+    }
+
+    /** a word the dictionary has no place readings for (轉換 put it together from its 字): each 字 as the place
+     *  says it; null when the dictionary has the word's own */
+    fun composedCodes(key: String, place: Int): String? {
+        if (place < 0 || raw.dia[key] != null || !canSplit(key)) return null
+        return (0 until sylCount(key)).joinToString(" ") { sylAt(key, it, place).code }
+    }
+
+    /** syllable j of a word as place says it, and whether that's a guess. The word's own place readings when the
+     *  dictionary has them; else that 字's own (charKey: the 字's entry it came from) */
+    fun sylAt(key: String, j: Int, place: Int): SylAt {
+        val base = codesOf(key).split(' ').filter { it.isNotEmpty() }
+        if (j !in base.indices) return SylAt("", false, null)
+        if (place < 0) return SylAt(base[j], false, null)
+        if (raw.dia[key] != null) {
+            val c = codesFor(key, place).split(' ').filter { it.isNotEmpty() }
+            return if (c.size == base.size) SylAt(c[j], guessedSyllables(key, place).contains(j), null) else SylAt(base[j], false, null)
+        }
+        val h = hanOf(key)
+        val han = ArrayList<String>()
+        var i = 0
+        while (i < h.length) { val n = Character.charCount(h.codePointAt(i)); han.add(h.substring(i, i + n)); i += n }
+        if (han.size != base.size) return SylAt(base[j], false, null)
+        val k0 = han[j] + "\t" + base[j]
+        val ck = if (baseKeys.contains(k0)) k0 else (altParent[k0] ?: k0)
+        if (raw.dia[ck] == null || sylCount(ck) != 1) return SylAt(base[j], false, null)
+        val c = codesFor(ck, place).split(' ').filter { it.isNotEmpty() }
+        if (c.size != 1) return SylAt(base[j], false, null)
+        return SylAt(c[0], guessedSyllables(ck, place).isNotEmpty(), ck)
+    }
+
     /** a place's reading as the dictionary has it (no -ir / -i swapped) */
     private fun statedCodes(key: String, place: Int): String {
         if (place >= 0) raw.dia[key]?.get(place.toString())?.let { return it }
@@ -1224,3 +1263,6 @@ interface KeyValue {
 
 /** (台羅 oonn → onn: the o with its tone mark, the second o) */
 private val TL_OONN = Regex("([oO])([\u0300-\u036f]*)o(?=nn)")
+
+/** one syllable of a word as a place says it (轉換, one 字 at a time) */
+data class SylAt(val code: String, val guessed: Boolean, val charKey: String?)
