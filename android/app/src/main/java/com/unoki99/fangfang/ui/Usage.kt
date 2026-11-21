@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.unoki99.fangfang.engine.Lang
 import com.unoki99.fangfang.tr
 
 // 設定 → 用法及資料來源: what each part of the app can do (用法, here), above the data's sources and licenses
@@ -13,6 +14,10 @@ object AppUsage {
     class Item(val title: String, val text: String)
     class Group(val title: String, val items: List<Item>)
     const val intro = "方方詞卡是學台語、華語、粵語、客語和日語的詞卡 App。下面是每個部分能做什麼，最下面是資料的來源和授權。"
+    /** the computer version's, which has 瑞典語 too */
+    const val introComputer = "方方詞卡是學台語、華語、粵語、客語、日語和瑞典語的詞卡 App。下面是每個部分能做什麼，最下面是資料的來源和授權。"
+    /** the Android phone's own parts, not on the computer */
+    val phoneOnly = setOf("小工具", "鎖定畫面的詞", "方方查詞")
     val groups = listOf(
         Group("五個分頁", listOf(
             Item("新詞", "一張一張滑詞卡：往右＝認識（放到「熟悉」），往左＝不熟（放到「不熟」去練習）。右上角的選單選從哪些詞開始：常用度、分類、HSK／TOCFL 等級或漢字卡。↺ 復原上一張。"),
@@ -72,12 +77,16 @@ object AppUsage {
 fun UsageSections() {
     SectionTitle(tr("用法"))
     ListCard {
-        Txt(tr(AppUsage.intro), ff(FF.Subheadline), T.glyph, Modifier.padding(14.dp))
+        Txt(tr(if (Lang.count > 5) AppUsage.introComputer else AppUsage.intro), ff(FF.Subheadline), T.glyph, Modifier.padding(14.dp))
     }
+    // (the computer version: no home screen, lock screen or text-selection menu, so not those parts)
+    val computer = Lang.count > 5
     for (g in AppUsage.groups) {
+        val items = if (computer) g.items.filter { it.title !in AppUsage.phoneOnly } else g.items
+        if (items.isEmpty()) continue
         SectionTitle(tr(g.title))
         ListCard {
-            g.items.forEachIndexed { i, item ->
+            items.forEachIndexed { i, item ->
                 if (i > 0) RowDivider()
                 Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Txt(tr(item.title), ff(FF.Subheadline, androidx.compose.ui.text.font.FontWeight.SemiBold), T.glyph)

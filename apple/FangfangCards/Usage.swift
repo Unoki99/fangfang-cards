@@ -29,7 +29,7 @@ enum AppUsage {
         "台語": "t.circle", "華語": "h.circle", "粵語": "y.circle", "客語": "k.circle", "日語": "j.circle", "瑞典語": "s.circle", "每個語言分開": "square.split.1x2",
         "電台": "radio", "音樂": "music.note", "歌詞": "music.note.list", "歌詞條": "rectangle.bottomhalf.inset.filled", "收藏和歌單": "music.note.house",
         "自己的歌詞": "pencil.and.list.clipboard",
-        "小工具": "square.text.square", "動態島（iPhone）": "capsule", "捷徑和 Siri": "square.stack.3d.up", "Safari 查詞": "safari", "影片字幕": "captions.bubble",
+        "捷徑和 Siri": "square.stack.3d.up", "Safari 查詞": "safari", "影片字幕": "captions.bubble",
         "備份與同步": "arrow.triangle.2.circlepath", "匯出與匯入": "square.and.arrow.up", "外觀": "paintpalette",
     ]
     static let intro = "方方詞卡是學台語、華語、粵語、客語、日語和瑞典語的詞卡 App。下面是每個部分能做什麼，最下面是資料的來源和授權。"
@@ -82,8 +82,6 @@ enum AppUsage {
             Item(title: "自己的歌詞", text: "沒有歌詞或時間不對的歌：自己打（或貼上、或改 LRCLIB 的），再一邊放歌一邊在每一句開始的時候按一下來對時間。可以退一行、點一行重新對、±0.05／0.1 秒微調、加空行；存在裝置上，之後放這首歌都用，也可以分享成 .lrc 檔、或打開 .lrc 檔；有備份資料夾的話，放在裡面的「歌詞」資料夾，各個裝置一起用。"),
         ]),
         Group(title: "在 App 外面", items: [
-            Item(title: "小工具", text: "主畫面上的詞卡，每個鐘頭換一個詞：聽發音、收藏、標成熟悉或換下一個。"),
-            Item(title: "動態島（iPhone）", text: "離開 App 的時候，動態島顯示練習範圍裡一個不熟的詞和讀音；點一下打開它的詞條。"),
             Item(title: "捷徑和 Siri", text: "「在方方詞卡查詞」「方方查詞（小視窗）」「方方快速查詞」：在其他 App 裡也能查詞，不用離開。"),
             Item(title: "Safari 查詞", text: "在 Safari（或電腦和 Android 的 Firefox）用 Apple Pencil 或游標停在一個詞上，就跳出它的卡片；選好的詞按「傳到 App」連同那一句話傳回來。"),
             Item(title: "影片字幕", text: "YouTube、Viki 的字幕在旁邊的面板：不認識的詞標讀音和意思、這部影片你懂多少 %、生詞清單、重複和慢速；選的詞照影片分成影片詞組。"),
