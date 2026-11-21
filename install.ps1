@@ -620,20 +620,37 @@ if ($Win) {
     $Desk = [Environment]::GetFolderPath("Desktop")
     if (-not $Desk) { $Desk = Join-Path $HOME "Desktop" }
     $Menu = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
+    # (saved under a plain name, then renamed: the shortcut maker can't save a Chinese name on a Windows in another
+    # language, Swedish or English, and then makes no shortcut at all; renaming a file can)
+    $made = @()
     foreach ($dir in @($Menu, $Desk)) {
         try {
-            $lnk = $Sh.CreateShortcut((Join-Path $dir "方方詞卡.lnk"))
-            $lnk.TargetPath = $Exe; $lnk.WorkingDirectory = $Prog; $lnk.IconLocation = "$Exe,0"; $lnk.Description = "方方詞卡"
+            New-Item -ItemType Directory -Force -Path $dir -ErrorAction SilentlyContinue | Out-Null
+            $plain = Join-Path $dir "FangfangCards.lnk"
+            $named = Join-Path $dir "方方詞卡.lnk"
+            Remove-Item -LiteralPath $plain -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $named -Force -ErrorAction SilentlyContinue
+            $lnk = $Sh.CreateShortcut($plain)
+            $lnk.TargetPath = $Exe; $lnk.WorkingDirectory = $Prog; $lnk.IconLocation = "$Exe,0"; $lnk.Description = "Fangfang Cards"
             $lnk.Save()
-        } catch { Write-Host "（沒辦法建立捷徑：$dir）" }
+            if (Test-Path -LiteralPath $plain) {
+                # (the Chinese name when it can be had; the plain one works all the same)
+                try { Rename-Item -LiteralPath $plain -NewName "方方詞卡.lnk" -ErrorAction Stop } catch {}
+            }
+            if (Test-Path -LiteralPath $named) { $made += $named }
+            elseif (Test-Path -LiteralPath $plain) { $made += $plain }
+            else { Write-Host "（沒辦法建立捷徑：$dir）" }
+        } catch { Write-Host "（沒辦法建立捷徑：$dir — $($_.Exception.Message)）" }
     }
+    foreach ($m in $made) { Write-Host "  捷徑：$m" }
+    if ($made.Count -eq 0) { Write-Host "  （沒有捷徑：在 $Prog 對 FangfangCards.exe 按右鍵 → 傳送到 → 桌面）" }
     # fangfangcards:// links (the Firefox add-on's 傳到 App) open this program
     $Cls = "HKCU:\Software\Classes\fangfangcards"
     New-Item -Path "$Cls\shell\open\command" -Force | Out-Null
     Set-ItemProperty -Path $Cls -Name "(default)" -Value "URL:方方詞卡"
     Set-ItemProperty -Path $Cls -Name "URL Protocol" -Value ""
     Set-ItemProperty -Path "$Cls\shell\open\command" -Name "(default)" -Value "`"$Exe`" `"%1`""
-    Write-Host "✓ 方方詞卡 Windows 版裝好了：開始功能表和桌面上的「方方詞卡」。"
+    Write-Host "✓ 方方詞卡 Windows 版裝好了。"
     Write-Host "  （程式在 $Prog；進度和設定在 $(Join-Path $LogDir "app")）"
     Start-Process -FilePath $Exe
     exit 0

@@ -31,6 +31,10 @@ const SV_PREFIXES = ["miss", "sam", "sär", "van", "åter", "över", "under", "e
     "in", "an", "av", "be", "bi", "er", "för", "ge", "mot", "med", "om", "o", "ur", "all", "icke", "anti", "super",
     "mini", "multi", "inter", "ex", "re", "pre", "post", "sub", "trans"].sort((a, b) => b.length - a.length);
 const SV_LINKS = ["s", "e", "a", "u", "o"];
+// words that only look like a prefix and a word (in|gen, re|dan, ex|akt, an|dra): never taken apart that way; nor are the
+// pronouns and numbers (ingen, inget, ingenting's ingen)
+const SV_WHOLE = ["redan", "exakt", "andan", "ande", "andra", "andre", "vandra", "gemen", "ingen", "inget", "inga"];
+const SV_WHOLE_CLS = ["pn", "rg", "ro"];
 // suffixes that make a word of a verb (läs-are, mät-ning): the verb is tried first (men-ing is mena's, not men's)
 const SV_VERBAL = ["ing", "ning", "are", "bar", "ande", "ende", "else", "nad", "eri", "ande"];
 const SV_VOWEL = /[aeiouyåäöé]/;
@@ -85,10 +89,11 @@ function svWords(xml) {
 
 /// the morphemes of every word: [[text, kind, word]…] (null: one piece)
 function svMorphemes(words) {
-    const known = new Set(), marks = new Map(), verbs = new Set();
+    const known = new Set(), marks = new Map(), verbs = new Set(), whole = new Set(SV_WHOLE);
     for (const w of words) {
         if (w.cls === "prefix" || w.cls === "suffix") continue;
         const plain = w.value.replace(/\|/g, "").toLowerCase();
+        if (SV_WHOLE_CLS.indexOf(w.cls) >= 0) whole.add(plain);
         if (plain.length >= 2 && !/[\s\-.,]/.test(plain)) known.add(plain);
         if (w.cls === "vb") verbs.add(plain);
         if (w.value.indexOf("|") > 0 && !marks.has(plain)) marks.set(plain, w.value.toLowerCase().split("|").filter(x => x));
@@ -179,7 +184,7 @@ function svMorphemes(words) {
             }
         }
         for (const pre of SV_PREFIXES) {
-            if (!w.startsWith(pre)) continue;
+            if (!w.startsWith(pre) || whole.has(w)) continue;
             const r = w.slice(pre.length);
             // (three of a letter are written two: till + lägg → tillägg)
             const c = pre[pre.length - 1];
@@ -200,7 +205,7 @@ function svMorphemes(words) {
         // a verb: its stem and the -a of the infinitive (läs + a)
         if (w.cls === "vb" && low.length >= 4 && low.endsWith("a")) {
             const l = s[s.length - 1];
-            if (l[1] === "r" && l[0].length > 2 && l[0].endsWith("a")) s = s.slice(0, -1).concat([[l[0].slice(0, -1), "r", l[2] || low], ["a", "e", ""]]);
+            if (l[1] === "r" && l[0].length > 2 && l[0].endsWith("a") && SV_VOWEL.test(l[0].slice(0, -1))) s = s.slice(0, -1).concat([[l[0].slice(0, -1), "r", l[2] || low], ["a", "e", ""]]);
         }
         // (the pieces in the word's own letters: a capital stays)
         let at = 0;
@@ -398,7 +403,7 @@ function buildSwedish(a) {
     const GROUP = 500;
     ranked.forEach((e, i) => { e.x = e.y = Math.floor(i / GROUP) + 1; });
     const outEntries = ranked.concat(rest).map(e => { delete e._r; return e; });
-    const head = { v: 3, lang: "sv", nc: ranked.length, c: [], tags: {} };
+    const head = { v: 4, lang: "sv", nc: ranked.length, c: [], tags: {} };
     const ce = svChineseEnglish(a.cedict, essay);
     if (Object.keys(ce).length) head.ce = ce;
     host.progress(0.95, "寫入…");

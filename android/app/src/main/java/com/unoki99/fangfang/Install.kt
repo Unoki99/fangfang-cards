@@ -157,7 +157,7 @@ class DictPack(
                 Source("zhwikt-sv.jsonl", "https://kaikki.org/zhwiktionary/%E7%91%9E%E5%85%B8%E8%AA%9E/kaikki.org-dictionary-%E7%91%9E%E5%85%B8%E8%AA%9E.jsonl", optional = true, arg = "zhwikt")),
             "swedish", "buildSwedish",
             "Folkets lexikon（KTH，CC BY-SA 2.5）、FrequencyWords 詞頻（CC BY-SA 4.0）、維基詞典的中文解釋（kaikki.org，CC BY-SA）、CC-CEDICT（由英文推測的中文解釋，CC BY-SA）；詞素依規則推算",
-            "約 95 MB（中文解釋佔大部分）", dataVersion = 3)
+            "約 95 MB（中文解釋佔大部分）", dataVersion = 4)
 
         val all: List<DictPack> get() = if (com.unoki99.fangfang.engine.EngineSettings.desktop) listOf(taigi, mandarin, cantonese, hakka, japanese, swedish, shuowen)
             else listOf(taigi, mandarin, cantonese, hakka, japanese, shuowen)

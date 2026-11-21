@@ -269,7 +269,8 @@ struct DictPack: Identifiable {
                   Source(file: "zhwikt-sv.jsonl", url: "https://kaikki.org/zhwiktionary/%E7%91%9E%E5%85%B8%E8%AA%9E/kaikki.org-dictionary-%E7%91%9E%E5%85%B8%E8%AA%9E.jsonl", optional: true, arg: "zhwikt")],
         script: "swedish", function: "buildSwedish",
         from: "Folkets lexikon（KTH，CC BY-SA 2.5）、FrequencyWords 詞頻（CC BY-SA 4.0）、維基詞典的中文解釋（kaikki.org，CC BY-SA）、CC-CEDICT（由英文推測的中文解釋，CC BY-SA）；詞素依規則推算",
-        download: "約 95 MB（中文解釋佔大部分）")
+        download: "約 95 MB（中文解釋佔大部分）",
+        dataVersion: 4)
 
     // MARK: where the files come from first
 
