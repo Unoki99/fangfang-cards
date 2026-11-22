@@ -393,6 +393,19 @@
             const w = el("div", null, "words");
             for (const x of xs) w.appendChild(el("span", x.h + (x.w === "saved" ? ffT("・收藏") : x.w === "known" ? ffT("・認識") : x.w === "group" ? ffT("・之前選的") : ""), x.w === "saved" ? "s" : ""));
             sd.appendChild(w);
+            // (the sentences that go with them: the line, and under it the line in the second language)
+            const seen = new Set();
+            for (const x of xs) {
+                const sx = (x.x || "").trim();
+                if (!sx || seen.has(x.h + "|" + sx)) continue;
+                seen.add(x.h + "|" + sx);
+                const p = el("p", null, "lead");
+                p.style.cssText = "margin:6px 0 0;font-size:13px";
+                p.appendChild(el("b", x.h + "　"));
+                p.appendChild(document.createTextNode(sx));
+                if (x.tr) { p.appendChild(document.createElement("br")); const e = el("span", x.tr); e.style.opacity = "0.7"; p.appendChild(e); }
+                sd.appendChild(p);
+            }
         }
     } else sd.appendChild(el("p", ffT("還沒有選詞。"), "lead"));
     tip(sd, "warn", ffT("Safari 會先問要不要打開方方詞卡：按「打開」。App 沒有打開的話再按一次。"));

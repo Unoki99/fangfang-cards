@@ -86,6 +86,19 @@
         for (const x of q) { const g = x.gn || ""; if (!by.has(g)) by.set(g, []); by.get(g).push(x); }
         for (const [g, xs] of by) {
             words.appendChild(el("div", (g ? ffT("影片：") + g : ffT("其他")) + ffT("（") + xs.length + ffT("）：") + xs.map(x => x.h + (x.w === "saved" ? ffT("（收藏）") : x.w === "known" ? ffT("（認識）") : x.w === "group" ? ffT("（之前選的）") : "")).join(ffT("、")), "words"));
+            // (each word's sentence, and under it the line in the second language)
+            const seen = new Set();
+            for (const x of xs) {
+                const sx = (x.x || "").trim();
+                if (!sx || seen.has(x.h + "|" + sx)) continue;
+                seen.add(x.h + "|" + sx);
+                const d2 = el("div", null, "words");
+                d2.style.cssText = "margin-top:4px;opacity:0.9";
+                d2.appendChild(el("b", x.h + "　"));
+                d2.appendChild(document.createTextNode(sx));
+                if (x.tr) { d2.appendChild(document.createElement("br")); const e = el("span", x.tr); e.style.opacity = "0.7"; d2.appendChild(e); }
+                words.appendChild(d2);
+            }
         }
         main.appendChild(words);
     }

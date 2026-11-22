@@ -2353,7 +2353,7 @@
         const meta = st.meta;
         const sentence = cue.t.replace(/\s+/g, " ").trim();
         const t2 = st.lines && st.lines[at] && st.lines[at].querySelector(".t2");
-        const trans = t2 ? t2.textContent.replace(/\s+/g, " ").trim() : "";
+        const trans = (st.trs && st.trs[at]) || (t2 ? t2.textContent.replace(/\s+/g, " ").trim() : "");
         for (const o of list) {
             const c = document.createElement("div");
             c.className = "dc" + (o.learn ? " learn" : "");
@@ -3173,6 +3173,8 @@
                 if (best >= 0 && !texts[best].includes(x.t)) texts[best].push(x.t);
             }
         }
+        // (kept by line too: a word marked goes to the app with its line's, wherever on the screen it was tapped)
+        st.trs = texts.map(a => a.join(" ").replace(/\s+/g, " ").trim());
         st.lines.forEach((line, i) => {
             const t2 = line.querySelector(".t2");
             if (t2) t2.textContent = texts[i].join(" ");
@@ -3621,12 +3623,15 @@
         const st = subs;
         if (!st || !node || !node.parentElement) return null;
         const line = node.parentElement.closest("#ff-subs .line");
-        if (!line) return null;
-        const tm = line.querySelector(".tm");
-        const li = tm ? +tm.dataset.i : st.lines.indexOf(line);
+        const h = node.parentElement.closest(".h[data-ci], [data-ci]");
+        if (!line && !h) return null;
+        // (which line: its time's number, else the line's own place, else the number in the character's data-ci,
+        // the same line shown somewhere else, bigger)
+        const tm = line && line.querySelector(".tm");
+        let li = tm ? +tm.dataset.i : (line ? st.lines.indexOf(line) : -1);
+        if (li < 0 && h) li = +h.dataset.ci.split(":")[0];
         const cue = st.cues[li];
         if (!cue) return null;
-        const h = node.parentElement.closest(".h[data-ci], [data-ci]");
         let text = "";
         if (h) {
             const chars = [...cue.t];
@@ -3635,8 +3640,10 @@
                 text += chars[i];
             }
         }
-        const t2 = line.querySelector(".t2");
-        return { text, sentence: cue.t.replace(/\s+/g, " ").trim(), tr: t2 ? t2.textContent.replace(/\s+/g, " ").trim() : "" };
+        // (the same line in the second language, e.g. the English under it)
+        const t2 = line && line.querySelector(".t2");
+        const tr = (st.trs && st.trs[li]) || (t2 ? t2.textContent.replace(/\s+/g, " ").trim() : "");
+        return { text, sentence: cue.t.replace(/\s+/g, " ").trim(), tr };
     }
 
     // the line being said: lit, and moved to a third of the way down; the earlier ones above it, the next below
