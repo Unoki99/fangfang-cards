@@ -151,6 +151,9 @@ struct Progress: Codable {
     var log: [String: [Int]] = [:]
     /// Safari 查詞: the sentences a word was saved from (key → sentences, the newest last)
     var found: [String: [String]] = [:]
+    /// a found sentence's other half, when it came from a video's subtitles: the same line in the second language
+    /// (the English under the Chinese) and the 影片詞組 (video / episode) it's from (sentence → [translation, group id])
+    var foundInfo: [String: [String]] = [:]
     /// a found sentence's sound, from the radio (sentence → "clip:<file>")
     var clips: [String: String] = [:]
     /// 練習統計: minutes listened to the radio and watched with the subtitle panel, per day
@@ -180,6 +183,7 @@ struct Progress: Codable {
         srs = try c.decodeIfPresent([String: [Double]].self, forKey: .srs) ?? [:]
         log = try c.decodeIfPresent([String: [Int]].self, forKey: .log) ?? [:]
         found = try c.decodeIfPresent([String: [String]].self, forKey: .found) ?? [:]
+        foundInfo = try c.decodeIfPresent([String: [String]].self, forKey: .foundInfo) ?? [:]
         clips = try c.decodeIfPresent([String: String].self, forKey: .clips) ?? [:]
         listen = try c.decodeIfPresent([String: [Double]].self, forKey: .listen) ?? [:]
         groupTime = try c.decodeIfPresent([String: Double].self, forKey: .groupTime) ?? [:]

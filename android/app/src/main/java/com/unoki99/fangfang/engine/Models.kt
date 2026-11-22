@@ -239,18 +239,25 @@ class Progress(
     val listen: HashMap<String, MutableList<Double>> = HashMap(),
     /** 影片懂多少: each video's 懂 % when it was last watched in the add-on (id -> [%, when (s)]); synced */
     val seen: HashMap<String, MutableList<Double>> = HashMap(),
+    /** 你看到、聽到的句子 (the same as the iPhone app's): the sentences a word was saved from in the browser add-on
+     *  (key -> sentences, the newest last, at most 5) */
+    val found: HashMap<String, MutableList<String>> = HashMap(),
+    /** a found sentence's other half, when it came from a video's subtitles: the same line in the second language
+     *  (the English under the Chinese) and the 影片詞組 it's from (sentence -> [translation, group id]) */
+    val foundInfo: HashMap<String, MutableList<String>> = HashMap(),
 ) {
     fun copy() = Progress(HashMap(status), HashMap(added), HashMap(streak), HashMap(saved), HashMap(own),
         HashMap(senses), HashMap(week), HashMap(weekStart),
         HashMap(srs.mapValues { it.value.toMutableList() }), HashMap(log.mapValues { it.value.toMutableList() }),
         HashMap(groupTime), HashMap(groupInfo.mapValues { it.value.toMutableList() }), HashMap(groupWords),
         HashMap(ownInfo.mapValues { it.value.toMutableList() }), HashMap(listen.mapValues { it.value.toMutableList() }),
-        HashMap(seen.mapValues { it.value.toMutableList() }))
+        HashMap(seen.mapValues { it.value.toMutableList() }),
+        HashMap(found.mapValues { it.value.toMutableList() }), HashMap(foundInfo.mapValues { it.value.toMutableList() }))
 
     fun toJson(): String = JWriter.any(mapOf("status" to status, "added" to added, "streak" to streak, "saved" to saved, "own" to own,
         "senses" to senses, "week" to week, "weekStart" to weekStart, "srs" to srs, "log" to log,
         "groupTime" to groupTime, "groupInfo" to groupInfo, "groupWords" to groupWords, "ownInfo" to ownInfo,
-        "listen" to listen, "seen" to seen))
+        "listen" to listen, "seen" to seen, "found" to found, "foundInfo" to foundInfo))
 
     companion object {
         fun parse(text: String): Progress {
@@ -274,6 +281,8 @@ class Progress(
                     "ownInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.ownInfo[w] = l }
                     "listen" -> j.obj { w -> val l = ArrayList<Double>(); j.arr { l.add(j.nextDouble()) }; p.listen[w] = l }
                     "seen" -> j.obj { w -> val l = ArrayList<Double>(); j.arr { l.add(j.nextDouble()) }; p.seen[w] = l }
+                    "found" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.found[w] = l }
+                    "foundInfo" -> j.obj { w -> val l = ArrayList<String>(); j.arr { l.add(j.nextString()) }; p.foundInfo[w] = l }
                     else -> j.skip()
                 }
             }

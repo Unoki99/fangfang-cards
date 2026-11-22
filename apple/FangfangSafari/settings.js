@@ -48,7 +48,7 @@ async function ffSend(queue, watch, seen) {
     // (影片詞組: each word's group as a fourth, the groups' names and addresses in gr)
     const groups = {};
     for (const x of queue) if (x.g) groups[x.g] = [x.gn || x.g, x.gu || ""];
-    const ops = queue.map(x => x.g ? [x.k, op(x.w), x.x || "", x.g] : (x.x ? [x.k, op(x.w), x.x] : [x.k, op(x.w)]));
+    const ops = queue.map(ffOp(op));
     const url = ffAppURL("ops=" + pack(ops) + (Object.keys(watch || {}).length ? "&w=" + pack(watch) : "") +
         (Object.keys(groups).length ? "&gr=" + pack(groups) : "") +
         (seen && Object.keys(seen).length ? "&vk=" + pack(seen) : ""));
@@ -56,6 +56,16 @@ async function ffSend(queue, watch, seen) {
     await ffKeepMine(queue);
     await ffStore.set({ ffQueue: [], ffWatch: {}, ffSeen: {} }).catch(() => {});
     return url;
+}
+
+/// a word for the app's link: [key, what, the sentence, its 影片詞組, the sentence in the second language (a
+/// subtitle line's English, say)], as short as it can be
+function ffOp(op) {
+    return x => {
+        const tr = x.x ? (x.tr || "") : "";
+        if (tr) return [x.k, op(x.w), x.x || "", x.g || "", tr];
+        return x.g ? [x.k, op(x.w), x.x || "", x.g] : (x.x ? [x.k, op(x.w), x.x] : [x.k, op(x.w)]);
+    };
 }
 
 /// the app's link: fangfangcards://safari?… (iPhone, iPad, Mac); on Android (Firefox) the same as an intent:// link,
@@ -115,11 +125,24 @@ function ffKeyLang(k) {
 async function ffKeepMine(queue) {
     const r = await ffStore.get(["ffMine"]).catch(() => ({}));
     const m = r.ffMine || { s: {}, v: {} };
+    // (and each word's sentences, the newest 5; a subtitle line's second-language line and its video, by sentence)
+    m.f = m.f || {}; m.fi = m.fi || {}; m.gi = m.gi || {};
     for (const x of queue || []) {
         const t = (x.t || Date.now()) / 1000;
+        const sx = (x.x || "").trim();
+        if (sx && x.w !== "known" && x.w !== "group") {
+            const l = (m.f[x.k] || []).filter(y => y !== sx);
+            l.push(sx);
+            m.f[x.k] = l.slice(-5);
+            if (x.tr || x.g) m.fi[sx] = [x.tr || "", x.g || ""];
+            if (x.g) m.gi[x.g] = [x.gn || x.g, x.gu || "", ""];
+        }
         if (x.w === "known" || x.w === "unknown") { if (!m.s[x.k] || m.s[x.k][1] <= t) m.s[x.k] = [x.w === "known" ? 1 : 2, t]; }
         else if (x.w === "saved") { if (!(m.v[x.k] >= t)) m.v[x.k] = t; }
     }
+    // (the lines of sentences no longer kept: let go)
+    const kept = new Set(Object.values(m.f).flat());
+    for (const sx of Object.keys(m.fi)) if (!kept.has(sx)) delete m.fi[sx];
     await ffStore.set({ ffMine: m }).catch(() => {});
     return m;
 }
@@ -208,8 +231,13 @@ async function ffFolderBuild(queue) {
     const all = (await ffStore.get(["ffSeenAll"]).catch(() => ({}))).ffSeenAll || {};
     const seen = {}, groupInfo = {};
     for (const [id, [name, u, pct, t]] of Object.entries(all)) { seen[id] = [pct, t]; groupInfo[id] = [name, u, ""]; }
+    for (const [id, i] of Object.entries(mine.gi || {})) if (!groupInfo[id]) groupInfo[id] = i;
+    // (the sentences the words were saved from, kept used by the fi entries of sentences still kept)
+    const found = mine.f || {}, foundInfo = {};
+    const keptS = new Set(Object.values(found).flat());
+    for (const [s, i] of Object.entries(mine.fi || {})) if (keptS.has(s)) foundInfo[s] = i;
     const obj = { app: "fangfang-cards", version: 1, exported: new Date().toISOString(), from: "add-on", status, added, saved,
-        streak: {}, own: {}, ownInfo: {}, senses: {}, week: {}, weekStart: {}, srs: {}, log: {}, groupTime: {}, groupInfo, groupWords: {}, seen };
+        streak: {}, own: {}, ownInfo: {}, senses: {}, week: {}, weekStart: {}, srs: {}, log: {}, groupTime: {}, groupInfo, groupWords: {}, seen, found, foundInfo };
     const name = "方方詞卡-查詞-" + browserName + "-" + id + ".json";
     const text = JSON.stringify(obj, null, 1);
     const n = Object.keys(status).length + Object.keys(saved).length;

@@ -84,10 +84,20 @@ struct FoundSentences: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         // (saved from the 歌詞 page while the radio played: the radio's own sound)
                         if let c = store.clip(s) { PlayButton(path: c, size: 26) }
-                        Text(s).ffFont(.subheadline).foregroundStyle(T.glyph).textSelection(.enabled)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(s).ffFont(.subheadline).foregroundStyle(T.glyph).textSelection(.enabled)
+                            // (from a video's subtitles: the same line in the second language, and the video)
+                            let tr = store.foundTranslation(s)
+                            if !tr.isEmpty {
+                                Text(tr).ffFont(.footnote).foregroundStyle(T.muted).textSelection(.enabled)
+                            }
+                            if let src = store.foundSource(s) {
+                                Text("— " + src).ffFont(.caption2).foregroundStyle(T.muted.opacity(0.8)).lineLimit(2)
+                            }
+                        }
                     }
                 }
-                Text(tr("「例句填空」也會用這些句子出題。")).ffFont(.caption2).foregroundStyle(T.muted)
+                Text(tr("「例句填空」會用這些句子出題。")).ffFont(.caption2).foregroundStyle(T.muted)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)

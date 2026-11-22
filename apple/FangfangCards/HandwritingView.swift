@@ -2021,7 +2021,7 @@ enum IdiomList {
 struct IdiomWriteView: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
-    @AppStorage("idiomSource") private var source = "common"
+    @AppStorage("idiomSource") private var source = "mine"
     @AppStorage("idiomCount") private var count = 10
     @AppStorage("idiomReading") private var showReading = true
     @AppStorage("rom") private var rom = 0
@@ -2070,9 +2070,10 @@ struct IdiomWriteView: View {
                 Text(tr("看意思（和讀音）寫出整個四字格，一個字一個字寫，寫完對答案。寫錯的會在這一輪最後再出現一次。"))
                     .ffFont(.subheadline).foregroundStyle(T.muted)
                 Picker(tr("要寫的四字格"), selection: $source) {
+                    // (the 不熟 page's chosen words: an 影片詞組 of words marked in a show's subtitles, say)
+                    Text(tr("不熟：\(store.practiceName)（\(mine.count)）")).tag("mine")
                     Text(tr("常見的成語（\(commonKeys.count)）")).tag("common")
                     Text(tr("所有成語（\(allKeys.count)）")).tag("all")
-                    Text(tr("練習範圍裡的四字詞（\(mine.count)）")).tag("mine")
                 }
                 .pickerStyle(.menu)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -2091,7 +2092,7 @@ struct IdiomWriteView: View {
                 .prominentButton(T.btnEdge)
                 .disabled(pool().isEmpty)
                 if pool().isEmpty {
-                    Text(source == "mine" ? trs("練習範圍裡還沒有四個字的詞。") : trs("華語詞典還沒有安裝，或沒有成語。"))
+                    Text(source == "mine" ? tr("「\(store.practiceName)」裡還沒有四個字的詞（在「不熟」頁換範圍）。") : trs("華語詞典還沒有安裝，或沒有成語。"))
                         .ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
@@ -2152,6 +2153,17 @@ struct IdiomWriteView: View {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             if !m.p.isEmpty { Chip(text: m.p) }
                             Text(m.t).ffFont(.body).foregroundStyle(T.glyph).fixedSize(horizontal: false, vertical: true)
+                        }
+                        // (where you met it: the subtitle line, the 四字格 left out until answered; its second-language
+                        // line and the video)
+                        if let s = store.foundSentences(c.k).last(where: { $0.contains(c.h) }) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(answered ? s : s.replacingOccurrences(of: c.h, with: "＿＿＿＿")).ffFont(.subheadline).foregroundStyle(T.blueInk)
+                                let tr2 = store.foundTranslation(s)
+                                if !tr2.isEmpty { Text(tr2).ffFont(.footnote).foregroundStyle(T.muted) }
+                                if let src = store.foundSource(s) { Text("— " + src).ffFont(.caption2).foregroundStyle(T.muted).lineLimit(2) }
+                            }
+                            .padding(.top, 2)
                         }
                     }
                 }

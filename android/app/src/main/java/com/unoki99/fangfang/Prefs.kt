@@ -175,7 +175,7 @@ object Prefs : KeyValue {
     val lockSource = Pref("lockWordSource", "")
     val freeText = Pref("freeWritingText", "")
     /** 四字格手寫: which ones (common 成語, all 成語, the 練習範圍's four-character words), how many a round, the reading shown */
-    val idiomSource = Pref("idiomSource", "common")
+    val idiomSource = Pref("idiomSource", "mine")
     val idiomCount = Pref("idiomCount", 10)
     val idiomReading = Pref("idiomReading", true)
     /** how big the writing square is (dp); 格子大小 changes it, the shadow follows */

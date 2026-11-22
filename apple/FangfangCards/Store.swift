@@ -380,13 +380,22 @@ final class Store: ObservableObject {
         progress.found[key] = Array(list.suffix(5))
     }
     func foundSentences(_ key: String) -> [String] { progress.found[key] ?? [] }
-    /// 例句填空: the dictionary's example sentences with the word blanked out, and first the sentences you saved the
-    /// word from yourself (from Safari, subtitles, lyrics: with the radio's sound when it was kept)
+    /// a found sentence's second-language line (the English of a subtitle line), "" none
+    func foundTranslation(_ sentence: String) -> String { progress.foundInfo[sentence]?.first ?? "" }
+    /// the name of the video / episode a found sentence is from (its 影片詞組), nil none
+    func foundSource(_ sentence: String) -> String? {
+        guard let i = progress.foundInfo[sentence], i.count > 1, !i[1].isEmpty else { return nil }
+        return groupName(i[1])
+    }
+    /// 例句填空: the sentences you saved the word from yourself (from a video's subtitles with the line in the second
+    /// language, a web page, lyrics: with the radio's sound when it was kept) with the word blanked out; a word with
+    /// none: the dictionary's example sentences
     func blanks(_ c: Card) -> [Example] {
         let mine = foundSentences(c.k).filter { !c.h.isEmpty && $0.contains(c.h) }.map { s in
-            Example(h: s, r: [s, s, s], z: "", n: clip(s) ?? "", bh: s.replacingOccurrences(of: c.h, with: "＿＿"), br: nil)
+            Example(h: s, r: [s, s, s], z: foundTranslation(s), n: clip(s) ?? "", bh: s.replacingOccurrences(of: c.h, with: "＿＿"), br: nil)
         }
-        return mine + c.blankExamples
+        // (a sentence of your own: that's the one asked, the dictionary's only when there's none)
+        return mine.isEmpty ? c.blankExamples : mine
     }
     /// a found sentence's sound (from the radio), when it has one
     func clip(_ sentence: String) -> String? { progress.clips[sentence] }
@@ -943,6 +952,13 @@ final class Store: ObservableObject {
                     list.removeAll { $0 == s }
                     list.append(s)
                     p.found[k] = Array(list.suffix(5))
+                    // (a subtitle line's: the line in the second language, and the video it's from)
+                    let tr = op.count >= 5 ? op[4].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+                    let g = op.count >= 4 ? op[3] : ""
+                    if !tr.isEmpty || !g.isEmpty {
+                        let old = p.foundInfo[s] ?? []
+                        p.foundInfo[s] = [tr.isEmpty ? (old.first ?? "") : tr, g.isEmpty ? (old.count > 1 ? old[1] : "") : g]
+                    }
                     changed = true
                 }
             }
@@ -1705,6 +1721,13 @@ final class Store: ObservableObject {
                 if let i = gi[k] { p.groupInfo[k] = i }
             }
             for (k, i) in gi where p.groupInfo[k] == nil { p.groupInfo[k] = i }
+            // 你看到、聽到的句子: both devices' (the newest 5 of a word), and their second-language lines and videos
+            for (k, l) in obj["found"] as? [String: [String]] ?? [:] {
+                var list = p.found[k] ?? []
+                for s in l where !list.contains(s) { list.append(s) }
+                p.found[k] = Array(list.suffix(5))
+            }
+            for (s, i) in obj["foundInfo"] as? [String: [String]] ?? [:] where p.foundInfo[s] == nil { p.foundInfo[s] = i }
             // 影片懂多少: each video's newest
             for (k, v) in obj["seen"] as? [String: [Double]] ?? [:] where v.count >= 2 && v[1] > (p.seen[k].flatMap { $0.count >= 2 ? $0[1] : nil } ?? 0) {
                 p.seen[k] = Array(v.prefix(2))
@@ -1786,7 +1809,7 @@ final class Store: ObservableObject {
             "week": progress.week, "weekStart": progress.weekStart,
             "srs": progress.srs, "log": progress.log,
             "groupTime": progress.groupTime, "groupInfo": progress.groupInfo, "groupWords": progress.groupWords,
-            "seen": progress.seen,
+            "seen": progress.seen, "found": progress.found, "foundInfo": progress.foundInfo,
         ]
         return (try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys])) ?? Data()
     }

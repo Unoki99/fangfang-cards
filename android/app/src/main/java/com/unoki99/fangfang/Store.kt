@@ -787,6 +787,23 @@ object Store {
             if (op.size < 2) continue
             val k = op[0]
             if (op[1] == "g") continue           // (only its group: done when it came)
+            // (the sentence the word was saved from, at most 5 kept; a subtitle line's with its second-language line
+            // and the video it's from)
+            if (op.size >= 3) {
+                val s = op[2].trim()
+                if (s.isNotEmpty()) {
+                    val list = progress.found[k] ?: mutableListOf()
+                    list.remove(s); list.add(s)
+                    progress.found[k] = list.takeLast(5).toMutableList()
+                    val tr = op.getOrNull(4)?.trim() ?: ""
+                    val g = op.getOrNull(3) ?: ""
+                    if (tr.isNotEmpty() || g.isNotEmpty()) {
+                        val old = progress.foundInfo[s]
+                        progress.foundInfo[s] = mutableListOf(tr.ifEmpty { old?.getOrNull(0) ?: "" }, g.ifEmpty { old?.getOrNull(1) ?: "" })
+                    }
+                    any = true
+                }
+            }
             if (op[1] == "s") {
                 if ((progress.saved[k] ?: -1.0) <= 0) { progress.saved[k] = t + (ops.size - i) * 0.001; any = true }
                 continue
@@ -802,6 +819,25 @@ object Store {
         }
         if (any) { changed(); save() }
         return waiting
+    }
+
+    /** 你看到、聽到的句子: the sentences a word was saved from in the browser add-on (the newest last) */
+    fun foundSentences(key: String): List<String> = progress.found[key] ?: emptyList()
+    /** a found sentence's second-language line (a subtitle line's English), "" none */
+    fun foundTranslation(sentence: String): String = progress.foundInfo[sentence]?.getOrNull(0) ?: ""
+    /** the name of the video / episode a found sentence is from (its 影片詞組), null none */
+    fun foundSource(sentence: String): String? {
+        val g = progress.foundInfo[sentence]?.getOrNull(1) ?: return null
+        if (g.isEmpty()) return null
+        return progress.groupInfo[g]?.firstOrNull() ?: g
+    }
+    /** 例句填空: the sentences you saved the word from yourself, the word blanked out (with the second-language line
+     *  as their meaning); a word with none: the dictionary's example sentences */
+    fun blanks(c: Card): List<Example> {
+        val mine = foundSentences(c.k).filter { c.h.isNotEmpty() && it.contains(c.h) }.map { s ->
+            Example(h = s, r = listOf(s, s, s), z = foundTranslation(s), n = "", bh = s.replace(c.h, "＿＿"), br = null)
+        }
+        return if (mine.isEmpty()) c.blankExamples else mine
     }
 
     fun addToGroup(id: String, name: String, url: String, key: String) {
@@ -1495,6 +1531,17 @@ object Store {
             }
             for ((k, i) in gi) if (progress.groupInfo[k] == null) progress.groupInfo[k] = i
             for ((k, t) in dmap("groupWords")) if (Math.abs(t) > Math.abs(progress.groupWords[k] ?: 0.0)) progress.groupWords[k] = t
+            // 你看到、聽到的句子: both devices' (the newest 5 of a word), and their second-language lines and videos
+            for ((k, v) in (obj["found"] as? Map<String, Any?>) ?: emptyMap()) {
+                val l = (v as? List<Any?>)?.mapNotNull { it as? String } ?: continue
+                val list = progress.found[k] ?: mutableListOf()
+                for (s in l) if (s !in list) list.add(s)
+                progress.found[k] = list.takeLast(5).toMutableList()
+            }
+            for ((s, v) in (obj["foundInfo"] as? Map<String, Any?>) ?: emptyMap()) {
+                val l = (v as? List<Any?>)?.map { (it as? String) ?: "" } ?: continue
+                if (progress.foundInfo[s] == null) progress.foundInfo[s] = l.toMutableList()
+            }
             // 影片懂多少: each video's newest
             for ((k, v) in (obj["seen"] as? Map<String, Any?>) ?: emptyMap()) {
                 val l = (v as? List<Any?>)?.mapNotNull { (it as? Number)?.toDouble() } ?: continue
@@ -1591,7 +1638,7 @@ object Store {
             "saved" to progress.saved, "own" to progress.own, "ownInfo" to progress.ownInfo, "senses" to progress.senses,
             "week" to progress.week, "weekStart" to progress.weekStart, "srs" to progress.srs, "log" to progress.log,
             "groupTime" to progress.groupTime, "groupInfo" to progress.groupInfo, "groupWords" to progress.groupWords,
-            "seen" to progress.seen), pretty = true)
+            "seen" to progress.seen, "found" to progress.found, "foundInfo" to progress.foundInfo), pretty = true)
     }
 
     @Suppress("UNCHECKED_CAST")

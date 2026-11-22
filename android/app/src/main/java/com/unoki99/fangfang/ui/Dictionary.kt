@@ -221,6 +221,7 @@ fun DictEntryBody(d: Dict, key: String) {
                     }
                 }
             }
+            FoundSentences(key)
             // a single character: 說文解字 (when installed)
             if (han.cpCount == 1) ShuowenBlock(han)
             if (place >= 0 && senses.any { s -> s.ex.any { it.size > 1 && d.hasGuess(it[1], it[0], place) } }) GuessNote()

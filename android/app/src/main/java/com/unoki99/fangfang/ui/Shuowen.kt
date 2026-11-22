@@ -16,6 +16,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.unoki99.fangfang.DataFiles
+import com.unoki99.fangfang.Store
 import com.unoki99.fangfang.DictInstaller
 
 // MARK: - 說文解字 (段玉裁《說文解字注》, from cjkvi-dict, GPLv2)
@@ -53,6 +54,25 @@ object Shuowen {
     fun of(ch: String): List<Item> = all[ch] ?: emptyList()
     /** the character's 六書 (null: not known) */
     fun liushu(ch: String): String? = of(ch).firstNotNullOfOrNull { it.liushu }
+}
+
+/** 你看到、聽到的句子: the sentences the word was saved from in the browser add-on; a video's subtitle line with the
+ *  same line in the second language under it and the video it's from (as on the iPhone / iPad) */
+@Composable
+fun FoundSentences(key: String) {
+    val list = Store.foundSentences(key)
+    if (list.isEmpty()) return
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.55f)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Txt(tr("你看到、聽到的句子"), ff(FF.Caption, FontWeight.Bold), T.muted)
+        for (s in list.reversed()) Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Txt(s, ff(FF.Subheadline), T.glyph)
+            val t = Store.foundTranslation(s)
+            if (t.isNotEmpty()) Txt(t, ff(FF.Footnote), T.muted)
+            Store.foundSource(s)?.let { Txt("— $it", ff(FF.Caption2), T.muted.copy(alpha = 0.8f), maxLines = 2) }
+        }
+        Txt(tr("「例句填空」會用這些句子出題。"), ff(FF.Caption2), T.muted)
+    }
 }
 
 /** a character's 說文解字: under its meanings (nothing when 說文解字 isn't installed) */

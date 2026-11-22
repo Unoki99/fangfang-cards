@@ -521,7 +521,7 @@ fun UnknownTab() {
                     class G(val title: String, val text: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val enabled: Boolean, val p: Practice)
                     val games = listOfNotNull(
                         G(tr("滑卡練習"), tr("像「新詞」一樣滑卡片：往右是會，往左是不會。"), Icons.Filled.Swipe, all.isNotEmpty() || due.isNotEmpty(), Practice.SWIPE),
-                        G(tr("例句填空"), tr("看例句，把空著的詞選回去。"), Icons.Filled.Rule, (all + due).any { it.blankExamples.isNotEmpty() }, Practice.BLANKS),
+                        G(tr("例句填空"), tr("看例句，把空著的詞選回去。"), Icons.Filled.Rule, (all + due).any { Store.blanks(it).isNotEmpty() }, Practice.BLANKS),
                         G(tr("排句子"), tr("例句被打亂了，照意思把詞排回去。"), Icons.Filled.ViewModule, all.isNotEmpty(), Practice.SCRAMBLE),
                         G(tr("看字排讀音"), tr("只看漢字，把讀音照順序排。"), Icons.Filled.MenuBook, all.isNotEmpty() && !Store.isSv, Practice.READING),
                         if (Store.isJa) G(tr("助詞練習"), tr("選句子裡缺的助詞。"), Icons.Filled.Extension, true, Practice.JA_PARTICLES)

@@ -634,6 +634,7 @@
         }
         const sc = at && subsCueAt(at.node, at.off);
         lastSentence = sc ? sc.sentence : (at ? sentenceAt(at.node, at.off) : (window.getSelection ? sentenceOfSelection() : ""));
+        lastTrans = sc ? sc.tr : "";
     }
 
     // ── the light blue mark around the word ─────────────────────────────────────────────────
@@ -1041,6 +1042,8 @@
 
     // ── the sentence a word is in (kept with it when it's saved): from the stop before it to the stop after it ──
     let lastSentence = "";
+    // (a subtitle line's: the same line in the second language under it, e.g. the English; and the video it's from)
+    let lastTrans = "";
     const STOPS = "。！？!?；;\n";
     function blockOf(node) {
         let e = node.nodeType === 3 ? node.parentElement : node;
@@ -1582,7 +1585,7 @@
                 if (w === "known") queue = queue.filter(q => !(q.k === key && q.w === "unknown"));
                 if (w === "unknown") { queue = queue.filter(q => !(q.k === key && q.w === "known")); localDel(han, keyLang(key)); saveKnownLocal(); }
                 if (w === "known") { localAdd(han, keyLang(key)); saveKnownLocal(); }
-                queue.push(withGroup({ k: key, w, h: han, x: lastSentence || "", t: Date.now() }));
+                queue.push(withGroup({ k: key, w, h: han, x: lastSentence || "", tr: lastSentence ? lastTrans : "", t: Date.now() }));
                 // (remembered here too: the rainbow and the colours on pages)
                 if (w === "saved" && !saved.some(x => x.h === han)) {
                     saved.push({ h: han, c: (hanSegsList || []).flatMap(sg => [...sg.t].map(() => sg.c || null)) });
@@ -1602,15 +1605,28 @@
         return row;
     }
 
+    // a word for the app's link (the same as settings.js's ffOp): [key, what, the sentence, its 影片詞組, the
+    // sentence in the second language]
+    function ffOp(op) {
+        return x => {
+            const tr = x.x ? (x.tr || "") : "";
+            if (tr) return [x.k, op(x.w), x.x || "", x.g || "", tr];
+            return x.g ? [x.k, op(x.w), x.x || "", x.g] : (x.x ? [x.k, op(x.w), x.x] : [x.k, op(x.w)]);
+        };
+    }
+
     // opens the app with the words (Safari asks first whether to open it)
     function sendToApp() {
         if (!queue.length) return;
-        const op = w => w === "saved" ? "s" : (w === "known" ? "k" : "u");
-        const ops = queue.map(q => q.x ? [q.k, op(q.w), q.x] : [q.k, op(q.w)]);
+        const op = w => w === "saved" ? "s" : (w === "known" ? "k" : (w === "group" ? "g" : "u"));
+        const ops = queue.map(ffOp(op));
         const pack = o => btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+        // (影片詞組: each word's video, its name and address)
+        const groups = {};
+        for (const q of queue) if (q.g) groups[q.g] = [q.gn || q.g, q.gu || ""];
         // (and the minutes watched with the subtitle panel, for 練習統計)
         // (kept in memory too, so the app opens straight from the tap: Safari only opens it from a tap)
-        let w = "";
+        let w = Object.keys(groups).length ? "&gr=" + pack(groups) : "";
         if (Object.keys(watchCache).length) { w = "&w=" + pack(watchCache); watchCache = {}; if (store) store.set({ ffWatch: {} }).catch(() => {}); }
         // (and each video's 懂 %, for the app's 影片懂多少)
         if (Object.keys(seenCache).length) { w += "&vk=" + pack(seenCache); seenCache = {}; if (store) store.set({ ffSeen: {} }).catch(() => {}); }
@@ -1899,11 +1915,11 @@
         }
         if (!pick) return;
         const sentence = (sc ? sc.sentence : sentenceAt(hit.node, lat ? lat.start : hit.off)) || "";
-        keyMark(want, pick.k, sentence, lang);
+        keyMark(want, pick.k, sentence, lang, sc ? sc.tr : "");
     }, true);
 
     /// A / S on a word: 認識, or 不熟 + 收藏 (with its sentence)
-    function keyMark(want, key, sentence, lang) {
+    function keyMark(want, key, sentence, lang, trans) {
         const han = key.split("\t")[0];
         if (want === "known") {
             queue = queue.filter(q => !(q.k === key && (q.w === "unknown" || q.w === "known")));
@@ -1911,8 +1927,8 @@
             localAdd(han, keyLang(key)); saveKnownLocal();
         } else {
             queue = queue.filter(q => !(q.k === key && (q.w === "known" || q.w === "unknown" || q.w === "saved")));
-            queue.push(withGroup({ k: key, w: "unknown", h: han, x: sentence, t: Date.now() }));
-            queue.push(withGroup({ k: key, w: "saved", h: han, x: sentence, t: Date.now() }));
+            queue.push(withGroup({ k: key, w: "unknown", h: han, x: sentence, tr: trans || "", t: Date.now() }));
+            queue.push(withGroup({ k: key, w: "saved", h: han, x: sentence, tr: trans || "", t: Date.now() }));
             localDel(han, keyLang(key)); saveKnownLocal();
             if (!saved.some(x => x.h === han)) { saved.push({ h: han, c: [] }); saveSaved(); }
         }
@@ -2336,6 +2352,8 @@
         }
         const meta = st.meta;
         const sentence = cue.t.replace(/\s+/g, " ").trim();
+        const t2 = st.lines && st.lines[at] && st.lines[at].querySelector(".t2");
+        const trans = t2 ? t2.textContent.replace(/\s+/g, " ").trim() : "";
         for (const o of list) {
             const c = document.createElement("div");
             c.className = "dc" + (o.learn ? " learn" : "");
@@ -2354,7 +2372,7 @@
                 ev.stopPropagation();
                 const v = subsVideo();
                 if (prefs.subsPause && v && !v.paused) { v.pause(); st.pausedBy = "tap"; }
-                lookup(o.w, c.getBoundingClientRect(), "defs:" + o.w, null).then(() => { lastSentence = sentence; });
+                lookup(o.w, c.getBoundingClientRect(), "defs:" + o.w, null).then(() => { lastSentence = sentence; lastTrans = trans; });
             });
             box.appendChild(c);
         }
@@ -3617,7 +3635,8 @@
                 text += chars[i];
             }
         }
-        return { text, sentence: cue.t.replace(/\s+/g, " ").trim() };
+        const t2 = line.querySelector(".t2");
+        return { text, sentence: cue.t.replace(/\s+/g, " ").trim(), tr: t2 ? t2.textContent.replace(/\s+/g, " ").trim() : "" };
     }
 
     // the line being said: lit, and moved to a third of the way down; the earlier ones above it, the next below

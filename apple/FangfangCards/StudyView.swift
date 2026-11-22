@@ -294,11 +294,13 @@ struct StudyView: View {
                     if let x = q.example {
                         Text(x.bh ?? x.h).ffFont(.title3).foregroundStyle(T.blueInk)
                         if let br = store.blankRom(c, x, rom, place) { Text(br).latFont(17).foregroundStyle(T.greenInk) }
-                        if x.z.isEmpty {
-                            // (a sentence you saved the word from yourself)
+                        // (a sentence you saved the word from yourself: its second-language line when it's from a
+                        // video's subtitles, and the video)
+                        if !x.z.isEmpty { Text(x.z).ffFont(.subheadline).foregroundStyle(T.muted) }
+                        if let src = store.foundSource(x.h) {
+                            Text(tr("你看到、聽到的句子") + "・" + src).ffFont(.caption).foregroundStyle(T.oliveInk).lineLimit(2)
+                        } else if x.z.isEmpty || store.foundSentences(c.k).contains(x.h) {
                             Text(tr("你看到、聽到的句子")).ffFont(.caption).foregroundStyle(T.oliveInk)
-                        } else {
-                            Text(x.z).ffFont(.subheadline).foregroundStyle(T.muted)
                         }
                         if !x.n.isEmpty {
                             HStack(spacing: 8) {
@@ -313,14 +315,30 @@ struct StudyView: View {
                     Text(meaning(c).t).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2)
                 case .write:
                     label(trs("寫出這個詞"))
-                    meaningLine(c, hide: true)
+                    // (fewer clues the nearer the word is to learned: see writeClues)
+                    let clues = writeClues(c)
+                    if clues.meaning { meaningLine(c, hide: true) }
                     HStack(spacing: 12) {
-                        Text(store.cardRom(c, rom, place)).latFont(24).foregroundStyle(T.greenInk)
+                        if clues.reading { Text(store.cardRom(c, rom, place)).latFont(24).foregroundStyle(T.greenInk) }
                         Spacer()
-                        if let a = c.audio { PlayButton(path: a, size: 40) }
+                        if clues.audio, let a = c.audio { PlayButton(path: a, size: 40) }
                     }
                 }
             }
+        }
+    }
+
+    /// 寫出這個詞: the clues, fewer the nearer the word is to learned (its dots: 連續答對 out of the number that learns it).
+    /// No dots: the meaning, the reading and the sound; then the sound and the meaning; then only the sound; last (and a
+    /// word learned before, back for review) only the meaning.
+    private func writeClues(_ c: Card) -> (meaning: Bool, reading: Bool, audio: Bool) {
+        let g = max(1, goal), n = store.streak(c)
+        let stage = store.isDue(c.k) || store.progress.status[c.k] == 1 ? 3 : min(3, (n * 3 + g - 1) / g)
+        switch stage {
+        case 0: return (true, true, true)
+        case 1: return (true, false, true)
+        case 2: return c.audio == nil ? (true, false, false) : (false, false, true)      // (no sound: the meaning)
+        default: return (true, false, false)
         }
     }
 

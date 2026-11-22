@@ -436,6 +436,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         }
         // 日語: the kanji of the word, and its 活用
         if (z.isJa) JaWordExtras(z, e)
+        FoundSentences(e.k)
         // a single character: 說文解字 (when installed)
         if (e.h.cpCount == 1 && !z.isJa && !z.isSv) ShuowenBlock(e.h)
         if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),

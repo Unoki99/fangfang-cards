@@ -78,14 +78,14 @@ class Question(val card: Card, val kind: QuizKind, val options: List<Card>, val 
 private fun kinds(c: Card): List<QuizKind> = QuizKind.entries.filter {
     when (it) {
         QuizKind.LISTEN -> c.audio != null
-        QuizKind.FILL_BLANK -> c.blankExamples.isNotEmpty()
+        QuizKind.FILL_BLANK -> Store.blanks(c).isNotEmpty()
         QuizKind.WRITE -> Prefs.practiceWrite.value && Store.canWrite(c.h)
         else -> c.d.isNotEmpty()
     }
 }
 
 private fun make(c: Card, k: QuizKind) = Question(c, k, (Store.distractors(c) + c).shuffled(),
-    if (k == QuizKind.FILL_BLANK) c.blankExamples.randomOrNull() else null)
+    if (k == QuizKind.FILL_BLANK) Store.blanks(c).randomOrNull() else null)
 
 /** words = only these (本週學習); test = 本週學習's final test: one question per word, nothing asked again, a score at the end */
 @Composable
@@ -133,7 +133,7 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
             val opts = PracticeSave.strings(sq["opts"]).mapNotNull { Store.cardFor(it) }
             if (!opts.contains(c)) continue
             val exH = sq["ex"] as? String
-            val ex = exH?.let { h -> (if (kind == QuizKind.FILL_BLANK) c.blankExamples else c.d.flatMap { it.x }).firstOrNull { it.h == h } }
+            val ex = exH?.let { h -> (if (kind == QuizKind.FILL_BLANK) Store.blanks(c) else c.d.flatMap { it.x }).firstOrNull { it.h == h } }
             if (kind == QuizKind.FILL_BLANK && ex == null) continue
             if (i < at0) at++
             qs.add(Question(c, kind, opts, ex))
@@ -169,13 +169,13 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
         }
         val pool = pool0 ?: Store.studyCards
         // the words due for review first, then the ones answered right the fewest times
-        val words = pool.filter { !blanksOnly || it.blankExamples.isNotEmpty() }.shuffled()
+        val words = pool.filter { !blanksOnly || Store.blanks(it).isNotEmpty() }.shuffled()
             .sortedBy { if (Store.isDue(it.k)) -1 else Store.streak(it) }
             .take(maxOf(1, if (pool0 != null) pool.size else size))
         val first = ArrayList<Question>(); val second = ArrayList<Question>()
         for (c in words) {
             if (blanksOnly) {
-                val xs = c.blankExamples.shuffled()
+                val xs = Store.blanks(c).shuffled()
                 first.add(Question(c, QuizKind.FILL_BLANK, (Store.distractors(c) + c).shuffled(), xs[0]))
                 if (xs.size > 1) second.add(Question(c, QuizKind.FILL_BLANK, (Store.distractors(c) + c).shuffled(), xs[1]))
             } else {
@@ -276,6 +276,21 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     }
 }
 
+/** 寫出這個詞: the clues [meaning, reading, sound], fewer the nearer the word is to learned (its dots: 連續答對 out of
+ *  the number that learns it). No dots: all three; then the sound and the meaning; then only the sound; last (and a
+ *  word learned before, back for review) only the meaning. (As on the iPhone / iPad.) */
+private fun writeClues(c: Card): List<Boolean> {
+    val g = maxOf(1, Prefs.goal.value)
+    val n = Store.streak(c)
+    val stage = if (Store.isDue(c.k) || Store.progressStatus()[c.k] == 1) 3 else minOf(3, (n * 3 + g - 1) / g)
+    return when (stage) {
+        0 -> listOf(true, true, true)
+        1 -> listOf(true, false, true)
+        2 -> if (c.audio == null) listOf(true, false, false) else listOf(false, false, true)
+        else -> listOf(true, false, false)
+    }
+}
+
 @Composable
 private fun QLabel(s: String) = Txt(s, ff(FF.Subheadline, FontWeight.Bold), T.oliveInk)
 
@@ -305,7 +320,11 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
                 q.example?.let { x ->
                     Txt(x.bh ?: x.h, ff(FF.Title3), T.blueInk)
                     Store.blankRom(c, x, rom, place)?.let { Txt(it.annotated(), lat(17f), T.greenInk) }
-                    Txt(x.z, ff(FF.Subheadline), T.muted)
+                    if (x.z.isNotEmpty()) Txt(x.z, ff(FF.Subheadline), T.muted)
+                    // (a sentence you saved the word from yourself: the video it's from)
+                    val src = Store.foundSource(x.h)
+                    if (src != null) Txt(tr("你看到、聽到的句子") + "・" + src, ff(FF.Caption), T.oliveInk, maxLines = 2)
+                    else if (x.h in Store.foundSentences(c.k)) Txt(tr("你看到、聽到的句子"), ff(FF.Caption), T.oliveInk)
                     if (x.n.isNotEmpty()) Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         PlayButton(Audio.examplePath(x.n), 28.dp); Txt(tr("聽例句（提示）"), ff(FF.Caption), T.muted)
                     }
@@ -318,10 +337,13 @@ private fun Prompt(q: Question, rom: Int, place: Int) {
             }
             QuizKind.WRITE -> {
                 QLabel(tr("寫出這個詞")); Spacer(Modifier.height(10.dp))
-                MeaningLine(c)
+                // (fewer clues the nearer the word is to learned: see writeClues)
+                val clues = writeClues(c)
+                if (clues[0]) MeaningLine(c)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Txt(Store.cardRom(c, rom, place).annotated(), lat(24f), T.greenInk, Modifier.weight(1f))
-                    c.audio?.let { PlayButton(it, 40.dp) }
+                    if (clues[1]) Txt(Store.cardRom(c, rom, place).annotated(), lat(24f), T.greenInk, Modifier.weight(1f))
+                    else Spacer(Modifier.weight(1f))
+                    if (clues[2]) c.audio?.let { PlayButton(it, 40.dp) }
                 }
             }
         }

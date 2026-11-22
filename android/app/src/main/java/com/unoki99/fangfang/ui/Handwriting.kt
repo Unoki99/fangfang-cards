@@ -1194,7 +1194,8 @@ fun IdiomWriteScreen(onClose: () -> Unit) {
                 // ── choosing ──
                 Txt(tr("看意思（和讀音）寫出整個四字格，一個字一個字寫，寫完對答案。寫錯的會在這一輪最後再出現一次。"), ff(FF.Subheadline), T.muted)
                 Txt(tr("要寫的四字格"), ff(FF.Headline), T.glyph)
-                Segmented(listOf("common" to tr("常見的成語（{0}）", common.size), "all" to tr("所有成語（{0}）", all.size), "mine" to tr("練習範圍裡的四字詞（{0}）", mine.size)),
+                // (the 不熟 page's chosen words: an 影片詞組 of words marked in a show's subtitles, say)
+                Segmented(listOf("mine" to tr("不熟：{0}（{1}）", Store.practiceName, mine.size), "common" to tr("常見的成語（{0}）", common.size), "all" to tr("所有成語（{0}）", all.size)),
                     source, { source = it })
                 Txt(tr("一輪幾個"), ff(FF.Headline), T.glyph)
                 Segmented(listOf(5, 10, 20, 30).map { it to "$it" }, count, { count = it })
@@ -1205,7 +1206,7 @@ fun IdiomWriteScreen(onClose: () -> Unit) {
                 ProminentButton({ start() }, Modifier.fillMaxWidth().heightIn(min = 44.dp), enabled = poolSize > 0) {
                     IconLabel(Icons.Filled.Draw, tr("開始寫"), ff(FF.Headline), Color.White)
                 }
-                if (poolSize == 0) Txt(if (source == "mine") tr("練習範圍裡還沒有四個字的詞。") else tr("華語詞典還沒有安裝，或沒有成語。"), ff(FF.Footnote), T.muted)
+                if (poolSize == 0) Txt(if (source == "mine") tr("「{0}」裡還沒有四個字的詞（在「不熟」頁換範圍）。", Store.practiceName) else tr("華語詞典還沒有安裝，或沒有成語。"), ff(FF.Footnote), T.muted)
             } else if (idx < q.size) {
                 // ── writing one ──
                 val c = q[idx]
@@ -1223,6 +1224,16 @@ fun IdiomWriteScreen(onClose: () -> Unit) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         if (p.isNotEmpty()) Chip(p)
                         Txt(t, ff(FF.Body), T.glyph)
+                    }
+                    // (where you met it: the subtitle line, the 四字格 left out until answered; its second-language line
+                    // and the video)
+                    val met = Store.foundSentences(c.k).lastOrNull { it.contains(c.h) }
+                    if (met != null) Column(Modifier.padding(top = 2.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Txt(if (answered) met else met.replace(c.h, "＿＿＿＿"), ff(FF.Subheadline), T.blueInk)
+                        val tr2 = Store.foundTranslation(met)
+                        if (tr2.isNotEmpty()) Txt(tr2, ff(FF.Footnote), T.muted)
+                        val src = Store.foundSource(met)
+                        if (src != null) Txt("— $src", ff(FF.Caption2), T.muted, maxLines = 2)
                     }
                 }
                 key(idx, c.k) {
