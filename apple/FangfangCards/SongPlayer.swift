@@ -115,6 +115,27 @@ final class SongPlayer: ObservableObject {
     }
 
     private var av: AVPlayer?
+
+    /// the song's speed (歌詞's 速度: slower to follow the words, 0.5×–1.5×), kept for the next songs too
+    @Published var speed: Double = UserDefaults.standard.object(forKey: "songSpeed") as? Double ?? 1 {
+        didSet { UserDefaults.standard.set(speed, forKey: "songSpeed"); applySpeed() }
+    }
+
+    /// (the speed set on whichever player plays: Apple Music's, or the preview's)
+    func applySpeed() {
+        let r = Float(speed)
+        switch mode {
+        case .full:
+            #if !targetEnvironment(macCatalyst)
+            if music.playbackState == .playing { music.currentPlaybackRate = r }
+            #endif
+        case .preview:
+            if let p = av {
+                if #available(iOS 16.0, *) { p.defaultRate = r }
+                if p.rate > 0 { p.rate = r }
+            }
+        }
+    }
     private var endObserver: NSObjectProtocol?
     private var timer: Timer?
     private var lyricsJob: Task<Void, Never>?
@@ -280,6 +301,7 @@ final class SongPlayer: ObservableObject {
                     self.playPreview(h)
                 } else {
                     m.play()
+                    self.applySpeed()
                     self.watch(h)
                 }
             }
@@ -319,6 +341,7 @@ final class SongPlayer: ObservableObject {
             Task { @MainActor in self?.playing = false; self?.songEnded() }
         }
         p.play()
+        applySpeed()
         hookLyricsClock()
         nowPlaying()
     }
@@ -399,6 +422,7 @@ final class SongPlayer: ObservableObject {
             }
         }
         playing = true
+        applySpeed()
         userPaused = false
     }
 

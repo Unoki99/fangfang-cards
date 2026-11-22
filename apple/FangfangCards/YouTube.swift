@@ -58,6 +58,13 @@ final class YtPlayer: ObservableObject {
     private var lastT = 0.0
     private var lastAt = Date()
     private var rate = 1.0
+
+    /// the video's speed (歌詞's 速度), kept for the next videos too: set again whenever YouTube's own differs (a new
+    /// video starts at 1×)
+    @Published var speed: Double = UserDefaults.standard.object(forKey: "ytSpeed") as? Double ?? 1 {
+        didSet { UserDefaults.standard.set(speed, forKey: "ytSpeed"); applySpeed() }
+    }
+    func applySpeed() { run("v.playbackRate=\(speed);") }
     /// (the song whose lyrics were looked for: the video and its name)
     private var lyricsFor = ""
     private var lyricsJob: Task<Void, Never>?
@@ -274,6 +281,7 @@ final class YtPlayer: ObservableObject {
         }
         let was = playing
         lastT = x.t; lastAt = Date(); rate = x.rate > 0 ? x.rate : 1
+        if abs(rate - speed) > 0.01 { applySpeed() }
         if playing == x.paused { playing = !x.paused }
         // (started playing here: the radio and 找歌來聽 stop, the lyrics follow this)
         if playing && !was {

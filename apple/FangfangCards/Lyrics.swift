@@ -700,6 +700,8 @@ struct LyricsWindow: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel(tr("卡拉 OK"))
             }
+            // (速度: the song's, Apple Music's or YouTube's)
+            if songs.active || YtPlayer.shared.following { SongSpeedMenu() }
             SaveSongButton(size: 16, song: h).toolCircle()
             // (分享: 打開 LRC 檔, 分享 LRC 檔)
             LyricsFileMenu(hit: h)
@@ -1736,5 +1738,34 @@ struct SongLanguageMenu: View {
                 .toolCircle()
         }
         .accessibilityLabel(tr("歌的語言"))
+    }
+}
+
+
+/// 速度: the speed of the song playing (Apple Music's or YouTube's), 0.5× to 1.5×; the lyrics follow
+struct SongSpeedMenu: View {
+    @ObservedObject private var songs = SongPlayer.shared
+    @ObservedObject private var yt = YtPlayer.shared
+    static let speeds: [Double] = [0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5]
+
+    private var now: Double { songs.active ? songs.speed : yt.speed }
+    private func set(_ v: Double) { if songs.active { songs.speed = v } else { yt.speed = v } }
+    private func name(_ v: Double) -> String {
+        let t = v == v.rounded() ? String(Int(v)) : String(format: "%g", v)
+        return t + "×"
+    }
+
+    var body: some View {
+        Menu {
+            Picker(tr("速度"), selection: Binding(get: { now }, set: { set($0) })) {
+                ForEach(Self.speeds, id: \.self) { v in Text(name(v)).tag(v) }
+            }
+        } label: {
+            Text(name(now)).ffFont(.caption, .semibold).monospacedDigit()
+                .foregroundStyle(now == 1 ? T.btnInk : T.greenInk)
+                .padding(.horizontal, 6).frame(minHeight: 34).contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tr("速度"))
     }
 }
