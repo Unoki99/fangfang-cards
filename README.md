@@ -1,4 +1,73 @@
+# Fangfang Cards（方方詞卡）
+
+**English** · [中文](#方方詞卡fangfang-cards)
+
+Word cards, a dictionary and practice for Taiwanese, Mandarin, Cantonese, Hakka and Japanese.
+
+- **windows/**: the desktop version (Windows and Mac)
+- **android/**: the Android version
+- **apple/**: the iPhone / iPad version (can also be installed on a Mac)
+- **Firefox extension**: look up words on web pages, YouTube lyrics. [Install from the add-ons site](https://addons.mozilla.org/en-US/firefox/addon/%E6%96%B9%E6%96%B9%E8%A9%9E%E5%8D%A1/)
+
+## Install
+
+On GitHub, click **Code → Download ZIP** and unzip it into Downloads (folder: `fangfang-cards-main`).
+
+| Version | Platform | File / command |
+|---|---|---|
+| **Desktop** | Windows | Double-click `install-windows.bat` |
+| **Desktop** | Mac | Terminal: `bash ~/Downloads/fangfang-cards-main/install-mac.command` |
+| **Android** | Windows | Double-click `android-install.bat` |
+| **Android** | Mac | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh android` |
+| **iPhone / iPad** | Mac | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh apple ios` |
+| **iPad version on a Mac** | Mac (Apple silicon) | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh apple mac` |
+| **Firefox extension** | Windows, Mac, Android | [Add-ons page](https://addons.mozilla.org/en-US/firefox/addon/%E6%96%B9%E6%96%B9%E8%A9%9E%E5%8D%A1/) → Add to Firefox |
+
+**Install first**
+
+| Version | Windows | Mac |
+|---|---|---|
+| Desktop | [Python 3](https://www.python.org/downloads/) (tick "Add python.exe to PATH") | Nothing |
+| Android | Python 3, [Android Studio](https://developer.android.com/studio) | Android Studio |
+| iPhone / iPad | — | Xcode 26 or later, signed in with your Apple ID in Xcode → Settings → Accounts |
+
+**Update**: run the same file or command again. (iPhone / iPad with a free Apple ID: once every 7 days.)
+
+Terminal is in Applications → Utilities → Terminal. If the folder isn't in Downloads, change the path in the command, or drag the file into the Terminal window.
+
+## Notes
+
+### Desktop (Windows, Mac)
+
+- The first build takes 5–10 minutes; Java and anything else it needs is downloaded automatically.
+- Windows: installed to `%LOCALAPPDATA%\Programs\FangfangCards`, with 方方詞卡 in the Start menu and on the desktop.
+- Mac: installed in Applications as **方方詞卡（電腦版）**. Run `install-mac.command` from Terminal (GitHub's ZIP doesn't keep the file executable, so double-clicking says you don't have permission).
+- Dictionaries are installed inside the program, by language, the first time you open it.
+- Progress: Windows `%LOCALAPPDATA%\FangfangCards\app`, Mac `~/Library/Application Support/FangfangCards/app`. Move it between devices with a backup file or a shared backup folder (Settings → Export and import).
+
+### Android
+
+- The APK ends up on the desktop (`FangfangCards.apk`): copy it to the phone and tap it to install. With the phone connected by USB and USB debugging on, it's installed directly.
+- Open Android Studio once first so it downloads the SDK.
+- More: `android/README.md`.
+
+### iPhone / iPad (and the iPad version on a Mac)
+
+- `install.sh apple` installs both iPhone / iPad and Mac; plain `install.sh` asks which one.
+- Connect the iPhone / iPad to the Mac by USB (the first time, tap Trust on the device).
+- More: `apple/README.md`.
+
+### Dictionary data
+
+The licences of the Ministry of Education's and the Chinese Language Society's dictionaries don't allow sharing processed versions, so they aren't in this repository. Copies of the original files are in [unoki99/fangfang-data](https://github.com/unoki99/fangfang-data), each under its own licence (see its README.md), **not covered by this project's MIT licence**. They are processed on your own computer when you install. Sources and licences: "資料來源與授權" in `apple/README.md`.
+
+If a build fails, send the error message to Claude.
+
+---
+
 # 方方詞卡（Fangfang Cards）
+
+[English](#fangfang-cards方方詞卡) · **中文**
 
 台語、華語、粵語、客語、日語的詞卡、詞典和練習。
 
@@ -74,8 +143,3 @@ Safari 查詞（網頁查詞、影片字幕）也可以裝在 Firefox，包括 A
 
 只給自己用、把做好的資料直接放進去的版本：`build-firefox.bat withdata`（Mac：`build_firefox.sh withdata`，要先照上面做出詞典資料），做出 `fangfang-firefox-private.xpi`。這個版本有改過的詞典資料，只能選「On your own」，不能公開。
 
----
-
-Taiwanese and Mandarin word cards, dictionary and practice. `windows/` is the desktop version (Windows and Mac:
-`install-windows.bat` / `install-mac.command`), `android/` the Android version, `apple/` the iPhone / iPad version
-(`install.sh apple`).
