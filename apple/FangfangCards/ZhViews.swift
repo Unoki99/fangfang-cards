@@ -552,13 +552,7 @@ struct ZhEntryBody: View {
             if dict.isJa { JaWordExtras(dict: dict, entry: entry) }
             // 瑞典語: the word's parts (tap one), its Chinese meanings, its forms
             if dict.isSv { SvWordExtras(dict: dict, entry: entry) }
-            FoundSentences(key: entry.k)
-            // a single character: 說文解字 (when installed)
-            if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }
-            if entry.extra {
-                Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
-                    .ffFont(.caption).foregroundStyle(T.muted)
-            }
+            // (the dictionary's source first, then the sentences you met the word in)
             Text(dict.isSv
                  ? tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）；中文意思：維基詞典（CC BY-SA）；常用詞：FrequencyWords（CC BY-SA 4.0）。詞的組成依規則推算，可能有誤。")
                  : dict.isJa
@@ -569,6 +563,13 @@ struct ZhEntryBody: View {
                  ? tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
                  : tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
+            FoundSentences(key: entry.k)
+            // a single character: 說文解字 (when installed)
+            if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }
+            if entry.extra {
+                Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
+                    .ffFont(.caption).foregroundStyle(T.muted)
+            }
             // 《重編國語辭典修訂本》 always at the very bottom
             moeChar
         }
