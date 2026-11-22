@@ -13,8 +13,7 @@ iPhone / iPad app, rewritten for Android (Kotlin + Jetpack Compose). Android 8.0
 4. Make the APK: menu **Build → Build App Bundle(s) / APK(s) → Build APK(s)**. When it's done, click **locate**
    in the little message at the bottom right. The file is `app/build/outputs/apk/debug/app-debug.apk`.
 
-If the build stops with errors, copy the red error lines from the **Build** window (bottom of the screen) and
-send them to Claude to fix.
+If the build stops with errors, the red error lines are in the **Build** window (bottom of the screen).
 
 ## Put it on an Android phone
 

@@ -161,7 +161,7 @@ ensure_ios_platform() {
 
 # (defined before anything that builds, so every way of building can stop on an error)
 fail() {
-  echo "✗ 建置失敗。把下面的錯誤訊息傳給 Claude："
+  echo "✗ 建置失敗。錯誤訊息："
   grep -a -E "error:|error -|Signing|provision" "$LOG" | sort -u | head -25
   echo "（完整紀錄：${LOG}）"
   exit 1

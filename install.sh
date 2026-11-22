@@ -92,7 +92,7 @@ echo "建置 Android 版…（第一次要下載不少東西，可能 5–10 分
 (cd "$A" && bash ./gradlew assembleDebug --console=plain) > "$LOG" 2>&1 < /dev/null
 APK="$A/app/build/outputs/apk/debug/app-debug.apk"
 if [ ! -f "$APK" ] || ! grep -q "BUILD SUCCESSFUL" "$LOG"; then
-  echo "✗ 建置失敗。把下面的錯誤訊息傳給 Claude："
+  echo "✗ 建置失敗。錯誤訊息："
   grep -E "^e: |error:|What went wrong" -A4 "${LOG}" | head -40
   echo "（完整紀錄：${LOG}）"
   exit 1

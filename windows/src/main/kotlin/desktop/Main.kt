@@ -73,7 +73,7 @@ fun main(args: Array<String>) {
     if (crashFile.exists()) {
         val t = try { crashFile.readText().take(1500) } catch (_: Exception) { "" }
         crashFile.delete()
-        if (t.isNotBlank()) Store.zhError = "上次當掉了（可以把這段傳給 Claude）：\n$t"
+        if (t.isNotBlank()) Store.zhError = "上次當掉了：\n$t"
     }
     Links.pending.addAll(args.filter { it.startsWith("fangfangcards:") })
     if (Os.mac) {

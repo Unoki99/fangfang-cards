@@ -61,8 +61,6 @@ Terminal is in Applications → Utilities → Terminal. If the folder isn't in D
 
 The licences of the Ministry of Education's and the Chinese Language Society's dictionaries don't allow sharing processed versions, so they aren't in this repository. Copies of the original files are in [unoki99/fangfang-data](https://github.com/unoki99/fangfang-data), each under its own licence (see its README.md), **not covered by this project's MIT licence**. They are processed on your own computer when you install. Sources and licences: "資料來源與授權" in `apple/README.md`.
 
-If a build fails, send the error message to Claude.
-
 ---
 
 # 方方詞卡（Fangfang Cards）
@@ -127,8 +125,6 @@ If a build fails, send the error message to Claude.
 ### 詞典資料
 
 教育部和中華文化總會的詞典授權不允許散布整理過的資料，所以這裡沒有那些檔案。原始檔案的副本在 [unoki99/fangfang-data](https://github.com/unoki99/fangfang-data)，各依自己的授權（見那裡的 README.md），**不在本專案的 MIT 授權範圍內**。安裝時在你的電腦上從原始檔案產生。資料來源和授權見 `apple/README.md` 的「資料來源與授權」。
-
-建置失敗的話，把錯誤訊息傳給 Claude。
 
 ### 查詞的附加元件給 Firefox（電腦和 Android）
 

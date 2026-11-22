@@ -127,7 +127,6 @@ if (-not $Java) {
     if ($seen) { Write-Host "  找到的（版本不對）："; $seen | ForEach-Object { Write-Host $_ } }
     else { Write-Host "  找不到 Android Studio 裡面的 Java。Android Studio 裝在哪裡？（例如 C:\Program Files\Android\Android Studio）" }
     Write-Host "  可以自己指定：在 PowerShell 先輸入  `$env:JAVA_HOME = `"C:\...\Android Studio\jbr`"  再執行 install.ps1。"
-    Write-Host "  把這些訊息傳給 Claude 也可以。"
     exit 1
 }
 $env:JAVA_HOME = $Java
@@ -280,7 +279,7 @@ if ($need) {
         & $Py @PyArgs @scriptArgs *> $PyLog
         if ($LASTEXITCODE -ne 0) {
             Get-Content $PyLog -Tail 15 | Write-Host
-            Fail "整理資料的時候出錯了（$($scriptArgs[0])）。把上面的訊息傳給 Claude。"
+            Fail "整理資料的時候出錯了（$($scriptArgs[0])），錯誤訊息在上面。"
         }
     }
     $raw = "https://raw.githubusercontent.com"
@@ -600,7 +599,7 @@ if ($Win) {
     $Built = Join-Path $WinDir "build\compose\binaries\main\app\FangfangCards"
     $ok = (Test-Path (Join-Path $Built "FangfangCards.exe")) -and (Select-String -Path $Log -Pattern "BUILD SUCCESSFUL" -Quiet)
     if (-not $ok) {
-        Write-Host "✗ 建置失敗。把下面的錯誤訊息傳給 Claude（或直接傳這個檔案：$Log）："
+        Write-Host "✗ 建置失敗。錯誤訊息（完整的在 $Log）："
         # (each error on one line, without the long folder names, so more of them fit)
         $errs = Select-String -Path $Log -Pattern "^e: " | ForEach-Object { ($_.Line -replace '^e: file:///.*?/fangfang-cards-main/', '') -replace '/app/src/main/java/com/unoki99/fangfang/', '/…/' } |
             Select-Object -Unique -First 80
@@ -664,7 +663,7 @@ Pop-Location
 $Apk = Join-Path $A "app\build\outputs\apk\debug\app-debug.apk"
 $ok = (Test-Path $Apk) -and (Select-String -Path $Log -Pattern "BUILD SUCCESSFUL" -Quiet)
 if (-not $ok) {
-    Write-Host "✗ 建置失敗。把下面的錯誤訊息傳給 Claude："
+    Write-Host "✗ 建置失敗。錯誤訊息："
     Select-String -Path $Log -Pattern "^e: |error:|What went wrong" -Context 0, 4 | Select-Object -First 30 | ForEach-Object { $_.ToString() }
     Write-Host "（完整紀錄：$Log）"
     exit 1

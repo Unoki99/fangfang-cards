@@ -117,7 +117,7 @@ for try in 1 2 3; do
 done
 BUILT=$(ls -d "$SRC"/windows/build/compose/binaries/main/app/*.app 2>/dev/null | head -1)
 if [ "$ok" != 1 ] || [ -z "$BUILT" ]; then
-  echo "✗ 建置失敗。把下面的錯誤訊息傳給 Claude（或直接傳這個檔案：${LOG}）："
+  echo "✗ 建置失敗。錯誤訊息（完整的在 ${LOG}）："
   ERRS=$(grep -E "^e: " "$LOG" | sed -E 's#^e: file://.*/fangfang-cards-main/##; s#/app/src/main/java/com/unoki99/fangfang/#/…/#' | sort -u | head -80)
   if [ -n "$ERRS" ]; then echo "$ERRS"; else grep -E -A6 "What went wrong|error:|Could not" "$LOG" | head -60; fi
   # (jpackage's own reasons, when it was the one that failed)
