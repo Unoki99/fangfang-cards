@@ -21,6 +21,7 @@ On GitHub, click **Code → Download ZIP** and unzip it into Downloads (folder: 
 | **Android** | Mac | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh android` |
 | **iPhone / iPad** | Mac | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh apple ios` |
 | **iPad version on a Mac** | Mac (Apple silicon) | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh apple mac` |
+| **IPA (for sideloading)** | Mac | Terminal: `bash ~/Downloads/fangfang-cards-main/install.sh apple ipa` |
 | **Firefox extension** | Windows, Mac, Android | [Add-ons page](https://addons.mozilla.org/en-US/firefox/addon/%E6%96%B9%E6%96%B9%E8%A9%9E%E5%8D%A1/) → Add to Firefox |
 
 **Install first**
