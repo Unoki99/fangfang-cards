@@ -2010,13 +2010,28 @@ extension ZhDict {
     /// Taiwan reading. Only then: a syllable that already is one of the character's Taiwan readings stays, and one
     /// the character has no such entry for (or more than one, with different Taiwan readings) stays too. The word's
     /// old reading is kept as its 大陸 one.
+    /// two readings of one character that are the same word said two ways (擊 jí / jī, 垃 lè / lā): the same letters
+    /// at the start, or the same at the end; not two different words (台 tái / yí)
+    fileprivate static func alike(_ a: String, _ b: String) -> Bool {
+        let p = Zhuyin.plainSyllable(a), q = Zhuyin.plainSyllable(b)
+        if p == q { return true }
+        let vowels = Set("aeiouvü")
+        let ia = p.prefix { !vowels.contains($0) }, ib = q.prefix { !vowels.contains($0) }
+        let fa = p.dropFirst(ia.count), fb = q.dropFirst(ib.count)
+        return (!ia.isEmpty && ia == ib) || (!fa.isEmpty && fa == fb)
+    }
+
     fileprivate static func fillTaiwan(_ out: inout [ZhEntry]) {
         // (character, its 大陸 syllable) → its Taiwan syllables; (character) → its Taiwan syllables
         var map: [String: Set<String>] = [:], own: [String: Set<String>] = [:]
         for e in out where !e.extra && e.tw.count == 1 && e.h.count == 1 {
-            let t = e.tw[0], m = e.lu?.first ?? t
-            map[e.h + "\u{1}" + m, default: []].insert(t)
-            own[e.h, default: []].insert(t)
+            let t = e.tw[0]
+            // (a character's readings under its simplified form too: 臺 ㄊㄞˊ is also 台's, so 電台 keeps ㄊㄞˊ)
+            for c in Set([e.h] + (e.alt.map { [$0] } ?? [])) {
+                own[c, default: []].insert(t)
+                // (only a reading the dictionary says is said another way in 大陸)
+                if let m = e.lu?.first, m != t { map[c + "\u{1}" + m, default: []].insert(t) }
+            }
         }
         for i in out.indices where out[i].extra {
             let cs = out[i].h.map(String.init)
@@ -2026,7 +2041,8 @@ extension ZhDict {
             for n in cs.indices {
                 let syl = tw[n]
                 if own[cs[n]]?.contains(syl) == true { continue }
-                guard let ts = map[cs[n] + "\u{1}" + syl], ts.count == 1, let t = ts.first, t != syl else { continue }
+                guard let ts = map[cs[n] + "\u{1}" + syl], ts.count == 1, let t = ts.first, t != syl,
+                      Self.alike(t, syl) else { continue }
                 tw[n] = t; changed = true
             }
             guard changed else { continue }

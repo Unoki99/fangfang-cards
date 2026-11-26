@@ -4153,6 +4153,7 @@ struct SwipePages<A: View, B: View>: View {
 struct TwPlacesAndMap: View {
     let dict: Dict
     let key: String
+    @State private var sources = false
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ViewThatFits(in: .horizontal) {
@@ -4172,11 +4173,13 @@ struct TwPlacesAndMap: View {
             }
             Text(tr("地圖上的點是辭典記錄各地讀音的地方，不是腔口的界線。")).ffFont(.caption2).foregroundStyle(T.muted)
             // (where each place's reading comes from, so you can judge it yourself)
-            NavigationLink { PlaceSourcesPage(dict: dict, key: key) } label: {
+            // (a button, not a link: the places' own links are in the same row, and a row's links all open at once)
+            Button { sources = true } label: {
                 Label(tr("讀音從哪裡來"), systemImage: "magnifyingglass.circle").ffFont(.subheadline, .semibold).foregroundStyle(T.btnInk)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.borderless)
         }
+        .navigationDestination(isPresented: $sources) { PlaceSourcesPage(dict: dict, key: key) }
     }
 }
 
@@ -4187,6 +4190,10 @@ struct PlaceSourcesPage: View {
     let dict: Dict
     let key: String
     @AppStorage("rom") private var rom = 0
+    /// the word list opened (one page: several links in one row of a List all opened at once, one on top of the
+    /// other, and each had to be backed out of)
+    private struct Opened: Identifiable, Hashable { let title: String; let keys: [String]; var id: String { title } }
+    @State private var opened: Opened?
     private static let kinds = ["泉", "混", "漳"]
     var body: some View {
         let han = Array(Dict.hanOf(key)).map(String.init)
@@ -4225,6 +4232,7 @@ struct PlaceSourcesPage: View {
         }
         .scrollContentBackground(.hidden)
         .appBackground()
+        .navigationDestination(item: $opened) { o in MorePage(dict: dict, route: .keys(title: o.title, keys: o.keys)) }
         .navigationTitle(tr("讀音從哪裡來：") + Dict.hanOf(key))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
@@ -4243,14 +4251,14 @@ struct PlaceSourcesPage: View {
                 Text(tr("從「") + Dict.hanOf(ck) + tr("」")).ffFont(.caption2).foregroundStyle(T.muted)
             }
             if !words.isEmpty {
-                NavigationLink {
-                    MorePage(dict: dict, route: .keys(title: tr("\(dict.raw.places[p].prefix(2))：「\(ch ?? "")」這樣講的詞"), keys: Array(words.prefix(300))))
+                Button {
+                    opened = Opened(title: tr("\(dict.raw.places[p].prefix(2))：「\(ch ?? "")」這樣講的詞"), keys: Array(words.prefix(300)))
                 } label: {
                     Text(tr("\(words.count) 個詞")).ffFont(.caption, .semibold).foregroundStyle(T.btnInk)
                         .padding(.horizontal, 8).padding(.vertical, 2)
                         .background(Capsule().fill(T.fn))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderless)
             }
         }
         .padding(8)
