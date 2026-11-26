@@ -30,12 +30,18 @@ Done on iOS this round — still to do on **Android, Windows / Mac (desktop), th
 | 練習範圍: 匯出這個範圍（CSV） | done | todo | todo | — |
 | 電台與音樂: YouTube / Apple Music on top, radios by language, 歌詞 button at the bottom; 歌詞 out of 轉換 | done | todo (layout already like this) | already | — |
 | Apple Music: a song in your library (downloaded) plays from the library | done | — | — | — |
+| 台語 數字練習 (算數 typed in spelling; 白還是文) — in 不熟's empty tile | done | todo | todo | — |
+| 詞龍 (typed; every language) in 遊戲 | done (handwriting version not yet) | todo | todo | — |
+| 熟悉 → a character level: the characters as a grid (like 認識的漢字) | done | todo | todo | — |
+| 認識的漢字 → 猜字義 game (no status change; common characters more often) | done | todo | todo | — |
+| App icon: light version (設定 → 顏色與外觀 → App 圖示) | done | todo | todo | — |
+| 常用度: a hollow ring filled by % in colours along the 台語 tone colours | done (the learning sections still by the old 5 steps) | todo | todo | todo |
 
 ## Asked for, not done yet (any platform)
 
 Kept here so nothing is lost. Roughly from smallest to biggest.
 
-- 台語 數字 practice (白／文 readings, 量詞, 一百十 rule; math questions typed in spelling, tone marks optional;
+- 台語 數字: (done on iOS) the rules, kept for the other versions: (白／文 readings, 量詞, 一百十 rule; math questions typed in spelling, tone marks optional;
   a second game for when 白 / 文 is used, with example words and sentences). Rules from the user, 2026-11-27:
   0 空 khọng; 1 一 ịt (量詞前 ji̍t); 2 二 łī (量詞前 兩 nn̄g); 3 sa̍ⁿ / 文 sa̍m; 4 xị / 文 sụ; 5 gōo / 文 ngòo;
   6 la̍k / 文 lio̍k; 7 qịt; 8 pẹh / 文 pạt; 9 kàu / 文 kiù; 10 za̍p / 文 xi̍p. 文 for phone numbers, ages, fixed
@@ -44,14 +50,10 @@ Kept here so nothing is lost. Roughly from smallest to biggest.
   10 000 ji̍t bān. Above 10 a 量詞 after the number still takes 二, not 兩.
 - 台語 map page: where each place reading comes from (the 字 it was taken from; for words, how many words have
   it, tap for the list with meanings), laid out like the 各地讀音 chart.
-- 詞龍 game (type the next word; a handwriting version with recognition on iOS), all languages.
-- 認識的漢字: each character level laid out like the overall known / unknown grid; a "guess the meaning" game
-  (no status change, common characters more often).
-- Frequency: a hollow circle filled by %, its colour along the tone colours (or 8 steps); the learning sections
-  by that fullness.
+- 詞龍 with handwriting (iOS handwriting recognition).
+- Frequency: the learning sections (常用度 groups) by the ring's fullness instead of the 5 steps.
 - Own words (自補) in every language (word, reading, meanings), exportable as CSV.
 - First-run setup: UI language, 簡／繁, each language's place, spelling, tone colours, 方音 options.
-- App icon: a light version (white background, black 方).
 - YouTube: lyrics made from the video's subtitles when LRCLIB has none, saved in the 歌詞資料夾.
 - Gemini (own API key, 設定): a search with no results asks it for Chinese words, shown as dictionary words
   (also for 瑞典語 when no English match); a weekly-words usage practice (write a sentence, corrected on the

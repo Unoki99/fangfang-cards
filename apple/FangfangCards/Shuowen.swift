@@ -107,27 +107,61 @@ struct FoundSentences: View {
 }
 
 
-/// 常用度: how common a word is (its place in the language's list of words, most common first), as five bars
-/// how common a word is, small: the bars alone (the rows of a list of words), in the language's colour
+/// 常用度: how common a word is (its place in the language's list of words, most common first), as a hollow ring:
+/// the more common, the fuller (by %, not steps) and the warmer its colour, along the 台語 tone colours (blue for
+/// the rarest, through teal, green, purple… to red for the most common)
+enum FrequencyRing {
+    /// how full: rank 0 → 1, 100 → about 0.8, 1000 → 0.6, 10 000 → 0.3, 60 000 and past → nearly empty
+    static func fill(_ rank: Int) -> Double {
+        let x = log(Double(rank) + 1) / log(60000)
+        return max(0.04, min(1, 1 - x * x))
+    }
+    /// the colour along the tone colours (rare → common: 3 6 7 2 5 8 4 1)
+    @MainActor static func color(_ f: Double) -> Color {
+        let order = [3, 6, 7, 2, 5, 8, 4, 1]
+        let cs = order.map { ToneColors.twColor($0) ?? T.muted }
+        let x = max(0, min(1, f)) * Double(cs.count - 1)
+        let i = min(Int(x), cs.count - 2), t = x - Double(i)
+        func rgb(_ c: Color) -> (Double, Double, Double) {
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            UIColor(c).getRed(&r, green: &g, blue: &b, alpha: &a)
+            return (Double(r), Double(g), Double(b))
+        }
+        let p = rgb(cs[i]), q = rgb(cs[i + 1])
+        return Color(red: p.0 + (q.0 - p.0) * t, green: p.1 + (q.1 - p.1) * t, blue: p.2 + (q.2 - p.2) * t)
+    }
+}
+
+/// the ring itself
+struct FrequencyRingView: View {
+    let rank: Int
+    var size: CGFloat = 16
+    var line: CGFloat = 3
+    var body: some View {
+        let f = FrequencyRing.fill(rank)
+        let c = FrequencyRing.color(f)
+        ZStack {
+            Circle().stroke(T.fnEdge.opacity(0.6), lineWidth: line)
+            Circle().trim(from: 0, to: f)
+                .stroke(c, style: StrokeStyle(lineWidth: line, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: c.opacity(0.5), radius: 2)
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// how common a word is, small: the ring alone (the rows of a list of words)
 struct FrequencyBars: View {
     let key: String
     @EnvironmentObject var store: Store
     var body: some View {
         let r = store.rankOf(key)
         if r != Int.max {
-            let n = FrequencyBadge.level(r)
-            let ink = T.langColors(Lang.kind(key)).ink
-            HStack(alignment: .bottom, spacing: 2) {
-                ForEach(1...5, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(i <= n ? ink : T.fnEdge)
-                        .frame(width: 4, height: CGFloat(5 + i * 3))
-                        .shadow(color: i <= n ? ink.opacity(0.45) : .clear, radius: 2)
-                }
-            }
-            .fixedSize()
-            .accessibilityElement()
-            .accessibilityLabel(tr("常用度：第 \(r + 1) 個"))
+            FrequencyRingView(rank: r)
+                .fixedSize()
+                .accessibilityElement()
+                .accessibilityLabel(tr("常用度：第 \(r + 1) 個"))
         }
     }
 }
@@ -151,14 +185,11 @@ struct FrequencyBadge: View {
             let n = Self.level(r)
             // (the language's own colour: 華語 blue, 台語 green, 粵語 yellow, 客語 red, 日語 pink, 瑞典語 teal)
             let ink = T.langColors(Lang.kind(key)).ink
+            let f = FrequencyRing.fill(r)
             VStack(alignment: .trailing, spacing: 3) {
-                HStack(alignment: .bottom, spacing: 3) {
-                    ForEach(1...5, id: \.self) { i in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(i <= n ? ink : T.fnEdge)
-                            .frame(width: 6, height: CGFloat(6 + i * 3))
-                            .shadow(color: i <= n ? ink.opacity(0.5) : .clear, radius: 3)
-                    }
+                HStack(spacing: 6) {
+                    Text("\(Int((f * 100).rounded()))%").ffFont(.caption, mono: true).foregroundStyle(FrequencyRing.color(f))
+                    FrequencyRingView(rank: r, size: 30, line: 4.5)
                 }
                 Text([trs("少見"), trs("不常用"), trs("一般"), trs("常用"), trs("很常用")][n - 1]).ffFont(.caption, .bold)
                     .foregroundStyle(n >= 3 ? ink : T.muted)
