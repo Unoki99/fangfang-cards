@@ -549,6 +549,26 @@ final class Dict: @unchecked Sendable {
         render((tokens ?? cs).split(separator: " ").map(String.init), sys, place)
     }
 
+    /// 各地讀音 → 讀音從哪裡來: the dictionary's words with this 字 said this way in the place (the place's reading of
+    /// the word has that syllable where the 字 is), most common first; worked out when asked, kept
+    private var evidenceCache: [String: [String]] = [:]
+    private let evidenceLock = NSLock()
+    func placeEvidence(_ ch: String, code: String, place: Int) -> [String] {
+        let ck = ch + "\u{1}" + code + "\u{1}" + String(place)
+        evidenceLock.lock(); if let c = evidenceCache[ck] { evidenceLock.unlock(); return c }; evidenceLock.unlock()
+        var out: [String] = []
+        for k in raw.dia.keys {
+            let han = Array(Dict.hanOf(k))
+            guard han.contains(where: { String($0) == ch }), han.count == sylCount(k), isStated(k, place) || place < 0 else { continue }
+            let pc = codesFor(k, place).split(separator: " ").map(String.init)
+            guard pc.count == han.count else { continue }
+            if han.indices.contains(where: { String(han[$0]) == ch && pc[$0] == code }) { out.append(k) }
+        }
+        out.sort { (raw.freq[$0] ?? 0, $1) > (raw.freq[$1] ?? 0, $0) }
+        evidenceLock.lock(); evidenceCache[ck] = out; evidenceLock.unlock()
+        return out
+    }
+
     /// true when MOE's 語音差異 gives this word's reading for the place (not worked out by rule)
     func isStated(_ key: String, _ place: Int) -> Bool {
         guard place >= 0, let s = raw.dex?[key] else { return false }

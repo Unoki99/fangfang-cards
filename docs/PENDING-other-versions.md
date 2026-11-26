@@ -11,7 +11,7 @@ Done on iOS this round — still to do on **Android, Windows / Mac (desktop), th
 |---|---|---|---|---|
 | 聲調顏色: 客語 only on / off (七聲 / 五聲 stays 台語's) | done | todo | todo | — |
 | 新詞 swipe: ⇧ opens / closes 詳細, ⌫ undoes the last card | done | — | todo | — |
-| TOCFL English level names (Novice 1–2, TOCFL 1–5) | done (asked the user what "1–6" means) | todo | todo | — |
+| TOCFL English level names: TOCFL 1–7 (the 7 levels) | done | todo | todo | — |
 | Radios grouped by language again (not by stream kind) | done | todo | todo | — |
 | Practice of single characters: the most common first | done | todo | todo | — |
 | 華語 pinyin search: lü / ǜ read as v (lv finds 綠; lu still finds lü words after the lu ones) | done | todo | todo | todo |

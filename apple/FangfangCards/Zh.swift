@@ -779,6 +779,8 @@ final class ZhDict: @unchecked Sendable {
             }
         }
         scByWord = scw
+        // 華語: an HSK word the 兩岸 dictionary doesn't have: its characters in their Taiwan readings
+        if obj["lang"] == nil { Self.fillTaiwan(&out) }
         // 客語: a word the accent chosen doesn't have (惜圓): each character read the way this accent reads it
         if obj["lang"] as? String == "hak" { Self.fillAccent(&out, accent: accent) }
         // 四川話's own words, after the dictionary's (so they're never study cards); and the 華語 words for the
@@ -1987,6 +1989,44 @@ extension ZhDict {
     }
 }
 
+
+// MARK: - 華語: an HSK word the 兩岸 dictionary doesn't have
+
+extension ZhDict {
+    /// Its reading comes from CC-CEDICT, which reads it as 大陸 does (點擊率 diǎnjīlǜ: 擊 is jí in Taiwan). Each
+    /// character is matched to the dictionary's own entry for it read the same way in 大陸, and takes that entry's
+    /// Taiwan reading. Only then: a syllable that already is one of the character's Taiwan readings stays, and one
+    /// the character has no such entry for (or more than one, with different Taiwan readings) stays too. The word's
+    /// old reading is kept as its 大陸 one.
+    fileprivate static func fillTaiwan(_ out: inout [ZhEntry]) {
+        // (character, its 大陸 syllable) → its Taiwan syllables; (character) → its Taiwan syllables
+        var map: [String: Set<String>] = [:], own: [String: Set<String>] = [:]
+        for e in out where !e.extra && e.tw.count == 1 && e.h.count == 1 {
+            let t = e.tw[0], m = e.lu?.first ?? t
+            map[e.h + "\u{1}" + m, default: []].insert(t)
+            own[e.h, default: []].insert(t)
+        }
+        for i in out.indices where out[i].extra {
+            let cs = out[i].h.map(String.init)
+            var tw = out[i].tw
+            guard cs.count == tw.count else { continue }
+            var changed = false
+            for n in cs.indices {
+                let syl = tw[n]
+                if own[cs[n]]?.contains(syl) == true { continue }
+                guard let ts = map[cs[n] + "\u{1}" + syl], ts.count == 1, let t = ts.first, t != syl else { continue }
+                tw[n] = t; changed = true
+            }
+            guard changed else { continue }
+            let e = out[i]
+            out[i] = ZhEntry(k: e.k, h: e.h, tw: tw, lu: e.lu ?? e.tw, sc: e.sc, scKind: e.scKind,
+                             spec: e.spec, alt: e.alt, senses: e.senses, en: e.en, hsk: e.hsk,
+                             tocfl: e.tocfl, extra: e.extra, pos: e.pos, syn: e.syn, ant: e.ant,
+                             eq: e.eq, audio: e.audio, acc: e.acc, otherWords: e.otherWords, hakGuess: e.hakGuess,
+                             jp: e.jp)
+        }
+    }
+}
 
 // MARK: - 客語: a word an accent doesn't have
 

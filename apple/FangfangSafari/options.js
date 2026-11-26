@@ -206,7 +206,7 @@
     group(subPart, ffT("字幕的語言"));
     const lG = grid(subPart);
     tile(lG, ffT("字幕的語言"), ffT("讀音、意思、聲調顏色和生詞用哪個語言的詞典。自動：跟著上面開著的那一個語言（瑞典語的話，看字幕本身的語言）"), sc("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")]]));
-    tile(lG, ffT("簡體字幕"), ffT("簡體的字幕轉成繁體（照詞典的詞：头发 → 頭髮），認識的詞也照繁體認得"), sc("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")]]));
+    tile(lG, ffT("簡體／繁體字幕"), ffT("簡體的字幕轉成繁體（照詞典的詞：头发 → 頭髮），認識的詞也照繁體認得；或全部轉成簡體（只看簡體字）"), sc("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")], ["simp", ffT("轉成簡體")]]));
     tile(lG, ffT("第二種語言"), ffT("每一行下面用小小的灰色字顯示另一種語言（例如英文），影片有那個語言的字幕才會出現。在字幕面板上選。"), sc("subs2", [["", ffT("不顯示")], ["en", "English"], ["zh-hant", ffT("繁體中文")], ["zh-hans", ffT("簡體中文")], ["ja", "日本語"], ["ko", "한국어"]]));
 
     // (標出來的詞: which words of the subtitles get their reading, meaning and colour)

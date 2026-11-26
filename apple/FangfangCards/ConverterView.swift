@@ -4167,7 +4167,91 @@ struct TwPlacesAndMap: View {
                 }
             }
             Text(tr("地圖上的點是辭典記錄各地讀音的地方，不是腔口的界線。")).ffFont(.caption2).foregroundStyle(T.muted)
+            // (where each place's reading comes from, so you can judge it yourself)
+            NavigationLink { PlaceSourcesPage(dict: dict, key: key) } label: {
+                Label(tr("讀音從哪裡來"), systemImage: "magnifyingglass.circle").ffFont(.subheadline, .semibold).foregroundStyle(T.btnInk)
+            }
+            .buttonStyle(.plain)
         }
+    }
+}
+
+/// 讀音從哪裡來: for each 字 of the word, each place's reading of it and where that comes from: the dictionary's own
+/// reading of this word there, or worked out (推測) from the 字's own entry; and how many of the dictionary's words
+/// have the 字 said that way in that place (tap for them, with their meanings). Laid out like 各地讀音: by 腔.
+struct PlaceSourcesPage: View {
+    let dict: Dict
+    let key: String
+    @AppStorage("rom") private var rom = 0
+    private static let kinds = ["泉", "混", "漳"]
+    var body: some View {
+        let han = Array(Dict.hanOf(key)).map(String.init)
+        let n = dict.sylCount(key)
+        List {
+            Section {
+                Text(tr("每個地方的讀音：「辭典」= 教育部辭典寫了這個詞在這裡的讀音；「推測」= 辭典沒有寫，照規則推出來的（從那個字自己的讀音）。數字 = 辭典裡有幾個詞，這個字在這裡也這樣講；點進去看那些詞。"))
+                    .ffFont(.footnote).foregroundStyle(T.muted)
+            }
+            .listRowBackground(Color.clear)
+            ForEach(0..<n, id: \.self) { j in
+                Section {
+                    ForEach(Self.kinds, id: \.self) { k in
+                        let ps = dict.raw.places.indices.filter { dict.raw.places[$0].contains(k) }
+                        if !ps.isEmpty {
+                            HStack(alignment: .top, spacing: 8) {
+                                Text(trs(k)).ffFont(.caption, .bold).foregroundStyle(T.glyph)
+                                    .frame(width: 22, height: 24)
+                                    .background(Circle().fill(TwGroup.color(k).opacity(0.45)))
+                                FlowLayout(spacing: 8) {
+                                    ForEach(ps, id: \.self) { p in cell(j, han.indices.contains(j) && han.count == n ? han[j] : nil, p) }
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    HStack(spacing: 8) {
+                        if han.count == n { Text(han[j]).scaledFont(22, weight: .semibold).foregroundStyle(T.glyph) }
+                        Text(dict.codes(dict.sylAt(key, j, -1).code, rom, -1)).latFont(15).foregroundStyle(T.greenInk)
+                        Text(tr("（通行）")).ffFont(.caption).foregroundStyle(T.muted)
+                    }
+                    .textCase(nil)
+                }
+                .listRowBackground(T.fn.opacity(0.55))
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .appBackground()
+        .navigationTitle(tr("讀音從哪裡來：") + Dict.hanOf(key))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { ToolbarItem(placement: .topBarTrailing) { RomButton() } }
+    }
+
+    @ViewBuilder private func cell(_ j: Int, _ ch: String?, _ p: Int) -> some View {
+        let s = dict.sylAt(key, j, p)
+        let stated = !s.guessed && dict.raw.dia[key] != nil && dict.isStated(key, p)
+        let words = ch.map { dict.placeEvidence($0, code: s.code, place: p) } ?? []
+        VStack(alignment: .leading, spacing: 3) {
+            Text(String(dict.raw.places[p].prefix(2))).ffFont(.caption, .bold).foregroundStyle(TwGroup.color(dict.raw.places, p) ?? T.muted)
+            Text(dict.codes(s.code, rom, p)).latFont(15).foregroundStyle(T.greenInk).lineLimit(1)
+            Text(stated ? tr("辭典") : (s.guessed ? tr("推測") : (s.charKey != nil ? tr("照字") : tr("同通行")))).ffFont(.caption2)
+                .foregroundStyle(s.guessed ? T.rustInk : T.muted)
+            if let ck = s.charKey, s.charKey != key {
+                Text(tr("從「") + Dict.hanOf(ck) + tr("」")).ffFont(.caption2).foregroundStyle(T.muted)
+            }
+            if !words.isEmpty {
+                NavigationLink {
+                    MorePage(dict: dict, route: .keys(title: tr("\(dict.raw.places[p].prefix(2))：「\(ch ?? "")」這樣講的詞"), keys: Array(words.prefix(300))))
+                } label: {
+                    Text(tr("\(words.count) 個詞")).ffFont(.caption, .semibold).foregroundStyle(T.btnInk)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Capsule().fill(T.fn))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(8)
+        .frame(minWidth: 84, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(T.fn.opacity(0.45)))
     }
 }
 

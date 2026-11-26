@@ -2867,7 +2867,8 @@
         // the gear: the buttons hidden or shown
         const gear = document.createElement("div"); gear.className = "gear";
         gear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17.47 10.78 L19.14 11.07 L19.14 12.93 L17.47 13.22 L16.73 15.00 L17.71 16.39 L16.39 17.71 L15.00 16.73 L13.22 17.47 L12.93 19.14 L11.07 19.14 L10.78 17.47 L9.00 16.73 L7.61 17.71 L6.29 16.39 L7.27 15.00 L6.53 13.22 L4.86 12.93 L4.86 11.07 L6.53 10.78 L7.27 9.00 L6.29 7.61 L7.61 6.29 L9.00 7.27 L10.78 6.53 L11.07 4.86 L12.93 4.86 L13.22 6.53 L15.00 7.27 L16.39 6.29 L17.71 7.61 L16.73 9.00 Z M12 9.6 A2.4 2.4 0 1 0 12 14.4 A2.4 2.4 0 1 0 12 9.6 Z"/></svg>';
-        gear.addEventListener("click", e => { e.stopPropagation(); prefs.subsBar = prefs.subsBar === false; savePrefs(); subsLayout(); });
+        // (the subtitles' settings on a page of their own, big enough to tap: the row of small buttons was hard to hit)
+        gear.addEventListener("click", e => { e.stopPropagation(); subsSheet(); });
         // 橫排: its top edge dragged up or down makes the row taller or lower (the width stays the screen's, centred);
         // a double click (or double tap) back to the height its words need
         const vgrip = document.createElement("div"); vgrip.className = "vgrip";
@@ -2980,7 +2981,7 @@
         st.panel.classList.toggle("mini", st.collapsed);
         const bare = prefs.subsBar === false;
         st.panel.classList.toggle("bare", bare);
-        if (st.gear) st.gear.title = bare ? ffT("顯示按鈕") : ffT("隱藏按鈕");
+        if (st.gear) st.gear.title = ffT("字幕設定");
         st.panel.classList.toggle("clear", subsBgMode() === "clear");
         // (the row at the bottom: tall enough for the letters)
         // (one line on top; the readings and meanings over and under the words need room too)
@@ -3001,6 +3002,79 @@
         subsMeasure();
         subsPlace(false);
         subsDefs(true);
+    }
+
+    /// the subtitles' settings, a page over the video with big buttons: 拼音／注音 first, the script (繁 / as it
+    /// came / 簡), the second language, the size, readings and meanings, where the panel goes, the panel's buttons
+    function subsSheet() {
+        const st = subs;
+        if (!st || !st.panel) return;
+        let sh = document.getElementById("ff-subs-sheet");
+        if (sh) { sh.remove(); return; }
+        if (!document.getElementById("ff-subs-sheet-css")) {
+            const css = document.createElement("style");
+            css.id = "ff-subs-sheet-css";
+            css.textContent = `
+#ff-subs-sheet { position: fixed; inset: 0; z-index: 2147483646; display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.45); font: 15px -apple-system, system-ui, sans-serif; color: #e8eaf3; }
+#ff-subs-sheet .card { width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: 16px 16px 12px;
+  border-radius: 18px; background: rgba(22,24,36,.97); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+#ff-subs-sheet h3 { margin: 0 0 10px; font-size: 18px; }
+#ff-subs-sheet .row { margin: 12px 0; }
+#ff-subs-sheet .lab { font-size: 13px; color: #9aa0b8; margin-bottom: 6px; }
+#ff-subs-sheet .seg { display: flex; flex-wrap: wrap; gap: 8px; }
+#ff-subs-sheet button, #ff-subs-sheet select { min-height: 44px; padding: 0 16px; border-radius: 12px; font: inherit; cursor: pointer;
+  color: #e8eaf3; background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.16); }
+#ff-subs-sheet button.on { background: rgba(195,155,255,.28); border-color: #c39bff; color: #fff; font-weight: 600; }
+#ff-subs-sheet select { width: 100%; }
+#ff-subs-sheet .done { width: 100%; margin-top: 8px; background: rgba(195,155,255,.35); border-color: #c39bff; font-weight: 600; }`;
+            (document.head || document.documentElement).appendChild(css);
+        }
+        sh = document.createElement("div"); sh.id = "ff-subs-sheet";
+        const card = document.createElement("div"); card.className = "card";
+        sh.appendChild(card);
+        sh.addEventListener("click", e => { if (e.target === sh) sh.remove(); });
+        for (const ev of ["pointerdown", "pointerup", "mousedown", "mouseup", "keydown", "wheel", "touchstart"]) card.addEventListener(ev, e => e.stopPropagation());
+        const h = document.createElement("h3"); h.textContent = ffT("字幕設定"); card.appendChild(h);
+        const row = (label, kids) => {
+            const r = document.createElement("div"); r.className = "row";
+            const l = document.createElement("div"); l.className = "lab"; l.textContent = label;
+            const g = document.createElement("div"); g.className = "seg"; g.append(...kids);
+            r.append(l, g); card.appendChild(r);
+        };
+        const redraw = () => { sh.remove(); subsSheet(); };
+        const choice = (key, opts, after) => opts.map(([v, t]) => {
+            const b = document.createElement("button"); b.textContent = t;
+            if (prefs[key] === v || (prefs[key] === undefined && v === opts[0][0])) b.className = "on";
+            b.addEventListener("click", () => { prefs[key] = v; savePrefs(); if (after) after(); redraw(); });
+            return b;
+        });
+        row(ffT("華語讀音"), choice("zhRom", [[0, ffT("拼音")], [1, ffT("注音")]]));
+        row(ffT("字幕的字"), choice("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")], ["simp", ffT("轉成簡體")]]));
+        row(ffT("詞上的讀音、詞下的意思"), [
+            ...choice("subsRd", [[true, ffT("讀音：開")], [false, ffT("讀音：關")]]),
+            ...choice("subsGl", [[true, ffT("意思：開")], [false, ffT("意思：關")]]),
+        ]);
+        const s2 = subs2Select();
+        if (s2) row(ffT("第二語言（每一行下面）"), [s2]);
+        const SIZES = [0.85, 1, 1.15, 1.3, 1.5, 1.8, 2.2, 2.7];
+        const size = d => {
+            const b = document.createElement("button"); b.textContent = d < 0 ? "A−" : "A+";
+            b.addEventListener("click", () => {
+                const i = SIZES.findIndex(x => x >= (prefs.subsFont || 1) - 0.001);
+                prefs.subsFont = SIZES[Math.max(0, Math.min(SIZES.length - 1, (i < 0 ? 1 : i) + d))];
+                savePrefs(); subsSize(); subsLayout();
+            });
+            return b;
+        };
+        row(ffT("字的大小"), [size(-1), size(1)]);
+        row(ffT("影片上原本的字幕"), choice("subsHideVideo", [[false, ffT("顯示")], [true, ffT("隱藏")]], () => { subsHeader(); subsTick(); }));
+        if (fsTarget() === document.documentElement || st.air) row(ffT("面板"), choice("subsFlow", [[false, ffT("旁邊，往上捲")], [true, ffT("下面一行")]], () => subsLayout()));
+        row(ffT("面板上的按鈕"), choice("subsBar", [[true, ffT("顯示")], [false, ffT("隱藏")]], () => subsLayout()));
+        const done = document.createElement("button"); done.className = "done"; done.textContent = ffT("完成");
+        done.addEventListener("click", () => sh.remove());
+        card.appendChild(done);
+        fsTarget().appendChild(sh);
     }
 
     function subsHeader() {
@@ -3060,7 +3134,12 @@
         smaller.title = ffT("字小一點"); smaller.addEventListener("click", step(-1));
         const bigger = document.createElement("span"); bigger.className = "btn"; bigger.textContent = "A+";
         bigger.title = ffT("字大一點"); bigger.addEventListener("click", step(1));
-        st.top.append(smaller, bigger, eye, lay, min);
+        // 拼音 ⇄ 注音, right on the panel (it was only in the settings page)
+        const rom = document.createElement("span"); rom.className = "btn";
+        rom.textContent = prefs.zhRom === 1 ? ffT("注音") : ffT("拼音");
+        rom.title = ffT("華語讀音：拼音或注音");
+        rom.addEventListener("click", e => { e.stopPropagation(); prefs.zhRom = prefs.zhRom === 1 ? 0 : 1; savePrefs(); subsHeader(); });
+        st.top.append(rom, smaller, bigger, eye, lay, min);
         // (the row at the bottom: one line on top, the study buttons and 懂 % in it, after 字幕; at the side: their own line)
         if (st.study) {
             if (st.flow) title.after(st.study);
@@ -3311,7 +3390,33 @@
         }
         return s2tTable;
     }
+    // 繁 → 簡 (the s2t table turned round: each 繁體 character to its 簡體 one)
+    let t2sTable = null;
+    async function getT2S() {
+        if (t2sTable === null) {
+            const tb = await getS2T();
+            t2sTable = {};
+            for (const [sc, tc] of Object.entries(tb || {})) for (const ch of [...String(tc)]) if (!t2sTable[ch] && ch !== sc) t2sTable[ch] = sc;
+        }
+        return t2sTable;
+    }
     async function subsTrad(st, key, meta) {
+        if (prefs.subsTrad === "simp") {
+            // (only 簡體: every line as it came, its 繁體 characters turned into 簡體 ones)
+            const m = await getT2S();
+            if (st.key !== key) return;
+            for (const c of st.cues) {
+                if (c.tc === "s") continue;
+                const orig = c.o != null ? c.o : c.t;
+                c.o = orig;
+                c.t = [...orig].map(ch => m[ch] || ch).join("");
+                c.tc = "s";
+            }
+            st.simpKey = null; st.simp = null;
+            return;
+        }
+        // (from 簡體 back: the lines as they came, then as chosen below)
+        for (const c of st.cues) if (c.tc === "s") { c.t = c.o; delete c.o; delete c.tc; }
         if (prefs.subsTrad === false) {
             // (turned off: the subtitles as they came)
             for (const c of st.cues) { if (c.o != null) { c.t = c.o; delete c.o; } delete c.tc; }

@@ -169,10 +169,13 @@ struct NumbersView: View {
 private struct MathGame: View {
     let level: Int
     let rom: Int
-    @State private var a = 0, b = 0, op = 0
+    @State private var a = 0
+    @State private var b = 0
+    @State private var op = 0
     @State private var typed = ""
     @State private var result: Bool?
-    @State private var right = 0, wrong = 0
+    @State private var right = 0
+    @State private var wrong = 0
     @FocusState private var focused: Bool
 
     private static let ops: [(TL, String)] = [("ka", "+"), ("kiám", "−"), ("sîng", "×"), ("tû", "÷")]
@@ -274,7 +277,8 @@ private struct BaiBunGame: View {
     @State private var q: Q?
     @State private var choices: [[TL]] = []
     @State private var picked: Int?
-    @State private var right = 0, wrong = 0
+    @State private var right = 0
+    @State private var wrong = 0
 
     var body: some View {
         ScrollView {

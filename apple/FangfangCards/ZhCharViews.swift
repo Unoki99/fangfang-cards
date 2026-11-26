@@ -295,7 +295,8 @@ struct CharMeaningGame: View {
     @State private var options: [String] = []
     @State private var answer = 0
     @State private var picked: Int?
-    @State private var right = 0, wrong = 0
+    @State private var right = 0
+    @State private var wrong = 0
     /// the characters, the most common first (the order of the cards)
     @State private var pool: [String] = []
 

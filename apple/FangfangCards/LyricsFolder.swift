@@ -71,6 +71,25 @@ enum LyricsFolder {
         return file(n, text).hit
     }
 
+    /// lyrics made from a YouTube video's subtitles: written to the 歌詞 folder as "… [yt-<video>].lrc" (the same as
+    /// the computer version's), when there is a folder; the lyrics either way
+    static func saveVideo(id: String, title: String, artist: String, lrc: String) -> LyricHit {
+        let safe = { (s: String) in s.replacingOccurrences(of: #"[/\\:*?"<>|\[\]]"#, with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces) }
+        let name = safe(title) + (artist.isEmpty ? "" : " - " + safe(artist)) + " [yt-" + id + "].lrc"
+        let text = "[ti:" + title + "]\n" + (artist.isEmpty ? "" : "[ar:" + artist + "]\n") + "[re:YouTube 字幕]\n" + lrc + "\n"
+        if let folder = Store.shared.backupFolderURL {
+            let ok = folder.startAccessingSecurityScopedResource()
+            defer { if ok { folder.stopAccessingSecurityScopedResource() } }
+            let dir = folder.appendingPathComponent(OwnLyrics.folderName, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var err: NSError?
+            NSFileCoordinator().coordinate(writingItemAt: dir.appendingPathComponent(name), options: .forReplacing, error: &err) { u in
+                try? Data(text.utf8).write(to: u, options: .atomic)
+            }
+        }
+        return file(name, text).hit
+    }
+
     /// "繁華夢 - 黃齡 [1234567].lrc" → 繁華夢, 黃齡 (the file's [ti:] and [ar:] when it has them)
     private static func file(_ n: String, _ text: String) -> LyricsFolderFile {
         var base = String(n.dropLast(4))

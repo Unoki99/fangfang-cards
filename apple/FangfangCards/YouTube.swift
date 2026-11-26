@@ -328,8 +328,54 @@ final class YtPlayer: ObservableObject {
             guard lyricsFor == key else { return }
             let len = now?.d ?? n.d
             let best = hits.min { a, c in Self.score(a, len) < Self.score(c, len) }
-            if let best { b.put(best) } else { b.noneFound(n.title) }
+            if let best { b.put(best); return }
+            // (none on LRCLIB: the video's own subtitles made into timed lyrics, kept in the 歌詞 folder and for this
+            // video, so they're there next time and on the other devices)
+            if let lrc = await self.subtitleLyrics(), lyricsFor == key {
+                let h = LyricsFolder.saveVideo(id: n.id, title: n.title, artist: n.artist, lrc: lrc)
+                YtPicks.set(video: n.id, title: n.title, h)
+                b.put(h)
+                return
+            }
+            guard lyricsFor == key else { return }
+            b.noneFound(n.title)
         }
+    }
+
+    /// the video's subtitles as timed lyrics (LRC): a Chinese track the video has (not YouTube's automatic one when
+    /// there's another), else its first; nil when it has none
+    func subtitleLyrics() async -> String? {
+        guard let web else { return nil }
+        let js = """
+        try {
+          const mp = document.querySelector('#movie_player');
+          const pr = (mp && mp.getPlayerResponse && mp.getPlayerResponse()) || window.ytInitialPlayerResponse;
+          const ts = (pr && pr.captions && pr.captions.playerCaptionsTracklistRenderer && pr.captions.playerCaptionsTracklistRenderer.captionTracks) || [];
+          if (!ts.length) return "";
+          const zh = t => /^(zh|yue|nan|hak)/i.test(t.languageCode || "");
+          const own = t => t.kind !== "asr";
+          const t = ts.find(x => zh(x) && own(x)) || ts.find(own) || ts.find(zh) || ts[0];
+          const r = await fetch(t.baseUrl + (t.baseUrl.includes("fmt=") ? "" : "&fmt=json3"), { credentials: "include" });
+          if (!r.ok) return "";
+          const j = await r.json();
+          const out = [];
+          for (const e of (j.events || [])) {
+            if (!e.segs) continue;
+            const s = e.segs.map(x => x.utf8 || "").join("").replace(/\\s*\\n\\s*/g, " ").trim();
+            if (s) out.push([(e.tStartMs || 0) / 1000, s]);
+          }
+          return JSON.stringify(out);
+        } catch (e) { return ""; }
+        """
+        guard let r = try? await web.callAsyncJavaScript(js, contentWorld: .page) as? String, !r.isEmpty,
+              let d = r.data(using: .utf8), let rows = try? JSONSerialization.jsonObject(with: d) as? [[Any]], !rows.isEmpty else { return nil }
+        var lines: [String] = []
+        for row in rows {
+            guard row.count == 2, let t = (row[0] as? NSNumber)?.doubleValue, let s = row[1] as? String else { continue }
+            let m = Int(t) / 60, sec = t - Double(m * 60)
+            lines.append(String(format: "[%02d:%05.2f]", m, sec) + s)
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: "\n")
     }
 
     /// (lower is better: timed first, then the nearest length)
