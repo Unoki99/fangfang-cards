@@ -14,6 +14,7 @@
 #   bash build-data.sh sc              (only the 華語 words' 四川話 readings from Wiktionary, FangfangCards/zh_sc.json)
 #   bash build-data.sh sv              (only the 瑞典語 data, FangfangCards/sv.json: Folkets lexikon, for the Safari pop-up)
 #   bash build-data.sh safari          (only the words inside the Safari extension, FangfangSafari/d-*.json)
+#   Downloaded files are kept (~/Library/Caches/FangfangCards/sources) and used again next time; FANGFANG_REFRESH=1 downloads them again.
 set -e
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TMP="$(mktemp -d)"
@@ -26,10 +27,35 @@ MIRROR="${FANGFANG_MIRROR:-https://raw.githubusercontent.com/unoki99/fangfang-da
 # (維基詞典's Chinese pages, for 粵語, 台語's English and 四川話: tools/wikt_lines.py reads this project's copy in
 # fangfang-data/common, downloaded once into the temporary folder for all three, else kaikki.org)
 export FANGFANG_MIRROR="$MIRROR"
-export FANGFANG_WIKT_CACHE="$TMP/wiktionary-zh.jsonl.gz"
+# every file downloaded is kept here, so the next build uses it again instead of downloading it again
+# (FANGFANG_REFRESH=1 bash build-data.sh … downloads them again, e.g. for a newer version of a dictionary)
+if [ -n "$FANGFANG_CACHE" ]; then CACHE="$FANGFANG_CACHE"
+elif [ "$(uname)" = "Darwin" ]; then CACHE="$HOME/Library/Caches/FangfangCards/sources"
+else CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/fangfang-cards/sources"; fi
+mkdir -p "$CACHE"
+export FANGFANG_WIKT_CACHE="$CACHE/wiktionary-zh.jsonl.gz"
+[ -n "$FANGFANG_REFRESH" ] && rm -f "$FANGFANG_WIKT_CACHE"
+# (the name a file is kept under: the place it's from, so two files called the same aren't mixed up)
+cached() { echo "$CACHE/$(printf '%s' "$1" | tr -c 'A-Za-z0-9._-' '_' | tail -c 180)"; }
+# grab <dest> <url>: a file with no copy in fangfang-data, kept like fetch's
+grab() {
+  local c; c="$(cached "$2")"
+  if [ -z "$FANGFANG_REFRESH" ] && [ -s "$c" ]; then cp "$c" "$1"; return 0; fi
+  curl -fsSL -o "$1" "$2" || return 1
+  cp "$1" "$c" 2>/dev/null || true
+}
 # fetch <file> <path in fangfang-data, or -> <the original's address> [big]
 # (each file says where it came from: fangfang-data, or the place it's published, or neither)
 fetch() {
+  local dest="$1" m="$2" url="$3" opt="-fsSL" name c
+  name="$(basename "$dest")"
+  # (downloaded before: the copy kept)
+  if [ "$m" = "-" ]; then c="$(cached "$url")"; else c="$(cached "$m")"; fi
+  if [ -z "$FANGFANG_REFRESH" ] && [ -s "$c" ]; then cp "$c" "$dest"; echo "  $name  ← 之前下載的（$CACHE）"; return 0; fi
+  _fetch "$@" || return 1
+  cp "$dest" "$c" 2>/dev/null || true
+}
+_fetch() {
   local dest="$1" m="$2" url="$3" opt="-fsSL" name
   name="$(basename "$dest")"
   [ "$4" = "big" ] && opt="-fL --progress-bar"
@@ -143,7 +169,7 @@ build_sv() {
   D="$TMP/sv"; mkdir -p "$D"
   echo "下載 Folkets lexikon…"
   fetch "$D/folkets.xml" sv/folkets.xml "https://raw.githubusercontent.com/antonlisq/convert-dict/main/folkets_sv_en_public.xml" \
-    || curl -fsSL -o "$D/folkets.xml" "http://folkets-lexikon.csc.kth.se/folkets/folkets_sv_en_public.xml" \
+    || grab "$D/folkets.xml" "http://folkets-lexikon.csc.kth.se/folkets/folkets_sv_en_public.xml" \
     || { echo "✗ 下載不到 Folkets lexikon。"; return 1; }
   fetch "$D/sv_50k.txt" sv/sv_50k.txt "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt" || rm -f "$D/sv_50k.txt"
   echo "下載維基詞典的瑞典語詞（中文解釋，約 60 MB）…"
@@ -185,10 +211,10 @@ echo "下載 TOCFL 詞表…"
 # (a file there can be a link to another one, e.g. expanded/tocfl.csv → tocfl-202307.csv: GitHub then gives the
 # name of the file it points to, which is followed)
 for u in expanded/tocfl.csv tocfl.csv expanded/tbcl.csv tbcl.csv; do
-  curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$u" || { rm -f "$TMP/tocfl.csv"; continue; }
+  grab "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$u" || { rm -f "$TMP/tocfl.csv"; continue; }
   if [ "$(wc -c < "$TMP/tocfl.csv")" -lt 300 ] && grep -qE '^[A-Za-z0-9_./-]+\.csv$' "$TMP/tocfl.csv"; then
     T="$(tr -d '\r\n' < "$TMP/tocfl.csv")"; D="$(dirname "$u")"; [ "$D" = "." ] && D="" || D="$D/"
-    curl -fsSL -o "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$D$T" || { rm -f "$TMP/tocfl.csv"; continue; }
+    grab "$TMP/tocfl.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/$D$T" || { rm -f "$TMP/tocfl.csv"; continue; }
   fi
   break
 done
@@ -196,7 +222,7 @@ done
 echo "下載《重編國語辭典修訂本》（漢字卡的字義）和漢字表…"
 fetch "$TMP/dict-revised.json.xz" zh/dict-revised.json.xz "https://raw.githubusercontent.com/g0v/moedict-data/master/dict-revised.json.xz" big || rm -f "$TMP/dict-revised.json.xz"
 fetch "$TMP/hsk30-chars.csv" zh/hsk30-chars.csv "https://raw.githubusercontent.com/ivankra/hsk30/master/hsk30-chars.csv" || rm -f "$TMP/hsk30-chars.csv"
-curl -fsSL -o "$TMP/tbcl-chars.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/tbcl-chars.csv" || rm -f "$TMP/tbcl-chars.csv"
+grab "$TMP/tbcl-chars.csv" "https://raw.githubusercontent.com/ivankra/tocfl/master/tbcl-chars.csv" || rm -f "$TMP/tbcl-chars.csv"
 # what each character is made of (部首組合: finding a character by several radicals)
 fetch "$TMP/ids.txt" zh/ids.txt "https://raw.githubusercontent.com/cjkvi/cjkvi-ids/master/ids.txt" || rm -f "$TMP/ids.txt"
 echo "整理華語資料中…（大概一分鐘）"

@@ -13,6 +13,7 @@ Done on iOS this round — still to do on **Android, Windows / Mac (desktop), th
 | 新詞 swipe: ⇧ opens / closes 詳細, ⌫ undoes the last card | done | — | todo | — |
 | TOCFL English level names: TOCFL 1–7 (the 7 levels) | done | todo | todo | — |
 | Radios grouped by language again (not by stream kind) | done | todo | todo | — |
+| Build scripts keep the downloaded dictionary files (Mac: ~/Library/Caches/FangfangCards/sources) and don't download them again; FANGFANG_REFRESH=1 to download again. Also the 四川話 data was rebuilt every run (version check 5, file says 4) | done (apple/build-data.sh, apple/install.sh) | todo (android-install.bat) | todo (install.ps1) | — |
 | Practice of single characters: the most common first | done | todo | todo | — |
 | 華語 pinyin search: lü / ǜ read as v (lv finds 綠; lu still finds lü words after the lu ones) | done | todo | todo | todo |
 | 認識的漢字: a character marked 不熟 in another language no longer stays orange (長) | done | todo | todo | — |

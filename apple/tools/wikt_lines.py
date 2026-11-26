@@ -65,7 +65,7 @@ def lines(path=None):
         return _local(path)
     cache = os.environ.get("FANGFANG_WIKT_CACHE")
     if cache and os.path.exists(cache):
-        print("維基詞典 ← 這次安裝已經下載的副本（fangfang-data）", file=sys.stderr)
+        print("維基詞典 ← 之前下載的副本（fangfang-data）", file=sys.stderr)
         return _local(cache)
     names = _mirror_parts()
     if names:

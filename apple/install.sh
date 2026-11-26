@@ -99,7 +99,7 @@ if [ "$SAFARI" = "1" ]; then
   # 華語 words' 四川話 readings (Wiktionary); made again when it was made by an older version (without the guessed and
   # predicted ones)
   SC="$DEST/FangfangCards/zh_sc.json"
-  if [ -f "$SC" ] && ! head -c 40 "$SC" | grep -q '"v":5'; then rm -f "$SC"; fi
+  if [ -f "$SC" ] && ! head -c 40 "$SC" | grep -q '"v":4'; then rm -f "$SC"; fi
   if [ ! -f "$DEST/FangfangCards/zh_sc.json" ]; then
     bash "$DEST/build-data.sh" sc || echo "（沒辦法建立四川話讀音，先跳過）"
   fi
