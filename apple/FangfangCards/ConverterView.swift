@@ -96,18 +96,16 @@ struct ConverterView: View {
     @AppStorage("convertTab") private var tab = 0
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
+            // (歌詞 isn't here any more: it's in the 電台與音樂 window, its button at the bottom)
+            Picker("", selection: Binding(get: { tab == 1 ? 1 : 0 }, set: { tab = $0 })) {
                 Text(tr("轉換")).tag(0)
                 Text(tr("讀音")).tag(1)
-                Text(tr("歌詞")).tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
             Group {
                 if tab == 1 {
                     ReadingsPane()
-                } else if tab == 2 {
-                    LyricsWindow(inConvert: true)
                 } else if store.isSv {
                     ZhGate { z in SvConvertPane(dict: z) }
                 } else if store.isZh {
@@ -142,10 +140,10 @@ struct DictTabs: View {
     @AppStorage("dictTab") private var tab = 0
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
+            // (各地讀音 and 分類 had their own tabs; a word's entry has its 各地讀音 and its 分類 now, and 查詞 the
+            // 分類 button: taken out)
+            Picker("", selection: Binding(get: { tab == 1 || tab == 3 ? 0 : tab }, set: { tab = $0 })) {
                 Text(tr("查詞")).tag(0)
-                Text(tr("各地讀音")).tag(3)
-                Text(tr("分類")).tag(1)
                 Text(tr("收藏")).tag(2)
                 Text(tr("自訂")).tag(4)
             }
@@ -153,9 +151,7 @@ struct DictTabs: View {
             .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
             Group {
                 switch tab {
-                case 1: CategoryPane(dict: dict)
                 case 2: SavedPane(dict: dict)
-                case 3: PronunciationPane(dict: dict)
                 case 4: OwnPane(dict: dict)
                 default:
                     // (iPad, Mac: the results on the left, the word on the right)
@@ -1410,11 +1406,11 @@ struct DictEntryBody: View {
                     links("反", wl.ant, T.rust, T.rustEdge, T.rustInk)
                 }
             }
-            if dict.raw.typ[key] == 1 {
-                Text(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。")).ffFont(.caption).foregroundStyle(T.muted)
-            }
             // (names last: the least needed)
             namesRow
+            // (where each part of the entry comes from: the very bottom)
+            Text(tr("資料：教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 TW），讀音、例句和各地讀音；英文解釋：維基詞典（CC BY-SA 4.0）。標「推測」的各地讀音是照規則推算的。"))
+                .ffFont(.caption2).foregroundStyle(T.muted)
         }
     }
 
@@ -1442,6 +1438,11 @@ struct DictEntryBody: View {
                     Chip(text: "\(x.n)", fill: T.olive, edge: T.oliveEdge, ink: T.oliveInk).monospacedDigit()
                     Text(x.t).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9)).textSelection(.enabled)
                 }
+            }
+            // (臺華共同詞 in the dictionary: written the same and meaning the same in 華語, a real 台語 word, not one
+            // that came over from the 華語 side)
+            if dict.raw.typ[key] == 1 {
+                Text(tr("華語也這樣寫、這個意思（臺華共同詞）")).ffFont(.caption).foregroundStyle(T.oliveInk)
             }
         }
         let enCol = VStack(alignment: .leading, spacing: 3) {
@@ -2324,9 +2325,21 @@ struct MorePage: View {
         case .placeWords(let p):
             PlaceWordsPage(dict: dict, place: p)
         case .places(let groups):
+            // (each meaning its own group, each word its own row, as in the dictionary's lists: one row with all the
+            // words in it opened every word above the one tapped, one page on top of another)
             List {
-                ForEach(Array(groups.enumerated()), id: \.offset) { _, g in PlacesBlockView(dict: dict, e: g) }
-                    .listRowBackground(T.fn.opacity(0.7))
+                ForEach(Array(groups.enumerated()), id: \.offset) { _, g in
+                    Section {
+                        ForEach(Array(g.rows.enumerated()), id: \.offset) { _, row in PlaceWordRow(dict: dict, row: row) }
+                            .listRowBackground(T.fn.opacity(0.7))
+                    } header: {
+                        Text(g.zh).ffFont(.headline).foregroundStyle(T.pinkInk)
+                            .padding(.horizontal, 10).padding(.vertical, 3)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(T.pink))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(T.pinkEdge, lineWidth: 1.5))
+                            .textCase(nil)
+                    }
+                }
             }
             .scrollContentBackground(.hidden)
             .appBackground()
@@ -2399,6 +2412,31 @@ struct PlacesBlockView: View {
             }
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// 各地講法's page: one word and the places that say it, a row of its own (opens its entry)
+struct PlaceWordRow: View {
+    let dict: Dict
+    let row: PlaceRow
+    @AppStorage("rom") private var rom = 0
+    @AppStorage("place") private var place = -1
+    var body: some View {
+        let key = dict.keyOf(Opt(han: row.han, codes: row.codes.split(separator: " ").map(String.init)))
+        let content = VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(row.han).scaledFont(18, weight: .semibold).foregroundStyle(T.glyph)
+                Text(dict.codes(row.codes, rom, -1)).latFont(15).foregroundStyle(T.greenInk)
+                Text(dict.codes(row.codes, 3, row.places.first ?? -1)).ffFont(.footnote).foregroundStyle(T.purpleInk).hongimLine()
+            }
+            Text(row.places.compactMap { $0 < dict.raw.places.count ? dict.raw.places[$0] : nil }.joined(separator: "、"))
+                .ffFont(.caption).foregroundStyle(row.places.contains(place) ? T.oliveInk : T.muted)
+        }
+        if let key, dict.raw.defs.m[key] != nil {
+            NavigationLink(value: DictKey(k: key)) { content }
+        } else {
+            content
+        }
     }
 }
 

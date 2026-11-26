@@ -75,7 +75,8 @@ extension UILang {
     private static let parts: [(String, String)] = [
         ("漢字・更多常用字", "Characters · more common ones"), ("漢字・", "Characters · "),
         ("常用字 ", "Common characters "), ("常用詞 ", "Common words "),
-        ("準備一級", "Novice 1"), ("準備二級", "Novice 2"), ("入門級", "Level 1"), ("基礎級", "Level 2"),
-        ("進階級", "Level 3"), ("高階級", "Level 4"), ("流利級", "Level 5"),
+        // (TOCFL's own English: Novice 1–2, then levels 1–5 (流利級 5); "TOCFL" comes before them)
+        ("準備一級", "Novice 1"), ("準備二級", "Novice 2"), ("入門級", "1"), ("基礎級", "2"),
+        ("進階級", "3"), ("高階級", "4"), ("流利級", "5"),
     ]
 }

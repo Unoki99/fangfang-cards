@@ -916,6 +916,8 @@ struct RadioSheetModifier: ViewModifier {
 }
 
 struct RadioView: View {
+    /// (what goes above the radios: YouTube and Apple Music)
+    var top: AnyView? = nil
     @ObservedObject private var radio = RadioPlayer.shared
     @ObservedObject private var lyrics = LyricsBridge.shared
     @State private var adding = false
@@ -929,24 +931,16 @@ struct RadioView: View {
 
     var body: some View {
         List {
+            if let top { top }
             nowSection
             ForEach(order, id: \.self) { l in
                 let list = radio.stations.filter { $0.lang == l }
                 if !list.isEmpty {
-                    // (by the kind of stream each sends, not known yet until it has played: each kind its own
-                    // rounded group, the language's name over the first one)
-                    let byFormat = Dictionary(grouping: list) { $0.format ?? "" }
-                    let kinds = byFormat.keys.sorted { RadioFormat.rank($0.isEmpty ? nil : $0) < RadioFormat.rank($1.isEmpty ? nil : $1) }
-                    ForEach(kinds, id: \.self) { k in
-                        Section {
-                            ForEach(byFormat[k] ?? []) { s in row(s) }
-                        } header: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                if k == kinds.first { Text(trs(Lang.names[l])) }
-                                Text(RadioFormat.title(k.isEmpty ? nil : k))
-                                    .ffFont(.caption, .semibold).foregroundStyle(T.muted).textCase(nil)
-                            }
-                        }
+                    // (by language, one group each)
+                    Section {
+                        ForEach(list) { s in row(s) }
+                    } header: {
+                        Text(trs(Lang.names[l]))
                     }
                 }
             }

@@ -160,7 +160,8 @@ struct StudyView: View {
         if writeOnly {
             // every word that can be written, once (one wrong is asked again later)
             missed = []
-            queue = (words ?? store.studyCards).filter { Store.canWrite($0.h) }.shuffled().map { make($0, .write) }
+            let ws = (words ?? store.studyCards).filter { Store.canWrite($0.h) }
+            queue = (charsOnly(ws) ? byFrequency(ws) : ws.shuffled()).map { make($0, .write) }
             idx = 0; chosen = nil; right = 0; wrong = 0; learned = []; retried = []
             return
         }
@@ -173,9 +174,10 @@ struct StudyView: View {
         }
         // (the words due for review first, then the 不熟 ones that have been answered right the fewest times)
         let pool = words ?? store.studyCards
-        let picked = pool
-            .shuffled()
-            .sorted { order($0) < order($1) }
+        // (single characters only: the most common first, always; those due for review before them)
+        let chars = charsOnly(pool)
+        let picked = (chars ? byFrequency(pool).sorted { (store.isDue($0.k) ? 0 : 1) < (store.isDue($1.k) ? 0 : 1) }
+                            : pool.shuffled().sorted { order($0) < order($1) })
             .prefix(max(1, words != nil ? pool.count : sessionSize))
         var first: [Question] = [], second: [Question] = []
         for c in picked {
@@ -183,7 +185,7 @@ struct StudyView: View {
             if let k = ks.first { first.append(make(c, k)) }
             if ks.count > 1 { second.append(make(c, ks[1])) }
         }
-        queue = first.shuffled() + second.shuffled()
+        queue = chars ? first + second : first.shuffled() + second.shuffled()
         idx = 0; chosen = nil; right = 0; wrong = 0; learned = []; retried = []
     }
 
@@ -409,6 +411,20 @@ struct StudyView: View {
 
     /// due for review: first; then the fewest right answers in a row
     private func order(_ c: Card) -> Int { store.isDue(c.k) ? -1 : store.streak(c) }
+
+    /// (every word a single character: a round of characters)
+    private func charsOnly(_ cs: [Card]) -> Bool { !cs.isEmpty && cs.allSatisfy { $0.h.count == 1 } }
+
+    /// the most common first: the dictionary's order, else the cards' (which go most common first)
+    private func byFrequency(_ cs: [Card]) -> [Card] {
+        var at: [String: Int] = [:]
+        for (i, c) in store.cards.enumerated() where at[c.h] == nil && c.h.count == 1 { at[c.h] = i }
+        func r(_ c: Card) -> Int {
+            let d = store.rankOf(c.k)
+            return d != Int.max ? d : (at[c.h].map { 1_000_000 + $0 } ?? Int.max)
+        }
+        return cs.sorted { r($0) < r($1) }
+    }
 
     private func pick(_ o: Card, in q: Question) {
         guard chosen == nil else { return }

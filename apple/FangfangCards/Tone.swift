@@ -33,10 +33,16 @@ enum HongimTone1 {
     static func syllable(_ s: String) -> String { on ? s : s.replacingOccurrences(of: "ˉ", with: "") }
     /// between two syllables of a word: a space between all of them, or after one whose ˉ was left out (never two)
     static func gap(after prev: String) -> String { all || (!on && space && prev.contains("ˉ")) ? " " : "" }
-    /// a syllable in the light tone (after "--"): ˙ before it, as 注音 writes 輕聲, and its own tone mark left out
+    /// a syllable in the light tone (after "--"): ˙ before it, and, unlike 華語's 注音, its own tone mark kept (一寡
+    /// ˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ: the light tone is said from the syllable's own tone). The first-tone mark as asked.
     static func light(_ s: String) -> String {
+        // (a 陽入 syllable's own dot (ㆵ˙) written over its last letter, ㆵ̇, so it isn't read as the light tone's)
+        var t = syllable(s)
+        for st in ["ㆴ", "ㆵ", "ㆻ", "ㆷ"] {
+            t = t.replacingOccurrences(of: st + "˙", with: st + "\u{0307}").replacingOccurrences(of: st + "·", with: st + "\u{0307}")
+        }
         var out = "˙"
-        out.unicodeScalars.append(contentsOf: s.unicodeScalars.filter { !marks.contains($0) })
+        out.unicodeScalars.append(contentsOf: t.unicodeScalars.filter { $0 != "˙" })
         return out
     }
     private static let marks: Set<Unicode.Scalar> = ["ˉ", "ˋ", "ˊ", "˪", "˫", "\u{A715}", "\u{A718}", "\u{0307}", "˙"]
@@ -573,9 +579,9 @@ struct ToneMenuItems: View {
     @AppStorage(ToneColors.glowKey) private var glow = ToneColors.glowStandard
     @ObservedObject private var store = Store.shared
     var body: some View {
-        // 七聲 / 五聲 and 變調 are 台語's; the other languages only turn the colours on and off
-        if store.lang == 0 || store.lang == 3 {
-            // (客語: 七聲 gives the 入聲 colours of their own, 五聲 the colour of the tone they sound like)
+        // 七聲 / 五聲 and 變調 are 台語's; the other languages only turn the colours on and off (客語 on: 七聲's, the
+        // 入聲 in colours of their own)
+        if store.lang == 0 {
             Picker(tr("聲調顏色"), selection: $system) {
                 Text(tr("關")).tag(0)
                 Text(tr("七聲")).tag(7)
@@ -587,7 +593,7 @@ struct ToneMenuItems: View {
                 Toggle(tr("聲調光暈"), isOn: $glow)
             }
         } else {
-            Picker(store.lang == 4 ? tr("文字顏色") : tr("聲調顏色"), selection: Binding(get: { system == 0 ? 0 : 1 }, set: { system = $0 == 0 ? 0 : (system == 0 ? 7 : system) })) {
+            Picker(store.lang == 4 ? tr("文字顏色") : tr("聲調顏色"), selection: Binding(get: { system == 0 ? 0 : 1 }, set: { system = $0 == 0 ? 0 : 7 })) {
                 Text(tr("關")).tag(0)
                 Text(tr("開")).tag(1)
             }

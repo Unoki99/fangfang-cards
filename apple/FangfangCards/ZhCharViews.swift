@@ -180,6 +180,7 @@ struct ZhCharCardRow: View {
 struct ZhCharListView: View {
     @EnvironmentObject var store: Store
     @State private var filter = 0        // 0 all, 1 熟悉, 2 不熟, 3 not seen
+    @State private var game = false
     @State private var open: CharRef?
     @State private var query = ""
 
@@ -252,6 +253,16 @@ struct ZhCharListView: View {
         .appBackground()
         .navigationTitle(tr("認識的漢字"))
         .navigationBarTitleDisplayMode(.inline)
+        // 猜字義: a game for fun, nothing marked
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { game = true } label: { Label(tr("猜字義"), systemImage: "gamecontroller") }
+                    .disabled(store.zh == nil)
+            }
+        }
+        .fullScreenCover(isPresented: $game) {
+            if let z = store.zh { CharMeaningGame(dict: z).environmentObject(store) }
+        }
         .sheet(item: $open) { r in
             if let z = store.zh { ZhCharOrWordSheet(dict: z, ch: r.ch).environmentObject(store) }
         }
@@ -270,5 +281,123 @@ struct ZhCharOrWordSheet: View {
         } else {
             Text(tr("找不到這個字。")).foregroundStyle(T.muted).padding()
         }
+    }
+}
+
+
+// MARK: - 猜字義: a character, which meaning is it? (for fun: nothing is marked 熟悉 or 不熟)
+
+struct CharMeaningGame: View {
+    let dict: ZhDict
+    @EnvironmentObject var store: Store
+    @Environment(\.dismiss) private var dismiss
+    @State private var ch = ""
+    @State private var options: [String] = []
+    @State private var answer = 0
+    @State private var picked: Int?
+    @State private var right = 0, wrong = 0
+    /// the characters, the most common first (the order of the cards)
+    @State private var pool: [String] = []
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 18) {
+                    HStack {
+                        Label("\(right)", systemImage: "checkmark").foregroundStyle(T.blueInk)
+                        Label("\(wrong)", systemImage: "xmark").foregroundStyle(T.rustInk)
+                        Spacer()
+                    }
+                    .ffFont(.subheadline, .semibold)
+                    Text(ch).scaledFont(96, weight: .semibold).foregroundStyle(T.glyph)
+                        .frame(maxWidth: .infinity, minHeight: 140)
+                        .background(RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.7)))
+                    ForEach(Array(options.enumerated()), id: \.offset) { i, o in
+                        Button { pick(i) } label: {
+                            Text(o).ffFont(.body).multilineTextAlignment(.leading)
+                                .foregroundStyle(ink(i))
+                                .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                                .padding(.horizontal, 14).padding(.vertical, 6)
+                                .background(RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.75)))
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(edge(i), lineWidth: 2))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(picked != nil)
+                    }
+                    if picked != nil {
+                        if let z = dict.charIndex[ch].map({ dict.chars[$0] }) {
+                            Text(dict.reading([z.readings[0].zy], store.zhRom)).latFont(20).foregroundStyle(T.greenInk)
+                        }
+                        Button { next() } label: {
+                            Text(tr("下一題")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 46)
+                                .background(Capsule().fill(T.btn)).foregroundStyle(T.btnInk)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Text(tr("好玩的：答對答錯都不會改字是熟悉還是不熟。常用的字出現得比較多。")).ffFont(.caption).foregroundStyle(T.muted)
+                }
+                .padding()
+                .frame(maxWidth: 620)
+                .frame(maxWidth: .infinity)
+            }
+            .appBackground()
+            .navigationTitle(tr("猜字義"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { dismiss() } } }
+        }
+        .onAppear {
+            if pool.isEmpty { pool = store.zhCharSets().all.filter { dict.charIndex[$0] != nil && meaning($0) != nil } }
+            if ch.isEmpty { next() }
+        }
+    }
+
+    private func ink(_ i: Int) -> Color {
+        guard let p = picked else { return T.glyph }
+        if i == answer { return T.blueInk }
+        return i == p ? T.rustInk : T.muted
+    }
+    private func edge(_ i: Int) -> Color {
+        guard let p = picked else { return T.fnEdge }
+        if i == answer { return T.blueEdge }
+        return i == p ? T.rustEdge : T.fnEdge
+    }
+
+    /// a character's meaning, short: English when the app is in English and there is one, else Chinese
+    private func meaning(_ c: String) -> String? {
+        if UILang.english, let e = ZhCharSheet.entry(dict, c), let first = e.enList.first { return first }
+        guard let i = dict.charIndex[c], let d = dict.chars[i].readings.first?.defs.first?.text else { return nil }
+        var t = d.components(separatedBy: "。").first ?? d
+        if t.count > 40 { t = String(t.prefix(39)) + "…" }
+        return t.isEmpty ? nil : t
+    }
+
+    /// the next character: the common ones more often (weight by place in the list)
+    private func pickChar() -> String? {
+        guard !pool.isEmpty else { return nil }
+        let ws = pool.indices.map { 1.0 / Double($0 + 40) }
+        var r = Double.random(in: 0..<ws.reduce(0, +))
+        for (i, w) in ws.enumerated() { r -= w; if r <= 0 { return pool[i] } }
+        return pool.last
+    }
+
+    private func next() {
+        picked = nil
+        guard let c = pickChar(), let m = meaning(c) else { return }
+        ch = c
+        var opts = [m]
+        var tries = 0
+        while opts.count < 4 && tries < 60 {
+            tries += 1
+            if let o = pool.randomElement(), o != c, let om = meaning(o), !opts.contains(om) { opts.append(om) }
+        }
+        opts.shuffle()
+        options = opts
+        answer = opts.firstIndex(of: m) ?? 0
+    }
+
+    private func pick(_ i: Int) {
+        guard picked == nil else { return }
+        picked = i
+        if i == answer { right += 1 } else { wrong += 1 }
     }
 }

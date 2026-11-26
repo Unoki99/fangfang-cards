@@ -106,22 +106,70 @@ final class MusicLibrary: ObservableObject {
 
 /// the radio button's window: 電台 and 音樂, side by side like 詞典's sections
 struct MediaTabs: View {
-    /// 0 電台, 1 音樂
-    @AppStorage("mediaTab") private var tab = 0
+    @ObservedObject private var lyrics = LyricsBridge.shared
+    @ObservedObject private var songs = SongPlayer.shared
+    @ObservedObject private var radio = RadioPlayer.shared
+    @ObservedObject private var yt = YtPlayer.shared
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                Text(tr("電台")).tag(0)
-                Text(tr("音樂")).tag(1)
+        // (as on the computer: first where the music comes from, YouTube or Apple Music, then the radios by
+        // language; 歌詞 at the bottom of the screen)
+        RadioView(top: AnyView(MediaSources()))
+            .safeAreaInset(edge: .bottom) {
+                Button { lyrics.pageOpen = true } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "music.note.list")
+                        if let h = lyrics.song {
+                            Text(tr("歌詞：\(h.trackName)")).lineLimit(1)
+                        } else {
+                            Text(tr("歌詞"))
+                        }
+                    }
+                    .ffFont(.headline)
+                    .foregroundStyle(T.btnInk)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(Capsule().fill(T.fn))
+                    .overlay(Capsule().stroke(T.fnEdge, lineWidth: 2))
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal).padding(.bottom, 6)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
-            Group {
-                if tab == 1 { MusicView() } else { RadioView() }
+            .navigationDestination(isPresented: $lyrics.pageOpen) {
+                LyricsWindow(inConvert: true).appBackground().navigationTitle(tr("歌詞")).navigationBarTitleDisplayMode(.inline)
             }
-            .frame(maxHeight: .infinity)
+            .appBackground()
+    }
+}
+
+/// the two places music comes from, the same at the top of the radios and of Apple Music's page: YouTube (opens its
+/// window) over Apple Music (its page: your songs, 找歌, the songs given a language)
+struct MediaSources: View {
+    var showAppleMusic = true
+    @ObservedObject private var yt = YtPlayer.shared
+    @ObservedObject private var songs = SongPlayer.shared
+    var body: some View {
+        Section {
+            Button { YtPlayer.shared.show() } label: {
+                sourceRow("play.rectangle.fill", "YouTube", yt.open ? yt.now?.title : nil, Color(hex: 0xff6b6b))
+            }
+            .buttonStyle(.plain)
+            if showAppleMusic {
+                NavigationLink { MusicView().appBackground().navigationTitle("Apple Music").navigationBarTitleDisplayMode(.inline) } label: {
+                    sourceRow("music.note", "Apple Music", songs.song?.trackName, Color(hex: 0xff8cc6))
+                }
+            }
         }
-        .appBackground()
+    }
+    private func sourceRow(_ icon: String, _ title: String, _ now: String?, _ tint: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.system(size: 22, weight: .semibold)).foregroundStyle(tint).frame(width: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).ffFont(.headline).foregroundStyle(T.glyph)
+                if let now { Text(now).ffFont(.caption).foregroundStyle(T.muted).lineLimit(1) }
+            }
+            Spacer()
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
     }
 }
 

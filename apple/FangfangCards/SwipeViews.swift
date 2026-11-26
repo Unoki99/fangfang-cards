@@ -168,8 +168,9 @@ struct CardPicture {
                 if rx < rr && ry < rr { let dx = rr - rx, dy = rr - ry; inside = dx * dx + dy * dy <= rr * rr }
                 var c = bb
                 if let px {
-                    // (CoreGraphics' rows start at the bottom)
-                    let o = ((rows - 1 - y) * cols + x) * 4
+                    // (a bitmap's first row in memory is the picture's top row: read the other way round, the card
+                    // turned upside down just as it fell apart)
+                    let o = (y * cols + x) * 4
                     let a = Float(px[o + 3]) / 255
                     c = SIMD3<Float>(Float(px[o]), Float(px[o + 1]), Float(px[o + 2])) / 255 + bb * (1 - a)
                 }
@@ -500,6 +501,8 @@ struct DeckArea: View {
     @EnvironmentObject var store: Store
 
     @State private var fling: SwipeStack.Fling?
+    /// (⇧ on a keyboard: the top card's 詳細, ⇧ again closes it)
+    @State private var detail: Card?
 
     var body: some View {
         VStack(spacing: 18) {
@@ -512,11 +515,19 @@ struct DeckArea: View {
                              onUndo: undo)
             }
         }
-        // ← and → on a keyboard (iPad, Mac): the card swiped left / right, like the buttons
+        // ← and → on a keyboard (iPad, Mac): the card swiped left / right, like the buttons; ⇧ the top card's 詳細
+        // (open / closed); ⌫ undoes the last card
         .background {
-            ArrowKeys(active: !cards.isEmpty, top: cards.first?.k ?? "") { right in fling = .init(right: right) }
+            ArrowKeys(active: !cards.isEmpty, top: cards.first?.k ?? "",
+                      onArrow: { right in fling = .init(right: right) },
+                      onShift: {
+                          if detail != nil { detail = nil }
+                          else if !ArrowKeys.closeSheet() { detail = cards.first }
+                      },
+                      onBack: store.canUndo ? undo : nil)
                 .frame(width: 0, height: 0)
         }
+        .sheet(item: $detail) { c in CardSheet(card: c).environmentObject(store) }
     }
 }
 
@@ -528,17 +539,35 @@ struct ArrowKeys: UIViewRepresentable {
     var active: Bool
     var top: String                     // (the card on top: a new one, the keyboard taken back if it was lost)
     var onArrow: (Bool) -> Void
+    /// ⇧ pressed and let go by itself (not with another key)
+    var onShift: (() -> Void)? = nil
+    /// ⌫
+    var onBack: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> KeyView { KeyView() }
     func updateUIView(_ v: KeyView, context: Context) {
         v.onArrow = onArrow
+        v.onShift = onShift
+        v.onBack = onBack
         v.active = active
         DispatchQueue.main.async { v.claim() }
     }
 
+    /// a sheet open over the deck (a card's own 詳細 button's): closed; false when there was none
+    @MainActor static func closeSheet() -> Bool {
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first(where: { $0.activationState == .foregroundActive }),
+              let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController,
+              let p = root.presentedViewController else { return false }
+        p.dismiss(animated: true)
+        return true
+    }
+
     final class KeyView: UIView {
         var onArrow: (Bool) -> Void = { _ in }
+        var onShift: (() -> Void)?
+        var onBack: (() -> Void)?
         var active = true
+        private var shiftAlone = false
         override var canBecomeFirstResponder: Bool { active }
         override func didMoveToWindow() {
             super.didMoveToWindow()
@@ -563,6 +592,26 @@ struct ArrowKeys: UIViewRepresentable {
                 c.wantsPriorityOverSystemBehavior = true
                 return c
             }
+        }
+        // ⇧ by itself: down and up with no other key between (⇧ with a letter is someone typing)
+        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            if let k = presses.first?.key, k.keyCode == .keyboardLeftShift || k.keyCode == .keyboardRightShift {
+                shiftAlone = true
+                return
+            }
+            shiftAlone = false
+            if let k = presses.first?.key, k.keyCode == .keyboardDeleteOrBackspace, active, onTop, let b = onBack {
+                b(); return
+            }
+            super.pressesBegan(presses, with: event)
+        }
+        override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+            if let k = presses.first?.key, k.keyCode == .keyboardLeftShift || k.keyCode == .keyboardRightShift {
+                if shiftAlone, active { onShift?() }
+                shiftAlone = false
+                return
+            }
+            super.pressesEnded(presses, with: event)
         }
         @objc private func arrow(_ c: UIKeyCommand) {
             guard active, onTop else { return }

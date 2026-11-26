@@ -462,11 +462,11 @@ final class LyricsBridge: ObservableObject {
         NotificationCenter.default.post(name: Self.changed, object: nil)
     }
 
-    /// 轉換 → 歌詞, the whole page (the radio's sheet closes)
+    /// 歌詞, the whole page: in the 電台與音樂 window (opened if it isn't), over the radios. (It was 轉換's third tab.)
+    @Published var pageOpen = false
     static func showInConvert() {
-        UserDefaults.standard.set(2, forKey: "convertTab")
-        Router.shared.tab = 3
-        RadioPlayer.shared.sheetOpen = false
+        RadioPlayer.shared.sheetOpen = true
+        shared.pageOpen = true
     }
 
     /// the lyrics are simplified characters the app shows as 繁體
@@ -1298,7 +1298,7 @@ struct LyricsFloat: View {
 
     var body: some View {
         if on, lyrics.timed, radio.isOn || songs.active || yt.following, !songs.editing, !lyrics.karaoke, let h = lyrics.song, lyrics.barHiddenFor != h.id,
-           !(router.tab == 3 && convertTab == 2 && !lyrics.appCovered), !radio.sheetOpen {
+           !radio.sheetOpen {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
                     Image(systemName: "line.3.horizontal").foregroundStyle(T.muted).ffFont(.caption)

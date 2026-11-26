@@ -338,7 +338,10 @@ enum Zhuyin {
 
     /// 拼音 without tone marks, for searching: ü → v
     static func plain(_ s: String) -> String {
-        let a = s.lowercased().replacingOccurrences(of: "ü", with: "v").replacingOccurrences(of: "u:", with: "v")
+        // (ü with a tone mark is a letter of its own, ǜ: v too. It was read as a plain u, so 綠 lǜ was "lu" and "lv"
+        // found only lüè's "lve")
+        var a = s.lowercased().replacingOccurrences(of: "u:", with: "v")
+        for u in ["ü", "ǖ", "ǘ", "ǚ", "ǜ"] { a = a.replacingOccurrences(of: u, with: "v") }
         return a.applyingTransform(.stripDiacritics, reverse: false)?.filter { $0.isLetter || $0.isNumber } ?? a
     }
 
@@ -1030,7 +1033,38 @@ final class ZhDict: @unchecked Sendable {
     func hakSyllable(_ s: String, _ mode: Int) -> String {
         let p = Zhuyin.hakParts(s)
         let mark = p.accent < hakMarks.count && p.tone < hakMarks[p.accent].count ? hakMarks[p.accent][p.tone] : ""
-        return (mode == 1 ? (hakZy[p.letters] ?? p.letters) : p.letters) + mark
+        return (mode == 1 ? (Self.hakZhuyin(p.letters, tone: p.tone) ?? hakZy[p.letters] ?? p.letters) : p.letters) + mark
+    }
+
+    private static let hakIni: [(String, String)] = [("zh", "ㄓ"), ("ch", "ㄔ"), ("sh", "ㄕ"), ("rh", "ㄖ"), ("ng", "ㄫ"), ("bb", "ㆠ"),
+        ("b", "ㄅ"), ("p", "ㄆ"), ("m", "ㄇ"), ("f", "ㄈ"), ("v", "ㄪ"), ("d", "ㄉ"), ("t", "ㄊ"), ("n", "ㄋ"), ("l", "ㄌ"), ("g", "ㄍ"),
+        ("k", "ㄎ"), ("h", "ㄏ"), ("z", "ㄗ"), ("c", "ㄘ"), ("s", "ㄙ"), ("j", "ㄐ"), ("q", "ㄑ"), ("x", "ㄒ")]
+    private static let hakFin: [(String, String)] = [("ang", "ㄤ"), ("ai", "ㄞ"), ("au", "ㄠ"), ("an", "ㄢ"), ("ien", "ㄧㄢ"), ("ii", "ㄭ"),
+        ("ee", "ㆤ"), ("oo", "ㆦ"), ("er", "ㄜ"), ("nn", "ⁿ"), ("ng", "ㄥ"), ("a", "ㄚ"), ("e", "ㄝ"), ("i", "ㄧ"), ("o", "ㄛ"),
+        ("u", "ㄨ"), ("m", "ㄇ"), ("n", "ㄣ")]
+
+    /// a 客語 syllable in 臺灣方音符號 (the dictionary file's table was made when it was installed; these rules on top):
+    /// ii ㄭ; m by itself ㆬ, ng by itself ㆭ; the 入聲 endings b d g are ㆴ ㆵ ㆻ, with a dot over them in 陽入 (ㆴ̇ ㆵ̇
+    /// ㆻ̇), not ㄅ ㄉ ㄍ
+    static func hakZhuyin(_ letters: String, tone: Int) -> String? {
+        if letters == "m" { return "ㆬ" }
+        if letters == "ng" { return "ㆭ" }
+        var rest = Substring(letters), out = ""
+        // (the 入聲 ending, kept for last)
+        var stop = ""
+        if let l = rest.last, "bdg".contains(l), rest.count > 1 {
+            stop = l == "b" ? "ㆴ" : (l == "d" ? "ㆵ" : "ㆻ")
+            if tone == 8 { stop += "\u{0307}" }
+            rest = rest.dropLast()
+        }
+        if let m = hakIni.first(where: { rest.hasPrefix($0.0) && rest.count > $0.0.count }) {
+            out = m.1; rest = rest.dropFirst(m.0.count)
+        }
+        while !rest.isEmpty {
+            guard let m = hakFin.first(where: { rest.hasPrefix($0.0) }) else { return nil }
+            out += m.1; rest = rest.dropFirst(m.0.count)
+        }
+        return out + stop
     }
 
     func readingPlain(_ syl: [String], _ mode: Int) -> String { String(reading(syl, mode, colours: 0).characters) }
@@ -1377,6 +1411,14 @@ final class ZhDict: @unchecked Sendable {
         let p = lang != 1 ? Zhuyin.plain(q) : Zhuyin.plain(q).replacingOccurrences(of: "5", with: "").replacingOccurrences(of: "0", with: "")
         let toned = p.contains { $0.isNumber }
         f.words = (toned ? byToned[p] : byPlain[p]) ?? []
+        // (lu, nu typed for lü, nü: those words after the lu ones)
+        if lang == 1, !p.contains("v") {
+            let alt = p.replacingOccurrences(of: "(^|[^a-z])?([ln])u(?![aeiou])", with: "$1$2v", options: .regularExpression)
+            if alt != p, let more = (toned ? byToned[alt] : byPlain[alt]) {
+                var seen = Set(f.words)
+                for i in more where seen.insert(i).inserted { f.words.append(i) }
+            }
+        }
         if !toned && f.words.count < 30 {
             var seen = Set(f.words)
             for (k, v) in byPlain where k.hasPrefix(p) && k != p {
@@ -1607,6 +1649,29 @@ final class ZhDict: @unchecked Sendable {
         "地": "ㄉㄧˋ", "大": "ㄉㄚˋ", "和": "ㄏㄜˊ", "把": "ㄅㄚˇ", "少": "ㄕㄠˇ", "種": "ㄓㄨㄥˇ", "行": "ㄒㄧㄥˊ"]
 
     /// the usual entry for a word
+    /// a word's 近義詞 and 反義詞 for this reading. The dictionary file gives them by the written word, so every
+    /// reading of it had the same (睡覺 shuìjué, wake up, had 就寢 too): a word written the same with several readings
+    /// keeps each 近 / 反 word only for the reading whose meanings share the most with that word's
+    func links(_ e: ZhEntry) -> (syn: [String], ant: [String]) {
+        guard !e.syn.isEmpty || !e.ant.isEmpty,
+              let sibs = byHan[e.h]?.filter({ entries[$0].h == e.h && entries[$0].k != e.k && (!entries[$0].syn.isEmpty || !entries[$0].ant.isEmpty) }),
+              !sibs.isEmpty else { return (e.syn, e.ant) }
+        func hans(_ t: String) -> Set<Character> { Set(t.filter { $0.unicodeScalars.first.map(Zhuyin.isHan) ?? false }) }
+        func meaning(_ x: ZhEntry) -> Set<Character> { hans(x.senses.map(\.text).joined()).subtracting(hans(e.h)) }
+        let all = [e] + sibs.map { entries[$0] }
+        let mine = all.map(meaning)
+        func keep(_ w: String) -> Bool {
+            guard let i = usual(w) else { return true }
+            let other = meaning(entries[i]).union(hans(w))
+            let scores = mine.map { $0.intersection(other).count }
+            let best = scores.max() ?? 0
+            // (nothing to tell them apart, or a tie: the word's usual reading keeps it)
+            if best == 0 || scores.filter({ $0 == best }).count > 1 { return usual(e.h).map { entries[$0].k == e.k } ?? true }
+            return scores[0] == best
+        }
+        return (e.syn.filter(keep), e.ant.filter(keep))
+    }
+
     func usual(_ han: String) -> Int? {
         guard let is_ = byHan[han]?.filter({ entries[$0].h == han || entries[$0].alt == han }), !is_.isEmpty else { return nil }
         if is_.count == 1 { return is_[0] }

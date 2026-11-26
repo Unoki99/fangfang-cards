@@ -354,6 +354,9 @@ final class Dict: @unchecked Sendable {
     func isCode(_ t: String) -> Bool { raw.syl[t] != nil }
 
     func codesFor(_ key: String, _ place: Int) -> String {
+        // (your own word: each 字 as the place says it, the same rules as the dictionary's words put together from
+        // their 字 (轉換); before, it kept the 通行 reading everywhere)
+        if place >= 0, isUser(key), let c = composedCodes(key, place) { return c }
         // (新竹, which says some 字 with -ir and -i both: the -ir one first, the -i one 也講)
         if let f = irForms(key, place) { return f.main }
         return statedCodes(key, place)
@@ -496,6 +499,10 @@ final class Dict: @unchecked Sendable {
     /// syllables (by position) whose reading for the place is worked out by rule, not stated by the dictionary
     func guessedSyllables(_ key: String, _ place: Int) -> Set<Int> {
         guard place >= 0 else { return [] }
+        // (your own word: a 字 whose place reading is itself worked out by rule)
+        if isUser(key), raw.dia[key] == nil, canSplit(key) {
+            return Set((0..<sylCount(key)).filter { sylAt(key, $0, place).guessed })
+        }
         var out = Set<Int>()
         if !isStated(key, place), let dc = raw.dia[key]?[String(place)] {
             let a = Dict.codesOf(key).split(separator: " ").map(String.init), b = dc.split(separator: " ").map(String.init)

@@ -290,7 +290,13 @@ final class SongPlayer: ObservableObject {
         mode = .full
         let m = music
         why = nil
-        m.setQueue(with: [String(h.trackId)])
+        // (the song downloaded into your Apple Music library: that copy, which plays without the internet too;
+        // otherwise the song from Apple Music's catalogue)
+        if let item = Self.libraryItem(h.trackId) {
+            m.setQueue(with: MPMediaItemCollection(items: [item]))
+        } else {
+            m.setQueue(with: [String(h.trackId)])
+        }
         m.prepareToPlay { [weak self] err in
             Task { @MainActor in
                 guard let self, self.song?.id == h.id else { return }
@@ -309,6 +315,23 @@ final class SongPlayer: ObservableObject {
         hookLyricsClock()
         #else
         playPreview(h)
+        #endif
+    }
+
+    /// a song in your own Apple Music library (added or downloaded), found by its Apple Music number. Asks once
+    /// whether the app may look in the library.
+    static func libraryItem(_ trackId: Int) -> MPMediaItem? {
+        #if targetEnvironment(macCatalyst)
+        return nil
+        #else
+        switch MPMediaLibrary.authorizationStatus() {
+        case .authorized: break
+        case .notDetermined: MPMediaLibrary.requestAuthorization { _ in }; return nil
+        default: return nil
+        }
+        let q = MPMediaQuery.songs()
+        q.addFilterPredicate(MPMediaPropertyPredicate(value: String(trackId), forProperty: MPMediaItemPropertyPlaybackStoreID))
+        return q.items?.first
         #endif
     }
 

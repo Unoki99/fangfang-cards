@@ -1,0 +1,63 @@
+# Changes waiting for the other versions
+
+Rounds that were done on one platform first. Each item: what changed, where it was done, and what the other
+versions still need. When an item has been done everywhere, delete it here.
+
+## Round of 2026-11-27 (iPhone / iPad only)
+
+Done on iOS this round — still to do on **Android, Windows / Mac (desktop), the Firefox add-on**:
+
+| Item | iOS | Android | Desktop | Add-on |
+|---|---|---|---|---|
+| 聲調顏色: 客語 only on / off (七聲 / 五聲 stays 台語's) | done | todo | todo | — |
+| 新詞 swipe: ⇧ opens / closes 詳細, ⌫ undoes the last card | done | — | todo | — |
+| TOCFL English level names (Novice 1–2, TOCFL 1–5) | done (asked the user what "1–6" means) | todo | todo | — |
+| Radios grouped by language again (not by stream kind) | done | todo | todo | — |
+| Practice of single characters: the most common first | done | todo | todo | — |
+| 華語 pinyin search: lü / ǜ read as v (lv finds 綠; lu still finds lü words after the lu ones) | done | todo | todo | todo |
+| 認識的漢字: a character marked 不熟 in another language no longer stays orange (長) | done | todo | todo | — |
+| Swipe falls apart upside down (bitmap rows read the wrong way) | done | — | — | — |
+| 方音 light tone keeps the syllable's own tone mark (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ) | done | todo | todo | todo |
+| 客語 方音符號: ii ㄭ, m ㆬ, ng ㆭ, 入聲 ㆴㆵㆻ (陰入) / ㆴ̇ㆵ̇ㆻ̇ (陽入) | done (at display; the install table hz still has the old ones) | todo | todo | todo |
+| 台語 own words (自訂) follow the 各地 reading rules (composed from each 字) | done | todo | todo | — |
+| 台語 entry: 華 column says 臺華共同詞 (same in 華語) | done | todo | todo | — |
+| Every dictionary: the 資料 (sources) line at the very bottom of the entry | done | todo | todo | — |
+| 各地講法 page: each word its own row (no more opening every word above) | done | todo | todo | — |
+| 詞典: the old 各地讀音 and 分類 tabs taken out | done | todo | todo | — |
+| 華語 近／反: a word written the same with two readings keeps each 近／反 word for one reading (睡覺) | done | todo | todo | — |
+| 瑞典語: the Chinese meanings beside the English (two columns) | done | todo | todo | — |
+| 練習範圍: 收藏的詞 as a range | done | todo | todo | — |
+| 練習範圍: 匯出這個範圍（CSV） | done | todo | todo | — |
+| 電台與音樂: YouTube / Apple Music on top, radios by language, 歌詞 button at the bottom; 歌詞 out of 轉換 | done | todo (layout already like this) | already | — |
+| Apple Music: a song in your library (downloaded) plays from the library | done | — | — | — |
+
+## Asked for, not done yet (any platform)
+
+Kept here so nothing is lost. Roughly from smallest to biggest.
+
+- 台語 數字 practice (白／文 readings, 量詞, 一百十 rule; math questions typed in spelling, tone marks optional;
+  a second game for when 白 / 文 is used, with example words and sentences). Rules from the user, 2026-11-27:
+  0 空 khọng; 1 一 ịt (量詞前 ji̍t); 2 二 łī (量詞前 兩 nn̄g); 3 sa̍ⁿ / 文 sa̍m; 4 xị / 文 sụ; 5 gōo / 文 ngòo;
+  6 la̍k / 文 lio̍k; 7 qịt; 8 pẹh / 文 pạt; 9 kàu / 文 kiù; 10 za̍p / 文 xi̍p. 文 for phone numbers, ages, fixed
+  expressions (四季). 11 za̍p ịt, 20 łī za̍p, 101 ji̍t pạh khọng łī, 110 ji̍t pạh ịt (一百十, never 一百一十),
+  120 ji̍t pạh łī, 200 nn̄g pạh, 2000 nn̄g qi̍ng, 2002 nn̄g qi̍ng khọng łī, 2202 nn̄g qi̍ng nn̄g pẹh khọng lī,
+  10 000 ji̍t bān. Above 10 a 量詞 after the number still takes 二, not 兩.
+- 台語 map page: where each place reading comes from (the 字 it was taken from; for words, how many words have
+  it, tap for the list with meanings), laid out like the 各地讀音 chart.
+- 詞龍 game (type the next word; a handwriting version with recognition on iOS), all languages.
+- 認識的漢字: each character level laid out like the overall known / unknown grid; a "guess the meaning" game
+  (no status change, common characters more often).
+- Frequency: a hollow circle filled by %, its colour along the tone colours (or 8 steps); the learning sections
+  by that fullness.
+- Own words (自補) in every language (word, reading, meanings), exportable as CSV.
+- First-run setup: UI language, 簡／繁, each language's place, spelling, tone colours, 方音 options.
+- App icon: a light version (white background, black 方).
+- YouTube: lyrics made from the video's subtitles when LRCLIB has none, saved in the 歌詞資料夾.
+- Gemini (own API key, 設定): a search with no results asks it for Chinese words, shown as dictionary words
+  (also for 瑞典語 when no English match); a weekly-words usage practice (write a sentence, corrected on the
+  word's use, then the whole sentence corrected).
+- 華語 readings: HSK words not in the 兩岸 dictionary get Taiwan readings per character (only where the
+  character's reading is the same in both; never replacing a reading that differs, 比比皆是).
+- Co-op game (two or more players, over the internet or Bluetooth, each with their own 練習範圍 and language;
+  handwriting with tools, hints that cost points, a typing / 8-choice version with similar-sounding words).
+- Add-on: subtitles converted to 簡體; the 拼音／注音 switch easy to find; the subtitle settings in a bigger page.

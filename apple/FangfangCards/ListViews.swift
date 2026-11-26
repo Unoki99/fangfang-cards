@@ -22,6 +22,8 @@ struct UnknownView: View {
     @State private var writing = false
     @State private var freeWriting = false
     @State private var idiomWriting = false
+    @State private var numbers = false
+    @State private var dragon = false
     @State private var gaming = false
     @State private var helping = false
     /// 遊戲: the grid of games open, and the one picked (opened once the grid has closed)
@@ -60,6 +62,10 @@ struct UnknownView: View {
                     // (華語: 四字格 from their meaning)
                     if store.lang == 1 {
                         PracticeTile(title: tr("四字格手寫"), icon: "square.grid.2x2.fill", enabled: store.zh != nil) { idiomWriting = true }
+                    }
+                    // (台語: the numbers, 白 and 文)
+                    if store.lang == 0 {
+                        PracticeTile(title: tr("數字練習"), icon: "number", enabled: true) { numbers = true }
                     }
                 }
                 PracticeTile(title: tr("遊戲"), icon: "gamecontroller", enabled: true) { gamesOpen = true }
@@ -121,6 +127,8 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $writing) { HandwritingView().environmentObject(store) }
         .fullScreenCover(isPresented: $freeWriting) { FreeWritingView().environmentObject(store) }
         .fullScreenCover(isPresented: $idiomWriting) { IdiomWriteView().environmentObject(store) }
+        .fullScreenCover(isPresented: $numbers) { NumbersView().environmentObject(store) }
+        .fullScreenCover(isPresented: $dragon) { WordDragonView().environmentObject(store) }
         .fullScreenCover(isPresented: $gaming) { FallingGameView().environmentObject(store) }
         .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
         .sheet(isPresented: $gamesOpen, onDismiss: openPickedGame) {
@@ -237,7 +245,7 @@ struct KnownView: View {
 
 
 /// 遊戲: every game, chosen from a grid with what each does
-enum PracticeGame: String, Identifiable { case swipe, blanks, scramble, readingOrder, tones, toneBalls, particles, memory, falling
+enum PracticeGame: String, Identifiable { case swipe, blanks, scramble, readingOrder, tones, toneBalls, particles, memory, falling, dragon
     var id: String { rawValue } }
 
 extension UnknownView {
@@ -258,6 +266,7 @@ extension UnknownView {
         }
         a.append((.memory, "square.grid.2x2", trs("翻牌配對"), trs("一次翻兩張牌，把漢字和它的讀音配起來。"), pool.count > 1))
         a.append((.falling, "arrow.down.circle", trs("掉下來的字"), trs("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), pool.count > 3))
+        a.append((.dragon, "link", trs("詞龍"), store.isSv ? trs("接龍：打一個用上一個詞最後一個字母開頭的詞，App 再接下去。") : trs("接龍：打一個用上一個詞最後一個字開頭的詞，App 再接下去。"), true))
         return a.map { (game: $0.0, icon: $0.1, title: $0.2, text: $0.3, enabled: $0.4) }
     }
 
@@ -274,6 +283,7 @@ extension UnknownView {
         case .particles: particles = true
         case .memory: memory = true
         case .falling: gaming = true
+        case .dragon: dragon = true
         }
     }
 }
@@ -353,6 +363,17 @@ struct PracticeScopeMenu: View {
     /// 創作範圍 / 編輯: the sheet (nil name: a new 範圍)
     @State private var scopeSheet: ScopeSheet?
     struct ScopeSheet: Identifiable { let name: String?; var id: String { name ?? "\u{1}new" } }
+    @State private var csvFile: ShareItem?
+
+    /// the 練習範圍's words as a CSV file (the same columns as 設定's 匯出「不熟」), named after it
+    private func exportCSV() {
+        let name = store.practiceName.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("方方-" + name + ".csv")
+        do {
+            try Data(store.csv(store.practiceCards).utf8).write(to: url)
+            csvFile = ShareItem(url: url)
+        } catch {}
+    }
     var body: some View {
         let ts = store.practiceTopics
         let all = store.allTopicProgress()
@@ -360,7 +381,7 @@ struct PracticeScopeMenu: View {
         let chars = ts.filter { store.isZh ? $0.id > Lang.charTopicBase : $0.id >= Lang.freqCharBase }
         let groups = store.groupIds
         let unknown = Set(store.unknownCards.map(\.k))
-        if !ts.isEmpty || !groups.isEmpty {
+        if !ts.isEmpty || !groups.isEmpty || !store.savedKeys.isEmpty {
             Menu {
                 Button {
                     store.practiceGroup = nil; store.practiceTopic = -1
@@ -369,6 +390,13 @@ struct PracticeScopeMenu: View {
                         Label(tr("全部不熟的詞（\(store.unknownCount)）"), systemImage: "checkmark")
                     } else {
                         Text(tr("全部不熟的詞（\(store.unknownCount)）"))
+                    }
+                }
+                // 收藏: the words you saved
+                let nSaved = store.savedKeys.count
+                if nSaved > 0 {
+                    Button { store.practiceGroup = Store.savedScope } label: {
+                        Label(tr("收藏的詞（\(nSaved)）"), systemImage: store.practiceGroup == Store.savedScope ? "checkmark" : "bookmark")
                     }
                 }
                 // 自己的範圍: made with 創作範圍 (some 影片詞組 together)
@@ -409,6 +437,9 @@ struct PracticeScopeMenu: View {
                         .pickerStyle(.inline)
                     }
                 }
+                // the range's words as a file (for Anki and the like)
+                Divider()
+                Button { exportCSV() } label: { Label(tr("匯出這個範圍（CSV）"), systemImage: "square.and.arrow.up") }
                 if !groups.isEmpty {
                     Divider()
                     Button { scopeSheet = ScopeSheet(name: nil) } label: { Label(tr("創作範圍"), systemImage: "plus") }
@@ -420,7 +451,7 @@ struct PracticeScopeMenu: View {
                 }
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: store.practiceGroup.map { $0.hasPrefix("folder:") ? "square.stack" : "film" } ?? "scope").foregroundStyle(T.btnInk)
+                    Image(systemName: store.practiceGroup.map { $0 == Store.savedScope ? "bookmark" : ($0.hasPrefix("folder:") ? "square.stack" : "film") } ?? "scope").foregroundStyle(T.btnInk)
                     Text(tr("練習範圍")).foregroundStyle(T.muted)
                     Text(store.practiceName).foregroundStyle(T.glyph).lineLimit(1)
                     Spacer(minLength: 4)
@@ -436,6 +467,7 @@ struct PracticeScopeMenu: View {
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $groupsOpen) { VideoGroupsView().environmentObject(store) }
+            .sheet(item: $csvFile) { f in ShareSheet(url: f.url) }
             .sheet(item: $scopeSheet) { sh in
                 ScopeEditor(editing: sh.name) { n in store.practiceGroup = "folder:" + n }.environmentObject(store)
             }
@@ -477,7 +509,10 @@ struct PracticeHelp: View {
         if store.lang == 1 {
             a.append(("square.grid.2x2.fill", trs("四字格手寫"), trs("看一個四字格（成語）的意思和讀音，把四個字寫出來，寫完對答案、自己說寫對了沒有。寫錯的在這一輪最後再出現一次，寫錯的可以加到不熟。可以選常見的成語、所有成語，或練習範圍裡四個字的詞。")))
         }
-        a.append(("scope", trs("練習範圍"), trs("只練一個等級（或一組）的不熟的詞或字。")))
+        if store.lang == 0 {
+            a.append(("number", trs("數字練習"), trs("台語的數字有白、文兩套讀音。算數：用拼音寫出算式的答案（聲調符號可有可無）。白還是文：一個數字在一個場合（量詞、電話、年紀、算數），選它在那裡怎麼講。")))
+        }
+        a.append(("scope", trs("練習範圍"), trs("只練一個等級（或一組）的不熟的詞或字，或收藏的詞；也可以把範圍匯出成 CSV。")))
         return a
     }
 

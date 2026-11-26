@@ -479,7 +479,9 @@ struct ZhEntryBody: View {
                 // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
                 // (瑞典語, 只有中文: no English)
                 let ens = dict.isJa || (dict.isSv && entry.svHideEnglish) ? [] : entry.enList
-                let zhShort: [(n: Int, t: String)] = dict.isJa || dict.isSv || dict.isYue ? [] : entry.senses.compactMap { s in
+                // (瑞典語: its Chinese meanings beside the English, as in the 台語 dictionary)
+                let zhShort: [(n: Int, t: String)] = dict.isSv ? entry.svZh.enumerated().map { (n: $0.offset + 1, t: $0.element) }
+                    : dict.isJa || dict.isYue ? [] : entry.senses.compactMap { s in
                     var t = s.text.components(separatedBy: "\n").first ?? s.text
                     if let r = t.range(of: "。") { t = String(t[..<r.lowerBound]) }
                     t = t.trimmingCharacters(in: .whitespaces)
@@ -487,7 +489,7 @@ struct ZhEntryBody: View {
                     return t.isEmpty ? nil : (s.n, t)
                 }
                 if !ens.isEmpty || !zhShort.isEmpty {
-                    MeaningsOverview(zh: zhShort, zhLabel: tr(dict.isHak ? "客" : "華"), en: ens)
+                    MeaningsOverview(zh: zhShort, zhLabel: dict.isSv ? (entry.svZhGuessed ? tr("中（由英文推測）") : tr("中")) : tr(dict.isHak ? "客" : "華"), en: ens)
                 }
                 // 粵語: the 華語 word(s) with the same meaning
                 if !entry.eq.isEmpty && !dict.isSv {
@@ -540,8 +542,9 @@ struct ZhEntryBody: View {
                 ForEach(entry.senses, id: \.n) { s in sense(s) }
             }
             // 近義詞 / 反義詞 (《重編國語辭典修訂本》), the ones this dictionary has
-            let syn = entry.syn.compactMap { dict.usual($0).map { dict.entries[$0] } }
-            let ant = entry.ant.compactMap { dict.usual($0).map { dict.entries[$0] } }
+            let ln = dict.links(entry)
+            let syn = ln.syn.compactMap { dict.usual($0).map { dict.entries[$0] } }
+            let ant = ln.ant.compactMap { dict.usual($0).map { dict.entries[$0] } }
             if !syn.isEmpty || !ant.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     links("近", syn, T.blue, T.blueEdge, T.blueInk)
@@ -552,7 +555,16 @@ struct ZhEntryBody: View {
             if dict.isJa { JaWordExtras(dict: dict, entry: entry) }
             // 瑞典語: the word's parts (tap one), its Chinese meanings, its forms
             if dict.isSv { SvWordExtras(dict: dict, entry: entry) }
-            // (the dictionary's source first, then the sentences you met the word in)
+            FoundSentences(key: entry.k)
+            // a single character: 說文解字 (when installed)
+            if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }
+            if entry.extra {
+                Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
+                    .ffFont(.caption).foregroundStyle(T.muted)
+            }
+            // 《重編國語辭典修訂本》 (a character's)
+            moeChar
+            // (where each part of the entry comes from: the very bottom)
             Text(dict.isSv
                  ? tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）；中文意思：維基詞典（CC BY-SA）；常用詞：FrequencyWords（CC BY-SA 4.0）。詞的組成依規則推算，可能有誤。")
                  : dict.isJa
@@ -563,15 +575,6 @@ struct ZhEntryBody: View {
                  ? tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
                  : tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"))
                 .ffFont(.caption2).foregroundStyle(T.muted)
-            FoundSentences(key: entry.k)
-            // a single character: 說文解字 (when installed)
-            if entry.h.count == 1 && !dict.isJa && !dict.isSv { ShuowenBlock(ch: entry.h) }
-            if entry.extra {
-                Text(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"))
-                    .ffFont(.caption).foregroundStyle(T.muted)
-            }
-            // 《重編國語辭典修訂本》 always at the very bottom
-            moeChar
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .sheet(item: $tapped) { k in ZhEntrySheet(dict: dict, key: k.k).environmentObject(store) }

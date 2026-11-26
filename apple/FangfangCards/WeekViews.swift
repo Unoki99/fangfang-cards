@@ -165,6 +165,15 @@ struct LevelWordsView: View {
                 .pickerStyle(.segmented)
             }
             .listRowBackground(Color.clear)
+            // a level of characters: the characters in a grid, as 認識的漢字 shows them all
+            if isCharLevel {
+                Section {
+                    CharLevelGrid(cards: shown) { detail = $0 }
+                } footer: {
+                    Text(tr("按住一個字可以在熟悉和不熟之間換。藍色 = 熟悉，橘色 = 不熟，沒有顏色 = 還沒看過。點一個字看它的意思。")).ffFont(.caption)
+                }
+                .listRowBackground(Color.clear)
+            } else {
             Section(tr("\(shown.count) 個詞（往右滑 = 熟悉，往左滑 = 不熟）")) {
                 ForEach(shown) { c in
                     Button { detail = c } label: {
@@ -185,6 +194,7 @@ struct LevelWordsView: View {
                 }
             }
             .listRowBackground(T.fn.opacity(0.7))
+            }
         }
         .scrollContentBackground(.hidden)
         .appBackground()
@@ -215,6 +225,9 @@ struct LevelWordsView: View {
         .sheet(item: $detail) { CardSheet(card: $0).environmentObject(store) }
     }
 
+    /// (華語's 漢字 levels, 台語's 常用字 groups)
+    private var isCharLevel: Bool { (level > Lang.charTopicBase && level < Lang.freqWordBase) || level >= Lang.freqCharBase }
+
     private var confirmTitle: String {
         switch confirm {
         case 1: return tr("把 \(name) 的詞全部標成熟悉？")
@@ -230,5 +243,39 @@ struct LevelWordsView: View {
         case 2?: Image(systemName: "questionmark.circle.fill").foregroundStyle(Color(hex: 0xffa94d))
         default: Image(systemName: "circle").foregroundStyle(T.muted)
         }
+    }
+}
+
+
+/// a level's characters as a grid (the same look as 認識的漢字): blue 熟悉, orange 不熟, plain not seen; tap opens,
+/// hold switches 熟悉 ⇄ 不熟
+struct CharLevelGrid: View {
+    let cards: [Card]
+    let open: (Card) -> Void
+    @EnvironmentObject var store: Store
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 46), spacing: 6)], spacing: 6) {
+            ForEach(cards) { c in
+                let st = store.status(c)
+                let k = st == 1, u = st == 2
+                Text(c.h).scaledFont(24)
+                    .foregroundStyle(k ? Color(hex: 0xcfe2ff) : (u ? Color(hex: 0xffe1c2) : T.glyph))
+                    .frame(width: 46, height: 46)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(k ? Color(hex: 0x4f7dff).opacity(0.35)
+                                                                       : (u ? Color(hex: 0xffa94d).opacity(0.3) : T.fn.opacity(0.7))))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(k ? Color(hex: 0x6eaaff) : (u ? Color(hex: 0xffa94d) : T.fnEdge), lineWidth: 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        withAnimation(.snappy) { store.mark(c, known: !k, undoable: false) }
+                    }
+                    .onTapGesture { open(c) }
+                    .accessibilityElement()
+                    .accessibilityLabel(c.h + (k ? trs("，熟悉") : (u ? trs("，不熟") : "")))
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { open(c) }
+            }
+        }
+        .padding(.vertical, 4)
     }
 }

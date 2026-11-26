@@ -33,7 +33,7 @@ struct SettingsView: View {
 
     private var topics: [Topic] {
         let themeName = (AppTheme(rawValue: theme) ?? .night).name
-        let tones = toneSys == 0 ? trs("聲調顏色關") : (store.lang != 0 && store.lang != 3 ? trs("聲調顏色開") : (toneSys == 7 ? trs("七聲") : trs("五聲")))
+        let tones = toneSys == 0 ? trs("聲調顏色關") : (store.lang != 0 ? trs("聲調顏色開") : (toneSys == 7 ? trs("七聲") : trs("五聲")))
         let lang: String = store.isSv
             ? trs("瑞典語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
             : store.isJa
@@ -157,6 +157,15 @@ struct SettingsPage<Content: View>: View {
 private struct LookSettings: View {
     @EnvironmentObject var store: Store
     @AppStorage(AppTheme.key) private var theme = AppTheme.night.rawValue
+    @State private var iconLight = UIApplication.shared.alternateIconName == "AppIconLight"
+
+    /// the home screen icon: AppIconLight (white, a black 方) or the usual dark one; iOS says it changed
+    private func setIcon(_ light: Bool) {
+        guard UIApplication.shared.supportsAlternateIcons else { return }
+        Task { @MainActor in
+            do { try await UIApplication.shared.setAlternateIconName(light ? "AppIconLight" : nil); iconLight = light } catch {}
+        }
+    }
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @AppStorage(ToneColors.glowKey) private var toneGlow = ToneColors.glowStandard
@@ -198,6 +207,12 @@ private struct LookSettings: View {
                 .pickerStyle(.menu)
                 Toggle(tr("主題動畫"), isOn: $themeMotion)
                 Toggle(tr("省電動畫"), isOn: $motionSaver).disabled(!themeMotion)
+                // (the icon on the home screen: dark, or light with a black 方)
+                Picker(tr("App 圖示"), selection: Binding(get: { iconLight ? 1 : 0 }, set: { setIcon($0 == 1) })) {
+                    Text(tr("暗")).tag(0)
+                    Text(tr("亮")).tag(1)
+                }
+                .pickerStyle(.segmented)
             } footer: {
                 Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。省電動畫：雪和花瓣少一半，一秒只畫 12 次（開低耗電模式的時候也會自動這樣）。被別的頁面蓋住的背景不會動。"))
             }
@@ -240,7 +255,7 @@ private struct LookSettings: View {
                 }
             } else {
             Section {
-                if store.lang == 0 || store.lang == 3 {
+                if store.lang == 0 {
                     Picker(tr("聲調顏色"), selection: $toneSys) {
                         Text(tr("關")).tag(0)
                         Text(tr("七聲")).tag(7)
@@ -248,8 +263,9 @@ private struct LookSettings: View {
                     }
                     .pickerStyle(.segmented)
                 } else {
-                    // (七聲 / 五聲 are 台語's: the other languages only turn the colours on and off)
-                    Toggle(tr("聲調顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? (toneSys == 0 ? 7 : toneSys) : 0 }))
+                    // (七聲 / 五聲 are 台語's: the other languages only turn the colours on and off; 客語 on is 七聲's,
+                    // its 入聲 in colours of their own)
+                    Toggle(tr("聲調顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? 7 : 0 }))
                 }
                 if toneSys != 0 {
                     Toggle(tr("聲調光暈"), isOn: $toneGlow)

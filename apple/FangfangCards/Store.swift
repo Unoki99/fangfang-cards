@@ -716,7 +716,9 @@ final class Store: ObservableObject {
         }
         unknown.subtract(known)
         // a character card marked 不熟 after its words were learned (held in 認識的漢字): 不熟 wins
-        for (k, v) in progress.status where v == 2 {
+        // (this language's character cards only: a 長 marked 不熟 in 台語 or 粵語 stayed orange here however often it
+        // was marked known)
+        for (k, v) in progress.status where v == 2 && Lang.kind(k) == lang {
             guard let ch = Lang.charOf(k) else { continue }
             known.remove(ch); unknown.insert(ch)
         }
@@ -754,7 +756,9 @@ final class Store: ObservableObject {
     /// 認識的漢字: hold a character to make it 熟悉 or 不熟 (its character card); false = it has no card
     @discardableResult
     func setCharKnown(_ ch: String, _ known: Bool) -> Bool {
-        guard let c = card(for: Lang.charKey(ch)) else { return false }
+        // (the character card of the language shown: 粵語's, 客語's, 日語's have keys of their own)
+        let key = zh.map { Lang.charKey(ch, yue: $0.isYue, hak: $0.isHak, ja: $0.isJa) } ?? Lang.charKey(ch)
+        guard let c = card(for: key) else { return false }
         mark(c, known: known, undoable: false)
         return true
     }
@@ -869,6 +873,8 @@ final class Store: ObservableObject {
     var practiceTopics: [Topic] { isZh ? topics : freqTopics }
     /// the 不熟 words to practise (練習範圍)
     var practiceCards: [Card] {
+        // (收藏: the words you saved, whatever they are: 不熟, 熟悉 or not swiped yet)
+        if practiceGroup == Self.savedScope { return savedKeys.compactMap { card(for: $0) } }
         let u = unknownCards
         // (an 影片詞組 chosen: its 不熟 words)
         if let g = practiceGroup, isGroup(g) || isFolderRef(g) {
@@ -883,7 +889,10 @@ final class Store: ObservableObject {
         listCache[key] = out
         return out
     }
+    /// 練習範圍 = 收藏 (as practiceGroup)
+    static let savedScope = "saved:"
     var practiceName: String {
+        if practiceGroup == Self.savedScope { return trs("收藏的詞") }
         if let g = practiceGroup, isGroup(g) { return groupName(g) }
         if let g = practiceGroup, isFolderRef(g) { return String(g.dropFirst(7)) }
         return practiceTopics.first(where: { $0.id == practiceTopic })?.name ?? trs("全部不熟的詞")

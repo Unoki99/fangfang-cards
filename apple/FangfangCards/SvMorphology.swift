@@ -516,13 +516,7 @@ struct SvWordExtras: View {
     var body: some View {
         let ms = SvMorpheme.parse(dict.svSyl(entry))
         VStack(alignment: .leading, spacing: 12) {
-            if !entry.svZh.isEmpty {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Chip(text: tr("中"), fill: T.rust, edge: T.rustEdge, ink: T.rustInk)
-                    Text(entry.svZh.joined(separator: "、")).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
-                    if entry.svZhGuessed { Text(tr("（由英文推測）")).ffFont(.caption).foregroundStyle(T.muted) }
-                }
-            }
+            // (its Chinese meanings: beside the English at the top, MeaningsOverview)
             if ms.count > 1 {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(tr("詞的組成（點一個看它的意思）")).ffFont(.caption, .semibold).foregroundStyle(T.muted)
