@@ -7,6 +7,7 @@ import SwiftUI
 /// the bars' five steps (FrequencyBadge.level): 5 很常用 … 1 少見
 enum FreqLevels {
     static let names = [5: "很常用", 4: "常用", 3: "一般", 2: "不常用", 1: "少見"]
+    static func name(_ l: Int) -> String { trs(names[l] ?? "") }
     /// the steps by how full the 常用度 ring is: 80–100 %, 60–80 %, 40–60 %, 20–40 %, under 20 % (FrequencyRing.fill);
     /// the places where the ring crosses 80, 60, 40 and 20 % (about 136, 1046, 5029, 18 800)
     static let cuts: [Int] = [0.8, 0.6, 0.4, 0.2].map { f in max(1, Int(pow(60000.0, (1 - f).squareRoot())) - 1) }
