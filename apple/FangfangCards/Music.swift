@@ -187,7 +187,7 @@ struct MusicView: View {
     var body: some View {
         List {
             nowSection
-            YtMusicSection()
+            // (YouTube has its own button on the page before: not repeated here)
             Section {
                 Button { searching = true } label: { Label(tr("找歌"), systemImage: "magnifyingglass") }
             } footer: {
