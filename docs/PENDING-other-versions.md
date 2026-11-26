@@ -32,11 +32,21 @@ Done on iOS this round — still to do on **Android, Windows / Mac (desktop), th
 | 電台與音樂: YouTube / Apple Music on top, radios by language, 歌詞 button at the bottom; 歌詞 out of 轉換 | done | todo (layout already like this) | already | — |
 | Apple Music: a song in your library (downloaded) plays from the library | done | — | — | — |
 | 台語 數字練習 (算數 typed in spelling; 白還是文) — in 不熟's empty tile | done | todo | todo | — |
-| 詞龍 (typed; every language) in 遊戲 | done (handwriting version not yet) | todo | todo | — |
+| 詞龍 (typed or handwritten — handwriting read by iOS Vision; every language) in 遊戲 | done | todo | todo | — |
 | 熟悉 → a character level: the characters as a grid (like 認識的漢字) | done | todo | todo | — |
 | 認識的漢字 → 猜字義 game (no status change; common characters more often) | done | todo | todo | — |
 | App icon: light version (設定 → 顏色與外觀 → App 圖示) | done | todo | todo | — |
-| 常用度: a hollow ring filled by % in colours along the 台語 tone colours | done (the learning sections still by the old 5 steps) | todo | todo | todo |
+| 常用度: a hollow ring filled by % in colours along the 台語 tone colours | done | todo | todo | todo |
+| 常用度 steps (依常用度列出, 新詞 topics) by how full the ring is: 80/60/40/20 % = places 136 / 1050 / 5024 / 18779 (was 1000/3000/8000/20000) | done | todo | todo | todo |
+| 華語 readings: HSK words not in the 兩岸 dictionary get Taiwan readings per character (not where the reading really differs, 比比皆是) | done (Zh.swift fillTaiwan) | todo | todo | todo (build_safari) |
+| YouTube: lyrics made from the video's own subtitles when LRCLIB has none, saved to the 歌詞 folder as "title - artist [yt-id].lrc" | done | — | todo | — |
+| 台語 各地讀音 → 讀音從哪裡來: each 字's reading per place, by 腔, where it's from (辭典 / 推測 / 照字), and how many words have it (tap: the words with meanings) | done | todo | todo | — |
+| Own words (自訂) in 華語, 粵語, 客語, 日語, 瑞典語 (word, reading, meaning, example), CSV export; keys "word\t<reading>#自" in Progress.own | done (no CSV import for these yet) | todo | todo | todo |
+| Gemini (own API key, 設定 → 詞典): no search result → its guesses, shown as dictionary words (瑞典語: only when no English match either); 華語: add the term to 自訂; 本週學習 → 造句 (usage corrected, then the whole sentence) | done | todo | todo | — |
+| First-run setup in steps: app language + 正體／簡體; meanings + spelling; each language's place (台語 腔口, 華語 讀音, 客語 腔); tone colours + 方音 options | done | todo | todo | — |
+| 方音 option: light tone keeps its own tone mark or only ˙ (設定 → 語言與讀音 → 台語) | done | todo | todo | todo |
+| 一起玩 (co-op): nearby players (MultipeerConnectivity: Wi-Fi / Bluetooth), each their own 練習範圍 and language, team score; 八選一 (similar-sounding), 打字, 手寫; 提示 −3; the answer shown after; counts for 不熟 / 複習 | done (nearby only, iOS ↔ iOS) | todo | todo | — |
+| Add-on (Safari copy): subtitles 轉成簡體; 拼音／注音 button in the subtitle bar; the gear opens a big 字幕設定 page | done (apple/FangfangSafari) | — | — | todo (Firefox build: bump the version and rebuild) |
 
 ## Asked for, not done yet (any platform)
 
@@ -49,18 +59,7 @@ Kept here so nothing is lost. Roughly from smallest to biggest.
   expressions (四季). 11 za̍p ịt, 20 łī za̍p, 101 ji̍t pạh khọng łī, 110 ji̍t pạh ịt (一百十, never 一百一十),
   120 ji̍t pạh łī, 200 nn̄g pạh, 2000 nn̄g qi̍ng, 2002 nn̄g qi̍ng khọng łī, 2202 nn̄g qi̍ng nn̄g pẹh khọng lī,
   10 000 ji̍t bān. Above 10 a 量詞 after the number still takes 二, not 兩.
-- 台語 map page: where each place reading comes from (the 字 it was taken from; for words, how many words have
-  it, tap for the list with meanings), laid out like the 各地讀音 chart.
-- 詞龍 with handwriting (iOS handwriting recognition).
-- Frequency: the learning sections (常用度 groups) by the ring's fullness instead of the 5 steps.
-- Own words (自補) in every language (word, reading, meanings), exportable as CSV.
-- First-run setup: UI language, 簡／繁, each language's place, spelling, tone colours, 方音 options.
-- YouTube: lyrics made from the video's subtitles when LRCLIB has none, saved in the 歌詞資料夾.
-- Gemini (own API key, 設定): a search with no results asks it for Chinese words, shown as dictionary words
-  (also for 瑞典語 when no English match); a weekly-words usage practice (write a sentence, corrected on the
-  word's use, then the whole sentence corrected).
-- 華語 readings: HSK words not in the 兩岸 dictionary get Taiwan readings per character (only where the
-  character's reading is the same in both; never replacing a reading that differs, 比比皆是).
-- Co-op game (two or more players, over the internet or Bluetooth, each with their own 練習範圍 and language;
-  handwriting with tools, hints that cost points, a typing / 8-choice version with similar-sounding words).
-- Add-on: subtitles converted to 簡體; the 拼音／注音 switch easy to find; the subtitle settings in a bigger page.
+- Co-op game: over the internet (not only nearby), and across platforms (Android, desktop) — needs a server or a
+  relay; the iOS nearby version's messages (CoopGame.swift, CoopMsg JSON) can be the format. Handwriting there
+  with the full 手寫 tools (pen sizes, 延遲, 彩色) instead of the plain pad.
+- Own words in 華語 … 瑞典語: CSV import (only export so far).

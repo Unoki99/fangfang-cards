@@ -237,6 +237,7 @@ final class Store: ObservableObject {
         let loadedDict = !fresh && zh?.lang == kind ? zh : nil
         let list = zhList
         let accent = Lang.hakAccent
+        ZhOwnWords.set(zhOwnSnapshot())
         let t = Task.detached(priority: priority) { () -> Result<(ZhDict, Deck), Error> in
             do {
                 let d: ZhDict
@@ -1452,7 +1453,25 @@ final class Store: ObservableObject {
     // MARK: 自訂 (your own words)
 
     /// your own words, newest first
-    var ownKeys: [String] { progress.own.filter { $0.value > 0 }.sorted { $0.value > $1.value }.map { $0.key } }
+    var ownKeys: [String] { progress.own.filter { $0.value > 0 && Lang.kind($0.key) == 0 }.sorted { $0.value > $1.value }.map { $0.key } }
+    /// 華語, 粵語, 客語, 日語, 瑞典語: your own words of that language, newest first (ZhOwn.swift)
+    func zhOwnKeys(_ lang: Int) -> [String] {
+        progress.own.filter { $0.value > 0 && ZhOwnWords.isOwn($0.key) && Lang.kind($0.key) == lang }.sorted { $0.value > $1.value }.map { $0.key }
+    }
+    /// add one (華語 …): the dictionary is read again with it
+    func addZhOwn(_ key: String, meaning: String = "", example: String = "") {
+        addOwn([(key, meaning, example)])
+    }
+    /// what ZhDict reads your own words from
+    func zhOwnSnapshot() -> [Int: [ZhOwnWords.Word]] {
+        var m: [Int: [ZhOwnWords.Word]] = [:]
+        for (k, t) in progress.own where t > 0 && ZhOwnWords.isOwn(k) {
+            let i = ownInfo(k)
+            m[Lang.kind(k), default: []].append(ZhOwnWords.Word(key: k, h: ZhOwnWords.han(k), tw: ZhOwnWords.syllables(k),
+                                                               meaning: i.meaning, example: i.example, en: ""))
+        }
+        return m
+    }
     func isOwn(_ key: String) -> Bool { (progress.own[key] ?? -1) > 0 }
 
     func addOwn(_ key: String, meaning: String = "", example: String = "") {
@@ -1486,6 +1505,12 @@ final class Store: ObservableObject {
         let keys = Set(ownKeys)
         dict?.userInfo = progress.ownInfo.filter { keys.contains($0.key) }
         dict?.setUserWords(keys)
+        // (華語 …: the dictionary in use read again when its own words changed)
+        let snap = zhOwnSnapshot()
+        let old = (1..<6).map { ZhOwnWords.of($0).map { $0.key + "\u{1}" + $0.meaning + "\u{1}" + $0.example } }
+        ZhOwnWords.set(snap)
+        let new = (1..<6).map { (snap[$0] ?? []).map { $0.key + "\u{1}" + $0.meaning + "\u{1}" + $0.example } }
+        if let z = zh, Set(old[z.lang - 1]) != Set(new[z.lang - 1]) { dictionaryChanged(z.lang) }
     }
 
     /// how common a word is (its place in the card order)

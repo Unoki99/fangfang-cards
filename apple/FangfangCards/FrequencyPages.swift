@@ -1,22 +1,30 @@
 import SwiftUI
 
-// 依常用度列出: a dictionary's words by how common they are, in the five steps of the bars beside each word
+// 依常用度列出: a dictionary's words by how common they are, in five steps by how full the ring beside each word is
 // (很常用, 常用, 一般, 不常用, 少見), like 依詞類列出. Each step shows how many of its words are 熟悉 / 不熟; inside,
 // the words, the most common first, and 全部 / 新詞 / 不熟 / 熟悉 to see only some.
 
 /// the bars' five steps (FrequencyBadge.level): 5 很常用 … 1 少見
 enum FreqLevels {
     static let names = [5: "很常用", 4: "常用", 3: "一般", 2: "不常用", 1: "少見"]
-    static let ranges = [5: "前 1000 個", 4: "1001–3000", 3: "3001–8000", 2: "8001–20000", 1: "20000 以後"]
-    static func name(_ l: Int) -> String { trs(names[l] ?? "") }
+    /// the steps by how full the 常用度 ring is: 80–100 %, 60–80 %, 40–60 %, 20–40 %, under 20 % (FrequencyRing.fill);
+    /// the places where the ring crosses 80, 60, 40 and 20 % (about 136, 1046, 5029, 18 800)
+    static let cuts: [Int] = [0.8, 0.6, 0.4, 0.2].map { f in max(1, Int(pow(60000.0, (1 - f).squareRoot())) - 1) }
+    static func range(_ l: Int) -> String {
+        let pc = ["", "0–20%", "20–40%", "40–60%", "60–80%", "80–100%"][min(max(l, 1), 5)]
+        let (lo, hi) = bounds(l)
+        let at = hi == Int.max ? tr("\(lo) 以後") : (lo == 0 ? tr("前 \(hi) 個") : "\(lo + 1)–\(hi)")
+        return tr("圓圈 \(pc)・") + at
+    }
     /// the places (from 0, the most common) of a step's words: the same steps as FrequencyBadge.level
     static func bounds(_ l: Int) -> (Int, Int) {
+        let c = cuts
         switch l {
-        case 5: return (0, 1000)
-        case 4: return (1000, 3000)
-        case 3: return (3000, 8000)
-        case 2: return (8000, 20000)
-        default: return (20000, Int.max)
+        case 5: return (0, c[0])
+        case 4: return (c[0], c[1])
+        case 3: return (c[1], c[2])
+        case 2: return (c[2], c[3])
+        default: return (c[3], Int.max)
         }
     }
     /// 新詞's topic for a step: -105 很常用 … -101 少見
@@ -87,7 +95,7 @@ struct FreqBandsPage: View {
                     }
                 }
             } footer: {
-                Text(tr("和每個詞旁邊的常用度一樣分五級。綠色是熟悉的詞，紅色是不熟的詞。"))
+                Text(tr("照每個詞旁邊常用度圓圈有多滿分五級。綠色是熟悉的詞，紅色是不熟的詞。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
         }
@@ -105,7 +113,7 @@ struct FreqBandsPage: View {
             HStack(spacing: 10) {
                 FreqLevelBars(level: l, kind: kind)
                 Text(FreqLevels.name(l)).ffFont(.body, .semibold).foregroundStyle(T.glyph)
-                Text(trs(FreqLevels.ranges[l] ?? "")).ffFont(.caption).foregroundStyle(T.muted)
+                Text(FreqLevels.range(l)).ffFont(.caption).foregroundStyle(T.muted)
                 Spacer()
                 Text(tr("\(ks.count) 個詞")).ffFont(.caption).foregroundStyle(T.muted)
             }

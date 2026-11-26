@@ -2158,6 +2158,10 @@ struct LookupPane: View {
             if !query.isEmpty && result.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
+            // (nothing found: what Gemini thinks was meant, when it's turned on; tap one to search it)
+            if !query.isEmpty && result.empty && searched == query {
+                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { _ in nil })
+            }
             if result.isPattern {
                 group(tr("台語詞「\(query)」（\(result.pattern.count == 300 ? "300+" : String(result.pattern.count))）"), result.pattern)
                 group(tr("華語「\(query)」的台語講法"), result.patternZh)

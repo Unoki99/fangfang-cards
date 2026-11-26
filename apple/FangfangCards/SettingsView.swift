@@ -356,6 +356,7 @@ private struct LanguageSettings: View {
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
     @AppStorage(HongimTone1.allKey) private var hongimAll = false
+    @AppStorage(HongimTone1.lightKeepKey) private var hongimLightKeep = true
     @AppStorage(HongimLine.showKey) private var showHongim = true
 
     var body: some View {
@@ -406,6 +407,9 @@ private struct LanguageSettings: View {
                 // (ㄉㄧㄠˋ ㄧˉ: never two spaces with the one above)
                 Toggle(tr("方音每個音節中間空一格"), isOn: $hongimAll)
                     .onChange(of: hongimAll) { store.objectWillChange.send() }
+                // (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ or ˙ㄐㄧㆵ˙ㄍㄨㄚ)
+                Toggle(tr("方音輕聲保留原本的調號"), isOn: $hongimLightKeep)
+                    .onChange(of: hongimLightKeep) { store.objectWillChange.send() }
             }
             Section {
                 Picker(tr("字形"), selection: $simplified) {
@@ -589,6 +593,7 @@ private struct DictionarySettings: View {
             }
             MainMeaningSection()
             SearchOrderSection()
+            GeminiSettingsSection()
             InputCodesSettings()
         }
     }

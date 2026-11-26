@@ -24,6 +24,7 @@ struct UnknownView: View {
     @State private var idiomWriting = false
     @State private var numbers = false
     @State private var dragon = false
+    @State private var coop = false
     @State private var gaming = false
     @State private var helping = false
     /// 遊戲: the grid of games open, and the one picked (opened once the grid has closed)
@@ -129,6 +130,7 @@ struct UnknownView: View {
         .fullScreenCover(isPresented: $idiomWriting) { IdiomWriteView().environmentObject(store) }
         .fullScreenCover(isPresented: $numbers) { NumbersView().environmentObject(store) }
         .fullScreenCover(isPresented: $dragon) { WordDragonView().environmentObject(store) }
+        .fullScreenCover(isPresented: $coop) { CoopView().environmentObject(store) }
         .fullScreenCover(isPresented: $gaming) { FallingGameView().environmentObject(store) }
         .sheet(isPresented: $helping) { PracticeHelp(goal: goal).environmentObject(store) }
         .sheet(isPresented: $gamesOpen, onDismiss: openPickedGame) {
@@ -245,7 +247,7 @@ struct KnownView: View {
 
 
 /// 遊戲: every game, chosen from a grid with what each does
-enum PracticeGame: String, Identifiable { case swipe, blanks, scramble, readingOrder, tones, toneBalls, particles, memory, falling, dragon
+enum PracticeGame: String, Identifiable { case swipe, blanks, scramble, readingOrder, tones, toneBalls, particles, memory, falling, dragon, coop
     var id: String { rawValue } }
 
 extension UnknownView {
@@ -267,6 +269,7 @@ extension UnknownView {
         a.append((.memory, "square.grid.2x2", trs("翻牌配對"), trs("一次翻兩張牌，把漢字和它的讀音配起來。"), pool.count > 1))
         a.append((.falling, "arrow.down.circle", trs("掉下來的字"), trs("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), pool.count > 3))
         a.append((.dragon, "link", trs("詞龍"), store.isSv ? trs("接龍：打一個用上一個詞最後一個字母開頭的詞，App 再接下去。") : trs("接龍：打一個用上一個詞最後一個字開頭的詞，App 再接下去。"), true))
+        a.append((.coop, "person.2.fill", trs("一起玩"), trs("和附近的人一起答題（同一個 Wi-Fi 或藍牙）：每個人用自己的練習範圍和語言，分數加在一起。"), !pool.isEmpty || !due.isEmpty))
         return a.map { (game: $0.0, icon: $0.1, title: $0.2, text: $0.3, enabled: $0.4) }
     }
 
@@ -284,6 +287,7 @@ extension UnknownView {
         case .memory: memory = true
         case .falling: gaming = true
         case .dragon: dragon = true
+        case .coop: coop = true
         }
     }
 }

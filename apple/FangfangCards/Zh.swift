@@ -497,6 +497,8 @@ struct ZhEntry {
     var hakGuess = false
     /// 日語: JMdict's codes (v1, v5r, adj-i…; "*uk" for notes), for 活用
     var jp: [String] = []
+    /// a word you added yourself (詞典 → 自訂), not from the dictionary
+    var own = false
     /// the English meanings, one each (CC-CEDICT separates them with ;)
     var enList: [String] {
         (en ?? "").components(separatedBy: ";").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -805,6 +807,16 @@ final class ZhDict: @unchecked Sendable {
             }
         }
         cardCount = obj["nc"] as? Int ?? out.count
+        // your own words (詞典 → 自訂), after the dictionary's (so they're never study cards)
+        let ownLang = ["yue": 2, "hak": 3, "ja": 4, "sv": 5][obj["lang"] as? String ?? ""] ?? 1
+        for w in ZhOwnWords.of(ownLang) where !w.h.isEmpty && !w.tw.isEmpty {
+            let ex = w.example.isEmpty ? [] : [ZhEx(h: w.example, src: "", code: "")]
+            var e = ZhEntry(k: w.key, h: w.h, tw: w.tw, lu: nil, spec: 0, alt: nil,
+                            senses: [ZhSense(n: 1, text: w.meaning.isEmpty ? "（自己加的詞）" : w.meaning, ex: ex)])
+            if !w.en.isEmpty { e.en = w.en }
+            e.own = true
+            out.append(e)
+        }
         isYue = obj["lang"] as? String == "yue"
         isHak = obj["lang"] as? String == "hak"
         isJa = obj["lang"] as? String == "ja"

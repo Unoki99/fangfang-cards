@@ -28,6 +28,9 @@ enum HongimTone1 {
     /// a space between every syllable (ㄉㄧㄠˋ ㄧˉ)
     static let allKey = "hongimSpaceAll"
     static var all: Bool { UserDefaults.standard.bool(forKey: allKey) }
+    /// a light-tone syllable keeps its own tone mark (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ), or has only ˙ (˙ㄐㄧㆵ˙ㄍㄨㄚ)
+    static let lightKeepKey = "hongimLightKeep"
+    static var lightKeep: Bool { UserDefaults.standard.object(forKey: lightKeepKey) as? Bool ?? true }
 
     /// one syllable: the first-tone mark left out when asked (the space for it comes from gap, between syllables)
     static func syllable(_ s: String) -> String { on ? s : s.replacingOccurrences(of: "ˉ", with: "") }
@@ -42,7 +45,9 @@ enum HongimTone1 {
             t = t.replacingOccurrences(of: st + "˙", with: st + "\u{0307}").replacingOccurrences(of: st + "·", with: st + "\u{0307}")
         }
         var out = "˙"
-        out.unicodeScalars.append(contentsOf: t.unicodeScalars.filter { $0 != "˙" })
+        // (only ˙, when asked: the tone marks and the 陽入 dot left out)
+        let drop: Set<Unicode.Scalar> = lightKeep ? ["˙"] : marks
+        out.unicodeScalars.append(contentsOf: t.unicodeScalars.filter { !drop.contains($0) })
         return out
     }
     private static let marks: Set<Unicode.Scalar> = ["ˉ", "ˋ", "ˊ", "˪", "˫", "\u{A715}", "\u{A718}", "\u{0307}", "˙"]

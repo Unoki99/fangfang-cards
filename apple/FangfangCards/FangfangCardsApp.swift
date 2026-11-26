@@ -333,12 +333,21 @@ struct LanguageWelcome: View {
     @AppStorage(Lang.hakRomKey) private var hakRom = 0
     @AppStorage(Lang.jaRomKey) private var jaRom = 1
     @AppStorage(Lang.svRomKey) private var svRom = 0
+    @AppStorage(Simp.key) private var simplified = false
+    @AppStorage("place") private var twPlace = -1
+    @AppStorage("zhPlace") private var zhPlace = 0
+    @AppStorage(Lang.hakPlaceKey) private var hakPlace = 0
+    @AppStorage(ToneColors.key) private var toneSys = 0
+    @AppStorage(HongimTone1.key) private var hongimTone1 = true
+    @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
+    @AppStorage(HongimTone1.allKey) private var hongimAll = false
+    @AppStorage(HongimTone1.lightKeepKey) private var hongimLightKeep = true
     /// the language chosen, its dictionary being downloaded and made (nothing is in the app until then)
     @State private var installing: Int?
     @ObservedObject private var installer = DictInstaller.shared
 
     var body: some View {
-        if let l = installing { install(l) } else if step == 0 { setup } else { languages }
+        if let l = installing { install(l) } else if step < Self.setupSteps { setup } else { languages }
     }
 
     /// the language's dictionary is there already: straight on; otherwise it's downloaded and made first
@@ -398,60 +407,126 @@ struct LanguageWelcome: View {
 
     private func meaningsEnglish(_ en: Bool) { zhEnglish = en; twEnglish = en; hakEnglish = en }
 
-    /// the app's language, then the meanings (華語 or English) and each language's spelling
+    /// the steps before choosing the language: 0 the app's language and 正體 / 簡體; 1 the meanings and each
+    /// language's spelling; 2 each language's 腔口 / reading; 3 tone colours and 方音
+    private static let setupSteps = 4
+
     private var setup: some View {
         ScrollView {
             VStack(spacing: 22) {
-                VStack(spacing: 10) {
-                    Text(tr("方方詞卡")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
-                    Picker("", selection: $uiLang) {
-                        Text("中文").tag(0)
-                        Text("English").tag(1)
+                HStack {
+                    if step > 0 {
+                        Button { withAnimation(.snappy) { step -= 1 } } label: { Label(tr("上一步"), systemImage: "chevron.left") }
+                            .foregroundStyle(T.muted)
                     }
-                    .pickerStyle(.segmented)
-                    .frame(maxWidth: 260)
+                    Spacer()
+                    Text("\(step + 1)／\(Self.setupSteps + 1)").ffFont(.caption).foregroundStyle(T.muted)
                 }
+                .frame(maxWidth: 520)
+                Text(tr("方方詞卡")).ffFont(.largeTitle, .bold).foregroundStyle(T.glyph)
                 VStack(alignment: .leading, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(tr("解釋先用哪一種語言？")).ffFont(.headline).foregroundStyle(T.glyph)
-                        Picker("", selection: Binding(get: { zhEnglish }, set: { zhEnglish = $0; twEnglish = $0; hakEnglish = $0 })) {
-                            Text(tr("華語")).tag(false)
-                            Text(tr("英文")).tag(true)
-                        }
-                        .pickerStyle(.segmented)
-                        Text(tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。之後每個語言可以在「設定 → 詞典 → 主要解釋」分開改。"))
-                            .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
-                    }
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(tr("每個語言用哪一種拼寫？")).ffFont(.headline).foregroundStyle(T.glyph)
-                        spelling(0, $twRom, ["皓羅", "台羅", "白話字", "方音"])
-                        spelling(1, $zhRom, ["拼音", "注音"])
-                        spelling(2, $yueRom, ["粵拼", "耶魯"])
-                        spelling(3, $hakRom, ["拼音", "注音"])
-                        spelling(4, $jaRom, ["羅馬字", "假名"])
-                        spelling(5, $svRom, ["詞素", "不顯示"])
-                        Text(tr("台語選「方音」的話只顯示方音；其他的下面會再加一行方音。"))
-                            .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                    switch step {
+                    case 0: stepLanguage
+                    case 1: stepSpelling
+                    case 2: stepPlaces
+                    default: stepTones
                     }
                 }
                 .padding(18)
+                .frame(maxWidth: 520, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 22).fill(T.fn.opacity(0.8)))
                 .overlay(RoundedRectangle(cornerRadius: 22).stroke(T.fnEdge, lineWidth: 1.5))
-                .frame(maxWidth: 520)
-                Button { withAnimation(.snappy) { step = 1 } } label: {
+                Button { withAnimation(.snappy) { step += 1 } } label: {
                     Text(tr("下一步")).ffFont(.headline).frame(maxWidth: 260, minHeight: 30)
                 }
                 .prominentButton(T.blueEdge)
+                Text(tr("這些之後都可以在「設定」改。")).ffFont(.caption).foregroundStyle(T.muted)
             }
-            .id(uiLang)
+            .id("\(uiLang)\(step)")
             .padding(24)
             .frame(maxWidth: .infinity)
         }
         .appBackground()
-        // (English chosen as the app's language: the meanings in English too, unless changed below)
+        // (English chosen as the app's language: the meanings in English too, unless changed later)
         .onAppear { if uiLang == 1 { meaningsEnglish(true) } }
         .onChange(of: uiLang) { meaningsEnglish(uiLang == 1) }
         .interactiveDismissDisabled()
+    }
+
+    private func heading(_ t: String, _ note: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(t).ffFont(.headline).foregroundStyle(T.glyph)
+            if let note { Text(note).ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true) }
+        }
+    }
+
+    @ViewBuilder private var stepLanguage: some View {
+        heading(tr("App 的語言"), tr("按鈕、選單和說明的語言。"))
+        Picker("", selection: $uiLang) {
+            Text("中文").tag(0)
+            Text("English").tag(1)
+        }
+        .pickerStyle(.segmented)
+        heading(tr("字形"), tr("華語、粵語和日語的漢字用正體字還是簡體字（台語和客語的詞典是正體字）。"))
+        Picker("", selection: $simplified) {
+            Text(tr("正體字")).tag(false)
+            Text(tr("簡體字")).tag(true)
+        }
+        .pickerStyle(.segmented)
+    }
+
+    @ViewBuilder private var stepSpelling: some View {
+        heading(tr("解釋先用哪一種語言？"), tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。"))
+        Picker("", selection: Binding(get: { zhEnglish }, set: { zhEnglish = $0; twEnglish = $0; hakEnglish = $0 })) {
+            Text(tr("華語")).tag(false)
+            Text(tr("英文")).tag(true)
+        }
+        .pickerStyle(.segmented)
+        heading(tr("每個語言用哪一種拼寫？"), tr("台語選「方音」的話只顯示方音；其他的下面會再加一行方音。"))
+        spelling(0, $twRom, ["皓羅", "台羅", "白話字", "方音"])
+        spelling(1, $zhRom, ["拼音", "注音"])
+        spelling(2, $yueRom, ["粵拼", "耶魯"])
+        spelling(3, $hakRom, ["拼音", "注音"])
+        spelling(4, $jaRom, ["羅馬字", "假名"])
+        spelling(5, $svRom, ["詞素", "不顯示"])
+    }
+
+    @ViewBuilder private var stepPlaces: some View {
+        heading(tr("每個語言照哪裡的讀音？"), tr("台語的「通行」是教育部辭典的讀音；選一個地方的話，詞典有記錄的地方讀音會換成那裡的。"))
+        HStack(spacing: 10) {
+            Text(trs("台語")).ffFont(.subheadline, .bold).foregroundStyle(T.twInk).frame(width: 64, alignment: .leading)
+            Picker(trs("台語"), selection: $twPlace) {
+                Text(tr("通行")).tag(-1)
+                ForEach(Array(PLACE_NAMES.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
+            }
+            Spacer(minLength: 0)
+        }
+        spelling(1, $zhPlace, Lang.zhPlaceNames)
+        HStack(spacing: 10) {
+            Text(trs("客語")).ffFont(.subheadline, .bold).foregroundStyle(T.hakInk).frame(width: 64, alignment: .leading)
+            Picker(trs("客語"), selection: $hakPlace) {
+                ForEach(Array(Lang.hakAccents.enumerated()), id: \.offset) { i, p in Text(trs(p)).tag(i) }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    @ViewBuilder private var stepTones: some View {
+        heading(tr("聲調顏色"), tr("每個字照聲調上顏色。七聲、五聲只差在台語：五聲把台語的聲調合成五種顏色；其他語言打開就是照自己的聲調。"))
+        Picker("", selection: $toneSys) {
+            Text(tr("關")).tag(0)
+            Text(tr("七聲")).tag(7)
+            Text(tr("五聲")).tag(5)
+        }
+        .pickerStyle(.segmented)
+        heading(tr("方音（台語的注音）"))
+        Toggle(tr("方音標第一聲（ˉ）"), isOn: $hongimTone1)
+        Toggle(tr("第一聲的地方空一格"), isOn: $hongimTone1Space).disabled(hongimTone1)
+        Toggle(tr("方音每個音節中間空一格"), isOn: $hongimAll)
+        Toggle(tr("方音輕聲保留原本的調號"), isOn: $hongimLightKeep)
+        // (what it looks like: 食飯, 一寡)
+        let sample = HongimTone1.apply("ㄐㄧㄚㆷ˙ㄅㆭ˫") + "　" + HongimTone1.apply("ㄐㄧㆵ˙") + (hongimAll ? " " : "") + HongimTone1.light("ㄍㄨㄚˋ")
+        Text(tr("例：") + sample).ffFont(.title3).foregroundStyle(T.purpleInk)
     }
 
     private func spelling(_ l: Int, _ v: Binding<Int>, _ names: [String]) -> some View {
@@ -469,7 +544,7 @@ struct LanguageWelcome: View {
         ScrollView {
         VStack(spacing: 24) {
             HStack {
-                Button { withAnimation(.snappy) { step = 0 } } label: { Label(tr("上一步"), systemImage: "chevron.left") }
+                Button { withAnimation(.snappy) { step = Self.setupSteps - 1 } } label: { Label(tr("上一步"), systemImage: "chevron.left") }
                     .foregroundStyle(T.muted)
                 Spacer()
             }

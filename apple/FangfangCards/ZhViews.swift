@@ -58,11 +58,12 @@ struct ZhDictTabs: View {
             Picker("", selection: $tab) {
                 Text(tr("查詞")).tag(0)
                 Text(tr("收藏")).tag(1)
+                Text(tr("自訂")).tag(2)
             }
             .pickerStyle(.segmented)
             .padding(.horizontal).padding(.top, 6).padding(.bottom, 4)
             Group {
-                if tab == 1 { ZhSavedPane(dict: dict) } else {
+                if tab == 1 { ZhSavedPane(dict: dict) } else if tab == 2 { ZhOwnPane(dict: dict) } else {
                     // (iPad, Mac: the results on the left, the word on the right)
                     EntrySplit {
                         ZhLookupPane(dict: dict)
@@ -93,6 +94,16 @@ struct ZhLookupPane: View {
     /// what `found` was searched for ("找不到" only once the search for what's typed has finished)
     @State private var searched = ""
     @State private var task: Task<Void, Never>?
+    @State private var addTerm: GeminiTermItem?
+
+    /// a word Gemini gave, when the dictionary has it
+    private func geminiRow(_ w: String) -> AnyView? {
+        let idx = Array((dict.isSv ? dict.svIndices(w) : (dict.byHan[w] ?? [])).prefix(3)).filter { $0 < dict.entries.count }
+        guard !idx.isEmpty else { return nil }
+        return AnyView(ForEach(idx, id: \.self) { i in
+            EntryLink(value: ZhKey(k: dict.entries[i].k)) { ZhWordRow(dict: dict, entry: dict.entries[i]) }
+        })
+    }
 
     /// 部首查字 (not 日語 / 瑞典語: the radicals are the 華語 data's), 依詞類列出, 單詞比較, the language's own (華語:
     /// 國語用詞 / 普通話用詞 / 四川話的詞; 日語: 助詞, 實驗室), 依常用度列出
@@ -154,6 +165,11 @@ struct ZhLookupPane: View {
             } else if found.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
+            // (nothing found: what Gemini thinks was meant, when it's turned on)
+            if !query.isEmpty && found.empty && searched == query {
+                GeminiSuggestSection(query: query, lang: dict.lang, search: { query = $0 }, row: { geminiRow($0) },
+                                     addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil)
+            }
             group(tr("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）"), found.tones)
             group(dict.isYue ? tr("華語「\(query)」的粵語講法") : (dict.isHak ? tr("華語「\(query)」的客語講法") : tr("「\(query)」的四川話講法")), found.mandarin)
             if found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
@@ -201,6 +217,9 @@ struct ZhLookupPane: View {
         .onChange(of: query) { search() }
         .onChange(of: searchOrder) { search() }
         .onChange(of: store.zhPlace) { search() }
+        .sheet(item: $addTerm) { a in
+            AddZhOwnSheet(dict: dict, word0: a.term.h, reading0: a.term.pinyin, meaning0: a.term.meaning).environmentObject(store)
+        }
     }
 
     @ViewBuilder private func group(_ title: String, _ list: [Int], english: Bool = false) -> some View {
@@ -265,6 +284,7 @@ struct ZhWordRow: View {
                 Text(dict.hanText(entry.h, entry.syl(store.zhPlace), base: T.glyph)).scaledFont(20, weight: .semibold).toneGlow()
                 Text(dict.reading(entry.syl(store.zhPlace), store.zhRom)).latFont(16).toneGlow().foregroundStyle(T.greenInk)
                 if entry.spec != 0 { ZhSpecChip(spec: entry.spec) }
+                if entry.own { OwnChip() }
                 // 四川話: where the reading is from (no box: Wiktionary)
                 if dict.lang == 1, store.zhPlace == 2, let k = SichuanChip.kind(entry.sc == nil ? nil : entry.scKind) {
                     SichuanChip(kind: k, small: true)
@@ -506,6 +526,7 @@ struct ZhEntryBody: View {
                     } else if entry.hsk > 0 { InfoChip.blue(Lang.hskName(entry.hsk)) }
                     if entry.tocfl > 0 && dict.lang == 1 { InfoChip.blue(UILang.label(Lang.levelName(1, entry.tocfl))) }
                     if entry.spec != 0 { ZhSpecChip(spec: entry.spec) }
+                    if entry.own { OwnChip() }
                     ForEach(entry.pos, id: \.self) { p in
                         NavigationLink(value: ZhClassRef(cls: p)) { InfoChip.yellow(p) }
                             .buttonStyle(.plain)

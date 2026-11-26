@@ -452,7 +452,7 @@ struct NewDeckView: View {
                 Menu(tr("常用度（整本詞典）")) {
                     Picker(tr("常用度"), selection: topicBinding) {
                         ForEach([5, 4, 3, 2, 1], id: \.self) { l in
-                            Text("\(FreqLevels.name(l))（\(trs(FreqLevels.ranges[l] ?? ""))）").tag(FreqLevels.topic(l))
+                            Text("\(FreqLevels.name(l))（\(FreqLevels.range(l))）").tag(FreqLevels.topic(l))
                         }
                     }
                     .pickerStyle(.inline)

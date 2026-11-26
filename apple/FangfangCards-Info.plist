@@ -44,6 +44,14 @@
 			</array>
 		</dict>
 	</array>
+	<!-- 一起玩: finding the other players nearby (the same Wi-Fi or Bluetooth) -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>找附近一起玩的人（同一個 Wi-Fi 或藍牙）。Finds the people nearby to play with (the same Wi-Fi or Bluetooth).</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_ff-coop._tcp</string>
+		<string>_ff-coop._udp</string>
+	</array>
 	<!-- 動態島: a 不熟 word in the Dynamic Island while you're away from the app (iPhone) -->
 </dict>
 </plist>
