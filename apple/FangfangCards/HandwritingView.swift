@@ -876,8 +876,8 @@ private struct WritingPad: UIViewRepresentable {
         follow.delaysTouchesBegan = false
         follow.delaysTouchesEnded = false
         follow.delegate = c
-        follow.began = { [weak c] p, t in c?.began(p, t) }
-        follow.moved = { [weak c] p, t in c?.host?.later.add(p, t) }
+        follow.began = { [weak c] p in c?.began(p.at, p.time); c?.host?.later.add(p) }
+        follow.moved = { [weak c] p in c?.host?.later.add(p) }
         follow.ended = { [weak c] t in c?.host?.later.end(t) }
         v.addGestureRecognizer(follow)
         return host
@@ -947,7 +947,7 @@ private struct WritingPad: UIViewRepresentable {
             guard delay > 0, let host else { return }
             let n = host.canvas.drawing.strokes.count + host.later.unfinished
             let tl = HandInk.tool(stroke: n, rainbow: rainbow, pen: level, size: size)
-            host.later.begin(p, t, color: tl.color, width: tl.width, marker: tl.inkType == .marker)
+            host.later.begin(p, t, ink: PKInk(tl.inkType, color: tl.color), width: tl.width)
         }
 
         func canvasViewDrawingDidChange(_ v: PKCanvasView) {
@@ -985,21 +985,37 @@ final class PadHost: UIView {
     }
 }
 
+/// one place of the pen: where, when, and how (pressure 0–1, nil for a finger; the pen's angles)
+struct PenPoint {
+    let at: CGPoint
+    let time: TimeInterval
+    let force: CGFloat?
+    let azimuth: CGFloat
+    let altitude: CGFloat
+    init(_ t: UITouch, in v: UIView) {
+        at = t.location(in: v)
+        time = t.timestamp
+        force = t.maximumPossibleForce > 0 && t.type == .pencil ? min(1, t.force / t.maximumPossibleForce) : nil
+        azimuth = t.type == .pencil ? t.azimuthAngle(in: v) : 0
+        altitude = t.type == .pencil ? t.altitudeAngle : .pi / 2
+    }
+}
+
 /// watches the touches on the canvas (never takes them): where the pen is and when
 final class PenFollower: UIGestureRecognizer {
-    var began: ((CGPoint, TimeInterval) -> Void)?
-    var moved: ((CGPoint, TimeInterval) -> Void)?
+    var began: ((PenPoint) -> Void)?
+    var moved: ((PenPoint) -> Void)?
     var ended: ((TimeInterval) -> Void)?
     private weak var touch: UITouch?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         guard touch == nil, let t = touches.first, let v = view else { return }
         touch = t
-        began?(t.location(in: v), t.timestamp)
+        began?(PenPoint(t, in: v))
     }
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let t = touch, touches.contains(t), let v = view else { return }
-        for c in event.coalescedTouches(for: t) ?? [t] { moved?(c.location(in: v), c.timestamp) }
+        for c in event.coalescedTouches(for: t) ?? [t] { moved?(PenPoint(c, in: v)) }
     }
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         guard let t = touch, touches.contains(t) else { return }
@@ -1014,11 +1030,13 @@ final class PenFollower: UIGestureRecognizer {
     override func reset() { touch = nil }
 }
 
-/// 延遲: draws the writing a moment late. A stroke being written (or just written) is a line that follows the pen
-/// `delay` seconds behind; once it's all there it's swapped for PencilKit's own ink of that stroke.
+/// 延遲: draws the writing a moment late, with the pen chosen (never a stand-in line that changes afterwards). A
+/// stroke being written is drawn `delay` seconds behind the pen as a PencilKit stroke of its own, in the same ink,
+/// made from where the pen was, how hard it pressed and how it was held; once PencilKit has the real stroke (the
+/// pen lifted), the real one is drawn as far as it's due, and when it's all there it's put with the finished ink.
 final class LateInk: UIView {
     var delay = 0.0
-    private struct Trail { var pts: [(CGPoint, TimeInterval)]; var color: UIColor; var width: CGFloat; var marker: Bool; var end: TimeInterval? }
+    private struct Trail { var pts: [PenPoint]; var ink: PKInk; var width: CGFloat; var start: TimeInterval; var end: TimeInterval? }
     private var trails: [Trail] = []
     /// how many of the strokes are already drawn as ink (the image), and the strokes in their colours
     private var inked = 0
@@ -1028,13 +1046,13 @@ final class LateInk: UIView {
 
     var unfinished: Int { trails.count }
 
-    func begin(_ p: CGPoint, _ t: TimeInterval, color: UIColor, width: CGFloat, marker: Bool) {
-        trails.append(Trail(pts: [(p, t)], color: color, width: width, marker: marker, end: nil))
+    func begin(_ p: CGPoint, _ t: TimeInterval, ink: PKInk, width: CGFloat) {
+        trails.append(Trail(pts: [], ink: ink, width: width, start: t, end: nil))
         run()
     }
-    func add(_ p: CGPoint, _ t: TimeInterval) {
+    func add(_ p: PenPoint) {
         guard !trails.isEmpty, trails[trails.count - 1].end == nil else { return }
-        trails[trails.count - 1].pts.append((p, t))
+        trails[trails.count - 1].pts.append(p)
     }
     func end(_ t: TimeInterval) {
         guard let i = trails.lastIndex(where: { $0.end == nil }) else { return }
@@ -1066,7 +1084,7 @@ final class LateInk: UIView {
     }
     @objc private func tick() {
         let now = CACurrentMediaTime()
-        // a stroke all there (and PencilKit has it): its real ink instead of the line
+        // a stroke all there (and PencilKit has it): put with the finished ink
         while let f = trails.first, let e = f.end, e + delay <= now {
             if inked < all.strokes.count {
                 trails.removeFirst()
@@ -1081,30 +1099,48 @@ final class LateInk: UIView {
     }
     private func render() {
         guard inked > 0, bounds.width > 0 else { image = nil; return }
-        let d = PKDrawing(strokes: Array(all.strokes.prefix(inked)))
+        image = picture(PKDrawing(strokes: Array(all.strokes.prefix(inked))))
+    }
+    private func picture(_ d: PKDrawing) -> UIImage? {
         var img: UIImage?
         UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
             img = d.image(from: bounds, scale: window?.screen.scale ?? 2)
         }
-        image = img
+        return img
+    }
+
+    /// the part of trail i that's due by `until`, as a PencilKit stroke in its own ink
+    private func stroke(_ i: Int, _ t: Trail, until: TimeInterval) -> PKStroke? {
+        // PencilKit has the real stroke (the pen lifted): as much of it as is due
+        let n = inked + i
+        if t.end != nil, n < all.strokes.count {
+            let real = all.strokes[n]
+            let due = until - t.start
+            let pts = real.path.filter { $0.timeOffset <= due }
+            guard !pts.isEmpty else { return nil }
+            return PKStroke(ink: real.ink, path: PKStrokePath(controlPoints: pts, creationDate: real.path.creationDate), transform: real.transform, mask: real.mask)
+        }
+        // still being written: made from the pen's own points (how hard it pressed: the width, as the pen does)
+        let ps = t.pts.filter { $0.time <= until }
+        guard !ps.isEmpty else { return nil }
+        let type = t.ink.inkType
+        let pressured = type == .pen || type == .fountainPen || type == .pencil || type == .crayon || type == .watercolor
+        let pts = ps.map { p -> PKStrokePoint in
+            let f = p.force ?? (1.0 / 3.0)
+            let k = pressured ? 0.5 + 1.5 * f : 1
+            let w = max(0.5, t.width * k)
+            return PKStrokePoint(location: p.at, timeOffset: p.time - t.start, size: CGSize(width: w, height: w),
+                                 opacity: 1, force: p.force ?? 1, azimuth: p.azimuth, altitude: p.altitude)
+        }
+        return PKStroke(ink: t.ink, path: PKStrokePath(controlPoints: pts, creationDate: Date()), transform: .identity, mask: nil)
     }
 
     override func draw(_ rect: CGRect) {
         image?.draw(in: bounds)
-        guard let ctx = UIGraphicsGetCurrentContext() else { return }
         let shownUntil = CACurrentMediaTime() - delay
-        for t in trails {
-            let pts = t.pts.filter { $0.1 <= shownUntil }.map(\.0)
-            guard let first = pts.first else { continue }
-            ctx.setStrokeColor(t.color.withAlphaComponent(t.marker ? 0.6 : 1).cgColor)
-            ctx.setLineWidth(t.width * (t.marker ? 1 : 0.8))
-            ctx.setLineCap(.round); ctx.setLineJoin(.round)
-            ctx.beginPath()
-            ctx.move(to: first)
-            if pts.count == 1 { ctx.addLine(to: CGPoint(x: first.x + 0.01, y: first.y)) }
-            for p in pts.dropFirst() { ctx.addLine(to: p) }
-            ctx.strokePath()
-        }
+        let ss = trails.enumerated().compactMap { stroke($0.offset, $0.element, until: shownUntil) }
+        guard !ss.isEmpty else { return }
+        picture(PKDrawing(strokes: ss))?.draw(in: bounds)
     }
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -2249,6 +2285,171 @@ struct IdiomWriteView: View {
             .padding()
             .frame(maxWidth: 640)
             .frame(maxWidth: .infinity)
+        }
+    }
+}
+
+/// squares (米字格) to write a word in when the app doesn't know the word — 一起玩 and 詞龍: the same squares as the
+/// other games', with the same pen (PenTools: 筆, 顏色, 延遲, 筆畫編號) and 格子大小; start with one, add one per
+/// character (加一個格子), take the last away, clear one. The drawings and the squares' side are given back.
+struct GameWriteSquares: View {
+    @Binding var drawings: [PKDrawing]
+    /// the side of a square, for drawing them somewhere else at the same size
+    @Binding var side: CGFloat
+    /// changes when everything should be cleared (a new question)
+    var reset = 0
+    @AppStorage("handwritingTestPadSize") private var fixedSize = 300.0
+    @State private var clears: [Int] = [0]
+    @State private var cur = 0
+    @State private var avail: CGFloat = 0
+    @State private var seenReset = 0
+    @Environment(\.horizontalSizeClass) private var hSize
+
+    private var wide: Bool { hSize == .regular }
+    private func sideFor(_ n: Int) -> CGFloat {
+        let want = CGFloat(min(max(fixedSize, 140), 640))
+        guard avail > 0 else { return want }
+        let gap: CGFloat = 12
+        return max(110, min(want, (avail - gap * CGFloat(max(n, 1) - 1)) / CGFloat(max(n, 1))))
+    }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if wide {
+                // iPad: every square at once, side by side
+                let s = sideFor(drawings.count)
+                HStack(spacing: 12) {
+                    ForEach(drawings.indices, id: \.self) { i in square(i).frame(width: s, height: s) }
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                // phone: one big square; the others small above it (tap one to write it again)
+                if drawings.count > 1 {
+                    HStack(spacing: 8) {
+                        ForEach(drawings.indices, id: \.self) { i in
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10).fill(T.fn.opacity(0.75))
+                                if !drawings[i].strokes.isEmpty, side > 0 {
+                                    Image(uiImage: Self.picture(drawings[i], side)).resizable().scaledToFit()
+                                }
+                            }
+                            .frame(width: 52, height: 52)
+                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(i == cur ? T.btnEdge : T.fnEdge, lineWidth: i == cur ? 2.5 : 1))
+                            .onTapGesture { cur = i }
+                        }
+                    }
+                }
+                square(cur).id(cur).frame(width: sideFor(1), height: sideFor(1)).frame(maxWidth: .infinity)
+            }
+            HStack(spacing: 10) {
+                Button { clear(wide ? nil : cur) } label: {
+                    Label(wide && drawings.count > 1 ? trs("全部清掉") : trs("清掉"), systemImage: "eraser").frame(maxWidth: .infinity, minHeight: 38)
+                }
+                .softButton()
+                Button { removeLast() } label: { Label(tr("少一格"), systemImage: "minus.square").frame(maxWidth: .infinity, minHeight: 38) }
+                    .softButton().disabled(drawings.count < 2)
+                Button { add() } label: { Label(tr("加一個格子"), systemImage: "plus.square").frame(maxWidth: .infinity, minHeight: 38) }
+                    .softButton().disabled(drawings.count >= 8)
+            }
+            HStack(spacing: 10) {
+                Image(systemName: "square.resize.down").foregroundStyle(T.muted)
+                Slider(value: $fixedSize, in: 140...640).tint(T.btnEdge).accessibilityLabel(tr("格子大小"))
+                Image(systemName: "square.resize.up").foregroundStyle(T.muted)
+            }
+            .frame(maxWidth: 420)
+        }
+        .background(GeometryReader { g in
+            Color.clear.onAppear { avail = g.size.width }.onChange(of: g.size.width) { avail = g.size.width }
+        })
+        .onAppear { sync() }
+        .onChange(of: reset) { sync() }
+    }
+
+    private func sync() {
+        guard seenReset != reset || clears.count != drawings.count else { return }
+        seenReset = reset
+        if drawings.isEmpty { drawings = [PKDrawing()] }
+        clears = drawings.indices.map { (clears.indices.contains($0) ? clears[$0] : 0) + 1 }
+        cur = 0
+    }
+
+    private func square(_ i: Int) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18).fill(T.fn.opacity(0.75))
+            GeometryReader { g in
+                let w = g.size.width, h = g.size.height
+                Path { p in
+                    p.move(to: CGPoint(x: w / 2, y: 0)); p.addLine(to: CGPoint(x: w / 2, y: h))
+                    p.move(to: CGPoint(x: 0, y: h / 2)); p.addLine(to: CGPoint(x: w, y: h / 2))
+                    p.move(to: .zero); p.addLine(to: CGPoint(x: w, y: h))
+                    p.move(to: CGPoint(x: w, y: 0)); p.addLine(to: CGPoint(x: 0, y: h))
+                }
+                .stroke(T.fnEdge, style: StrokeStyle(lineWidth: 1, dash: [6, 6]))
+                .onAppear { side = w }
+                .onChange(of: w) { side = w }
+            }
+            if i < clears.count {
+                WritingPad(clearCount: clears[i], initial: drawings[i]) { d in
+                    if i < drawings.count { drawings[i] = d }
+                }
+                StrokeNumbers(drawing: drawings[i])
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(wide || drawings.count < 2 ? T.fnEdge : T.btnEdge.opacity(0.6), lineWidth: 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .noStarBursts()
+        .accessibilityLabel(tr("第 \(i + 1) 個字"))
+    }
+
+    private func clear(_ i: Int?) {
+        for j in drawings.indices where i == nil || i == j {
+            drawings[j] = PKDrawing()
+            if j < clears.count { clears[j] += 1 }
+        }
+    }
+    private func add() {
+        drawings.append(PKDrawing()); clears.append(0)
+        cur = drawings.count - 1
+    }
+    private func removeLast() {
+        guard drawings.count > 1 else { return }
+        drawings.removeLast(); clears.removeLast()
+        cur = min(cur, drawings.count - 1)
+    }
+
+    /// a square's writing as a picture (in the colours as written)
+    static func picture(_ d: PKDrawing, _ side: CGFloat) -> UIImage {
+        var img = UIImage()
+        UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
+            img = d.image(from: CGRect(x: 0, y: 0, width: max(side, 1), height: max(side, 1)), scale: 2)
+        }
+        return img
+    }
+}
+
+/// someone's writing in squares, as they wrote it (一起玩: the answer on the others' screens)
+struct WrittenSquares: View {
+    let drawings: [PKDrawing]
+    let side: CGFloat
+    var size: CGFloat = 120
+    var body: some View {
+        FlowLayout(spacing: 8) {
+            ForEach(drawings.indices, id: \.self) { i in
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.75))
+                    GeometryReader { g in
+                        let w = g.size.width, h = g.size.height
+                        Path { p in
+                            p.move(to: CGPoint(x: w / 2, y: 0)); p.addLine(to: CGPoint(x: w / 2, y: h))
+                            p.move(to: CGPoint(x: 0, y: h / 2)); p.addLine(to: CGPoint(x: w, y: h / 2))
+                        }
+                        .stroke(T.fnEdge, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                    }
+                    Image(uiImage: GameWriteSquares.picture(drawings[i], side)).resizable().scaledToFit()
+                }
+                .frame(width: size, height: size)
+                .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))
+            }
         }
     }
 }

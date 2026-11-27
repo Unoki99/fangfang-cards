@@ -2132,7 +2132,7 @@ struct LookupPane: View {
         }
         // 依常用度列出: the words by how common they are (the 台語 cards' order)
         t.append(AnyView(NavigationLink(value: TwFreqRef()) {
-            TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出"))
+            TileLabel(icon: FrequencyRing.icon, title: trs("依常用度列出"))
         }.buttonStyle(.plain)))
         return t
     }
@@ -3659,7 +3659,8 @@ struct TileLabel: View {
     var cap = 0
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon).foregroundStyle(T.oliveInk)
+            if icon == FrequencyRing.icon { FrequencyRingView(size: 15, line: 2.6, fill: 0.7) }
+            else { Image(systemName: icon).foregroundStyle(T.oliveInk) }
             Text(title).foregroundStyle(T.glyph).lineLimit(1).minimumScaleFactor(0.75)
             Spacer(minLength: 2)
             if let count { Text(count >= cap ? "\(cap)+" : "\(count)").ffFont(.footnote, mono: true).foregroundStyle(T.muted) }
@@ -4173,13 +4174,13 @@ struct TwPlacesAndMap: View {
                 }
             }
             Text(tr("地圖上的點是辭典記錄各地讀音的地方，不是腔口的界線。")).ffFont(.caption2).foregroundStyle(T.muted)
-            // (where each place's reading comes from, so you can judge it yourself: right under the map)
+            // (where each worked-out reading comes from, so you can judge it yourself: right under the map)
             PlaceSources(dict: dict, key: key, open: open).padding(.top, 10)
         }
     }
 }
 
-/// 讀音從哪裡來 (under the map): for each 字 of the word, each place's reading of it and where that comes from: the
+/// 讀音推測來源 (under the map), only the readings worked out (the dictionary's own aren't listed): for each 字 of the word, each place's reading of it and where that comes from: the
 /// dictionary's own reading of this word there, or worked out (推測) from the 字's own entry; and how many of the
 /// dictionary's words have the 字 said that way in that place. Tap the number: those words open right below, with
 /// their meanings; tap one of them for its entry. Laid out like 各地讀音: by 腔. (No List and no links: a row with
@@ -4194,38 +4195,53 @@ struct PlaceSources: View {
     @State private var shown: [Int]?
     private static let kinds = ["泉", "混", "漳"]
 
+    /// a place's reading of syllable j that the dictionary doesn't give for this word, but was worked out
+    /// (推測 by rule, or taken from the 字's own reading): the only ones shown here
+    private func estimated(_ j: Int, _ p: Int) -> Bool {
+        let s = dict.sylAt(key, j, p)
+        let stated = !s.guessed && dict.raw.dia[key] != nil && dict.isStated(key, p)
+        return !stated && (s.guessed || (s.charKey != nil && s.charKey != key))
+    }
+
     var body: some View {
         let han = Array(Dict.hanOf(key)).map(String.init)
         let n = dict.sylCount(key)
-        VStack(alignment: .leading, spacing: 14) {
-            Text(tr("讀音從哪裡來")).ffFont(.headline).foregroundStyle(T.glyph)
-            Text(tr("每個地方的讀音：「辭典」= 教育部辭典寫了這個詞在這裡的讀音；「推測」= 辭典沒有寫，照規則推出來的（從那個字自己的讀音）。數字 = 辭典裡有幾個詞，這個字在這裡也這樣講；點數字看那些詞。"))
-                .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
-            ForEach(0..<n, id: \.self) { j in
-                let ch: String? = han.count == n ? han[j] : nil
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        if let ch { Text(ch).scaledFont(22, weight: .semibold).foregroundStyle(T.glyph) }
-                        Text(dict.codes(dict.sylAt(key, j, -1).code, rom, -1)).latFont(15).foregroundStyle(T.greenInk)
-                        Text(tr("（通行）")).ffFont(.caption).foregroundStyle(T.muted)
-                    }
-                    ForEach(Self.kinds, id: \.self) { k in
-                        let ps = dict.raw.places.indices.filter { dict.raw.places[$0].contains(k) }
-                        if !ps.isEmpty {
-                            // (the same look as 各地讀音 above: the 腔 in its colour, each place as a chip with its reading)
-                            HStack(alignment: .top, spacing: 8) {
-                                let on = TwGroup.lit(-2, place) || ps.contains(place)
-                                Text(trs(k)).ffFont(.caption, .bold).foregroundStyle(on ? T.glyph : T.muted)
-                                    .frame(width: 22, height: 24)
-                                    .background(Circle().fill(TwGroup.color(k).opacity(on ? 0.55 : 0.18)))
-                                    .overlay(Circle().stroke(TwGroup.color(k).opacity(on ? 1 : 0.4), lineWidth: 1.5))
-                                FlowLayout(spacing: 8) {
-                                    ForEach(ps, id: \.self) { p in cell(j, ch, p).frame(minWidth: 78) }
+        let places = dict.raw.places.indices
+        // (the syllables with a place's reading worked out; the others are all the dictionary's own)
+        let shownSyl = (0..<n).filter { j in places.contains { estimated(j, $0) } }
+        if !shownSyl.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(tr("讀音推測來源")).ffFont(.headline).foregroundStyle(T.glyph)
+                Text(tr("只列出辭典沒有記錄、照規則推測的讀音（「推測」）或照那個字自己的讀音（「照字」）。數字是辭典裡有幾個詞，這個字在那個地方也這樣講；點數字看那些詞。"))
+                    .ffFont(.caption).foregroundStyle(T.muted).fixedSize(horizontal: false, vertical: true)
+                ForEach(Array(shownSyl.enumerated()), id: \.element) { idx, j in
+                    let ch: String? = han.count == n ? han[j] : nil
+                    // (a line between the characters, in the theme's own edge colour)
+                    if idx > 0 { Rectangle().fill(T.fnEdge).frame(height: 1).padding(.vertical, 2) }
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            if let ch { Text(ch).scaledFont(22, weight: .semibold).foregroundStyle(T.glyph) }
+                            Text(dict.codes(dict.sylAt(key, j, -1).code, rom, -1)).latFont(15).foregroundStyle(T.greenInk)
+                            Text(tr("（通行）")).ffFont(.caption).foregroundStyle(T.muted)
+                        }
+                        ForEach(Self.kinds, id: \.self) { k in
+                            let ps = places.filter { dict.raw.places[$0].contains(k) && estimated(j, $0) }
+                            if !ps.isEmpty {
+                                // (the same look as 各地讀音 above: the 腔 in its colour, each place as a chip with its reading)
+                                HStack(alignment: .top, spacing: 8) {
+                                    let on = TwGroup.lit(-2, place) || ps.contains(place)
+                                    Text(trs(k)).ffFont(.caption, .bold).foregroundStyle(on ? T.glyph : T.muted)
+                                        .frame(width: 22, height: 24)
+                                        .background(Circle().fill(TwGroup.color(k).opacity(on ? 0.55 : 0.18)))
+                                        .overlay(Circle().stroke(TwGroup.color(k).opacity(on ? 1 : 0.4), lineWidth: 1.5))
+                                    FlowLayout(spacing: 8) {
+                                        ForEach(ps, id: \.self) { p in cell(j, ch, p).frame(minWidth: 78) }
+                                    }
                                 }
                             }
                         }
+                        if let sh = shown, sh[0] == j, let ch { words(ch, sh[1], j) }
                     }
-                    if let sh = shown, sh[0] == j, let ch { words(ch, sh[1], j) }
                 }
             }
         }
@@ -4233,7 +4249,6 @@ struct PlaceSources: View {
 
     @ViewBuilder private func cell(_ j: Int, _ ch: String?, _ p: Int) -> some View {
         let s = dict.sylAt(key, j, p)
-        let stated = !s.guessed && dict.raw.dia[key] != nil && dict.isStated(key, p)
         let words = ch.map { dict.placeEvidence($0, code: s.code, place: p) } ?? []
         let on = shown == [j, p]
         let mine = p == place
@@ -4248,7 +4263,7 @@ struct PlaceSources: View {
             Text(dict.codes(s.code, rom, p)).latFont(15).foregroundStyle(T.greenInk).lineLimit(1)
             Text(dict.codes(s.code, 3, p)).ffFont(.caption).foregroundStyle(T.purpleInk).hongimLine().lineLimit(1)
             // where it's from
-            Text(stated ? tr("辭典") : (s.guessed ? tr("推測") : (s.charKey != nil ? tr("照字") : tr("同通行")))).ffFont(.caption2)
+            Text(s.guessed ? tr("推測") : tr("照字")).ffFont(.caption2)
                 .foregroundStyle(s.guessed ? T.rustInk : T.muted)
             if let ck = s.charKey, s.charKey != key {
                 Text(tr("從「") + Dict.hanOf(ck) + tr("」")).ffFont(.caption2).foregroundStyle(T.muted).lineLimit(1)

@@ -354,7 +354,7 @@ struct ProfileView: View {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 14, alignment: .top)], alignment: .leading, spacing: 14) {
                     tile(tr("認識的詞"), "checkmark.seal") { wordsTile }
-                    if store.isZh || !store.freqTopics.isEmpty { tile(levelTitle, "chart.bar.fill") { levelTile } }
+                    if store.isZh || !store.freqTopics.isEmpty { tile(levelTitle, FrequencyRing.icon) { levelTile } }
                     tile(tr("最近 30 天的練習"), "graduationcap") { practiceTile }
                     tile(tr("聽的時間"), "headphones") { listenTile }
                     tile(tr("影片懂多少"), "play.rectangle") { videoTile }
@@ -373,7 +373,14 @@ struct ProfileView: View {
 
     private func tile<C: View>(_ title: String, _ icon: String, @ViewBuilder _ content: () -> C) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon).ffFont(.headline).foregroundStyle(T.glyph)
+            Group {
+                if icon == FrequencyRing.icon {
+                    Label { Text(title) } icon: { FrequencyRingView(size: 17, line: 3, fill: 0.7) }
+                } else {
+                    Label(title, systemImage: icon)
+                }
+            }
+            .ffFont(.headline).foregroundStyle(T.glyph)
             content()
         }
         .padding(16)

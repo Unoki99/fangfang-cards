@@ -33,9 +33,10 @@ struct CoopMsg: Codable {
     var lang = 0
     /// hint: how many clues are shown now
     var hints = 1
-    /// submit: what was typed or picked, or the drawing
+    /// submit: what was typed or picked, or the writing (one drawing a square, and the squares' side)
     var text = ""
-    var drawing: Data? = nil
+    var drawings: [Data] = []
+    var side: Double = 0
     /// judge
     var right = false
 }
@@ -51,7 +52,8 @@ struct CoopQuestion {
     let lang: Int
     var shown = 1
     var text = ""
-    var drawing: PKDrawing?
+    var drawings: [PKDrawing] = []
+    var side: CGFloat = 0
     var submitted = false
 }
 
@@ -66,13 +68,7 @@ struct CoopResult: Identifiable {
 }
 
 @MainActor
-final class CoopLink: NSObject, ObservableObject {
-    static let service = "ff-coop"
-    let me: MCPeerID
-    private let session: MCSession
-    private let advertiser: MCNearbyServiceAdvertiser
-    private let browser: MCNearbyServiceBrowser
-    @Published var players: [MCPeerID: String] = [:]
+final class CoopLink: NearbyLink {
 
     /// who has pressed 準備好了, with their way of answering and how many words; the game starts once everyone has
     @Published var ready: [String: (mode: Int, rounds: Int)] = [:]
@@ -93,15 +89,12 @@ final class CoopLink: NSObject, ObservableObject {
     /// (one more each time a game starts)
     @Published var game = 0
 
-    var myName: String { me.displayName }
     var over: Bool { playing && turn >= schedule.count }
     /// whose turn it is
     var answerer: String? { turn < schedule.count ? schedule[turn] : nil }
     var myTurn: Bool { answerer == myName }
     /// how many of my turns came before this one
     var myTurnsBefore: Int { schedule.prefix(turn).filter { $0 == myName }.count }
-    /// everyone here (me and the ones connected)
-    var everyone: Set<String> { Set([myName] + Array(players.values)) }
 
     /// 準備好了 (or not any more)
     func setReady(_ on: Bool, mode: Int, rounds: Int) {
@@ -138,27 +131,24 @@ final class CoopLink: NSObject, ObservableObject {
         game += 1
     }
 
-    init(name: String) {
-        me = MCPeerID(displayName: String(name.prefix(40)))
-        session = MCSession(peer: me, securityIdentity: nil, encryptionPreference: .required)
-        advertiser = MCNearbyServiceAdvertiser(peer: me, discoveryInfo: nil, serviceType: Self.service)
-        browser = MCNearbyServiceBrowser(peer: me, serviceType: Self.service)
-        super.init()
-        session.delegate = self
-        advertiser.delegate = self
-        browser.delegate = self
-    }
-
-    func open() { advertiser.startAdvertisingPeer(); browser.startBrowsingForPeers() }
-    func close() {
-        advertiser.stopAdvertisingPeer(); browser.stopBrowsingForPeers(); session.disconnect()
-        players = [:]
-    }
+    init(name: String) { super.init(name: name, service: "ff-coop") }
 
     func send(_ m: CoopMsg) {
         handle(m)
-        guard !session.connectedPeers.isEmpty, let d = try? JSONEncoder().encode(m) else { return }
-        try? session.send(d, toPeers: session.connectedPeers, with: .reliable)
+        if let d = try? JSONEncoder().encode(m) { sendData(d) }
+    }
+    override func received(_ d: Data) {
+        if let m = try? JSONDecoder().decode(CoopMsg.self, from: d) { handle(m) }
+    }
+    override func joined(_ name: String) {
+        // (someone joined: they're told I'm ready, if I am)
+        if let r = mine { send(CoopMsg(kind: .ready, name: myName, mode: r.mode, rounds: r.rounds, right: true)) }
+        startIfReady()
+    }
+    override func left(_ name: String) {
+        ready[name] = nil
+        skipGone()
+        startIfReady()
     }
 
     /// the points a right answer gets: fewer for each clue after the first
@@ -177,7 +167,8 @@ final class CoopLink: NSObject, ObservableObject {
         case .submit:
             guard question?.from == m.name else { return }
             question?.text = m.text
-            question?.drawing = m.drawing.flatMap { try? PKDrawing(data: $0) }
+            question?.drawings = m.drawings.compactMap { try? PKDrawing(data: $0) }
+            question?.side = CGFloat(m.side)
             question?.submitted = true
         case .judge:
             // (the first one to judge counts)
@@ -190,46 +181,6 @@ final class CoopLink: NSObject, ObservableObject {
             skipGone()
         }
     }
-}
-
-extension CoopLink: MCSessionDelegate, MCNearbyServiceAdvertiserDelegate, MCNearbyServiceBrowserDelegate {
-    nonisolated func session(_ s: MCSession, peer p: MCPeerID, didChange state: MCSessionState) {
-        let name = p.displayName
-        Task { @MainActor in
-            if state == .connected {
-                self.players[p] = name
-                // (someone joined: they're told I'm ready, if I am)
-                if let r = self.mine { self.send(CoopMsg(kind: .ready, name: self.myName, mode: r.mode, rounds: r.rounds, right: true)) }
-            } else if state == .notConnected {
-                self.players[p] = nil
-                self.ready[name] = nil
-                self.skipGone()
-            }
-            self.startIfReady()
-        }
-    }
-    nonisolated func session(_ s: MCSession, didReceive data: Data, fromPeer p: MCPeerID) {
-        guard let m = try? JSONDecoder().decode(CoopMsg.self, from: data) else { return }
-        Task { @MainActor in self.handle(m) }
-    }
-    nonisolated func session(_ s: MCSession, didReceive stream: InputStream, withName n: String, fromPeer p: MCPeerID) {}
-    nonisolated func session(_ s: MCSession, didStartReceivingResourceWithName n: String, fromPeer p: MCPeerID, with progress: Foundation.Progress) {}
-    nonisolated func session(_ s: MCSession, didFinishReceivingResourceWithName n: String, fromPeer p: MCPeerID, at u: URL?, withError e: Error?) {}
-
-    nonisolated func advertiser(_ a: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer p: MCPeerID, withContext c: Data?,
-                                invitationHandler: @escaping (Bool, MCSession?) -> Void) {
-        let handler = invitationHandler
-        Task { @MainActor in handler(true, self.session) }
-    }
-    // (everyone looks and is seen; the one whose name sorts first asks, so two don't ask each other at once)
-    nonisolated func browser(_ b: MCNearbyServiceBrowser, foundPeer p: MCPeerID, withDiscoveryInfo info: [String: String]?) {
-        Task { @MainActor in
-            guard !self.session.connectedPeers.contains(p),
-                  self.me.displayName < p.displayName || (self.me.displayName == p.displayName && self.me.hash < p.hash) else { return }
-            b.invitePeer(p, to: self.session, withContext: nil, timeout: 20)
-        }
-    }
-    nonisolated func browser(_ b: MCNearbyServiceBrowser, lostPeer p: MCPeerID) {}
 }
 
 // MARK: the page
@@ -251,8 +202,10 @@ struct CoopView: View {
     @State private var options: [Card] = []
     @State private var picked: String?
     @State private var typed = ""
-    @State private var drawing = PKDrawing()
-    @State private var clearN = 0
+    /// 手寫: the squares (the same as the other games') and their side
+    @State private var drawings = [PKDrawing()]
+    @State private var side: CGFloat = 0
+    @State private var resetN = 0
     @State private var hints = 1
     @State private var sent = false
     @FocusState private var focused: Bool
@@ -283,6 +236,8 @@ struct CoopView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button(tr("完成")) { link.close(); dismiss() } }
+                // (手寫 on my turn: the pen's settings, as in the other games)
+                if link.playing && link.myTurn && myMode == 0 { ToolbarItem(placement: .topBarTrailing) { PenTools() } }
                 ToolbarItem(placement: .topBarTrailing) { RomButton() }
             }
         }
@@ -368,14 +323,8 @@ struct CoopView: View {
                 Text(tr("請對方唸提示給你聽（第 \(hints) 個提示）。")).ffFont(.footnote).foregroundStyle(T.muted)
                 switch myMode {
                 case 0:
-                    ZStack(alignment: .topTrailing) {
-                        RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.97))
-                        InkPad(drawing: $drawing, clear: clearN)
-                        Button { clearN += 1 } label: { Image(systemName: "eraser").padding(10) }
-                            .buttonStyle(.plain).foregroundStyle(Color(white: 0.35))
-                    }
-                    .frame(height: 240)
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(T.fnEdge, lineWidth: 1))
+                    // (one square a character: add one with 加一個格子; the pen as chosen with 筆 / 顏色 at the top)
+                    GameWriteSquares(drawings: $drawings, side: $side, reset: resetN)
                 case 1:
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
                         ForEach(options, id: \.k) { o in
@@ -409,7 +358,7 @@ struct CoopView: View {
 
     private var canSubmit: Bool {
         switch myMode {
-        case 0: return !drawing.strokes.isEmpty
+        case 0: return drawings.contains { !$0.strokes.isEmpty }
         case 1: return picked != nil
         default: return !typed.trimmingCharacters(in: .whitespaces).isEmpty
         }
@@ -441,11 +390,8 @@ struct CoopView: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(T.fn))
                 if q.submitted {
                     Text(tr("\(q.from) 的答案")).ffFont(.subheadline, .semibold).foregroundStyle(T.muted)
-                    if let d = q.drawing {
-                        Image(uiImage: d.image(from: d.bounds.insetBy(dx: -16, dy: -16), scale: 2))
-                            .resizable().scaledToFit().frame(maxHeight: 200)
-                            .padding(8)
-                            .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.97)))
+                    if !q.drawings.isEmpty {
+                        WrittenSquares(drawings: q.drawings, side: q.side, size: 130)
                     } else {
                         Text(q.text).scaledFont(32, weight: .semibold).foregroundStyle(T.glyph)
                     }
@@ -532,7 +478,7 @@ struct CoopView: View {
     /// my turn: the next of my words, sent to the others (not shown here)
     private func ask() {
         let k = link.myTurnsBefore
-        sent = false; picked = nil; typed = ""; clearN += 1; drawing = PKDrawing(); hints = 1
+        sent = false; picked = nil; typed = ""; drawings = [PKDrawing()]; resetN += 1; hints = 1
         guard k < queue.count else { mine = nil; return }
         let c = queue[k]
         mine = c
@@ -608,7 +554,7 @@ struct CoopView: View {
     private func submit() {
         var m = CoopMsg(kind: .submit, name: link.myName)
         switch myMode {
-        case 0: m.drawing = drawing.dataRepresentation()
+        case 0: m.drawings = drawings.map { $0.dataRepresentation() }; m.side = Double(side)
         case 1: m.text = picked ?? ""
         default: m.text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         }

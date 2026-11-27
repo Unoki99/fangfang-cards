@@ -116,10 +116,22 @@ enum FrequencyRing {
         let x = log(Double(rank) + 1) / log(60000)
         return max(0.04, min(1, 1 - x * x))
     }
-    /// the colour along the tone colours (rare → common: 3 6 7 2 5 8 4 1)
+    /// the name used for the ring in place of an SF Symbol (TileLabel, the 學習紀錄 tiles)
+    static let icon = "ff.ring"
+    /// the colour, from nearly empty to full: purple, blue, teal, green, yellow, orange, red, pink (and the shades
+    /// between them)
+    private static let stops: [Color] = [
+        Color(red: 0.58, green: 0.38, blue: 0.86),   // purple
+        Color(red: 0.24, green: 0.48, blue: 0.95),   // blue
+        Color(red: 0.10, green: 0.68, blue: 0.70),   // teal
+        Color(red: 0.30, green: 0.72, blue: 0.32),   // green
+        Color(red: 0.95, green: 0.78, blue: 0.16),   // yellow
+        Color(red: 0.97, green: 0.55, blue: 0.14),   // orange
+        Color(red: 0.90, green: 0.22, blue: 0.20),   // red
+        Color(red: 0.96, green: 0.36, blue: 0.62),   // pink
+    ]
     @MainActor static func color(_ f: Double) -> Color {
-        let order = [3, 6, 7, 2, 5, 8, 4, 1]
-        let cs = order.map { ToneColors.twColor($0) ?? T.muted }
+        let cs = stops
         let x = max(0, min(1, f)) * Double(cs.count - 1)
         let i = min(Int(x), cs.count - 2), t = x - Double(i)
         func rgb(_ c: Color) -> (Double, Double, Double) {
@@ -134,11 +146,13 @@ enum FrequencyRing {
 
 /// the ring itself
 struct FrequencyRingView: View {
-    let rank: Int
+    var rank: Int = 0
     var size: CGFloat = 16
     var line: CGFloat = 3
+    /// how full, when not from a place (an icon)
+    var fill: Double? = nil
     var body: some View {
-        let f = FrequencyRing.fill(rank)
+        let f = fill ?? FrequencyRing.fill(rank)
         let c = FrequencyRing.color(f)
         ZStack {
             Circle().stroke(T.fnEdge.opacity(0.6), lineWidth: line)

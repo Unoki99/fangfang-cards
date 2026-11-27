@@ -38,15 +38,9 @@ struct FreqLevelBars: View {
     let level: Int
     let kind: Int
     var body: some View {
-        let ink = T.langColors(kind).ink
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(1...5, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(i <= level ? ink : T.fnEdge)
-                    .frame(width: 5, height: CGFloat(5 + i * 3))
-            }
-        }
-        .fixedSize()
+        // (the ring as full as the step's middle: like the ring beside each word)
+        FrequencyRingView(size: 20, line: 3.5, fill: [0, 0.1, 0.3, 0.5, 0.7, 0.92][min(max(level, 0), 5)])
+            .fixedSize()
     }
 }
 

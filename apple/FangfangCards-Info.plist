@@ -51,6 +51,8 @@
 	<array>
 		<string>_ff-coop._tcp</string>
 		<string>_ff-coop._udp</string>
+		<string>_ff-dragon._tcp</string>
+		<string>_ff-dragon._udp</string>
 	</array>
 	<!-- 動態島: a 不熟 word in the Dynamic Island while you're away from the app (iPhone) -->
 </dict>

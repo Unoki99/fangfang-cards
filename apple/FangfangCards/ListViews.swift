@@ -268,7 +268,7 @@ extension UnknownView {
         }
         a.append((.memory, "square.grid.2x2", trs("翻牌配對"), trs("一次翻兩張牌，把漢字和它的讀音配起來。"), pool.count > 1))
         a.append((.falling, "arrow.down.circle", trs("掉下來的字"), trs("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), pool.count > 3))
-        a.append((.dragon, "link", trs("詞龍"), store.isSv ? trs("接龍：打一個用上一個詞最後一個字母開頭的詞，App 再接下去。") : trs("接龍：打一個用上一個詞最後一個字開頭的詞，App 再接下去。"), true))
+        a.append((.dragon, "link", trs("詞龍"), store.isSv ? trs("接龍：用上一個詞最後一個字母開頭接下去，一直玩到你接不下去；也可以和附近的人一起玩。") : trs("接龍：用上一個詞最後一個字開頭接下去，一直玩到你接不下去；也可以和附近的人一起玩。"), true))
         a.append((.coop, "person.2.fill", trs("一起玩"), trs("兩個人以上輪流答題（同一個 Wi-Fi 或藍牙）：輪到你的時候，詞只出現在別人的畫面上，他們給你提示、看你答得對不對。"), !pool.isEmpty || !due.isEmpty))
         return a.map { (game: $0.0, icon: $0.1, title: $0.2, text: $0.3, enabled: $0.4) }
     }

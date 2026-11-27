@@ -131,7 +131,7 @@ struct ZhLookupPane: View {
         }
         // 依常用度列出: the words by how common they are (the dictionary's order)
         t.append(AnyView(NavigationLink(value: ZhFreqRef()) {
-            TileLabel(icon: "chart.bar.fill", title: trs("依常用度列出"))
+            TileLabel(icon: FrequencyRing.icon, title: trs("依常用度列出"))
         }.buttonStyle(.plain)))
         return t
     }
