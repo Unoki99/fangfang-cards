@@ -517,15 +517,10 @@ struct ZhEntryBody: View {
                     if t.count > 28 { t = String(t.prefix(27)) + "…" }
                     return t.isEmpty ? nil : (s.n, t)
                 }
-                if !ens.isEmpty || !zhShort.isEmpty {
-                    MeaningsOverview(zh: zhShort, zhLabel: dict.isSv ? (entry.svZhGuessed ? tr("中（由英文推測）") : tr("中")) : tr(dict.isHak ? "客" : "華"), en: ens)
-                }
-                // 英語: its Swedish words
-                if dict.isEn && !entry.enSv.isEmpty {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Chip(text: tr("瑞"), fill: T.svFill, edge: T.svEdge, ink: T.svInk)
-                        Text(entry.enSv.joined(separator: "、")).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
-                    }
+                // (英語: its Swedish words a third column, when 設定 shows them)
+                let svs = dict.isEn ? entry.enSv : []
+                if !ens.isEmpty || !zhShort.isEmpty || !svs.isEmpty {
+                    MeaningsOverview(zh: zhShort, zhLabel: dict.isSv ? (entry.svZhGuessed ? tr("中（由英文推測）") : tr("中")) : tr(dict.isHak ? "客" : "華"), en: ens, sv: svs)
                 }
                 // 粵語: the 華語 word(s) with the same meaning
                 if !entry.eq.isEmpty && !dict.isSv {

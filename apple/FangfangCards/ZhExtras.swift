@@ -35,13 +35,43 @@ struct MeaningsOverview: View {
     var zhLabel: String = "華"
     let en: [String]
     var enNote: String? = nil
+    /// 英語: its Swedish words, a third column (numbered, one under the other, as the others)
+    var sv: [String] = []
+    @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
-        // (always two columns side by side, also on a phone: each column's label above it, so they have room)
-        if !zh.isEmpty || !en.isEmpty {
-            HStack(alignment: .top, spacing: 12) {
-                if !zh.isEmpty { zhPart.frame(maxWidth: .infinity, alignment: .leading) }
-                if !en.isEmpty { enPart.frame(maxWidth: .infinity, alignment: .leading) }
+        // (the columns side by side, also on a phone: each column's label above it, so they have room. Three on a
+        // phone: the first two side by side, the third under them)
+        let n = (zh.isEmpty ? 0 : 1) + (en.isEmpty ? 0 : 1) + (sv.isEmpty ? 0 : 1)
+        if n > 0 {
+            if n == 3 && hSize == .compact {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        zhPart.frame(maxWidth: .infinity, alignment: .leading)
+                        svPart.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    enPart.frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    if !zh.isEmpty { zhPart.frame(maxWidth: .infinity, alignment: .leading) }
+                    if !en.isEmpty { enPart.frame(maxWidth: .infinity, alignment: .leading) }
+                    if !sv.isEmpty { svPart.frame(maxWidth: .infinity, alignment: .leading) }
+                }
+            }
+        }
+    }
+
+    private var svPart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Chip(text: tr("瑞"), fill: T.svFill, edge: T.svEdge, ink: T.svInk)
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(Array(sv.enumerated()), id: \.offset) { i, t in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Chip(text: "\(i + 1)", fill: T.svFill, edge: T.svEdge, ink: T.svInk).monospacedDigit()
+                        Text(t).ffFont(.subheadline).foregroundStyle(T.glyph.opacity(0.9)).textSelection(.enabled)
+                    }
+                }
             }
         }
     }
