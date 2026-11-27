@@ -2,28 +2,61 @@ import SwiftUI
 import MultipeerConnectivity
 import PencilKit
 
-// MARK: - 一起玩 (co-op, nearby)
+// MARK: - 一起玩 (two or more players nearby, taking turns)
 //
-// Two or more people on the same Wi-Fi or near each other (Bluetooth), each with the app open on 一起玩. Each
-// person gets questions from their own 練習範圍, in their own language (one can do 台語 while another does 華語);
-// the points go into one team score. Everyone sees what the others are asked and how they did.
-// Ways to answer: 八選一 (eight words, the wrong ones sounding alike), 打字 (type the word), 手寫 (write it; iOS reads
-// the writing). 提示 shows one more character of the answer and costs points. After each question the one asked sees
-// the right answer; every answer counts for 不熟 / 複習 as in the other practice.
+// The players take turns. On your turn, a word from your own 練習範圍 (in your own language) is picked, but it's
+// shown only on the others' screens, never on yours: they see its clues one at a time and read them to you
+// (first its reading; then, if you ask for more, its meaning; then its radicals), and they see the answer.
+// You answer on your own screen — write it (手寫), pick it out of eight words that sound alike (八選一) or type it
+// (打字) — and press 完成. Your answer appears on their screens, and one of them presses 對 or 錯. Then it's the next
+// player's turn. Each extra clue costs points; the one with the most points wins. Your answers count for 不熟 /
+// 複習 as in the other practice. A word is shown in the list at the bottom only once it has been answered.
 // (Over the internet, and with the other versions: later, see docs/PENDING-other-versions.md.)
 
 /// what's sent between the players (JSON)
 struct CoopMsg: Codable {
-    enum Kind: String, Codable { case hello, start, asked, answered, finished }
+    enum Kind: String, Codable { case hello, start, question, hint, submit, judge }
     var kind: Kind
     var name: String
-    var lang: Int = 0
-    var mode: Int = 0
-    var rounds: Int = 0
-    /// asked: what the question shows (the reading and the meaning); answered: the word
-    var text: String = ""
-    var right: Bool = false
-    var points: Int = 0
+    var mode = 0
+    var rounds = 0
+    /// start: the players, in the order they take turns
+    var order: [String] = []
+    /// question: the word, its reading, and its clues (reading, meaning, radicals)
+    var word = ""
+    var reading = ""
+    var clues: [String] = []
+    var lang = 0
+    /// hint: how many clues are shown now
+    var hints = 1
+    /// submit: what was typed or picked, or the drawing
+    var text = ""
+    var drawing: Data? = nil
+    /// judge
+    var right = false
+}
+
+/// the question of the turn, as everyone knows it
+struct CoopQuestion {
+    let from: String
+    let word: String
+    let reading: String
+    let clues: [String]
+    let lang: Int
+    var shown = 1
+    var text = ""
+    var drawing: PKDrawing?
+    var submitted = false
+}
+
+/// a word that has been answered (for the list at the bottom)
+struct CoopResult: Identifiable {
+    let id = UUID()
+    let who: String
+    let word: String
+    let reading: String
+    let right: Bool
+    let points: Int
 }
 
 @MainActor
@@ -34,13 +67,25 @@ final class CoopLink: NSObject, ObservableObject {
     private let advertiser: MCNearbyServiceAdvertiser
     private let browser: MCNearbyServiceBrowser
     @Published var players: [MCPeerID: String] = [:]
-    @Published var feed: [(id: UUID, text: String, good: Bool?)] = []
-    @Published var teamPoints = 0
-    /// a game started (by anyone): its way of answering and how many questions
-    @Published var started: (mode: Int, rounds: Int)?
+
+    // the game, the same on every device
+    @Published var playing = false
+    @Published var mode = 0
+    @Published var rounds = 0
+    @Published var order: [String] = []
+    @Published var turn = 0
+    @Published var question: CoopQuestion?
+    @Published var scores: [String: Int] = [:]
+    @Published var results: [CoopResult] = []
     /// (one more each time a game starts)
     @Published var game = 0
-    @Published var finished: Set<String> = []
+
+    var myName: String { me.displayName }
+    var total: Int { order.count * rounds }
+    var over: Bool { playing && turn >= total }
+    /// whose turn it is
+    var answerer: String? { order.isEmpty || turn >= total ? nil : order[turn % order.count] }
+    var myTurn: Bool { answerer == myName }
 
     init(name: String) {
         me = MCPeerID(displayName: String(name.prefix(40)))
@@ -60,31 +105,41 @@ final class CoopLink: NSObject, ObservableObject {
     }
 
     func send(_ m: CoopMsg) {
-        handle(m, local: true)
+        handle(m)
         guard !session.connectedPeers.isEmpty, let d = try? JSONEncoder().encode(m) else { return }
         try? session.send(d, toPeers: session.connectedPeers, with: .reliable)
     }
 
-    fileprivate func handle(_ m: CoopMsg, local: Bool) {
-        let who = local ? tr("你") : m.name
+    /// the points a right answer gets: fewer for each clue after the first
+    static func points(_ shown: Int) -> Int { max(1, 10 - 3 * (shown - 1)) }
+
+    fileprivate func handle(_ m: CoopMsg) {
         switch m.kind {
         case .hello: break
         case .start:
-            started = (m.mode, m.rounds)
+            order = m.order; mode = m.mode; rounds = m.rounds
+            turn = 0; question = nil; results = []
+            scores = Dictionary(uniqueKeysWithValues: m.order.map { ($0, 0) })
+            playing = true
             game += 1
-            finished = []
-            teamPoints = 0
-            feed.append((UUID(), tr("\(who) 開始了一局（\(m.rounds) 題）"), nil))
-        case .asked:
-            if !local { feed.append((UUID(), tr("\(who)（\(trs(Lang.names[min(max(m.lang, 0), 5)]))）正在答：") + m.text, nil)) }
-        case .answered:
-            teamPoints += m.points
-            feed.append((UUID(), "\(who)：\(m.text)　" + (m.right ? "+\(m.points)" : tr("答錯")), m.right))
-        case .finished:
-            finished.insert(local ? me.displayName : m.name)
-            feed.append((UUID(), tr("\(who) 答完了"), nil))
+        case .question:
+            question = CoopQuestion(from: m.name, word: m.word, reading: m.reading, clues: m.clues, lang: m.lang)
+        case .hint:
+            if question?.from == m.name { question?.shown = max(question?.shown ?? 1, m.hints) }
+        case .submit:
+            guard question?.from == m.name else { return }
+            question?.text = m.text
+            question?.drawing = m.drawing.flatMap { try? PKDrawing(data: $0) }
+            question?.submitted = true
+        case .judge:
+            // (the first one to judge counts)
+            guard let q = question, q.submitted else { return }
+            let pts = m.right ? Self.points(q.shown) : 0
+            scores[q.from, default: 0] += pts
+            results.append(CoopResult(who: q.from, word: q.word, reading: q.reading, right: m.right, points: pts))
+            question = nil
+            turn += 1
         }
-        if feed.count > 200 { feed.removeFirst(feed.count - 200) }
     }
 }
 
@@ -92,27 +147,28 @@ extension CoopLink: MCSessionDelegate, MCNearbyServiceAdvertiserDelegate, MCNear
     nonisolated func session(_ s: MCSession, peer p: MCPeerID, didChange state: MCSessionState) {
         let name = p.displayName
         Task { @MainActor in
-            if state == .connected { self.players[p] = name; self.send(CoopMsg(kind: .hello, name: self.me.displayName)) }
+            if state == .connected { self.players[p] = name }
             else if state == .notConnected { self.players[p] = nil }
         }
     }
     nonisolated func session(_ s: MCSession, didReceive data: Data, fromPeer p: MCPeerID) {
         guard let m = try? JSONDecoder().decode(CoopMsg.self, from: data) else { return }
-        Task { @MainActor in self.handle(m, local: false) }
+        Task { @MainActor in self.handle(m) }
     }
     nonisolated func session(_ s: MCSession, didReceive stream: InputStream, withName n: String, fromPeer p: MCPeerID) {}
     nonisolated func session(_ s: MCSession, didStartReceivingResourceWithName n: String, fromPeer p: MCPeerID, with progress: Foundation.Progress) {}
     nonisolated func session(_ s: MCSession, didFinishReceivingResourceWithName n: String, fromPeer p: MCPeerID, at u: URL?, withError e: Error?) {}
 
-    // (everyone looks and is seen; the one whose name sorts first asks, so two don't ask each other at once)
     nonisolated func advertiser(_ a: MCNearbyServiceAdvertiser, didReceiveInvitationFromPeer p: MCPeerID, withContext c: Data?,
                                 invitationHandler: @escaping (Bool, MCSession?) -> Void) {
         let handler = invitationHandler
         Task { @MainActor in handler(true, self.session) }
     }
+    // (everyone looks and is seen; the one whose name sorts first asks, so two don't ask each other at once)
     nonisolated func browser(_ b: MCNearbyServiceBrowser, foundPeer p: MCPeerID, withDiscoveryInfo info: [String: String]?) {
         Task { @MainActor in
-            guard !self.session.connectedPeers.contains(p), self.me.displayName < p.displayName || self.me.displayName == p.displayName && self.me.hash < p.hash else { return }
+            guard !self.session.connectedPeers.contains(p),
+                  self.me.displayName < p.displayName || (self.me.displayName == p.displayName && self.me.hash < p.hash) else { return }
             b.invitePeer(p, to: self.session, withContext: nil, timeout: 20)
         }
     }
@@ -126,40 +182,42 @@ struct CoopView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("coopName") private var name = ""
     @AppStorage("coopMode") private var mode = 0
-    @AppStorage("coopRounds") private var rounds = 10
+    @AppStorage("coopRounds") private var rounds = 5
     @AppStorage("rom") private var rom = 0
     @AppStorage("place") private var place = -1
     @AppStorage("goal") private var goal = 3
     @StateObject private var link = CoopLink(name: UserDefaults.standard.string(forKey: "coopName").flatMap { $0.isEmpty ? nil : $0 } ?? UIDevice.current.name)
 
-    // the game on this device
+    // my turns: my words, and the one being asked now (never shown here until it's been judged)
     @State private var queue: [Card] = []
-    @State private var n = 0
-    @State private var card: Card?
+    @State private var mine: Card?
     @State private var options: [Card] = []
+    @State private var picked: String?
     @State private var typed = ""
-    @State private var hints = 0
-    @State private var result: Bool?
-    @State private var myPoints = 0
     @State private var drawing = PKDrawing()
     @State private var clearN = 0
-    @State private var read: [String] = []
+    @State private var hints = 1
+    @State private var sent = false
     @FocusState private var focused: Bool
 
-    private static let modes = ["八選一", "打字", "手寫"]
+    private static let modes = ["手寫", "八選一", "打字"]
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    players
-                    if link.started == nil { lobby } else if let c = card { question(c) } else { done }
-                    feed
+                    scoreboard
+                    if !link.playing { lobby }
+                    else if link.over { finished }
+                    else if link.myTurn { myTurnView }
+                    else { theirTurnView }
+                    answered
                 }
                 .padding()
                 .frame(maxWidth: 700, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
+            .scrollDismissesKeyboard(.interactively)
             .appBackground()
             .navigationTitle(tr("一起玩"))
             .navigationBarTitleDisplayMode(.inline)
@@ -171,26 +229,28 @@ struct CoopView: View {
         .onAppear { link.open() }
         .onDisappear { link.close() }
         .onChange(of: link.game) { begin() }
-        .task(id: drawing.strokes.count) {
-            guard mode == 2, !drawing.strokes.isEmpty else { read = []; return }
-            try? await Task.sleep(nanoseconds: 600_000_000)
-            guard !Task.isCancelled else { return }
-            read = await InkReader.read(drawing, langs: store.isSv ? ["sv-SE", "en-US"] : (Simp.on ? ["zh-Hans", "zh-Hant"] : ["zh-Hant", "zh-Hans"]))
-        }
+        .onChange(of: link.turn) { turnChanged() }
+        .onChange(of: link.results.count) { learned() }
+    }
+
+    /// my answer was judged (on another device): it counts for 不熟 / 複習
+    private func learned() {
+        guard let r = link.results.last, r.who == link.myName, let c = queue.first(where: { $0.h == r.word }) else { return }
+        _ = store.answer(c, correct: r.right, goal: goal)
     }
 
     // MARK: parts
 
-    private var players: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(tr("隊伍分數")).ffFont(.headline).foregroundStyle(T.glyph)
-                Spacer()
-                Text("\(link.teamPoints)").scaledFont(28, weight: .bold).foregroundStyle(T.blueInk)
-            }
-            FlowLayout(spacing: 6) {
-                chip(link.me.displayName + tr("（你）"), T.blue)
-                ForEach(Array(link.players.values).sorted(), id: \.self) { chip($0, T.green) }
+    private var scoreboard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            let names = link.playing ? link.order : [link.myName] + Array(link.players.values).sorted()
+            ForEach(names, id: \.self) { n in
+                HStack(spacing: 8) {
+                    if link.playing && link.answerer == n { Image(systemName: "arrowtriangle.right.fill").foregroundStyle(T.blueInk).ffFont(.caption) }
+                    Text(n + (n == link.myName ? tr("（你）") : "")).ffFont(.subheadline, .semibold).foregroundStyle(T.glyph)
+                    Spacer()
+                    if link.playing { Text("\(link.scores[n] ?? 0)").scaledFont(22, weight: .bold).foregroundStyle(T.blueInk) }
+                }
             }
             if link.players.isEmpty {
                 HStack(spacing: 8) {
@@ -203,12 +263,6 @@ struct CoopView: View {
         .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
     }
 
-    private func chip(_ t: String, _ fill: Color) -> some View {
-        Text(t).ffFont(.subheadline, .semibold).foregroundStyle(T.glyph)
-            .padding(.horizontal, 10).padding(.vertical, 4)
-            .background(Capsule().fill(fill.opacity(0.7)))
-    }
-
     private var lobby: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(tr("你的名字")).ffFont(.subheadline, .semibold).foregroundStyle(T.muted)
@@ -218,159 +272,255 @@ struct CoopView: View {
                 ForEach(Self.modes.indices, id: \.self) { Text(trs(Self.modes[$0])).tag($0) }
             }
             .pickerStyle(.segmented)
-            Stepper(tr("每個人 \(rounds) 題"), value: $rounds, in: 5...30, step: 5)
-            Text(tr("每個人的題目都從自己的練習範圍（\(store.practiceName)）出，用自己的語言。答對 +10，用一次提示 −3。"))
+            Stepper(tr("每個人 \(rounds) 題"), value: $rounds, in: 1...20)
+            Text(tr("輪流答題。輪到你的時候，詞只會出現在別人的畫面上：他們一次給你一個提示（先是讀音，要的話再給意思、部首），你在自己的畫面上答，按「完成」，他們再按對或錯。每個人的詞都從自己的練習範圍（\(store.practiceName)）出，用自己的語言。答對 10 分，每多要一個提示少 3 分。"))
                 .ffFont(.footnote).foregroundStyle(T.muted)
-            Button { link.send(CoopMsg(kind: .start, name: link.me.displayName, mode: mode, rounds: rounds)) } label: {
+            Button { start() } label: {
                 Text(tr("開始")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 34)
             }
             .prominentButton(T.blueEdge)
+            .disabled(link.players.isEmpty)
         }
     }
 
-    private func question(_ c: Card) -> some View {
-        let m = link.started?.mode ?? mode
-        return VStack(alignment: .leading, spacing: 12) {
-            Text(tr("第 \(n + 1)／\(queue.count) 題・你的分數 \(myPoints)")).ffFont(.caption).foregroundStyle(T.muted)
-            VStack(alignment: .leading, spacing: 6) {
-                if !store.isSv { Text(store.cardRom(c, rom, place)).latFont(24).foregroundStyle(T.greenInk) }
-                Text(store.practiceMeaning(c).t).ffFont(.title3).foregroundStyle(T.glyph)
-                if hints > 0 {
-                    Text(tr("提示：") + String(c.h.prefix(hints)) + String(repeating: "＿", count: max(0, c.h.count - hints)))
-                        .scaledFont(22, weight: .semibold).foregroundStyle(T.oliveInk)
-                }
-            }
-            if let r = result {
-                VStack(alignment: .leading, spacing: 6) {
-                    Label(r ? tr("答對了") : tr("答錯了"), systemImage: r ? "checkmark.circle.fill" : "xmark.circle.fill")
-                        .foregroundStyle(r ? T.greenInk : T.rustInk).ffFont(.headline)
-                    Text(c.h).scaledFont(40, weight: .bold).foregroundStyle(T.glyph)
-                    Text(store.cardRom(c, rom, place)).latFont(18).foregroundStyle(T.greenInk)
-                    Button { next() } label: { Text(n + 1 < queue.count ? tr("下一題") : tr("看結果")).frame(maxWidth: .infinity, minHeight: 30) }
-                        .prominentButton(T.blueEdge)
-                }
+    /// my turn: the clues are on the others' screens; I answer here
+    private var myTurnView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(tr("輪到你了")).ffFont(.title3, .bold).foregroundStyle(T.blueInk)
+            if mine == nil {
+                Text(tr("你的練習範圍沒有詞可以問了。")).foregroundStyle(T.muted)
+                Button(tr("跳過")) { skip() }
+            } else if sent {
+                HStack(spacing: 8) { ProgressView(); Text(tr("等對方看你的答案…")).foregroundStyle(T.muted) }
             } else {
-                switch m {
+                Text(tr("請對方唸提示給你聽（第 \(hints) 個提示）。")).ffFont(.footnote).foregroundStyle(T.muted)
+                switch link.mode {
                 case 0:
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
-                        ForEach(options, id: \.k) { o in
-                            Button { answer(c, o.k == c.k, o.h) } label: {
-                                Text(o.h).scaledFont(22, weight: .semibold).foregroundStyle(T.glyph)
-                                    .frame(maxWidth: .infinity, minHeight: 50)
-                                    .background(RoundedRectangle(cornerRadius: 12).fill(T.fn))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                case 1:
-                    HStack {
-                        TextField(store.isSv ? tr("打這個詞") : tr("打這個詞的字"), text: $typed)
-                            .textInputAutocapitalization(.never).autocorrectionDisabled()
-                            .focused($focused).submitLabel(.done).onSubmit { check(c, typed) }
-                            .scaledFont(22).textFieldStyle(.roundedBorder)
-                        Button(tr("確認答案")) { check(c, typed) }.disabled(typed.isEmpty)
-                    }
-                default:
                     ZStack(alignment: .topTrailing) {
                         RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.97))
                         InkPad(drawing: $drawing, clear: clearN)
-                        Button { clearN += 1; read = [] } label: { Image(systemName: "eraser").padding(10) }
+                        Button { clearN += 1 } label: { Image(systemName: "eraser").padding(10) }
                             .buttonStyle(.plain).foregroundStyle(Color(white: 0.35))
                     }
-                    .frame(height: 200)
+                    .frame(height: 240)
                     .overlay(RoundedRectangle(cornerRadius: 14).stroke(T.fnEdge, lineWidth: 1))
-                    HStack(spacing: 8) {
-                        ForEach(read, id: \.self) { w in
-                            Button { check(c, w) } label: {
-                                Text(w).scaledFont(22, weight: .semibold).foregroundStyle(T.glyph)
-                                    .padding(.horizontal, 12).padding(.vertical, 4).background(Capsule().fill(T.fn))
+                case 1:
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], spacing: 8) {
+                        ForEach(options, id: \.k) { o in
+                            Button { picked = o.h } label: {
+                                Text(o.h).scaledFont(22, weight: .semibold).foregroundStyle(T.glyph)
+                                    .frame(maxWidth: .infinity, minHeight: 50)
+                                    .background(RoundedRectangle(cornerRadius: 12).fill(picked == o.h ? T.blue : T.fn))
+                                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(picked == o.h ? T.blueEdge : .clear, lineWidth: 2))
                             }
                             .buttonStyle(.plain)
                         }
-                        if read.isEmpty { Text(tr("寫好以後點 iOS 認出來的字")).ffFont(.caption).foregroundStyle(T.muted) }
                     }
+                default:
+                    TextField(store.isSv ? tr("打這個詞") : tr("打這個詞的字"), text: $typed)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled()
+                        .focused($focused).scaledFont(22).textFieldStyle(.roundedBorder)
                 }
                 HStack {
-                    Button(tr("提示（−3）")) { hints += 1 }.disabled(hints >= c.h.count - 1 || m == 0 && hints >= 1)
+                    Button(tr("再給一個提示")) { moreHint() }
+                        .disabled(hints >= (link.question?.clues.count ?? 1))
                     Spacer()
-                    Button(tr("不知道")) { answer(c, false, "—") }.foregroundStyle(T.rustInk)
+                    Button { submit() } label: { Text(tr("完成")).ffFont(.headline).frame(minWidth: 90, minHeight: 30) }
+                        .prominentButton(T.blueEdge)
+                        .disabled(!canSubmit)
                 }
-                .ffFont(.subheadline)
             }
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
     }
 
-    private var done: some View {
+    private var canSubmit: Bool {
+        switch link.mode {
+        case 0: return !drawing.strokes.isEmpty
+        case 1: return picked != nil
+        default: return !typed.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+
+    /// someone else's turn: their word, its clues so far, and, once they've answered, 對 / 錯
+    private var theirTurnView: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let q = link.question {
+                Text(tr("輪到 \(q.from)：唸提示給他聽")).ffFont(.title3, .bold).foregroundStyle(T.blueInk)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(q.clues.prefix(q.shown).enumerated()), id: \.offset) { i, c in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("\(i + 1)").ffFont(.caption, .bold).foregroundStyle(T.muted).frame(width: 18)
+                            Text(c).ffFont(.title3).foregroundStyle(T.glyph).textSelection(.enabled)
+                        }
+                    }
+                    if q.shown < q.clues.count {
+                        Text(tr("（還有 \(q.clues.count - q.shown) 個提示，他要的時候才會出現）")).ffFont(.caption).foregroundStyle(T.muted)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(tr("答案（不要給 \(q.from) 看）")).ffFont(.caption).foregroundStyle(T.muted)
+                    Text(q.word).scaledFont(36, weight: .bold).foregroundStyle(T.glyph)
+                    if !q.reading.isEmpty { Text(q.reading).latFont(18).foregroundStyle(T.greenInk) }
+                }
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 12).fill(T.fn))
+                if q.submitted {
+                    Text(tr("\(q.from) 的答案")).ffFont(.subheadline, .semibold).foregroundStyle(T.muted)
+                    if let d = q.drawing {
+                        Image(uiImage: d.image(from: d.bounds.insetBy(dx: -16, dy: -16), scale: 2))
+                            .resizable().scaledToFit().frame(maxHeight: 200)
+                            .padding(8)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(Color(white: 0.97)))
+                    } else {
+                        Text(q.text).scaledFont(32, weight: .semibold).foregroundStyle(T.glyph)
+                    }
+                    HStack(spacing: 12) {
+                        Button { judge(true) } label: { Label(tr("對"), systemImage: "checkmark").frame(maxWidth: .infinity, minHeight: 34) }
+                            .prominentButton(T.greenEdge)
+                        Button { judge(false) } label: { Label(tr("錯"), systemImage: "xmark").frame(maxWidth: .infinity, minHeight: 34) }
+                            .prominentButton(T.rustEdge)
+                    }
+                } else {
+                    HStack(spacing: 8) { ProgressView(); Text(tr("\(q.from) 正在答…")).foregroundStyle(T.muted) }
+                }
+            } else {
+                HStack(spacing: 8) { ProgressView(); Text(tr("等 \(link.answerer ?? "") 的題目…")).foregroundStyle(T.muted) }
+            }
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
+    }
+
+    private var finished: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(tr("你答完了：\(myPoints) 分")).ffFont(.headline).foregroundStyle(T.glyph)
-            let all = link.players.count + 1
-            Text(tr("\(link.finished.count)／\(all) 個人答完了")).ffFont(.footnote).foregroundStyle(T.muted)
-            Button { link.send(CoopMsg(kind: .start, name: link.me.displayName, mode: mode, rounds: rounds)) } label: {
-                Text(tr("再玩一局")).frame(maxWidth: .infinity, minHeight: 30)
-            }
-            .prominentButton(T.blueEdge)
+            let best = link.scores.values.max() ?? 0
+            let winners = link.order.filter { (link.scores[$0] ?? 0) == best }
+            Text(winners.count == 1 ? tr("\(winners[0]) 贏了！") : tr("平手！")).ffFont(.title2, .bold).foregroundStyle(T.blueInk)
+            Button { start() } label: { Text(tr("再玩一局")).frame(maxWidth: .infinity, minHeight: 30) }
+                .prominentButton(T.blueEdge)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
     }
 
-    private var feed: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(link.feed.reversed().prefix(40), id: \.id) { f in
-                Text(f.text).ffFont(.footnote)
-                    .foregroundStyle(f.good == true ? T.greenInk : (f.good == false ? T.rustInk : T.muted))
+    /// the words answered so far (only once answered: never the one being asked)
+    private var answered: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !link.results.isEmpty { Text(tr("答過的詞")).ffFont(.subheadline, .semibold).foregroundStyle(T.muted) }
+            ForEach(link.results.reversed()) { r in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: r.right ? "checkmark.circle.fill" : "xmark.circle.fill").foregroundStyle(r.right ? T.greenInk : T.rustInk)
+                    Text(r.word).scaledFont(20, weight: .semibold).foregroundStyle(T.glyph)
+                    if !r.reading.isEmpty { Text(r.reading).latFont(14).foregroundStyle(T.greenInk) }
+                    Spacer()
+                    Text(r.who + (r.right ? "　+\(r.points)" : "")).ffFont(.caption).foregroundStyle(T.muted)
+                }
             }
         }
     }
 
     // MARK: the game
 
+    private func start() {
+        let names = ([link.myName] + Array(link.players.values)).sorted()
+        link.send(CoopMsg(kind: .start, name: link.myName, mode: mode, rounds: rounds, order: names))
+    }
+
+    /// a game started: my words for it (the ones due for 複習 first, then the practice scope's)
     private func begin() {
-        guard let s = link.started else { return }
-        // (the words due for 複習 first, then the practice scope's)
-        var pool = store.dueCards.shuffled() + store.practiceCards.shuffled()
         var seen = Set<String>()
-        pool = pool.filter { seen.insert($0.k).inserted && (s.mode != 2 || store.isSv || Store.canWrite($0.h)) }
-        queue = Array(pool.prefix(s.rounds))
-        n = 0; myPoints = 0
+        let pool = (store.dueCards.shuffled() + store.practiceCards.shuffled())
+            .filter { seen.insert($0.k).inserted && (link.mode != 0 || store.isSv || Store.canWrite($0.h)) }
+        queue = Array(pool.prefix(link.rounds))
+        mine = nil
+        turnChanged()
+    }
+
+    private func turnChanged() {
+        guard link.playing, !link.over, link.myTurn else { return }
         ask()
     }
 
+    /// my turn: the next of my words, sent to the others (not shown here)
     private func ask() {
-        guard n < queue.count else {
-            card = nil
-            if link.started != nil { link.send(CoopMsg(kind: .finished, name: link.me.displayName)) }
-            return
+        let k = link.turn / max(link.order.count, 1)
+        sent = false; picked = nil; typed = ""; clearN += 1; drawing = PKDrawing(); hints = 1
+        guard k < queue.count else { mine = nil; return }
+        let c = queue[k]
+        mine = c
+        options = (soundAlike(c) + [c]).shuffled()
+        let reading = store.isSv ? "" : String(store.cardRom(c, rom, place).characters)
+        let meaning = store.practiceMeaning(c).t
+        var clues: [String] = []
+        if store.isSv {
+            clues = [tr("意思：") + meaning, tr("\(c.h.count) 個字母，開頭是「\(String(c.h.prefix(1)))」")]
+        } else {
+            clues = [tr("讀音：") + reading, tr("意思：") + meaning, radicals(c.h)]
         }
-        let c = queue[n]
-        card = c; hints = 0; result = nil; typed = ""; clearN += 1; read = []
-        options = (store.distractors(for: c, count: 7) + [c]).shuffled()
-        let prompt = (store.isSv ? "" : String(store.cardRom(c, rom, place).characters) + "　") + store.practiceMeaning(c).t
-        link.send(CoopMsg(kind: .asked, name: link.me.displayName, lang: Lang.kind(c.k), text: prompt))
-        focused = (link.started?.mode ?? mode) == 1
+        link.send(CoopMsg(kind: .question, name: link.myName, word: c.h, reading: reading, clues: clues, lang: Lang.kind(c.k)))
+        focused = link.mode == 2
     }
 
-    private func norm(_ s: String) -> String {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return store.isSv ? t.lowercased() : Simp.convert(t)
+    /// seven words that sound like it (the same number of syllables, as much of the reading the same as can be)
+    private func soundAlike(_ c: Card) -> [Card] {
+        func plain(_ s: String) -> String { (s.applyingTransform(.stripDiacritics, reverse: false) ?? s).lowercased().filter { $0.isLetter || $0 == " " || $0 == "-" } }
+        let me = plain(c.r.first ?? ""), n = c.syllables
+        let first = me.split(whereSeparator: { $0 == " " || $0 == "-" }).first.map(String.init) ?? me
+        var scored: [(Int, Card)] = []
+        for x in store.cards.prefix(8000) where x.k != c.k && x.h != c.h && x.syllables == n {
+            let p = plain(x.r.first ?? "")
+            var same = zip(p, me).prefix { $0 == $1 }.count
+            if p.hasPrefix(first) { same += 3 }
+            if same > 0 { scored.append((same, x)) }
+        }
+        var out: [Card] = []
+        var used: Set<String> = [c.h]
+        for (_, x) in scored.sorted(by: { $0.0 > $1.0 }).prefix(30).shuffled() where !used.contains(x.h) {
+            used.insert(x.h); out.append(x)
+            if out.count == 7 { break }
+        }
+        if out.count < 7 { out += store.distractors(for: c, count: 7 - out.count).filter { !used.contains($0.h) } }
+        return Array(out.prefix(7))
     }
 
-    private func check(_ c: Card, _ given: String) {
-        guard !given.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        answer(c, norm(given) == norm(c.h), given)
+    /// 部首 of each character (the 華語 dictionary's), or how many characters
+    private func radicals(_ h: String) -> String {
+        let cs = h.map(String.init)
+        if let z = store.zh {
+            let rs = cs.map { ch in z.charIndex[ch].flatMap { z.chars[$0].radical } ?? "？" }
+            if rs.contains(where: { $0 != "？" }) { return tr("部首：") + rs.joined(separator: "、") + tr("（\(cs.count) 個字）") }
+        }
+        return tr("\(cs.count) 個字")
     }
 
-    private func answer(_ c: Card, _ ok: Bool, _ given: String) {
-        guard result == nil else { return }
-        result = ok
-        let pts = ok ? max(1, 10 - 3 * hints) : 0
-        myPoints += pts
-        _ = store.answer(c, correct: ok, goal: goal)
-        link.send(CoopMsg(kind: .answered, name: link.me.displayName, lang: Lang.kind(c.k), text: c.h, right: ok, points: pts))
+    private func moreHint() {
+        hints += 1
+        link.send(CoopMsg(kind: .hint, name: link.myName, hints: hints))
+    }
+
+    private func submit() {
+        var m = CoopMsg(kind: .submit, name: link.myName)
+        switch link.mode {
+        case 0: m.drawing = drawing.dataRepresentation()
+        case 1: m.text = picked ?? ""
+        default: m.text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        sent = true
         focused = false
+        link.send(m)
     }
 
-    private func next() { n += 1; ask() }
+    private func judge(_ right: Bool) {
+        link.send(CoopMsg(kind: .judge, name: link.myName, right: right))
+    }
+
+    private func skip() {
+        // (no word: the turn passes as a wrong answer with nothing asked)
+        link.send(CoopMsg(kind: .question, name: link.myName, word: "—", clues: [tr("沒有題目")]))
+        link.send(CoopMsg(kind: .submit, name: link.myName, text: "—"))
+        link.send(CoopMsg(kind: .judge, name: link.myName, right: false))
+    }
 }
