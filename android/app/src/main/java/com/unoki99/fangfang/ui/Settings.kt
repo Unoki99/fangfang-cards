@@ -428,6 +428,8 @@ private fun LanguagePage() {
         // (only when the mark is left out: a space in its place)
         RowDivider(); SwitchRow(tr("第一聲的地方空一格"), Prefs.hongimTone1Space, enabled = !Prefs.hongimTone1.value)
         RowDivider(); SwitchRow(tr("方音每個音節中間空一格"), Prefs.hongimSpaceAll)
+        // (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ or ˙ㄐㄧㆵ˙ㄍㄨㄚ)
+        RowDivider(); SwitchRow(tr("方音輕聲保留原本的調號"), Prefs.hongimLightKeep)
     }
     SectionTitle(tr("字形"))
     Group {

@@ -155,7 +155,23 @@ $MirrorOf = @{
 }
 # Get-Mirrored <path in fangfang-data, or $null> <the original's address> <file>: $true when it was downloaded
 # (each file says where it came from: fangfang-data, or the place it's published, or neither)
+# Every file downloaded is kept in %LOCALAPPDATA%\FangfangCards\sources and used again next time instead of being
+# downloaded again ($env:FANGFANG_REFRESH = "1" downloads them again)
+$SrcCache = Join-Path $env:LOCALAPPDATA "FangfangCards\sources"
+New-Item -ItemType Directory -Force -Path $SrcCache | Out-Null
 function Get-Mirrored($path, $url, $dest) {
+    $label = Split-Path $dest -Leaf
+    $name = if ($path) { $path } else { $url }
+    $kept = Join-Path $SrcCache (($name -replace '[^A-Za-z0-9._-]', '_'))
+    if (-not $env:FANGFANG_REFRESH -and (Test-Path $kept) -and ((Get-Item $kept).Length -gt 0)) {
+        Copy-Item $kept $dest -Force
+        Write-Host "  $label  ← 之前下載的（$SrcCache）"
+        return $true
+    }
+    if (Get-MirroredNew $path $url $dest) { Copy-Item $dest $kept -Force -ErrorAction SilentlyContinue; return $true }
+    return $false
+}
+function Get-MirroredNew($path, $url, $dest) {
     $label = Split-Path $dest -Leaf
     if ($path) {
         $enc = ($path -split "/" | ForEach-Object { [uri]::EscapeDataString($_) }) -join "/"
@@ -285,7 +301,8 @@ if ($need) {
     $raw = "https://raw.githubusercontent.com"
     # (維基詞典's Chinese pages, for 粵語 and 台語's English: tools\wikt_lines.py reads this project's copy in
     # fangfang-data\common on GitHub, downloaded once into the temporary folder for both, else kaikki.org)
-    $env:FANGFANG_WIKT_CACHE = Join-Path $Tmp "wiktionary-zh.jsonl.gz"
+    $env:FANGFANG_WIKT_CACHE = Join-Path $SrcCache "wiktionary-zh.jsonl.gz"   # (kept for next time)
+    if ($env:FANGFANG_REFRESH) { Remove-Item $env:FANGFANG_WIKT_CACHE -Force -ErrorAction SilentlyContinue }
     Push-Location $Tools
     if (-not (Test-Path (Join-Path $Apd "dict.json")) -or -not (Test-Path (Join-Path $Apd "cards.json"))) {
         Write-Host "下載教育部《臺灣台語常用詞辭典》資料（kautian.ods）…"
@@ -512,7 +529,9 @@ if ($Win) {
             $env:PYTHONUTF8 = "1"
             $ScTmp = Join-Path $env:TEMP ("fangfang-sc-" + [guid]::NewGuid().ToString("N"))
             New-Item -ItemType Directory -Force -Path $ScTmp | Out-Null
-            $env:FANGFANG_WIKT_CACHE = Join-Path $ScTmp "wiktionary-zh.jsonl.gz"
+            # (the Wiktionary copy kept with the other downloads, for next time)
+            $env:FANGFANG_WIKT_CACHE = Join-Path $SrcCache "wiktionary-zh.jsonl.gz"
+            if ($env:FANGFANG_REFRESH) { Remove-Item $env:FANGFANG_WIKT_CACHE -Force -ErrorAction SilentlyContinue }
             $kk = "-"
             foreach ($c in @((Join-Path $env:USERPROFILE "Downloads\kaikki.org-dictionary-Chinese.jsonl"), (Join-Path $env:USERPROFILE "Desktop\kaikki.org-dictionary-Chinese.jsonl"))) {
                 if ($kk -eq "-" -and (Test-Path $c)) { $kk = $c }

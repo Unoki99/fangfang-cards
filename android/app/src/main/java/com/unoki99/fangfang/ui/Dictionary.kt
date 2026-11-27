@@ -36,7 +36,7 @@ import kotlinx.coroutines.withContext
 
 /** what the texts depend on: redraw (and work out again) when one of these changes */
 @Composable
-fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value, Prefs.hongimSpaceAll.value, Prefs.toneGlow.value, Prefs.theme.value,
+fun textKey(): List<Any> = listOf(Prefs.rom.value, Prefs.place.value, Prefs.toneSys.value, Prefs.toneMarks.value, Prefs.hongimTone1.value, Prefs.hongimTone1Space.value, Prefs.hongimSpaceAll.value, Prefs.hongimLightKeep.value, Prefs.toneGlow.value, Prefs.theme.value,
     Prefs.zhRom.value, Prefs.zhPlace.value)
 
 // MARK: - entry

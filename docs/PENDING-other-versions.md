@@ -5,20 +5,23 @@ versions still need. When an item has been done everywhere, delete it here.
 
 ## Round of 2026-11-27 (iPhone / iPad only)
 
-Done on iOS this round — still to do on **Android, Windows / Mac (desktop), the Firefox add-on**:
+Done on iOS this round — still to do on **Android, Windows / Mac (desktop), the Firefox add-on**.
+Android and desktop are one code base (android/app/src/main, Kotlin / Compose; windows/ builds the same code as a
+computer program), so each item is ported to both at once. Porting started 2026-11-27 (marked done in both columns).
+
 
 | Item | iOS | Android | Desktop | Add-on |
 |---|---|---|---|---|
 | 聲調顏色: 客語 only on / off (七聲 / 五聲 stays 台語's) | done | todo | todo | — |
 | 新詞 swipe: ⇧ opens / closes 詳細, ⌫ undoes the last card | done | — | todo | — |
-| TOCFL English level names: TOCFL 1–7 (the 7 levels) | done | todo | todo | — |
+| TOCFL English level names: TOCFL 1–7 (the 7 levels) | done | done | done | — |
 | Radios grouped by language again (not by stream kind) | done | todo | todo | — |
-| Build scripts keep the downloaded dictionary files (Mac: ~/Library/Caches/FangfangCards/sources) and don't download them again; FANGFANG_REFRESH=1 to download again. Also the 四川話 data was rebuilt every run (version check 5, file says 4) | done (apple/build-data.sh, apple/install.sh) | todo (android-install.bat) | todo (install.ps1) | — |
+| Build scripts keep the downloaded dictionary files (Mac: ~/Library/Caches/FangfangCards/sources) and don't download them again; FANGFANG_REFRESH=1 to download again. Also the 四川話 data was rebuilt every run (version check 5, file says 4) | done (apple/build-data.sh, apple/install.sh) | done (android-install.bat) | done (install.ps1) | — |
 | Practice of single characters: the most common first | done | todo | todo | — |
-| 華語 pinyin search: lü / ǜ read as v (lv finds 綠; lu still finds lü words after the lu ones) | done | todo | todo | todo |
+| 華語 pinyin search: lü / ǜ read as v (lv finds 綠; lu still finds lü words after the lu ones) | done | done | done | todo |
 | 認識的漢字: a character marked 不熟 in another language no longer stays orange (長) | done | todo | todo | — |
 | Swipe falls apart upside down (bitmap rows read the wrong way) | done | — | — | — |
-| 方音 light tone keeps the syllable's own tone mark (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ) | done | todo | todo | todo |
+| 方音 light tone keeps the syllable's own tone mark (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ) | done | done | done | todo |
 | 客語 方音符號: ii ㄭ, m ㆬ, ng ㆭ, 入聲 ㆴㆵㆻ (陰入) / ㆴ̇ㆵ̇ㆻ̇ (陽入) | done (at display; the install table hz still has the old ones) | todo | todo | todo |
 | 台語 own words (自訂) follow the 各地 reading rules (composed from each 字) | done | todo | todo | — |
 | 台語 entry: 華 column says 臺華共同詞 (same in 華語) | done | todo | todo | — |
@@ -44,7 +47,7 @@ Done on iOS this round — still to do on **Android, Windows / Mac (desktop), th
 | Own words (自訂) in 華語, 粵語, 客語, 日語, 瑞典語 (word, reading, meaning, example), CSV export; keys "word\t<reading>#自" in Progress.own | done (no CSV import for these yet) | todo | todo | todo |
 | Gemini (own API key, 設定 → 詞典): no search result → its guesses, shown as dictionary words (瑞典語: only when no English match either); 華語: add the term to 自訂; 本週學習 → 造句 (usage corrected, then the whole sentence) | done | todo | todo | — |
 | First-run setup in steps: app language + 正體／簡體; meanings + spelling; each language's place (台語 腔口, 華語 讀音, 客語 腔); tone colours + 方音 options | done | todo | todo | — |
-| 方音 option: light tone keeps its own tone mark or only ˙ (設定 → 語言與讀音 → 台語) | done | todo | todo | todo |
+| 方音 option: light tone keeps its own tone mark or only ˙ (設定 → 語言與讀音 → 台語) | done | done | done | todo |
 | 一起玩: two or more players nearby (MultipeerConnectivity: Wi-Fi / Bluetooth) take turns. Each picks their own way of answering and number of words and presses 準備好了; it starts when everyone has. On your turn a word from your own 練習範圍 / language is sent to the others only (never shown on your screen); they see its clues one at a time (讀音, then 意思, then 部首 when asked; 瑞典語: 意思, then letters) and the answer, and read the clues to you. You answer on your screen (手寫, 八選一 with sound-alike words, 打字) and press 完成; your answer shows on theirs and one of them presses 對 / 錯. 10 points, −3 per extra clue; most points wins. Words listed only once answered. Your answers count for 不熟 / 複習 | done (nearby only, iOS ↔ iOS) | todo | todo | — |
 | Add-on (Safari copy): subtitles 轉成簡體; 拼音／注音 button in the subtitle bar; the gear opens a big 字幕設定 page | done (apple/FangfangSafari) | — | — | todo (Firefox build: bump the version and rebuild) |
 

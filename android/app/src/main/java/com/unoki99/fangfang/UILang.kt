@@ -36,8 +36,9 @@ object UILang {
     private val parts = listOf(
         "漢字・更多常用字" to "Characters · more common ones", "漢字・" to "Characters · ",
         "常用字 " to "Common characters ", "常用詞 " to "Common words ",
-        "準備一級" to "Novice 1", "準備二級" to "Novice 2", "入門級" to "Level 1", "基礎級" to "Level 2",
-        "進階級" to "Level 3", "高階級" to "Level 4", "流利級" to "Level 5",
+        // (TOCFL's 7 levels as 1–7, the way they're known in English)
+        "準備一級" to "1", "準備二級" to "2", "入門級" to "3", "基礎級" to "4",
+        "進階級" to "5", "高階級" to "6", "流利級" to "7",
     )
 }
 

@@ -355,8 +355,9 @@ object Zhuyin {
 
     /** 拼音 without tone marks, for searching: ü → v */
     fun plain(s: String): String {
-        val a = s.lowercase().replace("ü", "v").replace("u:", "v")
-        val n = Normalizer.normalize(a, Normalizer.Form.NFD).filter { Character.getType(it) != Character.NON_SPACING_MARK.toInt() }
+        // (ü with a tone mark is a letter of its own, ǜ: v too, or 綠 lǜ was "lu" and "lv" didn't find it)
+        val a = Normalizer.normalize(s.lowercase().replace("u:", "v"), Normalizer.Form.NFD).replace("u\u0308", "v")
+        val n = a.filter { Character.getType(it) != Character.NON_SPACING_MARK.toInt() }
         return n.filter { it.isLetterOrDigit() }
     }
 

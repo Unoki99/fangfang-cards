@@ -41,8 +41,16 @@ object EngineSettings {
     private val marks = setOf('ˉ', 'ˋ', 'ˊ', '˪', '˫', '\uA715', '\uA718', '\u0307', '˙')
     private val stops = setOf('ㆴ', 'ㆵ', 'ㆶ', 'ㆷ')
     private fun isZy(c: Char) = c in '\u3105'..'\u312F' || c in '\u31A0'..'\u31BF'
-    /** a syllable in the light tone (after "--"): ˙ before it, as 注音 writes 輕聲, its own tone mark left out */
-    fun hongimLight(s: String): String = "˙" + s.filter { it !in marks }
+    /** a light-tone syllable keeps its own tone mark (˙ㄐㄧㆵ̇˙ㄍㄨㄚˋ), or has only ˙ (設定 → 台語) */
+    @Volatile var hongimLightKeep = true
+    /** a syllable in the light tone (after "--"): ˙ before it; unlike 華語's 注音, its own tone mark kept (the light
+     *  tone is said from the syllable's own tone), unless only ˙ is asked for. A 陽入 syllable's own dot (ㆵ˙) is
+     *  written over its last letter, ㆵ̇, so it isn't read as the light tone's. The first-tone mark as asked. */
+    fun hongimLight(s: String): String {
+        var t = hongimSyllable(s)
+        for (st in listOf("ㆴ", "ㆵ", "ㆻ", "ㆷ")) t = t.replace(st + "˙", st + "\u0307").replace(st + "·", st + "\u0307")
+        return "˙" + (if (hongimLightKeep) t.filter { it != '˙' } else t.filter { it !in marks })
+    }
 
     /** a whole 方音 reading written out already: the syllables spaced (when asked) and the first-tone mark */
     fun hongim(s: String): String {
