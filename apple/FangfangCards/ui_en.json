@@ -2087,5 +2087,7 @@
  "資料：ECDICT（MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表）；美式讀音：CMUdict（BSD）；瑞典文和例句：Folkets lexikon（KTH，CC BY-SA 2.5）；正體字：CC-CEDICT（CC BY-SA）。": "Sources: ECDICT (MIT: English and Chinese meanings, frequency, Collins stars, exam lists); American readings: CMUdict (BSD); Swedish and example sentences: Folkets lexikon (KTH, CC BY-SA 2.5); traditional characters: CC-CEDICT (CC BY-SA).",
  "瑞典文「{0}」": "Swedish “{0}”",
  "Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。詞典沒有的詞，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。": "Gemini's guesses, not the dictionary's: tap a word to look it up. For a word the dictionary doesn't have, press + beside it to save it as your own word (its meaning filled in with what you searched, “{0}”).",
- "考試": "Exams"
+ "考試": "Exams",
+ "拼字": "Spell it",
+ "拼出這個英文詞": "Spell this English word"
 }

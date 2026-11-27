@@ -234,7 +234,11 @@ struct CoopView: View {
 
     private static let modes = ["手寫", "八選一", "打字"]
     /// the way I answer in this game (the one I chose when I pressed 準備好了)
-    private var myMode: Int { link.modes[link.myName] ?? mode }
+    /// (瑞典語, 英語: no 手寫, spelling it instead)
+    private var myMode: Int { let m = link.modes[link.myName] ?? mode; return store.isSv && m == 0 ? 2 : m }
+    /// the ways to answer this language can have: 英語, 瑞典語 八選一 (by its meaning) or 拼字
+    private var modeChoices: [Int] { store.isSv ? [1, 2] : [0, 1, 2] }
+    private func modeName(_ i: Int) -> String { store.isSv && i == 2 ? trs("拼字") : trs(Self.modes[i]) }
     private var iAmReady: Bool { link.ready[link.myName] != nil }
 
     var body: some View {
@@ -316,10 +320,11 @@ struct CoopView: View {
             TextField(UIDevice.current.name, text: $name).textFieldStyle(.roundedBorder)
             Text(tr("（改名字要重新打開「一起玩」才會用上）")).ffFont(.caption2).foregroundStyle(T.muted)
             Picker(tr("你怎麼答"), selection: $mode) {
-                ForEach(Self.modes.indices, id: \.self) { Text(trs(Self.modes[$0])).tag($0) }
+                ForEach(modeChoices, id: \.self) { Text(modeName($0)).tag($0) }
             }
             .pickerStyle(.segmented)
             .disabled(iAmReady)
+            .onAppear { if store.isSv && mode == 0 { mode = 2 } }
             Stepper(tr("你答 \(rounds) 題"), value: $rounds, in: 1...20).disabled(iAmReady)
             Text(tr("輪流答題，每個人用自己選的方式答。輪到你的時候，詞只會出現在別人的畫面上：他們一次給你一個提示（先是讀音，要的話再給意思、部首），你在自己的畫面上答，按「完成」，他們再按對或錯。每個人的詞都從自己的練習範圍（\(store.practiceName)）出，用自己的語言。答對 10 分，每多要一個提示少 3 分。"))
                 .ffFont(.footnote).foregroundStyle(T.muted)
@@ -361,7 +366,7 @@ struct CoopView: View {
                         }
                     }
                 default:
-                    TextField(store.isSv ? tr("打這個詞") : tr("打這個詞的字"), text: $typed)
+                    TextField(store.isEn ? tr("拼出這個英文詞") : store.isSv ? tr("打這個詞") : tr("打這個詞的字"), text: $typed)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .focused($focused).scaledFont(22).textFieldStyle(.roundedBorder)
                 }
@@ -505,11 +510,16 @@ struct CoopView: View {
         guard k < queue.count else { mine = nil; return }
         let c = queue[k]
         mine = c
-        options = (soundAlike(c) + [c]).shuffled()
-        let reading = store.isSv ? "" : String(store.cardRom(c, rom, place).characters)
+        // (英語, 瑞典語: words spelt alike, so picking by the meaning is harder: affect / effect / effort)
+        options = ((store.isSv ? spellingAlike(c) : soundAlike(c)) + [c]).shuffled()
+        let reading = store.isSv && !store.isEn ? "" : String(store.cardRom(c, rom, place).characters)
         let m = meanings(c)
         var clues: [String], kinds: [String]
-        if store.isSv {
+        if store.isEn {
+            // 英語: the meaning first, then the IPA, then how many letters and the first one
+            clues = [m.zh, reading, ""]; kinds = ["meaning", "reading", "letters"]
+            if reading.isEmpty { clues.remove(at: 1); kinds.remove(at: 1) }
+        } else if store.isSv {
             clues = [m.zh, ""]; kinds = ["meaning", "letters"]
         } else {
             let r = radicals(c.h)
@@ -520,6 +530,41 @@ struct CoopView: View {
         q.english = m.en
         link.send(q)
         focused = myMode == 2
+    }
+
+    /// 英語, 瑞典語: seven words spelt like it (the fewest letters different; the same first or last letter counts
+    /// as a bit closer), the rest any of the practice words
+    private func spellingAlike(_ c: Card) -> [Card] {
+        let me = Array(c.h.lowercased())
+        func dist(_ a: [Character], _ b: [Character]) -> Int {
+            if a.isEmpty { return b.count }
+            if b.isEmpty { return a.count }
+            var prev = Array(0...b.count), cur = [Int](repeating: 0, count: b.count + 1)
+            for i in 1...a.count {
+                cur[0] = i
+                for j in 1...b.count { cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1)) }
+                swap(&prev, &cur)
+            }
+            return prev[b.count]
+        }
+        var scored: [(Int, Card)] = []
+        let most = max(2, me.count / 2)
+        for x in store.cards.prefix(30000) where x.k != c.k {
+            let b = Array(x.h.lowercased())
+            guard b != me, abs(b.count - me.count) <= 2, !b.contains(" ") || me.contains(" ") else { continue }
+            var d = dist(me, b) * 2
+            if b.first == me.first { d -= 1 }
+            if b.last == me.last { d -= 1 }
+            if d <= most * 2 { scored.append((d, x)) }
+        }
+        var out: [Card] = []
+        var used: Set<String> = [c.h.lowercased()]
+        for (_, x) in scored.sorted(by: { $0.0 < $1.0 }).prefix(14).shuffled() where !used.contains(x.h.lowercased()) {
+            used.insert(x.h.lowercased()); out.append(x)
+            if out.count == 7 { break }
+        }
+        if out.count < 7 { out += store.distractors(for: c, count: 7 - out.count).filter { !used.contains($0.h.lowercased()) } }
+        return Array(out.prefix(7))
     }
 
     /// seven words that sound like it (the same number of syllables, as much of the reading the same as can be)
@@ -561,7 +606,9 @@ struct CoopView: View {
             en = e.enList
             if kind == 5 || kind == 6 {
                 let e3 = en.prefix(3).joined(separator: "; ")
-                return (e.svZhAll.prefix(2).joined(separator: "；"), e3.isEmpty ? first : e3)
+                // (英語: the Chinese lines without their word class, "n. 跑、賽跑" → 跑、賽跑)
+                let zh = e.svZhAll.prefix(2).map { kind == 6 ? $0.replacingOccurrences(of: #"^\s*([a-z]+\.\s*)+"#, with: "", options: .regularExpression) : $0 }
+                return (zh.joined(separator: "；"), e3.isEmpty ? first : e3)
             }
         }
         // (粵語, 日語: the meanings are English already)
