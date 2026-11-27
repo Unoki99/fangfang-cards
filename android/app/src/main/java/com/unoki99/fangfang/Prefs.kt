@@ -246,7 +246,7 @@ object Prefs : KeyValue {
     val dragonBest = Pref("dragonBest", 0)
     val dragonSeconds = Pref("dragonSeconds", 0)
     val dragonHand = Pref("dragonHand", false)
-    /** 一起玩 / 詞龍 together: the relay (設定 → 一起玩), my name there, how I answer and how many words */
+    /** 一起玩 / 詞龍 together: the relay (設定 → 卡片與練習 → 一起玩), my name there, how I answer and how many words */
     val relayServer = Pref("relayServer", "")
     /** Gemini (設定 → 詞典 → Gemini): your own key, turned on, the model */
     val geminiKey = Pref("geminiKey", "")

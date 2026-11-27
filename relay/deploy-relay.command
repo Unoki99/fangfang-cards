@@ -23,9 +23,9 @@ echo
 if [ -n "$url" ]; then
   printf "%s" "$url" | pbcopy
   echo "完成！網址已經複製了：$url"
-  echo "在 App 的 設定 → 一起玩 → 連線伺服器 貼上。也把這個網址傳給一起玩的人。"
+  echo "在 App 的 設定 → 卡片與練習 → 一起玩 → 連線伺服器 貼上。也把這個網址傳給一起玩的人。"
   echo "Done! The address is copied: $url"
-  echo "Paste it in the app: 設定 → 一起玩 → 連線伺服器, and send it to the people you play with."
+  echo "Paste it in the app: 設定 → 卡片與練習 → 一起玩 → 連線伺服器, and send it to the people you play with."
 else
   echo "沒有找到網址，上面有錯誤訊息。可以把它貼給 Claude 看。"
   echo "No address found; the messages above say what went wrong (you can paste them to Claude)."

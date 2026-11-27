@@ -72,7 +72,7 @@ open class RoomLink(val myName: String) {
     fun open(server: String, code: String) {
         close()
         val s = server.trim().trimEnd('/')
-        if (s.isEmpty()) { status = 3; error = tr("還沒有連線伺服器：設定 → 一起玩 → 連線伺服器。"); return }
+        if (s.isEmpty()) { status = 3; error = tr("還沒有連線伺服器：設定 → 卡片與練習 → 一起玩 → 連線伺服器。"); return }
         if (RoomCrypto.norm(code).length < 6) { status = 3; error = tr("房間代碼太短了。"); return }
         this.code = code
         key = RoomCrypto.key(code)

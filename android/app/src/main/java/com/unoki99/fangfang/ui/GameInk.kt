@@ -168,7 +168,7 @@ fun RoomBar(link: com.unoki99.fangfang.RoomLink, locked: Boolean) {
                 }
             }
             link.error?.let { Txt(it, ff(FF.Footnote), T.rustInk) }
-            if (server.isBlank()) Txt(tr("還沒有連線伺服器：設定 → 一起玩 → 連線伺服器（專案的 relay 資料夾說明怎麼免費放一個）。"), ff(FF.Caption), T.muted)
+            if (server.isBlank()) Txt(tr("還沒有連線伺服器：設定 → 卡片與練習 → 一起玩 → 連線伺服器（專案的 relay 資料夾說明怎麼免費放一個）。"), ff(FF.Caption), T.muted)
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Txt(tr("房間"), ff(FF.Caption), T.muted)

@@ -20,7 +20,7 @@
    ```
 
 4. 最後會顯示網址，像 `https://fangfang-relay.你的名字.workers.dev`。
-5. App 裡：設定 → 一起玩 → 連線伺服器，貼上這個網址。和你一起玩的人也貼同一個網址。
+5. App 裡：設定 → 卡片與練習 → 一起玩 → 連線伺服器，貼上這個網址。和你一起玩的人也貼同一個網址。
 
 ## English
 
@@ -42,4 +42,4 @@ Play 一起玩 and 詞龍 with others over the internet (iPhone / iPad, Android 
    ```
 
 4. It shows an address like `https://fangfang-relay.your-name.workers.dev`.
-5. In the app: Settings → 一起玩 → Relay server, paste the address. The people you play with paste the same one.
+5. In the app: Settings → Cards & practice → 一起玩 → Relay server, paste the address. The people you play with paste the same one.

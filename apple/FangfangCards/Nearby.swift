@@ -7,7 +7,7 @@ import CryptoKit
 // 附近: the same Wi-Fi, or Bluetooth (MultipeerConnectivity, encrypted). Everyone on the game's page both looks for
 // the others and can be found; the one whose name sorts first asks, so two don't ask each other at the same time.
 // 網路: a room on the relay (the project's relay folder: a small server on your own free Cloudflare account,
-// 設定 → 一起玩 → 連線伺服器), the same as the Android and computer versions', so all of them play together. The room's
+// 設定 → 卡片與練習 → 一起玩 → 連線伺服器), the same as the Android and computer versions', so all of them play together. The room's
 // name on the relay is a hash of the room code, and every message is encrypted with a key made from the code
 // (AES-GCM: base64 of nonce + ciphertext + tag), so the relay passes on bytes it can't read. Each message is an
 // envelope {"n": the sender's name, "h": 1 for "I'm here", "d": the game's own JSON}.
@@ -92,7 +92,7 @@ class NearbyLink: NSObject, ObservableObject {
         closeRoom()
         via = .internet
         let s = server.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        if s.isEmpty { status = 3; error = tr("還沒有連線伺服器：設定 → 一起玩 → 連線伺服器。"); return }
+        if s.isEmpty { status = 3; error = tr("還沒有連線伺服器：設定 → 卡片與練習 → 一起玩 → 連線伺服器。"); return }
         if RoomCrypto.norm(code).count < 6 { status = 3; error = tr("房間代碼太短了。"); return }
         let ws: String
         if s.hasPrefix("https://") { ws = "wss://" + s.dropFirst(8) }
@@ -275,7 +275,7 @@ struct RoomBar: View {
                     }
                     if let e = link.error { Text(e).ffFont(.footnote).foregroundStyle(T.rustInk) }
                     if server.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Text(tr("還沒有連線伺服器：設定 → 一起玩 → 連線伺服器（專案的 relay 資料夾說明怎麼免費放一個）。")).ffFont(.caption).foregroundStyle(T.muted)
+                        Text(tr("還沒有連線伺服器：設定 → 卡片與練習 → 一起玩 → 連線伺服器（專案的 relay 資料夾說明怎麼免費放一個）。")).ffFont(.caption).foregroundStyle(T.muted)
                     }
                 }
             }
@@ -293,7 +293,7 @@ struct RoomBar: View {
     }
 }
 
-/// 設定 → 一起玩
+/// 設定 → 卡片與練習 → 一起玩
 struct CoopSettingsSection: View {
     @AppStorage("relayServer") private var server = ""
     @AppStorage("coopName") private var name = ""
