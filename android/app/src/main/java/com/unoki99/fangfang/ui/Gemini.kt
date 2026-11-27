@@ -87,6 +87,7 @@ object Gemini {
     private fun target(lang: Int): Pair<String, String> = when (lang) {
         4 -> "Japanese dictionary" to "Japanese words (dictionary forms, written as a Japanese dictionary would list them)"
         5 -> "Swedish dictionary" to "Swedish words (base forms, as a Swedish dictionary would list them)"
+        6 -> "English dictionary" to "English words (base forms, as an English dictionary would list them)"
         0 -> "Taiwanese Hokkien dictionary that can also be searched with Mandarin words" to "Chinese words (Mandarin as used in Taiwan, ${script()} characters)"
         2 -> "Cantonese dictionary that can also be searched with Mandarin words" to "Chinese words (${script()} characters; Cantonese words or Mandarin ones)"
         3 -> "Taiwan Hakka dictionary that can also be searched with Mandarin words" to "Chinese words (Mandarin as used in Taiwan, ${script()} characters)"
@@ -117,7 +118,7 @@ If "$q" itself is a real Chinese word, expression, name or slang term, also add 
     class Correction(val usage: String, val corrected: String, val good: Boolean)
     suspend fun correct(word: String, reading: String, meaning: String, sentence: String, lang: Int): Correction {
         val language = listOf("Taiwanese Hokkien (written in Han characters as the Taiwan Ministry of Education does)", "Mandarin Chinese",
-            "Cantonese", "Taiwan Hakka", "Japanese", "Swedish")[lang.coerceIn(0, 5)]
+            "Cantonese", "Taiwan Hakka", "Japanese", "Swedish", "English")[lang.coerceIn(0, 6)]
         val p = """A learner of $language wrote a sentence to practise the word "$word"${if (reading.isEmpty()) "" else " ($reading)"}${if (meaning.isEmpty()) "" else ", meaning: $meaning"}.
 Sentence: "$sentence"
 Reply with JSON only: {"good": true or false, "usage": "...", "corrected": "..."}
@@ -166,7 +167,10 @@ fun GeminiSettings() {
 /** a search that found nothing: the words Gemini thinks were meant (when it's turned on); tapping one searches the
  *  dictionary for it. `addTerm`: 華語's add-to-自訂 */
 @Composable
-fun GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, addTerm: ((Gemini.Term) -> Unit)? = null) {
+fun GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, addTerm: ((Gemini.Term) -> Unit)? = null,
+                      /** a word Gemini gave that the dictionary doesn't have (has: whether it does): saved as your own
+                       *  word (自訂), its meaning what was searched */
+                      has: (String) -> Boolean = { false }, addOwn: ((String) -> Unit)? = null) {
     if (!Gemini.on) return
     var got by remember { mutableStateOf<Gemini.Suggestion?>(null) }
     var gotFor by remember { mutableStateOf("") }
@@ -189,13 +193,15 @@ fun GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, addTer
             if (g.note.isNotEmpty()) Txt(g.note, ff(FF.Footnote), T.muted)
             for (w in g.words) Row(Modifier.fillMaxWidth().clickable { search(w) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Txt(w, ff(FF.Title3, FontWeight.SemiBold), T.glyph, Modifier.weight(1f))
+                if (addOwn != null && !has(w)) TextButton(onClick = { addOwn(w) }) { Text(tr("＋存成自訂詞"), color = T.ownInk) }
                 Txt("⌕", ff(FF.Title3), T.btnInk)
             }
             if (g.words.isEmpty()) Txt(tr("Gemini 也不知道。"), ff(FF.Footnote), T.muted)
             val t = g.term
             if (t != null && addTerm != null) TextButton(onClick = { addTerm(t) }) { Text(tr("把「{0}」加到自訂（{1}）", t.h, t.pinyin), color = T.ownInk) }
         }
-        Txt(tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。"), ff(FF.Caption2), T.muted)
+        Txt(if (addOwn == null) tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。")
+            else tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。詞典沒有的詞，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。", query), ff(FF.Caption2), T.muted)
     }
 }
 

@@ -289,12 +289,13 @@ private fun copyStyleName(zh: Boolean = Store.isZh): String =
 private fun SettingsGrid(titles: List<String>, open: (Int) -> Unit) {
     val ts = Prefs.toneSys.value
     val tones = when (ts) { 7 -> tr("七聲"); 5 -> tr("五聲"); else -> tr("聲調顏色關") }
-    val lang = if (Store.isSv) tr("瑞典語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
+    val lang = if (Store.isEn) tr("英語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 3)]) + "・" + tr(Lang.listNames[Prefs.listNow.coerceIn(0, 2)])
+        else if (Store.isSv) tr("瑞典語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
         else if (Store.isJa) tr("日語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
         else if (Store.isHak) tr("客語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.hakAccents[Prefs.hakAccent.value.coerceIn(0, 5)])
         else if (Store.isYue) tr("粵語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)])
         else if (Store.isZh) tr("華語") + "・" + tr(Lang.romNames[Prefs.zhRom.value.coerceIn(0, 1)]) + "・" + tr(Lang.placeNames.getOrElse(Prefs.zhPlace.value) { Lang.placeNames[0] }) +
-        "・" + Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)]
+        "・" + Lang.listNames[Prefs.listNow.coerceIn(0, Lang.listNames.size - 1)]
         else tr("台語") + "・" + tr(ROM_NAMES[TwRom.lat(Prefs.rom.value)]) + "・" + (if (Prefs.place.value in PLACE_NAMES.indices) tr(PLACE_NAMES[Prefs.place.value].take(2)) else tr("通行"))
     val summaries = listOf(
         tr(AppTheme.of(Prefs.theme.value).title) + "・" + tones,
@@ -472,7 +473,7 @@ private fun LanguagePage() {
             val places = Lang.placeNames.takeIf { it.size >= 2 && !Lang.isJa && !Lang.isYue && !Lang.isHak } ?: listOf("臺灣", "大陸")
             Segmented(places.mapIndexed { i, n -> i to tr(n) }, Prefs.zhPlace.value.coerceIn(0, places.size - 1), { Prefs.zhPlace.value = it })
             Txt(tr("詞表"), ff(FF.Body))
-            Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.zhList.value, { Store.setZhList(it) })
+            Segmented(listOf(0 to "HSK", 1 to "TOCFL"), Prefs.zhList.value, { if (Store.lang == 1) Store.setZhList(it) else Prefs.zhList.value = it })
         }
     }
     SectionTitle(tr("粵語"))
@@ -526,6 +527,34 @@ private fun LanguagePage() {
             RowDivider()
             SwitchRow(tr("顯示由英文推測的中文"), Prefs.svGuessZh)
             Txt(tr("詞下面用連字號分開詞素（be-tal-a），每個部分一種顏色。詞是照字幕裡出現的次數分組，每組 500 個（FrequencyWords）。由英文推測的中文是照 CC-CEDICT 裡英文解釋相同的華語詞，標「由英文推測」，不一定準。顏色在「設定 → 顏色與外觀 → 選聲調顏色」選瑞典語。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
+        }
+        SectionTitle(tr("英語"))
+        Group {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Txt(tr("讀音"), ff(FF.Body))
+                Segmented(listOf(0 to tr("英式＋美式"), 1 to tr("美式"), 2 to tr("英式"), 3 to tr("不顯示")), if (Store.lang == 6) Prefs.zhRom.value else Prefs.enRom.value,
+                    { Prefs.enRom.value = it; if (Store.lang == 6) Prefs.zhRom.value = it; com.unoki99.fangfang.engine.EngineSettings.enRom = it; Store.simplifiedChanged() })
+            }
+            RowDivider()
+            // 英語的解釋: any of English, Chinese and Swedish (at least one)
+            val one = listOf(Prefs.enShowEn.value, Prefs.enShowZh.value, Prefs.enShowSv.value).count { it } <= 1
+            // (the cards' backs show the meanings turned on: made again when they change)
+            var shownOnce by remember { mutableStateOf(false) }
+            LaunchedEffect(Prefs.enShowEn.value, Prefs.enShowZh.value, Prefs.enShowSv.value) {
+                if (shownOnce && Store.isEn) Store.simplifiedChanged(); shownOnce = true
+            }
+            SwitchRow(tr("英文解釋"), Prefs.enShowEn, enabled = !(one && Prefs.enShowEn.value))
+            SwitchRow(tr("中文解釋"), Prefs.enShowZh, enabled = !(one && Prefs.enShowZh.value))
+            SwitchRow(tr("瑞典文"), Prefs.enShowSv, enabled = !(one && Prefs.enShowSv.value))
+            if (Store.isEn) {
+                RowDivider()
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Txt(tr("詞表"), ff(FF.Body))
+                    Segmented(Lang.listNames.mapIndexed { i, n -> i to tr(n) }, Prefs.listNow, { Store.setZhList(it) })
+                }
+            }
+            Txt(tr("讀音用 IPA：英式的來自 ECDICT，美式的來自 CMUdict。解釋可以顯示英文、中文（ECDICT，轉成正體字）和瑞典文（Folkets lexikon 反查），至少選一種；卡片和詞典都照這裡。詞表：常用度（照美國當代英語語料庫的詞頻，每組 500 個）、Collins 星級（五星最常用）或考試詞表（中考、高考、CET-4、CET-6、考研、TOEFL／IELTS、GRE，照最早出現的那一個）。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
         }
     }

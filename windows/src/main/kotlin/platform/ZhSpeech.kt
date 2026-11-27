@@ -53,6 +53,8 @@ object ZhSpeech {
         val (cultures, name) = when {
             Store.isYue -> listOf("zh-HK") to com.unoki99.fangfang.tr("粵語（香港）")
             com.unoki99.fangfang.engine.Lang.isJa -> listOf("ja-JP") to com.unoki99.fangfang.tr("日語")
+            // (英語: 美式 first when the reading is 美式, otherwise 英式)
+            com.unoki99.fangfang.engine.Lang.isEn -> (if (Prefs.enRom.value == 1) listOf("en-US", "en-GB") else listOf("en-GB", "en-US")) to com.unoki99.fangfang.tr("英語")
             com.unoki99.fangfang.engine.Lang.isSv -> listOf("sv-SE") to com.unoki99.fangfang.tr("瑞典語")
             Prefs.zhPlace.value >= 1 -> listOf("zh-CN", "zh-TW", "zh-HK") to com.unoki99.fangfang.tr("中文")
             else -> listOf("zh-TW", "zh-CN", "zh-HK") to com.unoki99.fangfang.tr("中文（臺灣）")

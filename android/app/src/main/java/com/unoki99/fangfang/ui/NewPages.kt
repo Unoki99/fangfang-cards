@@ -85,8 +85,18 @@ fun EnglishList(items: List<String>, max: Int = 0, maxLines: Int = Int.MAX_VALUE
 /** a word's meanings at a glance: its own language's, short and numbered as its meanings below (whose example sentences
  *  go with those numbers), beside the English ones; one under the other when there's no room */
 @Composable
-fun MeaningsOverview(zh: List<Pair<Int, String>>, zhLabel: String, en: List<String>, enNote: String? = null) {
-    if (zh.isEmpty() && en.isEmpty()) return
+fun MeaningsOverview(zh: List<Pair<Int, String>>, zhLabel: String, en: List<String>, enNote: String? = null, sv: List<String> = emptyList()) {
+    if (zh.isEmpty() && en.isEmpty() && sv.isEmpty()) return
+    // 英語: its Swedish words, a third column (numbered, one under the other, as the others)
+    @Composable fun svCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Chip(tr("瑞"), SV_FILL, SV_EDGE, SV_INK)
+        Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            for ((i, t) in sv.withIndex()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (sv.size > 1) Chip("${i + 1}", SV_FILL, SV_EDGE, SV_INK)
+                Txt(t, ff(FF.Subheadline), T.glyph.copy(alpha = 0.9f))
+            }
+        }
+    }
     @Composable fun zhCol(m: Modifier) = Row(m, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         Chip(zhLabel, T.fn, T.fnEdge, T.muted)
         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -104,11 +114,19 @@ fun MeaningsOverview(zh: List<Pair<Int, String>>, zhLabel: String, en: List<Stri
         }
     }
     BoxWithConstraints {
-        if (zh.isNotEmpty() && en.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-            zhCol(Modifier.weight(1f)); enCol(Modifier.weight(1f))
+        val n = listOf(zh.isNotEmpty(), en.isNotEmpty(), sv.isNotEmpty()).count { it }
+        // (three, narrow: the first two side by side, the English under them)
+        if (n == 3 && maxWidth < 620.dp) Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) { zhCol(Modifier.weight(1f)); svCol(Modifier.weight(1f)) }
+            enCol(Modifier)
+        } else if (n >= 2) Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (zh.isNotEmpty()) zhCol(Modifier.weight(1f))
+            if (en.isNotEmpty()) enCol(Modifier.weight(1f))
+            if (sv.isNotEmpty()) svCol(Modifier.weight(1f))
         } else Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (zh.isNotEmpty()) zhCol(Modifier)
             if (en.isNotEmpty()) enCol(Modifier)
+            if (sv.isNotEmpty()) svCol(Modifier)
         }
     }
 }

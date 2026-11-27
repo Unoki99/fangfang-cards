@@ -135,7 +135,9 @@ object YtLyrics {
             var depth = 0; var end = start
             while (end < html.length) { val ch = html[end]; if (ch == '[') depth++ else if (ch == ']') { depth--; if (depth == 0) break }; end++ }
             val tracks = (JReader(html.substring(start, end + 1)).any() as? List<Any?>)?.mapNotNull { it as? Map<String, Any?> } ?: return@withContext null
-            val want = listOf("zh-TW", "zh-Hant", "zh", "zh-HK", "yue", "zh-CN", "zh-Hans", "nan", "hak", "ja", "sv")
+            // (瑞典語, 英語: that language's subtitles first)
+            val want = (if (com.unoki99.fangfang.engine.Lang.isEn) listOf("en") else if (com.unoki99.fangfang.engine.Lang.isSv) listOf("sv") else emptyList()) +
+                listOf("zh-TW", "zh-Hant", "zh", "zh-HK", "yue", "zh-CN", "zh-Hans", "nan", "hak", "ja", "sv", "en")
             val t = want.firstNotNullOfOrNull { w -> tracks.firstOrNull { (it["languageCode"] as? String)?.startsWith(w) == true } } ?: tracks.firstOrNull()
                 ?: return@withContext null
             val base = (t["baseUrl"] as? String ?: return@withContext null).replace("\\u0026", "&")

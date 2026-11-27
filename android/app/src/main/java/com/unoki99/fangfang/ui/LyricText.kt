@@ -95,7 +95,7 @@ object LyricDicts {
     fun get(lang: Int): ZhDict? {
         Store.zh?.let { if (it.lang == lang) return it }
         held?.let { if (it.lang == lang) return it }
-        val name = listOf("zh", "zh", "yue", "hak", "ja", "sv").getOrNull(lang) ?: return null
+        val name = listOf("zh", "zh", "yue", "hak", "ja", "sv", "en").getOrNull(lang) ?: return null
         if (loading != lang && DataFiles.has(name)) {
             loading = lang
             Thread {

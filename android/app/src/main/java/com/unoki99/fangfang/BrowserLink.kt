@@ -84,7 +84,7 @@ object BrowserKnown {
     class Payload(val url: String, val known: Int, val unknown: Int, val text: String)
 
     fun payload(): Payload? {
-        val names = listOf("tw", "zh", "yue", "hak", "ja", "sv")
+        val names = listOf("tw", "zh", "yue", "hak", "ja", "sv", "eng")
         val known = HashMap<String, MutableSet<String>>(); val unknown = HashMap<String, MutableSet<String>>()
         for ((k, st) in Store.progressStatus()) {
             if (st != 1 && st != 2) continue

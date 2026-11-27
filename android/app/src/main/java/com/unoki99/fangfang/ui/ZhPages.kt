@@ -123,6 +123,9 @@ private fun ZhLookupList(z: ZhDict) {
     /** a term Gemini knows, being added to 自訂 */
     var addTerm by remember { mutableStateOf<Gemini.Term?>(null) }
     addTerm?.let { t -> AddZhOwnDialog(z, t.h, t.pinyin, t.meaning) { addTerm = null } }
+    /** a word Gemini gave, being saved as your own (its meaning: what was searched) */
+    var addOwn by remember { mutableStateOf<Pair<String, String>?>(null) }
+    addOwn?.let { (w, m) -> AddZhOwnDialog(z, w, "", m) { addOwn = null } }
     // make the English search's text ahead of the first English search
     LaunchedEffect(z) { withContext(Dispatchers.Default) { z.warmEnglish() } }
     LaunchedEffect(query, place, z) {
@@ -135,7 +138,7 @@ private fun ZhLookupList(z: ZhDict) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp)) {
         item {
             val nav = LocalNav.current
-            SearchField(query, { query = it }, if (z.isSv) tr("瑞典文、英文或中文，例如：läsa、bilarna、read、汽車") else if (z.isJa) tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") else if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
+            SearchField(query, { query = it }, if (z.isEn) tr("英文、中文或瑞典文，例如：run、ran、跑步、springa") else if (z.isSv) tr("瑞典文、英文或中文，例如：läsa、bilarna、read、汽車") else if (z.isJa) tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") else if (z.isHak) tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") else if (z.isYue) tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") else tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、eat、1-4"))
             Spacer(Modifier.height(8.dp))
             // 日語: 助詞 and 實驗室 (no 部首查字: the radicals are the 華語 data's)
             // the order of every language: 部首查字, 依詞類列出, 單詞比較, the language's own, 依常用度列出
@@ -156,6 +159,8 @@ private fun ZhLookupList(z: ZhDict) {
             TileGrid(tiles.size) { i, m -> tiles[i](m) }
         }
         if (query.isEmpty()) item {
+            if (z.isEn) Txt(tr("可以查英文（變化過的形也可以：ran → run）、中文的意思（跑步）或瑞典文（springa）。英文的解釋找得到的詞也會列出來。\n讀音用 IPA：英式和美式（設定 → 語言與讀音 → 英語）。解釋要顯示英文、中文或瑞典文，也在那裡選。\n* 代表一個以上的字母，? 代表剛好一個：*ness → ness 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。"),
+                ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isSv) Txt(tr("可以查瑞典文（變化過的形也可以：bilarna → bil）、英文（read）或中文的意思（汽車）。\n每個詞分成詞素：詞根、前綴、後綴、連接音和詞尾各用一種顏色。點進一個詞，再點它的一個部分，看那個部分的意思和作用。\n* 代表一個以上的字母，? 代表剛好一個：*het → het 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             if (z.isJa) Txt(tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。"),
@@ -169,7 +174,8 @@ private fun ZhLookupList(z: ZhDict) {
         } else if (f.empty && searched == query) {
             item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
             if (Gemini.on && f.svEst == null) item {
-                GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null)
+                GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
+                    has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query })
             }
         }
         // 瑞典語: a word the dictionary doesn't have, worked out; words found through a 華語 word's English
@@ -182,7 +188,8 @@ private fun ZhLookupList(z: ZhDict) {
         zhItems(z, tr("開頭是「{0}」", query), f.starts)
         if (!f.englishFirst) zhItems(z, tr("英文「{0}」", query), f.english, english = true, query = query)
         zhItems(z, tr("裡面有「{0}」", query), f.contains)
-        if (f.svVia.isNotEmpty()) {
+        if (z.isEn && f.svVia.isNotEmpty()) zhItems(z, tr("瑞典文「{0}」", query), f.svVia)
+        else if (f.svVia.isNotEmpty()) {
             item { Txt(tr("這些詞是照「{0}」在 CC-CEDICT 裡的英文意思（{1}），再用英文找瑞典文，不一定是同一個意思。", query, f.svViaEnglish), ff(FF.Caption), T.muted, Modifier.padding(8.dp)) }
             zhItems(z, tr("由英文推測：「{0}」", query), f.svVia)
         }
@@ -215,7 +222,7 @@ internal fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, en
 @Composable
 fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1, query: String? = null) {
     val zk = zhKey()
-    val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value; val list = Prefs.zhList.value
+    val place = Prefs.zhPlace.value; val rom = Prefs.zhRom.value; val list = Prefs.listNow
     Store.rev
     Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -254,6 +261,8 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             // (瑞典語: the meaning in the language 設定 says; both: 中文 · English)
             val enFirst = e.enList.firstOrNull() ?: e.senses.firstOrNull()?.text
             val m = when {
+                z.isEn -> listOfNotNull(e.svZh.firstOrNull(), e.enSv.takeIf { it.isNotEmpty() }?.take(3)?.joinToString("、"),
+                    if (EngineSettings.enShowEn || (e.svZh.isEmpty() && e.enSv.isEmpty())) enFirst else null).joinToString(" · ")
                 Prefs.svMeanings.value == 0 -> listOfNotNull(e.svZh.firstOrNull(), enFirst).joinToString(" · ")
                 else -> z.svGloss(e)
             }
@@ -391,7 +400,9 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 val zhShort = if (z.isSv) e.svZh.mapIndexed { i, t -> (i + 1) to t }
                     else if (z.isYue) emptyList() else e.senses.mapNotNull { s -> shortMeaning(s.text).takeIf { it.isNotEmpty() }?.let { s.n to it } }
                 // (瑞典語, 只有中文: no English)
-                MeaningsOverview(zhShort, if (z.isSv) (if (e.svZhGuessed) tr("中（由英文推測）") else tr("中")) else if (z.isHak) tr("客") else tr("華"), if (z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish) emptyList() else e.enList)
+                MeaningsOverview(zhShort, if (z.isSv) (if (e.svZhGuessed) tr("中（由英文推測）") else tr("中")) else if (z.isHak) tr("客") else tr("華"),
+                    if (z.isEn) (if (e.svHideEnglish) emptyList() else e.enList) else if (z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish) emptyList() else e.enList,
+                    sv = if (z.isEn) e.enSv else emptyList())
             }
             // 瑞典語: its Chinese meanings, its parts (tap one), its forms
             if (z.isSv) SvWordExtras(z, e)
@@ -405,7 +416,13 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                 for (p in e.pos) Box(Modifier.clip(RoundedCornerShape(6.dp)).clickable { nav.push(Route.ZhClass(p)) }) { Chip(p, T.fn, T.fnEdge, T.muted) }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (z.lang != 1) { if (e.hsk > 0) Chip(UILang.label(Lang.yueLevelName(e.hsk)), T.green, T.greenEdge, T.greenInk) }
+                if (z.isEn) {
+                    // 英語: how common, Collins, the first exam list it's on, Oxford 3000
+                    if (e.hsk > 0) Chip(UILang.label(Lang.yueLevelName(e.hsk)), T.green, T.greenEdge, T.greenInk)
+                    if (e.tocfl > 0) Chip(Lang.levelName(1, e.tocfl), T.blue, T.blueEdge, T.blueInk)
+                    if (e.exam > 0) Chip(UILang.label(Lang.levelName(2, e.exam)), T.blue, T.blueEdge, T.blueInk)
+                    if (e.oxford) Chip("Oxford 3000", T.blue, T.blueEdge, T.blueInk)
+                } else if (z.lang != 1) { if (e.hsk > 0) Chip(UILang.label(Lang.yueLevelName(e.hsk)), T.green, T.greenEdge, T.greenInk) }
                 else {
                     if (e.hsk > 0) Chip(Lang.hskName(e.hsk), T.green, T.greenEdge, T.greenInk)
                     if (e.tocfl > 0) Chip(UILang.label(Lang.levelName(1, e.tocfl)), T.blue, T.blueEdge, T.blueInk)
@@ -429,7 +446,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.55f)).padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // (瑞典語, 只有中文: the English meaning left out, its sentences kept)
-                if (!(z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (!(z.isSv && (z.isEn || Prefs.svMeanings.value == 1) && e.svHideEnglish)) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Txt("${s.n}.", ff(FF.Subheadline, FontWeight.Bold), T.muted)
                     Txt(s.text, ff(FF.Body), T.glyph, Modifier.weight(1f))
                     CopyIconButton {
@@ -472,7 +489,8 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         }
         if (reading != null) Txt(if (z.isYue) tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") else tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"), ff(FF.Caption2), T.muted)
         // (the dictionary's source: the very bottom)
-        Txt(if (z.isSv) tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）、維基詞典（kaikki.org，CC BY-SA）、FrequencyWords（CC BY-SA 4.0）、CC-CEDICT（CC BY-SA）。詞素依規則推算，可能有誤。")
+        Txt(if (z.isEn) tr("資料：ECDICT（MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表）；美式讀音：CMUdict（BSD）；瑞典文和例句：Folkets lexikon（KTH，CC BY-SA 2.5）；正體字：CC-CEDICT（CC BY-SA）。")
+            else if (z.isSv) tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）、維基詞典（kaikki.org，CC BY-SA）、FrequencyWords（CC BY-SA 4.0）、CC-CEDICT（CC BY-SA）。詞素依規則推算，可能有誤。")
             else if (z.isJa) tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。") else if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
             else if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
             else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
@@ -758,7 +776,7 @@ fun HSKProgressList() {
     val firstChar = Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // 華語: the word list switched right here too (HSK 3.0 ⇄ TOCFL), not only in 新詞
-        if (Store.lang == 1) item { Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.zhList.value, { Store.setZhList(it) }) }
+        if (Store.lang == 1 || Store.isEn) item { Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.listNow, { Store.setZhList(it) }) }
         if (zh) item { CharMeter { nav.push(Route.ZhChars) } }
         items(list, key = { "h|" + it.id }) { t ->
             if (zh && t.id == firstChar) Txt(tr("漢字卡"), ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))
@@ -782,7 +800,7 @@ fun HSKProgressList() {
             }
         }
         item {
-            if (zh) Txt(tr("每個等級一個顏色：從左邊來的濃色 = 熟悉（往右滑或練習學會的詞），從右邊來的淡色 = 不熟，中間空的 = 還沒看過。點一個等級可以看全部的詞，或一次把整個等級標成熟悉；點「認識的漢字」可以看每個字。漢字卡在「新詞」右上角的選單選。在「新詞」右上角可以換詞表（HSK／TOCFL）和選等級。詞表：{0}。", if (Prefs.zhList.value == 1) "TOCFL 華語八千詞（2023）" else "HSK 3.0（2021）"),
+            if (zh) Txt(tr("每個等級一個顏色：從左邊來的濃色 = 熟悉（往右滑或練習學會的詞），從右邊來的淡色 = 不熟，中間空的 = 還沒看過。點一個等級可以看全部的詞，或一次把整個等級標成熟悉；點「認識的漢字」可以看每個字。漢字卡在「新詞」右上角的選單選。在「新詞」右上角可以換詞表（HSK／TOCFL）和選等級。詞表：{0}。", if (Prefs.listNow == 1) "TOCFL 華語八千詞（2023）" else "HSK 3.0（2021）"),
                 ff(FF.Caption), T.muted)
             else Txt(tr("台語的詞照常用的程度分組，每組 {0} 個：最常用的在「常用詞 1–{1}」。單一個字的另外分在「常用字」。在「新詞」右上角可以選一組來滑。點一組可以看全部的詞，或一次把整組標成熟悉。", Lang.freqSize, Lang.freqSize),
                 ff(FF.Caption), T.muted)
@@ -824,7 +842,7 @@ private fun CharLevelGrid(cards: List<com.unoki99.fangfang.engine.Card>) {
 @Composable
 fun LevelWordsPage(level: Int, onBack: () -> Unit) {
     Store.rev
-    val name = (Store.topics + Store.freqTopics).firstOrNull { it.id == level }?.name ?: UILang.label(Lang.levelName(Prefs.zhList.value, level))
+    val name = (Store.topics + Store.freqTopics).firstOrNull { it.id == level }?.name ?: UILang.label(Lang.levelName(Prefs.listNow, level))
     var filter by remember { mutableIntStateOf(0) }       // 0 all, 1 not seen, 2 熟悉, 3 不熟
     var confirm by remember { mutableStateOf<Int?>(null) } // 1 = all to 熟悉, 2 = the unseen ones to 熟悉, 3 = all back to 新詞
     var menu by remember { mutableStateOf(false) }

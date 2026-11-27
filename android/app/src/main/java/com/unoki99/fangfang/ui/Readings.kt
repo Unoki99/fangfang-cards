@@ -31,7 +31,7 @@ private fun rememberZhDict(kind: Int): ZhDict? {
     val loaded by produceState<ZhDict?>(have, kind, have) {
         if (value != null) return@produceState
         value = withContext(Dispatchers.Default) {
-            try { com.unoki99.fangfang.DataFiles.reader(listOf("zh", "zh", "yue", "hak", "ja", "sv")[kind.coerceIn(0, 5)])?.let { ZhDict(it) } }
+            try { com.unoki99.fangfang.DataFiles.reader(listOf("zh", "zh", "yue", "hak", "ja", "sv", "en")[kind.coerceIn(0, 6)])?.let { ZhDict(it) } }
             catch (_: Exception) { null }
         }
     }

@@ -231,7 +231,7 @@ def main(ecdict, cmu_path, folkets, svfreq, cedict, out_path):
         for t, l in EN_EXAMS:
             if t in tags and (not exam or l < exam): exam = l
         if exam: o["y"] = exam
-        if r.get("oxford") == "1": o["o"] = 1
+        if r.get("oxford") == "1": o["ox"] = 1
         o["_r"] = frq or bnc or 0
         out.append(o)
     ranked = sorted([e for e in out if 0 < e["_r"] <= 30000], key=lambda e: e["_r"])

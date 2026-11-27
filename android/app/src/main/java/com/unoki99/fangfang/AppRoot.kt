@@ -210,6 +210,7 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
                             Spelling(3, Prefs.hakRom, listOf("拼音", "注音"))
                             Spelling(4, Prefs.jaRom, listOf("羅馬字", "假名"))
                             Spelling(5, Prefs.svRom, listOf("詞素", "不顯示"))
+                            Spelling(6, Prefs.enRom, listOf("英式＋美式", "美式", "英式", "不顯示"))
                         }
                         2 -> {
                             SetupHeading(tr("每個語言照哪裡的讀音？"), tr("台語的「通行」是教育部辭典的讀音；選一個地方的話，詞典有記錄的地方讀音會換成那裡的。"))
@@ -301,7 +302,7 @@ private fun <V> SetupMenu(l: Int, current: String, options: List<Pair<V, String>
     val (_, _, ink) = langColors(l)
     var open by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
+        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語", "英語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
         Box(Modifier.weight(1f)) {
             SoftButton({ open = true }, Modifier.fillMaxWidth()) { Text(current) }
             DropdownMenu(open, { open = false }, containerColor = T.fn) {
@@ -316,7 +317,7 @@ private fun <V> SetupMenu(l: Int, current: String, options: List<Pair<V, String>
 private fun Spelling(l: Int, pref: Pref<Int>, names: List<String>) {
     val (_, _, ink) = langColors(l)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
+        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語", "英語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
         Box(Modifier.weight(1f)) {
             Segmented(names.indices.map { it to tr(names[it]) }, pref.value.coerceIn(0, names.size - 1), { pref.value = it })
         }

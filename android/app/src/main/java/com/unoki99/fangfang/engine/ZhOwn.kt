@@ -14,8 +14,8 @@ object ZhOwnWords {
     @Volatile var words: Map<Int, List<Word>> = emptyMap()
 
     const val SUFFIX = "#自"
-    private val marker = listOf("", "", "粵", "客", "日", "瑞")
-    fun key(lang: Int, h: String, tw: List<String>): String = h + "\t" + marker[lang.coerceIn(0, 5)] + tw.joinToString(" ") + SUFFIX
+    private val marker = listOf("", "", "粵", "客", "日", "瑞", "英")
+    fun key(lang: Int, h: String, tw: List<String>): String = h + "\t" + marker[lang.coerceIn(0, 6)] + tw.joinToString(" ") + SUFFIX
     fun isOwn(k: String): Boolean = k.endsWith(SUFFIX) && Lang.kind(k) >= 1
     fun han(k: String): String = k.substringBefore('\t')
     /** the syllables back from a key */
@@ -32,6 +32,8 @@ object ZhOwnWords {
         val typed = typed0.trim()
         val hans = han.cps().filter { Zhuyin.isHan(it.firstCp()) }
         when (lang) {
+            // 英語: the reading in IPA as typed, the same for both; "-" when there isn't one
+            6 -> { val r = typed.replace(" ", "").ifEmpty { "-" }; return listOf(r, r) }
             5 -> {
                 val ws = han.split(' ').filter { it.isNotEmpty() }.map { it.lowercase() + ":r" }
                 if (ws.isEmpty()) return null

@@ -9,32 +9,42 @@ import java.text.Normalizer
 object Lang {
     /** 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語 (粵語, 客語 and 日語 use the 華語 pages, with their own dictionaries:
      *  yue.json, hak.json, ja.json) */
-    private val all = listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語")
-    /** (瑞典語 = 5: the computer version only) */
+    private val all = listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語", "英語")
+    /** (瑞典語 = 5 and 英語 = 6: the computer version only) */
     val names: List<String> get() = if (EngineSettings.desktop) all else all.subList(0, 5)
     val count: Int get() = names.size
     val isYue: Boolean get() = EngineSettings.yue
     val isHak: Boolean get() = EngineSettings.hak
     val isJa: Boolean get() = EngineSettings.ja
-    /** 瑞典語 (sv.json, Folkets lexikon; the computer version): the same pages as 華語, each word in its morphemes */
+    /** 瑞典語 (sv.json, Folkets lexikon; the computer version): the same pages as 華語, each word in its morphemes.
+     *  Also 英語 (the same pages: words in letters); isEn tells it apart */
     val isSv: Boolean get() = EngineSettings.sv
+    /** 英語 (en.json, ECDICT; the computer version): read in IPA, British and American */
+    val isEn: Boolean get() = EngineSettings.en
     /** 粵語, 客語, 日語 and 瑞典語: no HSK / TOCFL lists (the words come in groups of how common they are) */
     val ownGroups: Boolean get() = isYue || isHak || isJa || isSv
     /** 客語's six accents */
     val hakAccents = listOf("四縣", "海陸", "大埔", "饒平", "詔安", "南四縣")
     /** 華語: 拼音 / 注音; 粵語: 粵拼 / 耶魯 */
-    val romNames: List<String> get() = if (isSv) listOf("詞素", "不顯示") else if (isJa) listOf("羅馬字", "假名") else if (isYue) listOf("粵拼", "耶魯") else listOf("拼音", "注音")
+    val romNames: List<String> get() = if (isEn) listOf("英式＋美式", "美式", "英式", "不顯示") else if (isSv) listOf("詞素", "不顯示") else if (isJa) listOf("羅馬字", "假名") else if (isYue) listOf("粵拼", "耶魯") else listOf("拼音", "注音")
     /** 粵語: the words and characters come in groups of how common they are (no official lists) */
     const val yueGroup = 500
     fun yueLevelName(l: Int) = "常用詞 ${(l - 1) * yueGroup + 1}–${l * yueGroup}"
     fun yueCharLevelName(l: Int) = "常用字 ${(l - 1) * yueGroup + 1}–${l * yueGroup}"
     /** 華語's readings: 臺灣, 大陸 and (when its data is there: zh_sc.json, the computer version) 四川話 */
-    val placeNames: List<String> get() = if (isSv) listOf("Svenska") else if (isJa) listOf("日本語") else if (!isYue && !isHak && Sichuan.available) listOf("臺灣", "大陸", "四川話") else listOf("臺灣", "大陸")
-    val listNames = listOf("HSK", "TOCFL")
+    val placeNames: List<String> get() = if (isEn) listOf("English") else if (isSv) listOf("Svenska") else if (isJa) listOf("日本語") else if (!isYue && !isHak && Sichuan.available) listOf("臺灣", "大陸", "四川話") else listOf("臺灣", "大陸")
+    /** (英語 has its own: 常用度, Collins, 考試) */
+    val listNames: List<String> get() = if (isEn) listOf("常用度", "Collins", "考試") else listOf("HSK", "TOCFL")
+    /** 英語's exam lists (the first one a word is on) */
+    val enExamNames = listOf("", "中考", "高考", "CET-4", "CET-6", "考研", "TOEFL／IELTS", "GRE")
     private val tocflNames = listOf("", "準備一級", "準備二級", "入門級", "基礎級", "進階級", "高階級", "流利級")
     fun hskName(l: Int) = if (l >= 7) "HSK 7–9" else "HSK $l"
     fun tocflName(l: Int) = tocflNames.getOrElse(l) { "" }
-    fun levelName(list: Int, l: Int) = if (ownGroups) yueLevelName(l) else if (list == 1) "TOCFL " + tocflName(l) else hskName(l)
+    fun levelName(list: Int, l: Int) = if (isEn) (when (list) {
+            1 -> if (l in 1..5) "Collins " + "★".repeat(6 - l) else ""
+            2 -> enExamNames.getOrElse(l) { "" }
+            else -> yueLevelName(l)
+        }) else if (ownGroups) yueLevelName(l) else if (list == 1) "TOCFL " + tocflName(l) else hskName(l)
 
     /** a character card's key: "字\t字" (粵語: "字\t粵字", 客語: "字\t客字", 日語: "字\t日字") */
     fun charKey(ch: String, yue: Boolean = isYue, hak: Boolean = isHak, ja: Boolean = isJa) =
@@ -60,7 +70,7 @@ object Lang {
         if (t < 0 || t + 1 >= k.length) return false
         if (k.endsWith("\t字")) return true
         val c = k.codePointAt(t + 1)
-        return c in 0x3100..0x312F || c in 0x31A0..0x31BF || c == '˙'.code || c == '粵'.code || c == '客'.code || c == '日'.code || c == '瑞'.code
+        return c in 0x3100..0x312F || c in 0x31A0..0x31BF || c == '˙'.code || c == '粵'.code || c == '客'.code || c == '日'.code || c == '瑞'.code || c == '英'.code
     }
     /** a 粵語 word's or character's key ("漢字\t粵…") */
     fun isYueKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("粵", t + 1) }
@@ -70,8 +80,10 @@ object Lang {
     fun isJaKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("日", t + 1) }
     /** a 瑞典語 word's key ("läsa\t瑞vb") */
     fun isSvKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("瑞", t + 1) }
-    /** which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語 */
-    fun kind(k: String): Int = if (isYueKey(k)) 2 else if (isHakKey(k)) 3 else if (isJaKey(k)) 4 else if (isSvKey(k)) 5 else if (isZhKey(k)) 1 else 0
+    /** a 英語 word's key ("run\t英") */
+    fun isEnKey(k: String): Boolean { val t = k.indexOf('\t'); return t >= 0 && k.startsWith("英", t + 1) }
+    /** which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語, 6 英語 */
+    fun kind(k: String): Int = if (isYueKey(k)) 2 else if (isHakKey(k)) 3 else if (isJaKey(k)) 4 else if (isSvKey(k)) 5 else if (isEnKey(k)) 6 else if (isZhKey(k)) 1 else 0
 }
 
 /** 設定 → 字形: 華語 and 粵語 shown in 簡體字. The keys and the data stay 正體; what's shown is changed, character by
@@ -419,14 +431,21 @@ class ZhEntry(
     val hakGuess: Boolean = false,
 ) {
     fun withTw(t: List<String>, guess: Boolean) = ZhEntry(k, h, t, lu, spec, alt, senses, en, hsk, tocfl, extra, pos, syn, ant, eq,
-        audio, acc, otherWords, jp, guess)
+        audio, acc, otherWords, jp, guess).also { it.exam = exam; it.sw = sw; it.oxford = oxford; it.rank = rank }
     /** the English meanings, one each (CC-CEDICT separates them with ;) */
     val enList: List<String> by lazy { (en ?: "").split(";").map { it.trim() }.filter { it.isNotEmpty() } }
     /** 四川話 (成都): the reading ("ce1 …", zh_sc.json), nil = none; how it's known (0 Wiktionary, 1 guessed, 2 predicted) */
     var sc: List<String>? = null
     var scKind = 0
     fun syl(place: Int): List<String> = if (place == 2) (sc ?: lu ?: tw) else if (place == 1) (lu ?: tw) else tw
-    fun level(list: Int) = if (list == 1) tocfl else hsk
+    /** 英語: hsk is the group of how common (500 a group), tocfl the Collins level (1 ★★★★★ … 5 ★), exam the first
+     *  exam list it's on (1 中考 … 7 GRE); the Swedish words, on the Oxford 3000, its rank (0 not known) */
+    var exam = 0
+    var sw: List<String> = emptyList()
+    var oxford = false
+    var rank = 0
+    /** the level on a word list (0 HSK, 1 TOCFL; 英語: 0 常用度, 1 Collins, 2 考試) */
+    fun level(list: Int) = if (list == 2) exam else if (list == 1) tocfl else hsk
     /** a word you added yourself (詞典 → 自訂), not from the dictionary */
     var own = false
 }
@@ -465,13 +484,16 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
     /** the 瑞典語 dictionary (sv.json, Install/swedish.js; the computer version): `tw` is the word's morphemes, `eq` its
      *  forms, `jp` its Chinese meanings */
     var isSv = false; private set
+    /** the 英語 dictionary (en.json, Install/english.js; isSv too, for the pages they share): `tw` is the British and
+     *  the American reading in IPA ("-" for none), `jp` its Chinese meanings, `sw` its Swedish words */
+    var isEn = false; private set
     /** 瑞典語: 華語 → English (CC-CEDICT, sv.json's "ce"), for looking Swedish words up in Chinese through the English */
     var svCE: Map<String, String> = emptyMap(); private set
     /** 瑞典語: words worked out by the rules, kept (the lists and sentences ask often) */
     internal val svCache = java.util.concurrent.ConcurrentHashMap<String, List<SvMorpheme>>()
     internal val svSylCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
     /** 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語 */
-    val lang: Int get() = if (isSv) 5 else if (isJa) 4 else if (isHak) 3 else if (isYue) 2 else 1
+    val lang: Int get() = if (isEn) 6 else if (isSv) 5 else if (isJa) 4 else if (isHak) 3 else if (isYue) 2 else 1
     /** 日語: each entry's reading in hiragana (for searching by the start of the reading) */
     var jaKana: List<String> = emptyList(); private set
     /** 客語: each accent's tone marks (per tone category) and each syllable's 注音 */
@@ -556,7 +578,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         fun head(j: JReader, key: String): Boolean {
             when (key) {
                 "nc" -> nc = j.nextInt()
-                "lang" -> { val l = j.nextString(); isYue = l == "yue"; isHak = l == "hak"; isJa = l == "ja"; isSv = l == "sv" }
+                "lang" -> { val l = j.nextString(); isYue = l == "yue"; isHak = l == "hak"; isJa = l == "ja"; isEn = l == "en"; isSv = l == "sv" || isEn }
                 "ce" -> { val m = HashMap<String, String>(); j.obj { k -> m[k] = j.nextString() }; svCE = m }
                 "ht" -> { val m = ArrayList<List<String>>(); j.arr { m.add(j.strList()) }; hakMarks = m }
                 "hz" -> { val m = HashMap<String, String>(); j.obj { k -> m[k] = j.nextString() }; hakZy = m }
@@ -718,7 +740,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         maxLen = minOf(m, 12)
         if (jk != null) jaKana = jk
         // 瑞典語: comparatives (sen|are) and phrases (hitta på) as their parts
-        if (isSv) svFix(out, byPlain)
+        if (isSv && !isEn) svFix(out, byPlain)
     }
 
     /** 客語: a word the accent chosen doesn't have is shown in another accent's reading (`tw` is the first accent that
@@ -848,6 +870,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         var en: String? = null; var x = 0; var y = 0; var q = 0
         var w: List<String> = emptyList(); var sy: List<String> = emptyList(); var an: List<String> = emptyList()
         var eq: List<String> = emptyList(); var u: String? = null
+        var g = 0; var rk = 0; var ox = 0; var sw: List<String> = emptyList()
         var acc: List<List<String>?>? = null; val others = HashMap<Int, String>(); var jp: List<String> = emptyList()
         val senses = ArrayList<ZhSense>()
         j.obj { f ->
@@ -857,6 +880,8 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
                 "n" -> en = j.nextString(); "x" -> x = j.nextInt(); "y" -> y = j.nextInt(); "q" -> q = j.nextInt()
                 "w" -> w = j.strList(); "j" -> sy = j.strList(); "f" -> an = j.strList()
                 "m" -> eq = j.strList(); "u" -> u = j.nextString(); "jp" -> jp = j.strList()
+                // 英語: g the group of how common, r its rank, ox on the Oxford 3000, sw the Swedish words
+                "g" -> g = j.nextInt(); "r" -> rk = j.nextInt(); "ox" -> ox = j.nextInt(); "sw" -> sw = j.strList()
                 "v" -> { val v = ArrayList<List<String>?>(); j.arr { v.add(if (j.isNull()) null else j.nextString().split(" ")) }; acc = v }
                 "o" -> j.obj { a -> val w = j.nextString(); a.toIntOrNull()?.let { others[it] = w } }
                 "d" -> j.arr {
@@ -877,6 +902,9 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         if (k.isEmpty()) return null
         // 客語: this accent's reading (the main one when the accent doesn't have the word)
         val tw = acc?.getOrNull(accent) ?: s.split(" ")
+        // 英語: hsk is the group of how common, tocfl the Collins level, exam the exam list
+        if (Lang.isEnKey(k)) return ZhEntry(k, h, tw, null, 0, null, senses, en, g, x, false, w, sy, an, eq, u, null, emptyMap(), jp)
+            .also { it.exam = y; it.sw = sw; it.oxford = ox == 1; it.rank = rk }
         return ZhEntry(k, h, tw, l?.split(" "), p, a, senses, en, x, y, q == 1, w, sy, an, eq, u, acc, others, jp)
     }
 
@@ -886,12 +914,16 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
     }
 
     fun entry(k: String): ZhEntry? = index[k]?.let { entries[it] }
+    /** whether the dictionary has the word (as written; 瑞典語 / 英語: in small letters, or one of its forms) */
+    fun has(w: String): Boolean = byHan.containsKey(w) || byHan.containsKey(buildString { w.codePoints().forEach { appendCodePoint(Simp.reverse(it) ?: it) } }) || (isSv && byPlain.containsKey(w.lowercase()))
     fun others(e: ZhEntry): List<ZhEntry> = (byHan[e.h] ?: emptyList<Int>()).map { entries[it] }.filter { it.k != e.k && it.h == e.h }
 
     // MARK: readings
 
     /** a word's reading: 0 = 拼音, 1 = 注音; in tone colours when they're on */
     fun reading(syl: List<String>, mode: Int, colours: Int = EngineSettings.toneSystem): Styled {
+        // 英語: the IPA, British and American as 設定 → 英語 says (whatever the mode)
+        if (isEn) return styled(enIpa(syl))
         // 瑞典語: the morphemes with a hyphen between them (be-tal-a), each in its colour (1: nothing)
         if (isSv) {
             if (mode != 0) return emptyList()
@@ -982,8 +1014,22 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
 
     fun readingPlain(syl: List<String>, mode: Int): String = reading(syl, mode, 0).plain()
 
+    /** 英語: a word's readings ([British, American], "-" for none) as 設定 → 英語 → 讀音 says: "UK /…/ · US /…/" */
+    fun enIpa(syl: List<String>): String {
+        val uk = syl.getOrNull(0)?.takeIf { it != "-" && it.isNotEmpty() }
+        val us = syl.getOrNull(1)?.takeIf { it != "-" && it.isNotEmpty() }
+        return when (EngineSettings.enRom) {
+            1 -> (us ?: uk)?.let { "/$it/" } ?: ""
+            2 -> (uk ?: us)?.let { "/$it/" } ?: ""
+            3 -> ""
+            else -> if (uk != null && us != null && uk != us) "UK /$uk/ · US /$us/" else (uk ?: us)?.let { "/$it/" } ?: ""
+        }
+    }
+
     /** 漢字 in tone colours (one syllable per 漢字; 兒 after -ㄦ takes the colour before it) */
     fun hanText(han: String, syl: List<String>, base: Int?, colours: Int = EngineSettings.toneSystem): Styled {
+        // 英語: the word as it is
+        if (isEn) return styled(han, base)
         // 瑞典語: each morpheme in its colour (the root, a prefix, a suffix, the linking letter, the ending)
         if (isSv) {
             var ms = SvMorpheme.parse(syl)
@@ -1156,10 +1202,13 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         val zh = if (isSv) e.svZh else emptyList()
         // (只有中文: the English meanings' sentences kept, without the English)
         val defs1 = if (isSv && e.svHideEnglish) defs0.map { Def(it.p, "", it.x) }.filter { it.x.isNotEmpty() } else defs0
-        val defs = if (zh.isNotEmpty()) listOf(Def(if (e.svZhGuessed) "中≈" else "中", zh.joinToString("、"), emptyList())) + defs1 else defs1
+        var defs = if (zh.isNotEmpty()) listOf(Def(if (e.svZhGuessed) "中≈" else "中", zh.joinToString(if (isEn) "；" else "、"), emptyList())) + defs1 else defs1
+        // 英語: the Swedish words after the Chinese
+        if (isEn && e.enSv.isNotEmpty()) defs = defs.toMutableList().also { it.add(if (zh.isEmpty()) 0 else 1, Def("瑞", e.enSv.joinToString("、"), emptyList())) }
+        if (defs.isEmpty()) defs = defs0
         val variant = e.lu?.let { lu -> mapOf("1" to Variant(listOf(readingPlain(lu, 0)), readingPlain(lu, 1))) }
         val lvl = e.level(list)
-        return Card(e.k, Simp.show(e.h), listOf(readingPlain(e.tw, 0)), readingPlain(e.tw, 1), null, "", defs,
+        return Card(e.k, Simp.show(e.h), listOf(readingPlain(e.tw, 0)), if (isEn) "" else readingPlain(e.tw, 1), null, "", defs,
             null, null, variant, null, null,
             if (e.spec == 1) "臺灣特有" else if (e.spec == 2) "大陸特有" else null,
             null, null, if (lvl > 0) listOf(lvl) else null, e.tw, e.lu, e.audio)
@@ -1357,10 +1406,13 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
             // Chinese: the words with it in their Chinese meanings (the ones that are just it first)
             val exact = ArrayList<Int>(); val inside = ArrayList<Int>()
             val seps = Regex("[、，,；;]")
+            // (英語: the Chinese lines start with the class, "n. 跑、賽跑")
+            val cls = Regex("^\\s*([a-z]+\\.\\s*)+")
+            fun bare(p: String) = if (isEn) p.trim().replace(cls, "") else p.trim()
             for ((i, e) in entries.withIndex()) {
                 val zh = e.svZhAll
                 if (!zh.any { it.contains(q) }) continue
-                if (zh.any { it == q || it.split(seps).contains(q) }) exact.add(i) else if (inside.size < 200) inside.add(i)
+                if (zh.any { it == q || it.split(seps).any { p -> bare(p) == q } }) exact.add(i) else if (inside.size < 200) inside.add(i)
             }
             f.english.addAll(take(exact)); f.english.addAll(take(inside))
             f.englishFirst = true
@@ -1379,12 +1431,18 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
             return f
         }
         f.words.addAll(take(byPlain[low] ?: emptyList()))
+        // 英語: the words whose Swedish is it (springa → run)
+        if (isEn) {
+            val sv = ArrayList<Int>()
+            for ((i, e) in entries.withIndex()) if (e.sw.any { it.lowercase() == low }) { sv.add(i); if (sv.size >= 60) break }
+            f.svVia.addAll(take(sv))
+        }
         // (a form the dictionary doesn't list: its word; a compound it doesn't have: its parts)
-        if (f.words.isEmpty()) svEstimate(q.trim())?.let { est ->
+        if (!isEn && f.words.isEmpty()) svEstimate(q.trim())?.let { est ->
             f.svEst = est
             if (est.parts.size == 1) est.parts[0].entry?.let { f.words.addAll(take(listOf(it))) }
         }
-        if (f.words.isEmpty() && f.svEst == null) svInflected(low)?.let { f.words.addAll(take(listOf(it))) }
+        if (!isEn && f.words.isEmpty() && f.svEst == null) svInflected(low)?.let { f.words.addAll(take(listOf(it))) }
         val starts = ArrayList<Int>(); val inside = ArrayList<Int>()
         for ((i, e) in entries.withIndex()) {
             if (i in seen) continue

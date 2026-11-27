@@ -161,7 +161,11 @@ fun CoopScreen(onClose: () -> Unit) {
     var side by remember { mutableStateOf(0f) }
     var hints by remember { mutableIntStateOf(1) }
     var sent by remember { mutableStateOf(false) }
-    val myMode = link.modes[link.myName] ?: mode
+    // (瑞典語, 英語: no handwriting: 八選一 or spelling it)
+    val myMode = (link.modes[link.myName] ?: mode).let { if (Store.isSv && it == 0) 2 else it }
+    val modeChoices = if (Store.isSv) listOf(1, 2) else listOf(0, 1, 2)
+    fun modeName(i: Int) = if (Store.isSv && i == 2) tr("拼字") else tr(COOP_MODES[i.coerceIn(0, 2)])
+    LaunchedEffect(Unit) { if (Store.isSv && mode == 0) mode = 2 }
     val iAmReady = link.ready.containsKey(link.myName)
 
     fun meanings(c: Card): Pair<String, String> {
@@ -169,9 +173,55 @@ fun CoopScreen(onClose: () -> Unit) {
         val first = c.d.take(2).joinToString("；") { it.t }
         var en: List<String> = emptyList()
         if (kind == 0) en = TwEnglish.meanings(c.k)
-        else { val d = Store.zh; val e = if (d != null && d.lang == kind) d.entry(c.k) else null; if (e != null) en = e.enList }
+        else { val d = Store.zh; val e = if (d != null && d.lang == kind) d.entry(c.k) else null
+            if (e != null) {
+                en = e.enList
+                if (kind == 5 || kind == 6) {
+                    val e3 = en.take(3).joinToString("; ")
+                    // (英語: the Chinese lines without their word class, "n. 跑、賽跑" → 跑、賽跑)
+                    val zh = e.svZhAll.take(2).map { if (kind == 6) it.replace(Regex("""^\s*([a-z]+\.\s*)+"""), "") else it }
+                    return zh.joinToString("；").ifEmpty { first } to e3.ifEmpty { first }
+                }
+            }
+        }
         if (kind == 2 || kind == 4) return first to first
         return first to en.take(3).joinToString("; ")
+    }
+    /** 英語, 瑞典語: seven words spelt like it (the fewest letters different; the same first or last letter counts
+     *  as a bit closer), the rest any of the practice words */
+    fun spellingAlike(c: Card): List<Card> {
+        val me = c.h.lowercase()
+        fun dist(a: String, b: String): Int {
+            if (a.isEmpty()) return b.length
+            if (b.isEmpty()) return a.length
+            var prev = IntArray(b.length + 1) { it }; var cur = IntArray(b.length + 1)
+            for (i in 1..a.length) {
+                cur[0] = i
+                for (j in 1..b.length) cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+                val t = prev; prev = cur; cur = t
+            }
+            return prev[b.length]
+        }
+        val scored = ArrayList<Pair<Int, Card>>()
+        val most = maxOf(2, me.length / 2)
+        for (x in Store.cards.take(30000)) {
+            if (x.k == c.k) continue
+            val b = x.h.lowercase()
+            if (b == me || kotlin.math.abs(b.length - me.length) > 2 || (b.contains(' ') && !me.contains(' '))) continue
+            var d = dist(me, b) * 2
+            if (b.firstOrNull() == me.firstOrNull()) d -= 1
+            if (b.lastOrNull() == me.lastOrNull()) d -= 1
+            if (d <= most * 2) scored.add(d to x)
+        }
+        val out = ArrayList<Card>()
+        val used = hashSetOf(me)
+        for ((_, x) in scored.sortedBy { it.first }.take(14).shuffled()) {
+            if (!used.add(x.h.lowercase())) continue
+            out.add(x)
+            if (out.size == 7) break
+        }
+        if (out.size < 7) out += Store.distractors(c, 7 - out.size).filter { used.add(it.h.lowercase()) }
+        return out.take(7)
     }
     fun radicals(h: String): String {
         val z = Store.zh ?: return ""
@@ -183,13 +233,18 @@ fun CoopScreen(onClose: () -> Unit) {
         sent = false; picked = null; typed = ""; squares.clear(); squares.add(mutableStateListOf()); hints = 1
         val c = queue.getOrNull(k) ?: run { mineCard = null; return }
         mineCard = c
-        options = (Store.distractors(c, 7) + c).shuffled()
-        val reading = if (Store.isSv) "" else Store.cardRom(c, rom, place).plain()
+        options = ((if (Store.isSv) spellingAlike(c) else Store.distractors(c, 7)) + c).shuffled()
+        val reading = if (Store.isSv && !Store.isEn) "" else Store.cardRom(c, rom, place).plain()
         val m = meanings(c)
         val r = radicals(c.h)
         link.send(CoopMsg("question", link.myName).apply {
             word = c.h; this.reading = reading; lang = Lang.kind(c.k); english = m.second
-            if (Store.isSv) { clues = listOf(m.first, ""); clueKinds = listOf("meaning", "letters") }
+            // 英語: the meaning first, then the IPA, then how many letters and the first one
+            if (Store.isEn) {
+                clues = if (reading.isEmpty()) listOf(m.first, "") else listOf(m.first, reading, "")
+                clueKinds = if (reading.isEmpty()) listOf("meaning", "letters") else listOf("meaning", "reading", "letters")
+            }
+            else if (Store.isSv) { clues = listOf(m.first, ""); clueKinds = listOf("meaning", "letters") }
             else { clues = listOf(reading, m.first, r); clueKinds = listOf("reading", "meaning", if (r.isEmpty()) "count" else "radicals") }
         })
     }
@@ -243,11 +298,11 @@ fun CoopScreen(onClose: () -> Unit) {
                 for (n in names) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (link.playing && link.answerer == n) Txt("▶", ff(FF.Caption), T.blueInk)
                     Txt(n + if (n == link.myName) tr("（你）") else "", ff(FF.Subheadline, FontWeight.SemiBold), T.glyph)
-                    if (link.playing) link.modes[n]?.let { Txt(tr(COOP_MODES[it.coerceIn(0, 2)]), ff(FF.Caption), T.muted) }
+                    if (link.playing) link.modes[n]?.let { Txt(modeName(it), ff(FF.Caption), T.muted) }
                     Spacer(Modifier.weight(1f))
                     if (!link.playing || link.over) {
                         val r = link.ready[n]
-                        if (r != null) Txt(tr("準備好了") + "・" + tr(COOP_MODES[r.first.coerceIn(0, 2)]) + "・" + tr("{0} 題", r.second), ff(FF.Caption), T.greenInk)
+                        if (r != null) Txt(tr("準備好了") + "・" + modeName(r.first) + "・" + tr("{0} 題", r.second), ff(FF.Caption), T.greenInk)
                         else Txt(tr("還沒準備好"), ff(FF.Caption), T.muted)
                     }
                     if (link.playing) Txt("${link.scores[n] ?: 0}", ff(FF.Title3, FontWeight.Bold), T.blueInk)
@@ -266,7 +321,7 @@ fun CoopScreen(onClose: () -> Unit) {
                     GameField(Prefs.coopName.value, { Prefs.coopName.value = it }, tr("名字"), enabled = !iAmReady && link.players.isEmpty())
                     Txt(tr("（改名字要重新進房間才會用上）"), ff(FF.Caption2), T.muted)
                     Txt(tr("你怎麼答"), ff(FF.Subheadline, FontWeight.SemiBold), T.muted)
-                    Segmented(COOP_MODES.indices.map { it to tr(COOP_MODES[it]) }, mode, { if (!iAmReady) mode = it })
+                    Segmented(modeChoices.map { it to modeName(it) }, mode, { if (!iAmReady) mode = it })
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Txt(tr("你答 {0} 題", rounds), ff(FF.Body), T.glyph, Modifier.weight(1f))
                         SoftButton({ if (!iAmReady && rounds > 1) rounds-- }) { Text("−") }

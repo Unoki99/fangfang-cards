@@ -497,7 +497,7 @@ struct ZhSense {
 }
 
 extension ZhEntry {
-    /// 英語's own fields (en.json): g the group of how common, x Collins, y the exam, sw the Swedish, o Oxford 3000
+    /// 英語's own fields (en.json): g the group of how common, x Collins, y the exam, sw the Swedish, ox Oxford 3000
     func withEnglish(_ e: [String: Any]) -> ZhEntry {
         guard Lang.isEnKey(k) else { return self }
         var o = self
@@ -505,7 +505,7 @@ extension ZhEntry {
         o.tocfl = e["x"] as? Int ?? 0
         o.exam = e["y"] as? Int ?? 0
         o.sw = e["sw"] as? [String] ?? []
-        o.oxford = (e["o"] as? Int ?? 0) == 1
+        o.oxford = (e["ox"] as? Int ?? 0) == 1
         o.rank = e["r"] as? Int ?? 0
         return o
     }

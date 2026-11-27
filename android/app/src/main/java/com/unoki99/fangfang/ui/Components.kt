@@ -223,10 +223,15 @@ fun RomButton() {
     var zhRom by Prefs.zhRom
     val zh = com.unoki99.fangfang.Store.isZh
     // 華語: 拼音 ⇄ 注音; 台語: 皓羅 → 台羅 → 白話字 → 方音
-    Text(tr(if (zh) com.unoki99.fangfang.engine.Lang.romNames[zhRom.coerceIn(0, 1)] else ROM_NAMES[TwRom.lat(rom)]),
+    Text(tr(if (zh) com.unoki99.fangfang.engine.Lang.romNames.let { n -> n[zhRom.coerceIn(0, n.size - 1)] } else ROM_NAMES[TwRom.lat(rom)]),
         style = ff(FF.Subheadline, FontWeight.Bold), color = T.btnInk,
         modifier = Modifier.clip(CircleShape).background(T.btn).border(2.dp, T.btnEdge, CircleShape)
-            .clickable { if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 4 }.padding(horizontal = 10.dp, vertical = 4.dp))
+            .clickable {
+                // (英語: 英式＋美式 → 美式 → 英式 → 不顯示; the cards are made again with it)
+                if (com.unoki99.fangfang.Store.isEn) {
+                    zhRom = (zhRom + 1) % 4; Prefs.enRom.value = zhRom; com.unoki99.fangfang.engine.EngineSettings.enRom = zhRom
+                    com.unoki99.fangfang.Store.simplifiedChanged()
+                } else if (zh) zhRom = (zhRom + 1) % 2 else rom = (rom + 1) % 4 }.padding(horizontal = 10.dp, vertical = 4.dp))
 }
 
 /** 台語 / 華語, and where it's said: always the coloured capsule (台語 green, 華語 blue), so you see which dictionary you're in */
@@ -241,12 +246,13 @@ fun PlaceMenu() {
     val hak = store.isHak
     val ja = store.isJa
     val sv = store.isSv
+    val en = store.isEn
     var accent by Prefs.hakAccent
-    val fill = if (sv) SV_FILL else if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.twFill
-    val edge = if (sv) SV_EDGE else if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.twEdge
-    val ink = if (sv) SV_INK else if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.twInk
+    val fill = if (en) EN_FILL else if (sv) SV_FILL else if (ja) T.jaFill else if (hak) T.hakFill else if (yue) Color(0xFF5A4A14) else if (zh) Color(0xFF1F3D6B) else T.twFill
+    val edge = if (en) EN_EDGE else if (sv) SV_EDGE else if (ja) T.jaEdge else if (hak) T.hakEdge else if (yue) Color(0xFFC9A227) else if (zh) Color(0xFF4F7DFF) else T.twEdge
+    val ink = if (en) EN_INK else if (sv) SV_INK else if (ja) T.jaInk else if (hak) T.hakInk else if (yue) Color(0xFFFFE58A) else if (zh) Color(0xFF9AD0FF) else T.twInk
     val hakNames = com.unoki99.fangfang.engine.Lang.hakAccents
-    val name = if (sv) "瑞典語" else if (ja) "日語" else if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames.getOrElse(zhPlace) { "臺灣" }
+    val name = if (en) "英語" else if (sv) "瑞典語" else if (ja) "日語" else if (hak) "客・" + hakNames[accent.coerceIn(0, hakNames.size - 1)] else if (yue) "粵語" else if (zh) "華・" + com.unoki99.fangfang.engine.Lang.placeNames.getOrElse(zhPlace) { "臺灣" }
         else "台・" + (if (place in PLACE_NAMES.indices) PLACE_NAMES[place].take(2) else "通行")
     Box {
         Row(Modifier.clip(CircleShape).background(fill).border(2.dp, edge, CircleShape).clickable { open = true }
@@ -268,6 +274,7 @@ fun PlaceMenu() {
             item(tr("日語"), store.lang == 4) { store.setLanguage(4); open = false }
             // (瑞典語: the computer version only)
             if (com.unoki99.fangfang.engine.Lang.count > 5) item(tr("瑞典語"), store.lang == 5) { store.setLanguage(5); open = false }
+            if (com.unoki99.fangfang.engine.Lang.count > 6) item(tr("英語"), store.lang == 6) { store.setLanguage(6); open = false }
             if (yue || ja || sv) {
                 // (粵語: one reading)
             } else if (hak) {

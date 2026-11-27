@@ -75,14 +75,14 @@ fun NewDeckTab() {
                     Icon(Icons.Filled.Layers, null, tint = T.btnInk, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp))
                     Text((if (topic in -105..-101) FreqLevels.name(-100 - topic) else null)
                         ?: (Store.topics + Store.freqTopics).firstOrNull { it.id == topic }?.name?.take(if (zh) 12 else 10)
-                        ?: (if (Store.lang == 1) Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)] + "・" + tr("全部") else tr("全部")),
+                        ?: (if (Store.lang == 1 || Store.isEn) Lang.listNames[Prefs.listNow.coerceIn(0, Lang.listNames.size - 1)] + "・" + tr("全部") else tr("全部")),
                         color = T.btnInk, style = ff(FF.Subheadline, FontWeight.SemiBold))
                 }
                 DropdownMenu(menu, { menu = false }, containerColor = T.fn) {
-                    if (Store.lang == 1) {
+                    if (Store.lang == 1 || Store.isEn) {
                         Txt(tr("詞表"), ff(FF.Caption, FontWeight.Bold), T.muted, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
                         Lang.listNames.forEachIndexed { i, n ->
-                            DropdownMenuItem(text = { Text(n, color = if (Prefs.zhList.value == i) T.greenInk else T.glyph) },
+                            DropdownMenuItem(text = { Text(n, color = if (Prefs.listNow == i) T.greenInk else T.glyph) },
                                 onClick = { Store.setZhList(i); menu = false })
                         }
                         HorizontalDivider(color = T.fnEdge)
@@ -809,7 +809,7 @@ private fun sideCards(word: Card): List<Card> {
             val d = Store.zh ?: return@mapIndexedNotNull base
             val i = d.charIndex[ch] ?: return@mapIndexedNotNull base
             val r = d.readingIndex(i, listOf(tw.getOrElse(n) { "" }, lu.getOrElse(n) { "" }))
-            if (r == null || r == 0) base else d.charCard(i, Prefs.zhList.value, r)
+            if (r == null || r == 0) base else d.charCard(i, Prefs.listNow, r)
         }
     }
     val tab = word.k.indexOf('\t')

@@ -50,7 +50,7 @@ fun ZhOwnPane(z: ZhDict) {
                 Spacer(Modifier.height(8.dp))
                 SoftButton(onClick = {
                     pending = csv()
-                    saveCsv.launch("方方-自訂詞-" + listOf("", "華語", "粵語", "客語", "日語", "瑞典語")[z.lang.coerceIn(0, 5)] + ".csv")
+                    saveCsv.launch("方方-自訂詞-" + listOf("", "華語", "粵語", "客語", "日語", "瑞典語", "英語")[z.lang.coerceIn(0, 6)] + ".csv")
                 }, modifier = Modifier.fillMaxWidth()) { IconLabel(Icons.Filled.IosShare, tr("匯出 CSV"), ff(FF.Headline), T.ownInk) }
             }
             message?.let { Txt(it, ff(FF.Footnote), T.muted, Modifier.padding(6.dp)) }
@@ -84,17 +84,18 @@ fun AddZhOwnDialog(z: ZhDict, word0: String = "", reading0: String = "", meaning
         3 -> tr("客語拼音，要有聲調類別的數字：siid8 fan3")
         4 -> tr("かな（可以不填，詞是かな的話）")
         5 -> ""
+        6 -> tr("IPA 讀音（可以不填）")
         else -> tr("拼音（chi1 fan4、chīfàn，聲調可以不打）或注音")
     }
     val parsed = remember(word, reading) {
         val w = word.trim()
-        if (w.isEmpty() || (lang != 5 && lang != 4 && reading.isBlank())) null else ZhOwnWords.syllables(reading, w, lang, z)
+        if (w.isEmpty() || (lang < 4 && reading.isBlank())) null else ZhOwnWords.syllables(reading, w, lang, z)
     }
     AlertDialog(onDismissRequest = onDone, containerColor = T.bg,
         title = { Txt(tr("加一個詞"), ff(FF.Headline, FontWeight.SemiBold), T.glyph) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                GameField(word, { word = it }, if (lang == 5) tr("例：fika") else tr("例：吃飯"))
+                GameField(word, { word = it }, if (lang == 6) tr("例：doomscroll") else if (lang == 5) tr("例：fika") else tr("例：吃飯"))
                 if (lang != 5) {
                     GameField(reading, { reading = it }, hint, style = lat(17f))
                     parsed?.let { Txt(z.reading(it, Prefs.zhRom.value).annotated(), lat(16f), T.greenInk) }

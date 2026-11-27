@@ -12,7 +12,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.Icon
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.material3.Text
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -248,7 +250,7 @@ private fun WordsTile() {
 }
 
 private fun levelTitle(): String =
-    if (Store.lang == 1) tr("{0} 等級", Lang.listNames[Prefs.zhList.value.coerceIn(0, 1)]) else if (Store.isZh) tr("常用詞") else tr("常用詞和常用字")
+    if (Store.lang == 1 || Store.isEn) tr("{0} 等級", Lang.listNames[Prefs.listNow.coerceIn(0, Lang.listNames.size - 1)]) else if (Store.isZh) tr("常用詞") else tr("常用詞和常用字")
 
 /** HSK / TOCFL (華語) or 常用詞 (台語): each level, and the level you're at */
 @Composable
@@ -267,17 +269,53 @@ private fun LevelTile() {
         }
         return last
     }
-    Row { Big(reached(words) ?: "—", tr("詞的等級")); if (chars.isNotEmpty()) Big(reached(chars) ?: "—", tr("字的等級"), T.blueInk) }
+    // 選擇: pick levels (several), then mark all their words 熟悉
+    var picking by remember { mutableStateOf(false) }
+    val picked = remember { mutableStateListOf<Int>() }
+    var confirming by remember { mutableStateOf(false) }
+    var doneNote by remember { mutableStateOf<String?>(null) }
+    // (the words of the levels picked that aren't 熟悉 yet)
+    val toMark = if (picked.isEmpty()) emptyList() else Store.cards.filter { c -> Store.progress.status[c.k] != 1 && picked.any { Store.inTopic(c, it) } }
+    Row(verticalAlignment = Alignment.Top) {
+        Big(reached(words) ?: "—", tr("詞的等級")); if (chars.isNotEmpty()) Big(reached(chars) ?: "—", tr("字的等級"), T.blueInk)
+        SoftButton({ picking = !picking; picked.clear(); confirming = false; doneNote = null }) { Text(if (picking) tr("取消") else tr("選擇")) }
+    }
     for (t in words + chars) {
         val p = all[t.id] ?: Store.LevelProgress(0, 0, 0)
         val k = if (p.total > 0) p.known.toDouble() / p.total else 0.0
         val u = if (p.total > 0) p.unknown.toDouble() / p.total else 0.0
-        Column {
-            Row { Txt(t.name, ff(FF.Caption, FontWeight.SemiBold), T.glyph, Modifier.weight(1f)); Txt("${Math.round(k * 100)}%", ff(FF.Caption), levelColor(t.id)) }
-            SplitPotionBar(k, u, levelColor(t.id), 16.dp, t.name)
+        val on = t.id in picked
+        Row(Modifier.fillMaxWidth().clickable(enabled = picking) { if (on) picked.remove(t.id) else picked.add(t.id); confirming = false },
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            if (picking) Box(Modifier.size(22.dp).clip(CircleShape).background(if (on) levelColor(t.id) else Color.Transparent)
+                .border(2.dp, if (on) levelColor(t.id) else T.muted, CircleShape), contentAlignment = Alignment.Center) {
+                if (on) Txt("✓", ff(FF.Caption, FontWeight.Bold), T.fn)
+            }
+            Column(Modifier.weight(1f)) {
+                Row { Txt(t.name, ff(FF.Caption, FontWeight.SemiBold), T.glyph, Modifier.weight(1f)); Txt("${Math.round(k * 100)}%", ff(FF.Caption), levelColor(t.id)) }
+                SplitPotionBar(k, u, levelColor(t.id), 16.dp, t.name)
+            }
         }
     }
-    Txt(tr("等級：那一級（和前面每一級）的詞你認識八成以上。"), ff(FF.Caption2), T.muted)
+    if (picking) {
+        if (confirming) {
+            // (asked here, on the page: the words of the levels picked, how many)
+            Txt(tr("把 {0} 個詞標成「熟悉」？（不熟的也會標成熟悉）", toMark.size), ff(FF.Subheadline), T.glyph)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SoftButton({ confirming = false }) { Text(tr("取消")) }
+                ProminentButton({
+                    val n = toMark.size
+                    Store.markAll(toMark, true)
+                    doneNote = tr("標好了：{0} 個詞。", n)
+                    picking = false; picked.clear(); confirming = false
+                }, tint = T.greenEdge) { Text(tr("標成熟悉")) }
+            }
+        } else ProminentButton({ confirming = true }, Modifier.fillMaxWidth().heightIn(min = 36.dp), tint = T.greenEdge, enabled = toMark.isNotEmpty()) {
+            Text(if (picked.isEmpty()) tr("選幾個等級") else tr("把選的 {0} 個等級標成熟悉（{1} 個詞）", picked.size, toMark.size))
+        }
+    }
+    doneNote?.let { Txt(it, ff(FF.Caption), T.greenInk) }
+    Txt(tr("等級：那一級（和前面每一級）的詞你認識八成以上。按「選擇」可以選幾個等級，把它們的詞一次標成熟悉。"), ff(FF.Caption2), T.muted)
 }
 
 /** the last 30 days, oldest first */

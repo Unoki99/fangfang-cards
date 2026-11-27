@@ -11,7 +11,7 @@
 //     isn't one), d: [[English meaning, [[example, its Swedish]…]]…], n: every English meaning ("; "), w: word
 //     classes (中文), m: the forms (ran, running, runs), jp: the Chinese meanings ("n. 跑、賽跑" a line), sw: the
 //     Swedish words, g: the group of how common (500 a group), x: Collins level (1 = ★★★★★ … 5 = ★), y: the first exam list it's on (1 中考 2 高考 3 CET-4
-//     4 CET-6 5 考研 6 TOEFL / IELTS 7 GRE), o: 1 on the Oxford 3000, r: how common (its rank, 0 = not known)
+//     4 CET-6 5 考研 6 TOEFL / IELTS 7 GRE), ox: 1 on the Oxford 3000, r: how common (its rank, 0 = not known)
 "use strict";
 
 const EN_CLASS = {
@@ -274,7 +274,7 @@ function buildEnglish(a) {
         let exam = 0;
         for (const [t, l] of EN_EXAMS) if (tags.indexOf(t) >= 0 && (!exam || l < exam)) exam = l;
         if (exam) o.y = exam;
-        if (r.oxford === "1") o.o = 1;
+        if (r.oxford === "1") o.ox = 1;
         // how common: COCA's rank, else the British National Corpus's
         o._r = frq || bnc || 0;
         out.push(o);

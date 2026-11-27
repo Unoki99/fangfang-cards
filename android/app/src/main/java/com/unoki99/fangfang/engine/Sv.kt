@@ -388,11 +388,17 @@ object SvGuess {
 /** 瑞典語: the Chinese meanings (the guessed ones only when 設定 says), searched (shown or not) */
 val ZhEntry.svZhAll: List<String> get() { val g = SvGuess.on; return jp.mapNotNull { if (it.startsWith("≈")) (if (g) it.drop(1) else null) else it } }
 /** 瑞典語: the Chinese meanings shown (none: 設定 says English only) */
-val ZhEntry.svZh: List<String> get() = if (SvGuess.show == 2) emptyList() else svZhAll
+val ZhEntry.svZh: List<String> get() = if (isEnWord) (if (EngineSettings.enShowZh) jp else emptyList()) else if (SvGuess.show == 2) emptyList() else svZhAll
 /** (they're guessed from the English) */
-val ZhEntry.svZhGuessed: Boolean get() = SvGuess.show != 2 && SvGuess.on && (jp.firstOrNull()?.startsWith("≈") ?: false)
-/** 瑞典語, 只有中文: the English meanings not shown (when there are Chinese ones to show instead) */
-val ZhEntry.svHideEnglish: Boolean get() = SvGuess.show == 1 && svZh.isNotEmpty()
+val ZhEntry.svZhGuessed: Boolean get() = !isEnWord && SvGuess.show != 2 && SvGuess.on && (jp.firstOrNull()?.startsWith("≈") ?: false)
+/** 瑞典語, 只有中文: the English meanings not shown (when there are Chinese ones to show instead). 英語: 設定 doesn't show
+ *  英文 (and there's Chinese or Swedish to show instead) */
+val ZhEntry.svHideEnglish: Boolean get() = if (isEnWord) !(EngineSettings.enShowEn || (!EngineSettings.enShowZh && !EngineSettings.enShowSv)) && (svZh.isNotEmpty() || enSv.isNotEmpty())
+    else SvGuess.show == 1 && svZh.isNotEmpty()
+/** a 英語 word */
+val ZhEntry.isEnWord: Boolean get() = Lang.isEnKey(k)
+/** 英語: the Swedish words shown (設定 → 英語 → 瑞典文) */
+val ZhEntry.enSv: List<String> get() = if (isEnWord && EngineSettings.enShowSv) sw else emptyList()
 
 /** 瑞典語: the words the last search found through the English of a 華語 word (their entries say so) */
 class SvVia(val zh: String, val en: String) {
@@ -581,7 +587,7 @@ fun ZhDict.svWords(m: SvMorpheme, except: String, limit: Int = 60): List<ZhEntry
 /** 瑞典語: a word the dictionary has without its parts (jobbigt, Arvsfonden), its parts worked out by the rules
  *  ("text:kind" each; [] when there's nothing to work out); kept */
 fun ZhDict.svWordSyl(w: String): List<String> {
-    if (!isSv || w.length < 5 || w.contains(" ")) return emptyList()
+    if (!isSv || isEn || w.length < 5 || w.contains(" ")) return emptyList()
     svSylCache[w]?.let { return it }
     val est = svEstimate(w, skipSelf = true)
     val out = if (est != null && est.ms.size > 1) est.ms.map { it.code } else emptyList()
@@ -593,6 +599,8 @@ fun ZhDict.svWordSyl(w: String): List<String> {
 /** 瑞典語: a word as written in a sentence, in its morphemes (Hittade → Hitt|ade; a compound the dictionary doesn't
  *  have: its parts', varning|s|område|t); [] when it can't be worked out */
 fun ZhDict.svMorphemes(w: String): List<SvMorpheme> {
+    // (英語: no morphemes)
+    if (isEn) return emptyList()
     val r = svWordMorphemes(w, entries, svIndices(w))
     if (r.isNotEmpty()) return r
     svCache[w]?.let { return it }
@@ -606,6 +614,8 @@ fun ZhDict.svMorphemes(w: String): List<SvMorpheme> {
 /** 瑞典語: a sentence with each word in its morphemes' colours (hyphens: split, sam-tyck-lig-a); punctuation and
  *  words the dictionary doesn't have in `base` */
 fun ZhDict.svSentence(text: String, hyphens: Boolean, base: Int?, colours: Boolean = EngineSettings.toneSystem != 0, dash: Int? = 0xB38E8E93.toInt()): Styled {
+    // (英語: no morphemes, the sentence as it is)
+    if (isEn) return styled(text, base)
     val b = StyledBuilder()
     for ((li, line) in text.split("\n").withIndex()) {
         if (li > 0) b.add("\n", base)
@@ -709,6 +719,7 @@ fun ZhDict.svGloss(e: ZhEntry): String = e.svZh.firstOrNull() ?: e.en?.split(";"
 
 /** 瑞典語: a word's morphemes: its own, or for a word the dictionary has without them (Arvsfonden), worked out */
 fun ZhDict.svSyl(e: ZhEntry): List<String> {
+    if (isEn) return e.tw
     if (!isSv || SvMorpheme.parse(e.tw).size > 1 || e.h.contains(" ")) return e.tw
     return svWordSyl(e.h).ifEmpty { e.tw }
 }

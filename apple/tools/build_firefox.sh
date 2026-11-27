@@ -47,7 +47,7 @@ for f in "$CODE"/*; do
 done
 # the app's converters, for installing the dictionaries in the browser
 mkdir -p "$TMP/install"
-for f in common taigi mandarin cantonese hakka swedish; do cp "$CONV/$f.js" "$TMP/install/"; done
+for f in common taigi mandarin cantonese hakka swedish english; do cp "$CONV/$f.js" "$TMP/install/"; done
 cp "$CONV/twown.json" "$TMP/install/"
 [ -n "$WITH" ] && cp "$DATA"/d-*.json "$TMP/"
 # the test copy: its own name and ID (the public add-on's are left as they are)

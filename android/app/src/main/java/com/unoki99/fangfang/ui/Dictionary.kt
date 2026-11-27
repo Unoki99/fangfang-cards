@@ -938,6 +938,9 @@ private fun LookupList(d: Dict) {
     var searched by remember { mutableStateOf<String?>(null) }
     /** several words searched: the one whose 更多 is shown (null = the whole search) */
     var picked by remember { mutableStateOf<Int?>(null) }
+    /** a word Gemini gave, being saved as your own (its meaning: what was searched) */
+    var addOwn by remember { mutableStateOf<Pair<String, String>?>(null) }
+    addOwn?.let { (w, m) -> AddOwnWordDialog(d, w, meaning0 = m) { addOwn = null } }
     LaunchedEffect(query) { picked = null }
     LaunchedEffect(query, place) {
         delay(200)
@@ -965,7 +968,9 @@ private fun LookupList(d: Dict) {
             }
         }
         if (query.isNotEmpty() && r.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
-        if (query.isNotEmpty() && r.empty && searched == query && Gemini.on) item { GeminiSuggestions(query, 0, { query = it }) }
+        if (query.isNotEmpty() && r.empty && searched == query && Gemini.on) item {
+            GeminiSuggestions(query, 0, { query = it }, addOwn = { w -> addOwn = w to query })
+        }
         if (r.isPattern) {
             keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)
             keyItems(d, tr("華語「{0}」的台語講法", query), r.patternZh)
@@ -1223,13 +1228,13 @@ private fun OwnPane(d: Dict) {
 
 /** add a word: 漢字 and its reading (typed in 皓羅, 台羅, 白話字 or 方音) */
 @Composable
-fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", onDone: () -> Unit) {
+fun AddOwnWordDialog(d: Dict, han0: String = "", reading0: String = "", meaning0: String = "", onDone: () -> Unit) {
     var han by remember { mutableStateOf(han0) }
     var reading by remember { mutableStateOf(reading0) }
     val engine = remember { ConvertEngine(d, Prefs) }
     val fHan = remember { androidx.compose.ui.focus.FocusRequester() }
     val fReading = remember { androidx.compose.ui.focus.FocusRequester() }
-    var meaning by remember { mutableStateOf("") }
+    var meaning by remember { mutableStateOf(meaning0) }
     var example by remember { mutableStateOf("") }
     // (the same check as a CSV file's words)
     val check: Pair<List<String>?, String> = ownWordCheck(d, engine, han, reading)

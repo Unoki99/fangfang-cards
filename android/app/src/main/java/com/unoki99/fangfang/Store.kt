@@ -59,7 +59,9 @@ object Store {
     val isHak: Boolean get() = lang == 3
     val isJa: Boolean get() = lang == 4
     /** 瑞典語 (the computer version only) */
-    val isSv: Boolean get() = lang == 5
+    /** 瑞典語 and 英語: the same pages (words in letters); isEn tells 英語 apart */
+    val isSv: Boolean get() = lang == 5 || lang == 6
+    val isEn: Boolean get() = lang == 6
     /** which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3) */
     private val zhKind: Int get() = zh?.lang ?: 1
     /** a hint to show (粵語 without a Cantonese voice on the device) */
@@ -231,14 +233,15 @@ object Store {
     /** the spelling shown for 華語 / 粵語 (Prefs.zhRom) is kept apart for each */
     private fun shownRom(l: Int) {
         val was = lang
-        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value; 4 -> Prefs.jaRom.value = Prefs.zhRom.value; 5 -> Prefs.svRom.value = Prefs.zhRom.value }
-        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value; 4 -> Prefs.zhRom.value = Prefs.jaRom.value; 5 -> Prefs.zhRom.value = Prefs.svRom.value }
+        when (was) { 1 -> Prefs.mandRom.value = Prefs.zhRom.value; 2 -> Prefs.yueRom.value = Prefs.zhRom.value; 3 -> Prefs.hakRom.value = Prefs.zhRom.value; 4 -> Prefs.jaRom.value = Prefs.zhRom.value; 5 -> Prefs.svRom.value = Prefs.zhRom.value; 6 -> Prefs.enRom.value = Prefs.zhRom.value }
+        when (l) { 1 -> Prefs.zhRom.value = Prefs.mandRom.value; 2 -> Prefs.zhRom.value = Prefs.yueRom.value; 3 -> Prefs.zhRom.value = Prefs.hakRom.value; 4 -> Prefs.zhRom.value = Prefs.jaRom.value; 5 -> Prefs.zhRom.value = Prefs.svRom.value; 6 -> Prefs.zhRom.value = Prefs.enRom.value }
     }
 
     private fun shown(l: Int) {
         shownRom(l)
         lang = l; isZh = l != 0
-        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.ja = l == 4; EngineSettings.sv = l == 5; EngineSettings.zhShown = l != 0
+        EngineSettings.yue = l == 2; EngineSettings.hak = l == 3; EngineSettings.ja = l == 4; EngineSettings.sv = l == 5 || l == 6; EngineSettings.en = l == 6; EngineSettings.zhShown = l != 0
+        if (l == 6) EngineSettings.enRom = Prefs.enRom.value
         undoStack.clear(); canUndo = false
         changed()
         // (words from the browser add-on waiting for this language)
@@ -311,15 +314,16 @@ object Store {
         ZhOwnWords.words = zhOwnSnapshot()
         val keys = progress.status.keys.filter { Lang.kind(it) == kind } + progress.saved.keys.filter { Lang.kind(it) == kind }
         val have = if (fresh) null else zh?.takeIf { it.lang == kind }
-        val list = Prefs.zhList.value
+        // (英語 has its own word lists)
+        val list = if (kind == 6) Prefs.enList.value else Prefs.zhList.value
         val accent = Prefs.hakAccent.value.coerceIn(0, 5)
         val j = scope.async(Dispatchers.Default) {
-            val name = listOf("zh", "zh", "yue", "hak", "ja", "sv")[kind.coerceIn(0, 5)]
+            val name = listOf("zh", "zh", "yue", "hak", "ja", "sv", "en")[kind.coerceIn(0, 6)]
             // (the dictionary shown before is let go first: two big ones at once don't fit in memory)
             if (have == null && zh != null) { withContext(Dispatchers.Main) { zh = null }; System.gc() }
             val d = have ?: ZhDict(DataFiles.reader(name) ?: throw java.io.FileNotFoundException("$name.json"), accent).also { d ->
                 // 粵語, 客語: the radicals (部首查字) from the 華語 data, when it's there
-                if (d.lang != 1 && d.lang != 4) DataFiles.reader("zh")?.let { z -> try { d.borrowRadicals(z) } catch (_: Exception) {} }
+                if (d.lang != 1 && d.lang != 4 && d.lang != 5 && d.lang != 6) DataFiles.reader("zh")?.let { z -> try { d.borrowRadicals(z) } catch (_: Exception) {} }
             }
             d to makeZhDeck(d, list, keys).also { it.kind = kind }
         }
@@ -459,8 +463,8 @@ object Store {
 
     /** another word list for the 華語 cards (HSK ⇄ TOCFL): the deck is made again */
     fun setZhList(list: Int) {
-        if (list == Prefs.zhList.value) return
-        Prefs.zhList.value = list
+        if (list == Prefs.listNow) return
+        if (EngineSettings.en) Prefs.enList.value = list else Prefs.zhList.value = list
         Prefs.zhTopic.value = -1
         val d = zh ?: return
         if (switching) return
@@ -481,7 +485,7 @@ object Store {
         val d = zh ?: return
         if (switching) return
         switching = true
-        val kind = zhKind; val list = Prefs.zhList.value
+        val kind = zhKind; val list = Prefs.listNow
         val keys = progress.status.keys.filter { Lang.kind(it) == kind } + progress.saved.keys.filter { Lang.kind(it) == kind }
         scope.launch {
             val deck = withContext(Dispatchers.Default) { makeZhDeck(d, list, keys) }.also { it.kind = kind }
@@ -506,12 +510,12 @@ object Store {
         val d = zh ?: return null
         Lang.charOf(k)?.let { ch ->
             val ci = d.charIndex[ch] ?: return null
-            val c = d.charCard(ci, Prefs.zhList.value)
+            val c = d.charCard(ci, Prefs.listNow)
             byKeyMutable[k] = c
             return c
         }
         val i = d.index[k] ?: return null
-        val c = d.card(i, Prefs.zhList.value)
+        val c = d.card(i, Prefs.listNow)
         byKeyMutable[k] = c
         return c
     }
@@ -597,7 +601,7 @@ object Store {
 
     // MARK: 本週學習 (this week's words)
 
-    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak", "ja", "sv")[lang.coerceIn(0, 5)]
+    private val weekLang: String get() = listOf("tw", "zh", "yue", "hak", "ja", "sv", "en")[lang.coerceIn(0, 6)]
 
     /** this week's words (in the language shown), in the order they were picked */
     val weekCards: List<Card> get() {

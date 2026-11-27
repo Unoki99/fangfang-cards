@@ -222,6 +222,15 @@ object Prefs : KeyValue {
     val jaRom = Pref("jaRom", 1)
     /** 瑞典語: 0 = the morphemes under the word (be-tal-a), 1 = not */
     val svRom = Pref("svRom", 0)
+    /** 英語 (the computer version): the reading (0 British + American, 1 American, 2 British, 3 none), which meanings
+     *  are shown (英文, 中文, 瑞典文; at least one), the word list (0 常用度, 1 Collins, 2 考試) */
+    val enRom = Pref("enRom", 0)
+    val enShowEn = Pref("enShowEn", true)
+    val enShowZh = Pref("enShowZh", true)
+    val enShowSv = Pref("enShowSv", false)
+    val enList = Pref("enList", 0)
+    /** the word list in effect: 英語's own, else HSK / TOCFL */
+    val listNow: Int get() = if (com.unoki99.fangfang.engine.EngineSettings.en) enList.value else zhList.value
     /** 瑞典語: the Chinese meanings guessed from the English ones shown */
     val svGuessZh = Pref("svGuessZh", true)
     /** 瑞典語的意思: 0 中文和英文, 1 只有中文, 2 只有英文 */
@@ -268,7 +277,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, numbersMode, numbersLevel, dragonBest, dragonSeconds, dragonHand, relayServer, geminiKey, geminiOn, geminiModel, setupDone, appIcon, coopName, coopMode, coopRounds, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, numbersMode, numbersLevel, dragonBest, dragonSeconds, dragonHand, relayServer, geminiKey, geminiOn, geminiModel, setupDone, appIcon, coopName, coopMode, coopRounds, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, enRom, enShowEn, enShowZh, enShowSv, enList, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -294,6 +303,8 @@ object Prefs : KeyValue {
         svGuessZh.onChange = { com.unoki99.fangfang.engine.SvGuess.on = svGuessZh.value }
         com.unoki99.fangfang.engine.SvGuess.show = svMeanings.value
         svMeanings.onChange = { com.unoki99.fangfang.engine.SvGuess.show = svMeanings.value }
+        val en = { com.unoki99.fangfang.engine.EngineSettings.let { e -> e.enShowEn = enShowEn.value; e.enShowZh = enShowZh.value; e.enShowSv = enShowSv.value } }
+        en(); enShowEn.onChange = en; enShowZh.onChange = en; enShowSv.onChange = en
     }
 
     /** 瑞典語's colours, for the engine */
@@ -314,6 +325,7 @@ object Prefs : KeyValue {
         EngineSettings.hongimLightKeep = hongimLightKeep.value
         EngineSettings.simplified = simplified.value
         EngineSettings.hakAccent = hakAccent.value.coerceIn(0, 5)
+        EngineSettings.enRom = enRom.value
     }
 
     // the engine's own settings (remembered converter picks and the like)

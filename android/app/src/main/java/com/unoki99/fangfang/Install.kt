@@ -83,7 +83,7 @@ class DictPack(
     class Source(val file: String, val url: String, val optional: Boolean = false, val arg: String? = null)
 
     fun mirrorURL(s: Source): String? =
-        if (s.file in notMirrored) null else MIRROR + (if (s.file in sharedFiles) "common" else id) + "/" + s.file
+        if (s.file in notMirrored) null else MIRROR + (if (s.file in sharedFiles) "common" else if (id == "en" && s.file in setOf("folkets.xml", "sv_50k.txt")) "sv" else id) + "/" + s.file
 
     companion object {
         private const val G = "https://raw.githubusercontent.com/"
@@ -159,7 +159,20 @@ class DictPack(
             "Folkets lexikon（KTH，CC BY-SA 2.5）、FrequencyWords 詞頻（CC BY-SA 4.0）、維基詞典的中文解釋（kaikki.org，CC BY-SA）、CC-CEDICT（由英文推測的中文解釋，CC BY-SA）；詞素依規則推算",
             "約 95 MB（中文解釋佔大部分）", dataVersion = 4)
 
-        val all: List<DictPack> get() = if (com.unoki99.fangfang.engine.EngineSettings.desktop) listOf(taigi, mandarin, cantonese, hakka, japanese, swedish, shuowen)
+        /** 英語 (the computer version only): ECDICT (MIT: English and Chinese meanings, frequencies, word lists), CMUdict
+         *  (BSD) for the American readings, Folkets lexikon the other way round (CC BY-SA 2.5) for the Swedish words
+         *  and example sentences, CC-CEDICT's pairs for the Chinese in 正體 (install/english.js) */
+        val english = DictPack("en", 6, "英語", listOf("en"),
+            listOf(Source("ecdict.csv", G + "skywind3000/ECDICT/master/ecdict.csv", arg = "ecdict"),
+                Source("cmudict.dict", G + "cmusphinx/cmudict/master/cmudict.dict", optional = true, arg = "cmu"),
+                Source("folkets.xml", G + "antonlisq/convert-dict/main/folkets_sv_en_public.xml", optional = true, arg = "folkets"),
+                Source("sv_50k.txt", G + "hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt", optional = true, arg = "svfreq"),
+                Source(cedict.file, cedict.url, optional = true, arg = "cedict")),
+            "english", "buildEnglish",
+            "ECDICT（skywind3000，MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表、牛津 3000）、CMUdict 美式讀音（BSD）、Folkets lexikon 的瑞典文和例句（KTH，CC BY-SA 2.5）、CC-CEDICT（正體字，CC BY-SA）",
+            "約 85 MB")
+
+        val all: List<DictPack> get() = if (com.unoki99.fangfang.engine.EngineSettings.desktop) listOf(taigi, mandarin, cantonese, hakka, japanese, swedish, english, shuowen)
             else listOf(taigi, mandarin, cantonese, hakka, japanese, shuowen)
 
         /** the copies of the original files in this project's data repository on GitHub, unoki99/fangfang-data

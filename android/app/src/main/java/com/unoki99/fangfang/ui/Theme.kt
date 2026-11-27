@@ -67,9 +67,9 @@ object T {
     val greenInk get() = hex(P.now.greenInk)
     val purpleInk get() = hex(P.now.purpleInk)
     /** buttons in the language's colour: 台語 green, 華語 blue, 粵語 yellow, 客語 red, 日語 pink */
-    val btn get() = when (com.unoki99.fangfang.Store.lang) { 4 -> jaFill; 3 -> hakFill; 2 -> olive; 1 -> blue; else -> twFill }
-    val btnEdge get() = when (com.unoki99.fangfang.Store.lang) { 4 -> jaEdge; 3 -> hakEdge; 2 -> oliveEdge; 1 -> blueEdge; else -> twEdge }
-    val btnInk get() = when (com.unoki99.fangfang.Store.lang) { 4 -> jaInk; 3 -> hakInk; 2 -> oliveInk; 1 -> blueInk; else -> twInk }
+    val btn get() = when (com.unoki99.fangfang.Store.lang) { 6 -> Color(0xFF5A3214); 5 -> Color(0xFF124A46); 4 -> jaFill; 3 -> hakFill; 2 -> olive; 1 -> blue; else -> twFill }
+    val btnEdge get() = when (com.unoki99.fangfang.Store.lang) { 6 -> Color(0xFFF08A3C); 5 -> Color(0xFF2EC4B6); 4 -> jaEdge; 3 -> hakEdge; 2 -> oliveEdge; 1 -> blueEdge; else -> twEdge }
+    val btnInk get() = when (com.unoki99.fangfang.Store.lang) { 6 -> Color(0xFFFFD2A8); 5 -> Color(0xFF9FF3E8); 4 -> jaInk; 3 -> hakInk; 2 -> oliveInk; 1 -> blueInk; else -> twInk }
     /** 台語's green (the same in every theme) */
     val twFill = Color(0xFF1D4630); val twEdge = Color(0xFF3FAE66); val twInk = Color(0xFFB6F0C8)
     /** 客語's red (the same in every theme) */
