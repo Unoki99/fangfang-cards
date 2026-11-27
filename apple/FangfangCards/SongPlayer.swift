@@ -292,7 +292,7 @@ final class SongPlayer: ObservableObject {
         why = nil
         // (the song downloaded into your Apple Music library: that copy, which plays without the internet too;
         // otherwise the song from Apple Music's catalogue)
-        if let item = Self.libraryItem(h.trackId) {
+        if let item = Self.libraryItem(h) {
             m.setQueue(with: MPMediaItemCollection(items: [item]))
         } else {
             m.setQueue(with: [String(h.trackId)])
@@ -320,7 +320,7 @@ final class SongPlayer: ObservableObject {
 
     /// a song in your own Apple Music library (added or downloaded), found by its Apple Music number. Asks once
     /// whether the app may look in the library.
-    static func libraryItem(_ trackId: Int) -> MPMediaItem? {
+    static func libraryItem(_ h: SongHit) -> MPMediaItem? {
         #if targetEnvironment(macCatalyst)
         return nil
         #else
@@ -329,9 +329,12 @@ final class SongPlayer: ObservableObject {
         case .notDetermined: MPMediaLibrary.requestAuthorization { _ in }; return nil
         default: return nil
         }
+        // (the Apple Music number can't be searched for: a query filtered by it stops the app. So the songs with
+        // this title are looked up, and the one with this number is picked from them)
+        let id = String(h.trackId)
         let q = MPMediaQuery.songs()
-        q.addFilterPredicate(MPMediaPropertyPredicate(value: String(trackId), forProperty: MPMediaItemPropertyPlaybackStoreID))
-        return q.items?.first
+        q.addFilterPredicate(MPMediaPropertyPredicate(value: h.trackName, forProperty: MPMediaItemPropertyTitle, comparisonType: .equalTo))
+        return (q.items ?? []).first { $0.playbackStoreID == id }
         #endif
     }
 
