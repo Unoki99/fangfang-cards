@@ -348,6 +348,11 @@ struct ProfileButton: View {
 struct ProfileView: View {
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
+    /// 選擇 (the levels' tile): levels being picked, to mark their words 熟悉 all at once
+    @State private var picking = false
+    @State private var picked: Set<Int> = []
+    @State private var confirming = false
+    @State private var doneNote: String?
 
     var body: some View {
         NavigationStack {
@@ -443,25 +448,69 @@ struct ProfileView: View {
             }
             return last
         }
+        // (the words of the levels picked that aren't 熟悉 yet)
+        let toMark = picked.isEmpty ? [] : store.cards.filter { c in store.progress.status[c.k] != 1 && picked.contains { store.inTopic(c, $0) } }
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(alignment: .top) {
                 big(reached(words) ?? "—", trs("詞的等級"))
                 if !chars.isEmpty { big(reached(chars) ?? "—", trs("字的等級"), T.blueInk) }
+                // 選擇: pick levels (several), then mark all their words 熟悉
+                Button(picking ? tr("取消") : tr("選擇")) {
+                    picking.toggle(); picked = []; confirming = false; doneNote = nil
+                }
+                .buttonStyle(.bordered)
             }
             ForEach(words + chars) { t in
                 let p = all[t.id] ?? (0, 0, 0)
                 let k = p.total > 0 ? Double(p.known) / Double(p.total) : 0
                 let u = p.total > 0 ? Double(p.unknown) / Double(p.total) : 0
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(t.name).ffFont(.caption, .semibold)
-                        Spacer()
-                        Text("\(Int((k * 100).rounded()))%").ffFont(.caption).monospacedDigit().foregroundStyle(levelColor(t.id))
+                HStack(spacing: 10) {
+                    if picking {
+                        Image(systemName: picked.contains(t.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.title3).foregroundStyle(picked.contains(t.id) ? levelColor(t.id) : T.muted)
                     }
-                    SplitPotionBar(known: k, unknown: u, label: t.name, tint: levelColor(t.id))
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack {
+                            Text(t.name).ffFont(.caption, .semibold)
+                            Spacer()
+                            Text("\(Int((k * 100).rounded()))%").ffFont(.caption).monospacedDigit().foregroundStyle(levelColor(t.id))
+                        }
+                        SplitPotionBar(known: k, unknown: u, label: t.name, tint: levelColor(t.id))
+                    }
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard picking else { return }
+                    if picked.contains(t.id) { picked.remove(t.id) } else { picked.insert(t.id) }
+                    confirming = false
+                }
+                .accessibilityAddTraits(picking ? .isButton : [])
+            }
+            if picking {
+                if confirming {
+                    // (asked here, on the page: the words of the levels picked, how many)
+                    Text(tr("把 \(toMark.count) 個詞標成「熟悉」？（不熟的也會標成熟悉）")).ffFont(.subheadline).foregroundStyle(T.glyph)
+                    HStack {
+                        Button(tr("取消")) { confirming = false }.buttonStyle(.bordered)
+                        Button(tr("標成熟悉")) {
+                            let n = toMark.count
+                            store.markAll(toMark, known: true)
+                            doneNote = tr("標好了：\(n) 個詞。")
+                            picking = false; picked = []; confirming = false
+                        }
+                        .prominentButton(T.greenEdge)
+                    }
+                } else {
+                    Button { confirming = true } label: {
+                        Text(picked.isEmpty ? tr("選幾個等級") : tr("把選的 \(picked.count) 個等級標成熟悉（\(toMark.count) 個詞）"))
+                            .frame(maxWidth: .infinity, minHeight: 30)
+                    }
+                    .prominentButton(T.greenEdge)
+                    .disabled(toMark.isEmpty)
                 }
             }
-            Text(tr("等級：那一級（和前面每一級）的詞你認識八成以上。")).ffFont(.caption2).foregroundStyle(T.muted)
+            if let doneNote { Text(doneNote).ffFont(.caption).foregroundStyle(T.greenInk) }
+            Text(tr("等級：那一級（和前面每一級）的詞你認識八成以上。按「選擇」可以選幾個等級，把它們的詞一次標成熟悉。")).ffFont(.caption2).foregroundStyle(T.muted)
         }
     }
 
