@@ -26,7 +26,7 @@
     // yue / hak: 粵語 and 客語 (hakAcc: the accent, hakRom: 0 拼音 / 1 注音); ring: a rainbow around the words saved
     // here when they're on a page; tint: the characters of saved words in their tone colours on the page
     const DEFAULTS = { pcLink: false, pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
-        yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, en2zh: true, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
+        yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, eng: false, engRom: 0, engEn: true, engZh: true, engSv: false, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
         // 影片字幕 (YouTube, Viki): the panel on; the video stops while a word is looked up in it; the subtitles on
         // the video itself hidden while the panel shows them
         subs: true, subsPause: true, subsHideVideo: true,
@@ -93,6 +93,7 @@
         if (c === "客") return "hak";
         if (c === "日") return "ja";
         if (c === "瑞") return "sv";
+        if (c === "英") return "eng";
         if ((cp >= 0x3100 && cp <= 0x312F) || (cp >= 0x31A0 && cp <= 0x31BF) || c === "˙" || c === "字") return "zh";
         return "tw";
     }
@@ -116,7 +117,7 @@
         knownSet = new Set(Object.values(o.k).flat());
         learnSet = new Set(Object.values(o.u || {}).flat());
         knownBy = {}; learnBy = {};
-        for (const l of ["tw", "zh", "yue", "hak", "ja", "sv"]) {
+        for (const l of ["tw", "zh", "yue", "hak", "ja", "sv", "eng"]) {
             knownBy[l] = new Set(o.k[l] || []);
             learnBy[l] = new Set((o.u || {})[l] || []);
         }
@@ -154,7 +155,7 @@
                 subsSize(); subsLayout();
                 subsTint();
                 if (o.uiLang !== n.uiLang) { subsHeader(); subsStudy(); }
-                if (["subsRd", "subsGl", "subsLang", "subsTrad", "subsMark", "subsRare", "subsEnZh", "zh", "tw", "yue", "hak", "sv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "subsColours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
+                if (["subsRd", "subsGl", "subsLang", "subsTrad", "subsMark", "subsRare", "subsEnZh", "zh", "tw", "yue", "hak", "sv", "eng", "engRom", "engEn", "engZh", "engSv", "en", "zhRom", "zhPlace", "twRom", "twPlace", "hakAcc", "hakRom", "colours", "subsColours", "onlyNew"].some(k => o[k] !== n[k])) subsRedraw();
             }
         });
     }
@@ -179,7 +180,7 @@
             } catch (e) {}
         })();
     }
-    const LANGS_ONE = ["zh", "tw", "yue", "hak", "sv"];
+    const LANGS_ONE = ["zh", "tw", "yue", "hak", "sv", "eng"];
     /// the one language on
     const activeLang = () => LANGS_ONE.find(l => prefs[l]) || "zh";
     // the tone colours: 聲調顏色 (the card's and the page's); the subtitles have their own (subsColours), used while
@@ -363,55 +364,31 @@
         ["iness", ["y"]], ["ness", [""]], ["ments", [""]], ["ment", [""]], ["ities", ["ity"]], ["ity", ["", "e"]],
         ["ied", ["y"]], ["ies", ["y"]], ["ier", ["y"]], ["iest", ["y"]], ["ing", ["", "e"]], ["est", ["", "e"]], ["ers", ["", "e"]],
         ["er", ["", "e"]], ["ed", ["", "e"]], ["es", ["", "e"]], ["s", [""]], ["able", ["", "e"]], ["ible", ["", "e"]]];
-    function enShard(w, meta) { return svShard(w, meta).replace("d-sv-", "d-en-"); }
-    async function findEn(text) {
+    // ── 英語 (en.json, ECDICT): the word, or one of its forms (ran → run), in small letters; else without its ending ──
+    function engShard(w, meta) { return svShard(w, meta).replace("d-sv-", "d-eng-"); }
+    async function findEng(text) {
         const meta = await getMeta();
         if (!meta) return { ok: true, ready: false };
         const out = { ok: true, ready: true, tab: meta };
-        let w = text.toLowerCase();
-        if (!prefs.en2zh || !meta.en || w.length < 2) return out;
-        let hit = await getEntry(enShard(w, meta), w), base = w;
-        const tryWord = async b => {
-            if (hit || b.length < 3 || b === w) return;
-            const e2 = await getEntry(enShard(b, meta), b);
-            if (e2) { hit = e2; base = b; }
-        };
-        // (the word without its ending: eats, eating, eaten, beautifully → beautiful, happily → happy, bigger → big)
-        if (!hit) for (const [end, adds] of EN_ENDS) {
-            if (!w.endsWith(end) || w.length - end.length < 3) continue;
+        const w = text.toLowerCase();
+        if (!prefs.eng || !meta.eng || !w) return out;
+        const get = async b => { const sh = await getFile(engShard(b, meta)); return (sh && sh[b]) || null; };
+        let list = await get(w);
+        // (a form the dictionary doesn't list: eats, happily → happy, stopped → stop)
+        if (!list) for (const [end, adds] of EN_ENDS) {
+            if (!w.endsWith(end) || w.length - end.length < 2) continue;
             const st = w.slice(0, -end.length);
-            for (const a of adds) await tryWord(st + a);
-            // (running → run, stopped → stop: a doubled last letter as one)
-            if (st.length > 3 && st[st.length - 1] === st[st.length - 2] && !/[aeiouls]/.test(st[st.length - 1])) await tryWord(st.slice(0, -1));
-            if (hit) break;
+            for (const a of adds) { if (!list && st + a !== w) list = await get(st + a); }
+            if (!list && st.length > 2 && st[st.length - 1] === st[st.length - 2]) list = await get(st.slice(0, -1));
+            if (list) break;
         }
-        // (still nothing: the word made shorter a letter at a time, down to about two thirds of it, the longest
-        // word the dictionary has: carefulness → careful)
-        if (!hit) for (let n = w.length - 1; n >= Math.max(3, Math.ceil(w.length * 0.6)) && !hit; n--) await tryWord(w.slice(0, n));
-        if (!hit) return out;
-        for (const lang of ["zh", "tw", "yue", "hak"]) {
-            if (!prefs[lang] || !hit[lang]) continue;
-            const list = [];
-            for (const h of hit[lang]) {
-                for (const e of (await getEntry(shardName(lang, h.codePointAt(0), meta), h)) || []) {
-                    // (the word's own entries, not the 台語 words given for a 華語 word)
-                    if (e.k.split("\t")[0] !== h || e.v || list.some(x => x.k === e.k)) continue;
-                    list.push(e);
-                }
-            }
-            if (list.length) out[lang] = { w: text, list: list.slice(0, 6), en: true, base: base === w ? "" : base };
-        }
+        if (list) out.eng = { w: text, list, form: text };
         return out;
     }
-    // a Latin word: 瑞典語 and English together
+    // a Latin word: 英語 or 瑞典語, whichever is on
     async function findLatin(text) {
-        const a = prefs.sv ? await findSv(text) : { ok: true, ready: true };
-        if (!a.ok || !a.ready) return a;
-        const b = await findEn(text);
-        if (!b.ready) return a.tab ? a : b;
-        for (const l of ["zh", "tw", "yue", "hak"]) if (b[l]) a[l] = b[l];
-        if (!a.tab) a.tab = b.tab;
-        return a;
+        if (prefs.eng) return await findEng(text);
+        return prefs.sv ? await findSv(text) : { ok: true, ready: true };
     }
 
     // ── 瑞典語 words worked out by rules (the same as the app's ZhDict.svEstimate) ─────────────────────────────────
@@ -621,11 +598,11 @@
             show(rect, spot, box);
             return;
         }
-        if (!res.zh && !res.tw && !res.yue && !res.hak && !res.sv) { hide(); return; }
+        if (!res.zh && !res.tw && !res.yue && !res.hak && !res.sv && !res.eng) { hide(); return; }
         last = { res, rect, spot };
         show(rect, spot, render(res));
         // the word on the page, marked in light blue (the longer of the 華語 and the 台語 word found)
-        const len = Math.max(...["zh", "tw", "yue", "hak", "sv"].map(l => res[l] ? [...res[l].w].length : 0));
+        const len = Math.max(...["zh", "tw", "yue", "hak", "sv", "eng"].map(l => res[l] ? [...res[l].w].length : 0));
         if (at) markWord(at.node, at.off, len); else unmark();
         shownWord = null;
         if (at && at.node.isConnected) {
@@ -1040,6 +1017,22 @@
         return { h, r, r2: null, parts };
     }
 
+    // 英語: the word (as on the page) and its IPA, British and American as the settings say
+    function engIpa(e) {
+        const uk = e.u || "", us = e.a || "";
+        switch (prefs.engRom) {
+            case 1: return (us || uk) ? "/" + (us || uk) + "/" : "";
+            case 2: return (uk || us) ? "/" + (uk || us) + "/" : "";
+            case 3: return "";
+            default: return uk && us && uk !== us ? "UK /" + uk + "/ · US /" + us + "/" : ((uk || us) ? "/" + (uk || us) + "/" : "");
+        }
+    }
+    function engParts(e, form) {
+        const head = form || e.k.split("\t")[0];
+        const r = engIpa(e);
+        return { h: [{ t: head, c: null }], r: r ? [{ t: r, c: null }] : [], r2: null, parts: null };
+    }
+
     // ── the sentence a word is in (kept with it when it's saved): from the stop before it to the stop after it ──
     let lastSentence = "";
     // (a subtitle line's: the same line in the second language under it, e.g. the English; and the video it's from)
@@ -1385,6 +1378,7 @@
         .sec.yue { background: rgba(201, 162, 39, 0.10); border-left-color: #c9a227; }
         .sec.hak { background: rgba(216, 67, 79, 0.10); border-left-color: #d8434f; }
         .sec.sv { background: rgba(63, 201, 189, 0.08); border-left-color: #3fc9bd; }
+        .sec.eng { background: rgba(240, 138, 60, 0.08); border-left-color: #f08a3c; }
         .cols { display: flex; gap: 8px; align-items: flex-start; }
         .cols > .sec { flex: 1 1 0; min-width: 190px; margin-top: 0; }
         .lang { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 6px; margin-bottom: 4px; }
@@ -1394,6 +1388,8 @@
         .lang.hak { background: #5a1e2a; border: 1px solid #d8434f; color: #ffb3b8; }
         .lang.sv { background: #0f4a4a; border: 1px solid #3fc9bd; color: #9cf0e6; }
         .chip.sv { background: #163f3c; border-color: #3fc9bd; color: #9cf0e6; }
+        .lang.eng { background: #5a3214; border: 1px solid #f08a3c; color: #ffd2a8; }
+        .chip.eng { background: #4a2a12; border-color: #f08a3c; color: #ffd2a8; }
         .parts { display: flex; flex-wrap: wrap; gap: 4px; align-items: stretch; margin-top: 4px; }
         .part { display: flex; flex-direction: column; align-items: center; padding: 2px 7px; border-radius: 7px; border: 1.5px solid; }
         .part .pt { font-size: 15px; font-weight: 600; color: #f2f2f2; }
@@ -1497,15 +1493,15 @@
         // (at a corner of the screen: the languages side by side; next to the word: one under the other)
         const holder = (prefs.pos || "word") !== "word" ? el("div", "cols") : box;
         if (holder !== box) box.appendChild(holder);
-        const NAMES = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語"), sv: ffT("瑞典語") };
-        for (const lang of ["zh", "tw", "yue", "hak", "sv"]) {
+        const NAMES = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語"), sv: ffT("瑞典語"), eng: ffT("英語") };
+        for (const lang of ["zh", "tw", "yue", "hak", "sv", "eng"]) {
             const part = res[lang];
             if (!part) continue;
             const sec = el("div", "sec " + lang);
             sec.appendChild(el("span", "lang " + lang, NAMES[lang] + (lang === "hak" && tab.hacc && tab.hacc[prefs.hakAcc] ? ffT("・") + tab.hacc[prefs.hakAcc] : "") + (part.en ? ffT("・英文「") + part.w + (part.base ? " → " + part.base : "") + ffT("」") : "")));
             for (const e of part.list) {
                 if (lang === "zh" && e.p === 3 && prefs.zhPlace !== 2) continue;     // (四川話's own words: with 四川話 only)
-                const p = lang === "sv" ? svParts(e, part.form) : lang === "zh" ? zhParts(e, tab) : (lang === "tw" ? twParts(e, tab) : (lang === "yue" ? yueParts(e) : hakParts(e, tab)));
+                const p = lang === "eng" ? engParts(e, part.form) : lang === "sv" ? svParts(e, part.form) : lang === "zh" ? zhParts(e, tab) : (lang === "tw" ? twParts(e, tab) : (lang === "yue" ? yueParts(e) : hakParts(e, tab)));
                 const d = el("div", "e");
                 if (e.v) d.appendChild(el("div", "via", ffT("華語「") + e.v + ffT("」的台語講法")));
                 const head = el("div", "head");
@@ -1526,6 +1522,8 @@
                 }
                 if (lang === "hak" && p.guess) chips.push([ffT("這個腔沒有收"), "p0"]);
                 if (lang === "sv" && e.w) chips.push([e.w, "sv"]);
+                if (lang === "eng" && e.w) chips.push([e.w, "eng"]);
+                if (lang === "eng" && part.form && part.form.toLowerCase() !== e.k.split("\t")[0].toLowerCase()) chips.push([ffT("「") + e.k.split("\t")[0] + ffT("」的變化"), "eng"]);
                 if (lang === "sv" && e.est && !e.inDict) chips.push([ffT("詞典裡沒有：照詞和構詞規則推算，可能有誤"), "p0"]);
                 if (lang === "sv" && part.form && !e.est && part.form.toLowerCase() !== e.k.split("\t")[0].toLowerCase()) chips.push([ffT("「") + e.k.split("\t")[0] + ffT("」的變化"), "sv"]);
                 if (chips.length) {
@@ -1548,10 +1546,16 @@
                     }
                     d.appendChild(box);
                 }
-                if (e.m) d.appendChild(el("div", "m", e.m));
+                if (lang === "eng") {
+                    // 英語: the meanings chosen (英文, 中文, 瑞典文; at least one)
+                    const none = !prefs.engZh && !prefs.engSv;
+                    if (prefs.engZh && e.m) d.appendChild(el("div", "m", e.m));
+                    if (prefs.engSv && e.s) d.appendChild(el("div", "m", ffT("瑞典文：") + e.s));
+                    if ((prefs.engEn || none || (!e.m && !e.s)) && e.e) d.appendChild(el("div", "en", e.e));
+                } else if (e.m) d.appendChild(el("div", "m", e.m));
                 else if (lang === "sv" && e.q && prefs.svGuess) d.appendChild(el("div", "m", "≈ " + e.q + ffT("（由英文推測）")));
                 if (e.eq && e.eq.length && lang === "zh" && prefs.zhPlace === 2) d.appendChild(el("div", "en", ffT("華語：") + e.eq.join("、")));
-                if ((prefs.en || (lang === "sv" && !e.m)) && e.e) d.appendChild(el("div", "en", e.e));
+                if (lang !== "eng" && (prefs.en || (lang === "sv" && !e.m)) && e.e) d.appendChild(el("div", "en", e.e));
                 if (e.k) d.appendChild(buttons(e.k, e.k.split("\t")[0], p.h));
                 sec.appendChild(d);
             }
@@ -1673,7 +1677,7 @@
             const l = el("label");
             l.appendChild(el("span", null, ffT("語言")));
             const s = el("select");
-            for (const [v, t] of [["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["sv", ffT("瑞典語")]]) {
+            for (const [v, t] of [["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["sv", ffT("瑞典語")], ["eng", ffT("英語")]]) {
                 const o = el("option", null, t); o.value = v;
                 if (activeLang() === v) o.selected = true;
                 s.appendChild(o);
@@ -1690,7 +1694,10 @@
         row(ffT("台語腔口"), "twPlace", places);
         row(ffT("客語腔"), "hakAcc", [ffT("四縣"), ffT("海陸"), ffT("大埔"), ffT("饒平"), ffT("詔安"), ffT("南四縣")].map((n, i) => [i, n]));
         row(ffT("客語拼寫"), "hakRom", [[0, ffT("拼音")], [1, ffT("注音")]]);
-        row(ffT("英文查中文"), "en2zh", yesNo);
+        row(ffT("英語讀音"), "engRom", [[0, ffT("英式＋美式")], [1, ffT("美式")], [2, ffT("英式")], [3, ffT("不顯示")]]);
+        row(ffT("英語：英文解釋"), "engEn", yesNo);
+        row(ffT("英語：中文解釋"), "engZh", yesNo);
+        row(ffT("英語：瑞典文"), "engSv", yesNo);
         row(ffT("瑞典語：由英文推測中文"), "svGuess", [[true, ffT("顯示")], [false, ffT("不顯示")]]);
         row(ffT("聲調顏色"), "colours", [[true, ffT("開")], [false, ffT("關")]]);
         row(ffT("字的大小"), "font", [[0.85, ffT("小")], [1, ffT("中")], [1.15, ffT("大")], [1.3, ffT("更大")], [1.5, ffT("很大")], [1.8, ffT("特大")], [2.2, ffT("超大")], [2.7, ffT("最大")]]);
@@ -1895,7 +1902,7 @@
         if (!hit) return;
         const inSubs = hit.node.parentElement && hit.node.parentElement.closest("#ff-subs");
         if (!prefs.on && !inSubs) return;
-        const lat = !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
+        const lat = !isHan(hit.cp) && (prefs.sv || prefs.eng) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
         if (!isHan(hit.cp) && !lat) return;
         // (the site's own use of the key, e.g. YouTube's, doesn't happen: the pointer is on a word)
         e.preventDefault(); e.stopImmediatePropagation();
@@ -1905,7 +1912,7 @@
         if (!res || !res.ok) return;
         // the first language the card would show
         let pick = null, lang = "";
-        const order = ["zh", "tw", "yue", "hak", "sv"];
+        const order = ["zh", "tw", "yue", "hak", "sv", "eng"];
         if (inSubs && subs && subs.lang) order.sort((a, b) => (b === subs.lang) - (a === subs.lang));
         for (const l of order) {
             const part = res[l];
@@ -1936,7 +1943,7 @@
         pageMarks();
         if (subs && subs.key) subsColour(subs.key);
         if (isOpen() && last && !card.querySelector(".set")) redraw();
-        const NAMES = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語"), sv: ffT("瑞典語") };
+        const NAMES = { zh: ffT("華語"), tw: ffT("台語"), yue: ffT("粵語"), hak: ffT("客語"), sv: ffT("瑞典語"), eng: ffT("英語") };
         toast((want === "known" ? ffT("認識：") : ffT("不熟＋收藏：")) + han + ffT("（") + NAMES[lang] + ffT("）"), want === "known" ? "#3fae66" : "#c9a227");
         if (subs) subsDefs(true);
     }
@@ -1979,7 +1986,7 @@
         if (hit && hit.node && hit.node.parentElement && hit.node.parentElement.closest("#ff-subs")) { clearTimeout(dwellTimer); return; }
         // (瑞典語: a Latin letter, the whole word around it)
         // (a Latin word: 瑞典語, and English → the Chinese languages)
-        const lat = hit && !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
+        const lat = hit && !isHan(hit.cp) && (prefs.sv || prefs.eng) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
         if (!hit || (!isHan(hit.cp) && !lat)) { clearTimeout(dwellTimer); lastSpot = ""; hideSoon(); return; }
         const spot = lat ? "w" + lat.start + ":" + lat.text + "@" + Math.round(hit.rect.top) : hit.off + "@" + Math.round(hit.rect.left) + "," + Math.round(hit.rect.top);
         if (spot === shownSpot) { clearTimeout(hideTimer); return; }
@@ -1989,7 +1996,7 @@
         if (lat) {
             getMeta().then(m => {
                 if (m && m.sv && prefs.sv) getFile(svShard(lat.text.toLowerCase(), m));
-                if (m && m.en && prefs.en2zh) getEntry(enShard(lat.text.toLowerCase(), m), lat.text.toLowerCase());
+                if (m && m.eng && prefs.eng) getFile(engShard(lat.text.toLowerCase(), m));
             });
         } else prefetch(hit.cp);
         const go = () => {
@@ -2048,7 +2055,7 @@
             const s = sel.toString().trim();
             if (!s) return;
             // (瑞典語: one Latin word)
-            const sv = (prefs.sv || prefs.en2zh) && isLat(s.charCodeAt(0)) && [...s].every(c => isLat(c.charCodeAt(0)));
+            const sv = (prefs.sv || prefs.eng) && isLat(s.charCodeAt(0)) && [...s].every(c => isLat(c.charCodeAt(0)));
             if (!sv && ([...s].length > MAXLEN || !isHan(s.codePointAt(0)))) return;
             const rect = sel.getRangeAt(0).getBoundingClientRect();
             const spot = "sel:" + s + "@" + Math.round(rect.left) + "," + Math.round(rect.top);
@@ -2560,7 +2567,7 @@
         const showing = v && v.textTracks ? [...v.textTracks].find(t => t.mode === "showing") : null;
         const norm = l => String(l || "").toLowerCase();
         const pref = { zh: ["zt", "zh-hant", "zh-tw", "zh-hk", "zh", "zh-hans", "zh-cn", "cmn"], tw: ["nan", "zh-min", "zt", "zh-hant", "zh-tw", "zh"],
-            yue: ["yue", "zh-hk", "zt", "zh-hant", "zh"], hak: ["hak", "zt", "zh-hant", "zh"], sv: ["sv"] }[activeLang()] || ["zh"];
+            yue: ["yue", "zh-hk", "zt", "zh-hant", "zh"], hak: ["hak", "zt", "zh-hant", "zh"], sv: ["sv"], eng: ["en", "en-us", "en-gb"] }[activeLang()] || ["zh"];
         const want = showing ? [norm(showing.language), norm(showing.label)] : [];
         let tr = null;
         for (const w of want) { if (!w) continue; tr = st.fullTracks.find(t => norm(t.lang) === w) || st.fullTracks.find(t => norm(t.lang).startsWith(w) || w.startsWith(norm(t.lang)) && norm(t.lang)); if (tr) break; }
@@ -2924,7 +2931,7 @@
             if (d.type === "mouse" && e.button !== 0) return;
             const hit = charAt(e.clientX, e.clientY);
             if (!hit) return;
-            const lat = !isHan(hit.cp) && (prefs.sv || prefs.en2zh) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
+            const lat = !isHan(hit.cp) && (prefs.sv || prefs.eng) && isLat(hit.cp) ? latWordAt(hit.node, hit.off) : null;
             if (!isHan(hit.cp) && !lat) return;
             const v = subsVideo();
             clearTimeout(st.resumeTimer);
@@ -3524,12 +3531,12 @@
             const nm = `d-${SL}-${String(i).padStart(3, "0")}.json`;
             if (!files.has(nm)) files.set(nm, await getFile(nm));
         }));
-        // English subtitles: the parts of the English list their words are in (each word, and without -s / -ing / -ed)
-        const enOn = !!(prefs.subsEnZh && meta.en);
+        // English subtitles: the parts of the 英語 dictionary their words are in (each word, and without -s / -ing / -ed)
+        const enOn = !!(prefs.subsEnZh && meta.eng);
         if (enOn) {
             const names = new Set();
             for (const c of st.cues) for (const m of String(c.t).matchAll(/[A-Za-z][A-Za-z'-]+/g)) {
-                for (const w of subsEnForms(m[0].toLowerCase())) names.add(enShard(w, meta));
+                for (const w of subsEnForms(m[0].toLowerCase())) names.add(engShard(w, meta));
             }
             await Promise.all([...names].map(async nm => { if (!files.has(nm)) files.set(nm, await getFile(nm)); }));
         }
@@ -3697,10 +3704,11 @@
         const w = m[1].toLowerCase();
         if (w.length < 2 || SUBS_EN_SKIP.has(w)) return "";
         let hit = null;
-        for (const f of subsEnForms(w)) { const sh = files.get(enShard(f, meta)); if (sh && sh[f]) { hit = sh[f]; break; } }
-        if (!hit) return "";
-        const list = hit[SL] || hit.zh || hit.tw || hit.yue || hit.hak || [];
-        return list.slice(0, 2).join("、");
+        for (const f of subsEnForms(w)) { const sh = files.get(engShard(f, meta)); if (sh && sh[f]) { hit = sh[f]; break; } }
+        if (!hit || !hit.length) return "";
+        // (the 英語 dictionary's first Chinese meaning, without its word class: "n. 跑、賽跑" → 跑、賽跑)
+        const zh = String(hit[0].m || "").split("；")[0].replace(/^\s*([a-z]+\.\s*)+/, "");
+        return zh.split(/[、，,]/).map(x => x.trim()).filter(Boolean).slice(0, 2).join("、");
     }
     /// the box of an English word: the Chinese under it (the same box as a marked word's, so the line stays level)
     function subsEnBox(frag, g) {

@@ -213,7 +213,7 @@ enum RadioLang {
         ["japanese"],
         ["swedish"],
     ]
-    static let countries = [["TW"], ["TW", "CN"], ["HK", "MO"], ["TW"], ["JP"], ["SE"]]
+    static let countries = [["TW"], ["TW", "CN"], ["HK", "MO"], ["TW"], ["JP"], ["SE"], ["GB", "US"]]
 
     /// the stations a language starts with: found by name in Radio Browser the first time they're played
     static let starters: [(lang: Int, name: String, query: String, country: String?)] = [
@@ -234,6 +234,9 @@ enum RadioLang {
         (5, "Sveriges Radio P1", "P1", "SE"),
         (5, "Sveriges Radio P4 Stockholm", "P4 Stockholm", "SE"),
         (5, "Sveriges Radio P3", "P3", "SE"),
+        (6, "BBC World Service", "BBC World Service", "GB"),
+        (6, "BBC Radio 1", "BBC Radio 1", "GB"),
+        (6, "NPR", "NPR", "US"),
     ]
 }
 

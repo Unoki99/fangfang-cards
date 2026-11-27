@@ -95,6 +95,7 @@ struct ZhLookupPane: View {
     @State private var searched = ""
     @State private var task: Task<Void, Never>?
     @State private var addTerm: GeminiTermItem?
+    @State private var addOwn: GeminiOwnItem?
 
     /// a word Gemini gave, when the dictionary has it
     private func geminiRow(_ w: String) -> AnyView? {
@@ -139,7 +140,7 @@ struct ZhLookupPane: View {
     var body: some View {
         List {
             Section {
-                TextField(Lang.isSv ? tr("瑞典文、英文或中文，例如：läsa、bilarna、read、汽車") : Lang.isJa ? tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") : Lang.isHak ? tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") : Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
+                TextField(Lang.isEn ? tr("英文、中文或瑞典文，例如：run、ran、跑步、springa") : Lang.isSv ? tr("瑞典文、英文或中文，例如：läsa、bilarna、read、汽車") : Lang.isJa ? tr("漢字、假名、羅馬字或英文，例如：食べる、たべる、taberu、eat、食べなかった") : Lang.isHak ? tr("漢字、客語拼音、華語意思、英文或聲調，例如：食飯、*仔、siid fan、吃飯、eat、8-3") : Lang.isYue ? tr("漢字、粵拼、英文或聲調，例如：食飯、唔*、sikfaan、sik6 faan6、eat、6-6") : tr("漢字、拼音、注音、英文或聲調，例如：吃飯、人*、chifan、ㄔㄈㄢ、eat、1-4"), text: $query)
                     .scaledFont(18)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
@@ -156,7 +157,8 @@ struct ZhLookupPane: View {
                 .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
             }
             if query.isEmpty {
-                Text(Lang.isSv ? tr("可以查瑞典文（變化過的形也可以：bilarna → bil）、英文（read）或中文的意思（汽車）。\n每個詞分成詞素：詞根、前綴、後綴、連接音和詞尾各用一種顏色。點進一個詞，再點它的一個部分，看那個部分的意思和作用。\n* 代表一個以上的字母，? 代表剛好一個：*het → het 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                Text(Lang.isEn ? tr("可以查英文（變化過的形也可以：ran → run）、中文的意思（跑步）或瑞典文（springa）。英文的解釋找得到的詞也會列出來。\n讀音用 IPA：英式和美式（設定 → 語言與讀音 → 英語）。解釋要顯示英文、中文或瑞典文，也在那裡選。\n* 代表一個以上的字母，? 代表剛好一個：*ness → ness 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。")
+                     : Lang.isSv ? tr("可以查瑞典文（變化過的形也可以：bilarna → bil）、英文（read）或中文的意思（汽車）。\n每個詞分成詞素：詞根、前綴、後綴、連接音和詞尾各用一種顏色。點進一個詞，再點它的一個部分，看那個部分的意思和作用。\n* 代表一個以上的字母，? 代表剛好一個：*het → het 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : Lang.isJa ? tr("可以查漢字、假名、羅馬字（taberu）或英文（eat）。變化過的形也找得到：食べなかった、書かれた → 食べる、書く。英文的意思越接近（剛好是那個詞）排越前面。\n* 代表一個以上的字，? 代表剛好一個字：食* → 食開頭\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : Lang.isHak ? tr("可以查漢字、客語拼音（不用打聲調：siid fan）、華語的意思（吃飯）或英文（eat）。\n* 代表一個以上的字，? 代表剛好一個字：\n*仔 → 仔結尾　食* → 食開頭\n打聲調類別的數字找聲調組合：1 陰平、2 上聲、3 去聲、4 陰入、5 陽平、7 陽去、8 陽入，例如 8-3。\n讀音照選的腔顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。")
                      : Lang.isYue ? tr("可以查漢字（正體或簡體）、粵拼（聲調可以不打，或用數字：sik6 faan6）或英文（eat、computer）。打華語的詞（聊天、沒有）會列出粵語的講法。\n* 代表一個以上的字，? 代表剛好一個字：\n唔* → 唔開頭的詞　*仔 → 仔結尾\n打聲調數字找聲調組合：1-4、6 6。\n往右滑一個詞加到「不熟」，往左滑收藏。")
@@ -168,7 +170,8 @@ struct ZhLookupPane: View {
             // (nothing found: what Gemini thinks was meant, when it's turned on)
             if !query.isEmpty && found.empty && searched == query {
                 GeminiSuggestSection(query: query, lang: dict.lang, search: { query = $0 }, row: { geminiRow($0) },
-                                     addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil)
+                                     addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil,
+                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
             }
             group(tr("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）"), found.tones)
             group(dict.isYue ? tr("華語「\(query)」的粵語講法") : (dict.isHak ? tr("華語「\(query)」的客語講法") : tr("「\(query)」的四川話講法")), found.mandarin)
@@ -182,8 +185,10 @@ struct ZhLookupPane: View {
             ForEach(Array(found.parts.enumerated()), id: \.offset) { i, w in
                 group("「\(w)」", found.partWords[i])
             }
-            // 瑞典語: 華語 → English → 瑞典語, each marked as guessed
-            if !found.svVia.isEmpty {
+            // 英語: the words whose Swedish is it (springa → run); 瑞典語: 華語 → English → 瑞典語, each marked as guessed
+            if dict.isEn {
+                group(tr("瑞典文「\(query)」"), found.svVia)
+            } else if !found.svVia.isEmpty {
                 Section {
                     ForEach(found.svVia.prefix(60).filter { $0 < dict.entries.count }, id: \.self) { i in
                         let e = dict.entries[i]
@@ -219,6 +224,9 @@ struct ZhLookupPane: View {
         .onChange(of: store.zhPlace) { search() }
         .sheet(item: $addTerm) { a in
             AddZhOwnSheet(dict: dict, word0: a.term.h, reading0: a.term.pinyin, meaning0: a.term.meaning).environmentObject(store)
+        }
+        .sheet(item: $addOwn) { a in
+            AddZhOwnSheet(dict: dict, word0: a.word, meaning0: a.meaning).environmentObject(store)
         }
     }
 
@@ -310,7 +318,8 @@ struct ZhWordRow: View {
             } else if dict.isSv && !(query != nil && english) {
                 // (瑞典語: the meaning in the language 設定 says; both: 中文 · English)
                 let enFirst = entry.enList.first ?? entry.senses.first?.text
-                let m = SvGuess.show == 0 ? [entry.svZh.first, enFirst].compactMap { $0 }.joined(separator: " · ") : dict.svGloss(entry)
+                let m = dict.isEn ? [entry.svZh.first, entry.enSv.isEmpty ? nil : entry.enSv.prefix(3).joined(separator: "、"), Lang.enShow.en || (entry.svZh.isEmpty && entry.enSv.isEmpty) ? enFirst : nil].compactMap { $0 }.joined(separator: " · ")
+                    : SvGuess.show == 0 ? [entry.svZh.first, enFirst].compactMap { $0 }.joined(separator: " · ") : dict.svGloss(entry)
                 if !m.isEmpty { Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2) }
             } else if let q = query, english {
                 // found by its English: the English (the meanings with the word first), then the 中文 meaning
@@ -511,6 +520,13 @@ struct ZhEntryBody: View {
                 if !ens.isEmpty || !zhShort.isEmpty {
                     MeaningsOverview(zh: zhShort, zhLabel: dict.isSv ? (entry.svZhGuessed ? tr("中（由英文推測）") : tr("中")) : tr(dict.isHak ? "客" : "華"), en: ens)
                 }
+                // 英語: its Swedish words
+                if dict.isEn && !entry.enSv.isEmpty {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Chip(text: tr("瑞"), fill: T.svFill, edge: T.svEdge, ink: T.svInk)
+                        Text(entry.enSv.joined(separator: "、")).ffFont(.body).foregroundStyle(T.glyph).textSelection(.enabled)
+                    }
+                }
                 // 粵語: the 華語 word(s) with the same meaning
                 if !entry.eq.isEmpty && !dict.isSv {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -521,7 +537,13 @@ struct ZhEntryBody: View {
                 // the boxes, always in the same order of colours: blue (levels), green (where it's said), yellow
                 // (詞類: tap one for the words of that class), grey (簡化字)
                 FlowLayout(spacing: 6) {
-                    if dict.lang != 1 {
+                    if dict.isEn {
+                        // 英語: how common, Collins, the first exam list it's on, Oxford 3000
+                        if entry.hsk > 0 { InfoChip.blue(UILang.label(Lang.levelName(0, entry.hsk))) }
+                        if entry.tocfl > 0 { InfoChip.blue(Lang.levelName(1, entry.tocfl)) }
+                        if entry.exam > 0 { InfoChip.blue(UILang.label(Lang.levelName(2, entry.exam))) }
+                        if entry.oxford { InfoChip.blue("Oxford 3000") }
+                    } else if dict.lang != 1 {
                         if entry.hsk > 0 { InfoChip.blue(UILang.label(Lang.levelName(0, entry.hsk))) }
                     } else if entry.hsk > 0 { InfoChip.blue(Lang.hskName(entry.hsk)) }
                     if entry.tocfl > 0 && dict.lang == 1 { InfoChip.blue(UILang.label(Lang.levelName(1, entry.tocfl))) }
@@ -586,7 +608,9 @@ struct ZhEntryBody: View {
             // 《重編國語辭典修訂本》 (a character's)
             moeChar
             // (where each part of the entry comes from: the very bottom)
-            Text(dict.isSv
+            Text(dict.isEn
+                 ? tr("資料：ECDICT（MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表）；美式讀音：CMUdict（BSD）；瑞典文和例句：Folkets lexikon（KTH，CC BY-SA 2.5）；正體字：CC-CEDICT（CC BY-SA）。")
+                 : dict.isSv
                  ? tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）；中文意思：維基詞典（CC BY-SA）；常用詞：FrequencyWords（CC BY-SA 4.0）。詞的組成依規則推算，可能有誤。")
                  : dict.isJa
                  ? tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。")

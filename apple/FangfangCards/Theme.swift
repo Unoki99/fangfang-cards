@@ -121,9 +121,13 @@ enum T {
     nonisolated(unsafe) static var ja = false
     /// 瑞典語 shown (its buttons are teal)
     nonisolated(unsafe) static var sv = false
-    static var btn: Color { sv ? svFill : ja ? jaFill : (hak ? hakFill : (yue ? olive : (zh ? blue : twFill))) }
-    static var btnEdge: Color { sv ? svEdge : ja ? jaEdge : (hak ? hakEdge : (yue ? oliveEdge : (zh ? blueEdge : twEdge))) }
-    static var btnInk: Color { sv ? svInk : ja ? jaInk : (hak ? hakInk : (yue ? oliveInk : (zh ? blueInk : twInk))) }
+    /// 英語 shown (its buttons are orange)
+    nonisolated(unsafe) static var en = false
+    static var btn: Color { en ? enFill : sv ? svFill : ja ? jaFill : (hak ? hakFill : (yue ? olive : (zh ? blue : twFill))) }
+    static var btnEdge: Color { en ? enEdge : sv ? svEdge : ja ? jaEdge : (hak ? hakEdge : (yue ? oliveEdge : (zh ? blueEdge : twEdge))) }
+    static var btnInk: Color { en ? enInk : sv ? svInk : ja ? jaInk : (hak ? hakInk : (yue ? oliveInk : (zh ? blueInk : twInk))) }
+    /// 英語's orange (the same in every theme)
+    static let enFill = Color(hex: 0x5a3214), enEdge = Color(hex: 0xf08a3c), enInk = Color(hex: 0xffd2a8)
     /// 瑞典語's teal (the same in every theme)
     static let svFill = Color(hex: 0x0f4a4a), svEdge = Color(hex: 0x3fc9bd), svInk = Color(hex: 0x9cf0e6)
     /// 日語's pink (the same in every theme)
@@ -135,6 +139,7 @@ enum T {
     /// each language's capsule (the language menu): fill, edge, ink
     static func langColors(_ l: Int) -> (fill: Color, edge: Color, ink: Color) {
         switch l {
+        case 6: return (enFill, enEdge, enInk)
         case 5: return (svFill, svEdge, svInk)
         case 4: return (jaFill, jaEdge, jaInk)
         case 3: return (hakFill, hakEdge, hakInk)
@@ -335,6 +340,7 @@ struct PlaceMenuItems: View {
             Text(tr("客語")).tag(3)
             Text(tr("日語")).tag(4)
             Text(tr("瑞典語")).tag(5)
+            Text(tr("英語")).tag(6)
         }
         .pickerStyle(.inline)
         if store.isYue || store.isJa || store.isSv {
@@ -430,6 +436,7 @@ struct PlaceMenu: View {
     static func name(_ store: Store, _ place: Int) -> String {
         if store.isYue { return "粵語" }
         if store.isJa { return "日語" }
+        if store.isEn { return "英語" }
         if store.isSv { return "瑞典語" }
         if store.isHak { return "客・" + Lang.hakAccents[min(max(store.hakAccent, 0), Lang.hakAccents.count - 1)] }
         if store.isZh { return "華・" + Lang.zhPlaceNames[min(max(store.zhPlace, 0), Lang.zhPlaceNames.count - 1)] }

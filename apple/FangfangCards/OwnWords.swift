@@ -122,6 +122,7 @@ struct AddOwnWordSheet: View {
     let dict: Dict
     var han0 = ""
     var reading0 = ""
+    var meaning0 = ""
     @EnvironmentObject var store: Store
     @Environment(\.dismiss) private var dismiss
     @AppStorage("rom") private var rom = 0
@@ -191,6 +192,7 @@ struct AddOwnWordSheet: View {
             .onAppear {
                 if han.isEmpty { han = han0 }
                 if reading.isEmpty { reading = reading0 }
+                if meaning.isEmpty { meaning = meaning0 }
                 if engine == nil { engine = ConvertEngine(dict: dict) }
             }
         }

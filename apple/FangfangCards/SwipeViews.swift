@@ -427,7 +427,7 @@ struct NewDeckView: View {
         .appBackground()
         .rootPage(tr("新詞")) {
             Menu {
-                if store.lang == 1 {
+                if store.lang == 1 || store.isEn {
                     Picker(tr("詞表"), selection: $store.zhList) {
                         ForEach(0..<Lang.listNames.count, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                     }
@@ -485,7 +485,7 @@ struct NewDeckView: View {
 extension NewDeckView {
     var topicName: String {
         if let l = FreqLevels.level(ofTopic: topic) { return FreqLevels.name(l) }
-        return (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.lang == 1 ? Lang.listNames[min(max(store.zhList, 0), 1)] + "・" + trs("全部") : trs("全部"))
+        return (store.topics + store.freqTopics).first(where: { $0.id == topic })?.name ?? (store.lang == 1 || store.isEn ? Lang.listNames[min(max(store.zhList, 0), Lang.listNames.count - 1)] + "・" + trs("全部") : trs("全部"))
     }
 }
 
@@ -848,6 +848,8 @@ extension Store {
     func sideCards(_ word: Card) -> [Card] {
         // 瑞典語: each root's own word (be|tal|a: tala; sjuk|hus: sjuk, hus), when it isn't the word itself
         if word.isZh, let d = zh, d.isSv {
+            // (英語: no morphemes, no side cards)
+            if d.isEn { return [] }
             var seen = Set<String>()
             return SvMorpheme.parse(word.zs ?? []).filter { $0.kind == .root }.compactMap { m -> Card? in
                 let w = m.word

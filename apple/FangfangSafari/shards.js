@@ -74,7 +74,7 @@ var ffShards = (() => {
 
     function shardOf(lang, word) {
         const a = cps(word);
-        if (lang === "sv") return (a[0].codePointAt(0) * 31 + (a.length > 1 ? a[1].codePointAt(0) : 0)) % SHARDS;
+        if (lang === "sv" || lang === "eng") return (a[0].codePointAt(0) * 31 + (a.length > 1 ? a[1].codePointAt(0) : 0)) % SHARDS;
         return a[0].codePointAt(0) % SHARDS;
     }
     const pad = i => String(i).padStart(3, "0");
@@ -85,7 +85,7 @@ var ffShards = (() => {
         log = log || (() => {});
         const shards = Array.from({ length: SHARDS }, () => new Map());
         const add = (word, e, most) => {
-            if (!word || (lang !== "sv" && cpLen(word) > MAXLEN)) return;
+            if (!word || (lang !== "sv" && lang !== "eng" && cpLen(word) > MAXLEN)) return;
             const d = shards[shardOf(lang, word)];
             if (!d.has(word)) d.set(word, []);
             const lst = d.get(word);
@@ -307,6 +307,11 @@ var ffShards = (() => {
             log("瑞典語 words: " + meta.sv);
         }
 
+        if (lang === "eng" && data.en) {
+            meta.eng = buildEng(data.en, add);
+            log("英語 words: " + meta.eng);
+        }
+
         shards.forEach((sh, i) => {
             if (!sh.size) return;
             const o = {};
@@ -322,6 +327,32 @@ var ffShards = (() => {
             en[t] = hs;
         }
         return { files, en, meta };
+    }
+
+    // ── 英語 (en.json, ECDICT): by the word and each of its forms, in small letters ──
+    // each: {k, u: British IPA, a: American IPA, w: its first word class, m: the Chinese meanings ("n. 跑、賽跑；vi. …"),
+    // s: the Swedish words, e: the English meanings, f: where it is}
+    function buildEng(en, add) {
+        let count = 0;
+        (en.e || []).forEach((e, i) => {
+            const k = e.k, h = e.h;
+            if (!(k && h)) return;
+            const [uk, us] = (e.s || "").split(" ");
+            const o = { k, f: i };
+            if (uk && uk !== "-") o.u = uk;
+            if (us && us !== "-") o.a = us;
+            if (e.w && e.w.length) o.w = e.w[0];
+            if (e.jp && e.jp.length) o.m = short(e.jp.slice(0, 3).join("；"), 140);
+            if (e.sw && e.sw.length) o.s = e.sw.slice(0, 4).join("、");
+            const defs = (e.d || []).map(d => d[0]).filter(Boolean).slice(0, 3).join("; ");
+            if (defs) o.e = short(defs, 160);
+            for (const w0 of [h, ...(e.m || [])]) {
+                const w = (w0 || "").toLowerCase();
+                if (w && w.length <= 40) add(w, o, 4);
+            }
+            count++;
+        });
+        return count;
     }
 
     // ── 瑞典語 (sv.json, Folkets lexikon): by the word and each of its forms, in small letters ──
@@ -549,7 +580,7 @@ var ffShards = (() => {
     /// English words (d-en-*.json); parts: {lang: build(…)'s en and meta}
     function merge(parts) {
         const meta = { v: 1, shards: SHARDS, max: MAXLEN, py: {} };
-        for (const l of ["zh", "tw", "yue", "hak", "sv"]) meta[l] = 0;
+        for (const l of ["zh", "tw", "yue", "hak", "sv", "eng"]) meta[l] = 0;
         const EN = new Map();
         for (const [lang, p] of Object.entries(parts)) {
             if (!p) continue;
@@ -560,11 +591,9 @@ var ffShards = (() => {
             }
         }
         if (!meta.s2t) meta.s2t = 0;
-        meta.en = EN.size;
+        // (English words are looked up with 英語's own dictionary now: no English → Chinese files)
+        meta.en = 0;
         const files = {};
-        const en = Array.from({ length: SHARDS }, () => ({}));
-        for (const [t, o] of EN) en[shardOf("sv", t)][t] = o;
-        en.forEach((sh, i) => { if (Object.keys(sh).length) files[`d-en-${pad(i)}.json`] = sh; });
         files["d-meta.json"] = meta;
         return files;
     }

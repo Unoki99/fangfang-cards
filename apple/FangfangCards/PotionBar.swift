@@ -306,7 +306,7 @@ struct HSKProgressView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
                 // 華語: the word list switched right here too (HSK 3.0 ⇄ TOCFL), not only in 新詞
-                if store.lang == 1 {
+                if store.lang == 1 || store.isEn {
                     Picker(tr("詞表"), selection: $store.zhList) {
                         ForEach(Lang.listNames.indices, id: \.self) { Text(Lang.listNames[$0]).tag($0) }
                     }

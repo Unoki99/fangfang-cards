@@ -23,6 +23,9 @@ computer program), so each item is ported to both at once.
 | Own words (自訂) in 華語, 粵語, 客語, 日語, 瑞典語 (word, reading, meaning, example), CSV export; keys "word\t<reading>#自" in Progress.own | done (no CSV import for these yet) | done | done | todo |
 | 方音 option: light tone keeps its own tone mark or only ˙ (設定 → 語言與讀音 → 台語) | done | done | done | todo |
 | Add-on (Safari copy): subtitles 轉成簡體; 拼音／注音 button in the subtitle bar; the gear opens a big 字幕設定 page | done (apple/FangfangSafari) | — | — | todo (Firefox build: bump the version and rebuild) |
+| 英語 (a 7th language): ECDICT → en.json (Install/english.js, tools/build_english.py the same on the Mac): English, Chinese (正體, CC-CEDICT pairs) and Swedish (Folkets lexikon reversed) meanings, chosen in 設定; British (ECDICT) and American (CMUdict) IPA; forms; Folkets' example sentences; word lists 常用度 (groups of 500), Collins, 考試 (中考 … GRE), Oxford 3000; key "word\t英", orange | done | todo | todo | done in apple/FangfangSafari (eng: its own shards d-eng-*; Firefox build: bump) |
+| Add-on: English words no longer looked up through the Chinese languages (英文查中文 taken out, no d-en-* files); English subtitles' Chinese from the 英語 dictionary | — | — | — | done in apple/FangfangSafari |
+| Gemini: a suggested word the dictionary doesn't have can be saved as your own word (＋), its meaning what was searched | done | todo | todo | — |
 
 ## Asked for, not done yet (any platform)
 

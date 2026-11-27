@@ -26,13 +26,13 @@ enum AppUsage {
         "手寫練習・自由寫字": "pencil.tip", "做到一半": "pause.circle",
         "一次查好幾個詞": "text.magnifyingglass", "用華語找台語": "arrow.triangle.branch", "依常用度列出・分類": "list.bullet", "部首查字": "square.split.2x2",
         "收藏・自訂": "bookmark", "腔口・在地詞（台語）": "map", "漢字卡": "character", "複製意思": "doc.on.doc",
-        "台語": "t.circle", "華語": "h.circle", "粵語": "y.circle", "客語": "k.circle", "日語": "j.circle", "瑞典語": "s.circle", "每個語言分開": "square.split.1x2",
+        "台語": "t.circle", "華語": "h.circle", "粵語": "y.circle", "客語": "k.circle", "日語": "j.circle", "瑞典語": "s.circle", "英語": "e.circle", "每個語言分開": "square.split.1x2",
         "電台": "radio", "音樂": "music.note", "歌詞": "music.note.list", "歌詞條": "rectangle.bottomhalf.inset.filled", "收藏和歌單": "music.note.house",
         "自己的歌詞": "pencil.and.list.clipboard",
         "捷徑和 Siri": "square.stack.3d.up", "Safari 查詞": "safari", "影片字幕": "captions.bubble",
         "備份與同步": "arrow.triangle.2.circlepath", "匯出與匯入": "square.and.arrow.up", "外觀": "paintpalette",
     ]
-    static let intro = "方方詞卡是學台語、華語、粵語、客語、日語和瑞典語的詞卡 App。下面是每個部分能做什麼，最下面是資料的來源和授權。"
+    static let intro = "方方詞卡是學台語、華語、粵語、客語、日語、瑞典語和英語的詞卡 App。下面是每個部分能做什麼，最下面是資料的來源和授權。"
     static let groups: [Group] = [
         Group(title: "五個分頁", items: [
             Item(title: "新詞", text: "一張一張滑詞卡：往右＝認識（放到「熟悉」），往左＝不熟（放到「不熟」去練習）。右上角的選單選從哪些詞開始：常用度、分類、HSK／TOCFL 等級或漢字卡。↺ 復原上一張。"),
@@ -71,6 +71,7 @@ enum AppUsage {
             Item(title: "客語", text: "教育部《臺灣客語辭典》的詞，六個腔（四縣、海陸、大埔、饒平、詔安、南四縣）的讀音，拼音或注音。"),
             Item(title: "日語", text: "用漢字、假名、羅馬字或英文查（變化過的形也找得到）；活用表、漢字卡（音讀、訓讀）、助詞的說明和練習，「實驗室」把語尾一個一個接上去看意思。"),
             Item(title: "瑞典語", text: "每個詞分成詞素上色（詞根、前綴、後綴、詞尾），有中文和英文解釋；詞典沒有的詞照構詞規則推算。"),
+            Item(title: "英語", text: "ECDICT 的詞：英文、中文和瑞典文解釋（設定裡選要顯示哪些），英式和美式 IPA，變化形也查得到（ran → run）。卡片可以照詞頻、Collins 星級或考試詞表（中考到 GRE）分等級。"),
             Item(title: "每個語言分開", text: "每個語言的新詞、不熟、熟悉和練習範圍分開記，都在同一個進度檔裡。詞典在「設定 → 詞典資料」安裝。"),
         ]),
         Group(title: "電台與音樂", items: [

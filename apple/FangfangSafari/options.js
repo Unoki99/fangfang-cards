@@ -130,14 +130,17 @@
     lang("hak", ffT("客語"), "hak", [[ffT("腔"), "hakAcc", [ffT("四縣"), ffT("海陸"), ffT("大埔"), ffT("饒平"), ffT("詔安"), ffT("南四縣")].map((n, i) => [i, n])],
         [ffT("拼寫"), "hakRom", [[0, ffT("拼音")], [1, ffT("注音")]]]]);
     lang("sv", ffT("瑞典語"), "sv", [[ffT("由英文推測中文"), "svGuess", [[true, ffT("開")], [false, ffT("關")]]]]);
+    lang("eng", ffT("英語"), "eng", [[ffT("讀音"), "engRom", [[0, ffT("英式＋美式")], [1, ffT("美式")], [2, ffT("英式")], [3, ffT("不顯示")]]],
+        [ffT("英文解釋"), "engEn", [[true, ffT("顯示")], [false, ffT("不顯示")]]],
+        [ffT("中文解釋"), "engZh", [[true, ffT("顯示")], [false, ffT("不顯示")]]],
+        [ffT("瑞典文"), "engSv", [[true, ffT("顯示")], [false, ffT("不顯示")]]]]);
     paintLangs();
     tip(lg, "how", ffT("一次只開一個語言：卡片、網頁上的顏色、影片字幕（「自動」的時候）和按鍵標的詞都用這個語言。傳到 App 的詞也照它自己的語言放，不會混在一起。"));
-    // (English: the meanings in English, and English words looked up in Chinese, on the page and in the subtitles)
-    group(lg, ffT("英文"), ffT("英文的解釋，和從英文查中文。"));
+    // (English: the Chinese languages' English meanings; English words are looked up with 英語 on, its own dictionary)
+    group(lg, ffT("英文"), ffT("中文語言的英文解釋。英文的詞要查的話，打開上面的「英語」（它自己的詞典）。"));
     const enG = grid(lg);
-    tile(enG, ffT("英文解釋"), ffT("卡片和字幕下面的意思用英文"), choice("en", [[false, ffT("不顯示")], [true, ffT("顯示")]], v("--tw")));
-    tile(enG, ffT("英文查中文"), ffT("游標停在英文字上，找中文的詞"), choice("en2zh", onOff, v("--tw")));
-    needSubs.push(tile(enG, ffT("英文字幕下面標中文"), ffT("英文的字幕：每個英文字下面標它的中文（照開著的語言：華語、台語、粵語或客語）"), choice("subsEnZh", onOff, v("--tw"))));
+    tile(enG, ffT("英文解釋"), ffT("卡片和字幕下面的意思用英文（華語、台語、粵語、客語）"), choice("en", [[false, ffT("不顯示")], [true, ffT("顯示")]], v("--tw")));
+    needSubs.push(tile(enG, ffT("英文字幕下面標中文"), ffT("英文的字幕：每個英文字下面標它的中文（用英語詞典的中文解釋，要先安裝英語詞典）"), choice("subsEnZh", onOff, v("--eng"))));
 
     // ── 聲調顏色 ──
     const cl = part("colours", ffT("聲調顏色和標記"), "#4fd8c4", ffT("字照聲調上色（和 App 選的顏色一樣）。卡片、字幕和網頁各有自己的開關。"));

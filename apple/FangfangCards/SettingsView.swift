@@ -34,7 +34,9 @@ struct SettingsView: View {
     private var topics: [Topic] {
         let themeName = (AppTheme(rawValue: theme) ?? .night).name
         let tones = toneSys == 0 ? trs("聲調顏色關") : (store.lang != 0 ? trs("聲調顏色開") : (toneSys == 7 ? trs("七聲") : trs("五聲")))
-        let lang: String = store.isSv
+        let lang: String = store.isEn
+            ? trs("英語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 3)]) + "・" + trs(Lang.listNames[min(max(store.zhList, 0), 2)])
+            : store.isSv
             ? trs("瑞典語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
             : store.isJa
             ? trs("日語") + "・" + trs(Lang.romNames[min(max(store.zhRom, 0), 1)])
@@ -216,8 +218,9 @@ private struct LookSettings: View {
             } footer: {
                 Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。省電動畫：雪和花瓣少一半，一秒只畫 12 次（開低耗電模式的時候也會自動這樣）。被別的頁面蓋住的背景不會動。"))
             }
-            // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour
-            if store.isSv {
+            // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour (英語: no colours)
+            if store.isEn {
+            } else if store.isSv {
                 Section {
                     Toggle(tr("詞素顏色"), isOn: Binding(get: { toneSys != 0 }, set: { toneSys = $0 ? (toneSys == 0 ? 7 : toneSys) : 0 }))
                     if toneSys != 0 { Toggle(tr("顏色光暈"), isOn: $toneGlow) }
@@ -352,6 +355,10 @@ private struct LanguageSettings: View {
     @AppStorage(Lang.svRomKey) private var svRomSaved = 0
     @AppStorage(SvGuess.key) private var svGuess = true
     @AppStorage(SvGuess.showKey) private var svMeanings = 0
+    @AppStorage(Lang.enRomKey) private var enRomSaved = 0
+    @AppStorage(Lang.enShowEnKey) private var enShowEn = true
+    @AppStorage(Lang.enShowZhKey) private var enShowZh = true
+    @AppStorage(Lang.enShowSvKey) private var enShowSv = false
     @AppStorage(Simp.key) private var simplified = false
     @AppStorage(HongimTone1.key) private var hongimTone1 = true
     @AppStorage(HongimTone1.spaceKey) private var hongimTone1Space = false
@@ -365,7 +372,7 @@ private struct LanguageSettings: View {
                 Picker(tr("語言"), selection: Binding(get: { store.lang }, set: { store.setLanguage($0) })) {
                     // (short: six don't fit side by side; English: TW ZH YUE HAK JA SV)
                     ForEach(0..<Lang.count, id: \.self) { i in
-                        Text(UILang.english ? ["TW", "ZH", "YUE", "HAK", "JA", "SV"][i] : ["台", "華", "粵", "客", "日", "瑞"][i]).tag(i)
+                        Text(UILang.english ? ["TW", "ZH", "YUE", "HAK", "JA", "SV", "EN"][i] : ["台", "華", "粵", "客", "日", "瑞", "英"][i]).tag(i)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -504,6 +511,33 @@ private struct LanguageSettings: View {
             } footer: {
                 Text(tr("詞下面用連字號分開詞素（be-tal-a），每個部分一種顏色。詞是照字幕裡出現的次數分組，每組 500 個（FrequencyWords）。由英文推測的中文是照 CC-CEDICT 裡英文解釋相同的華語詞，標「由英文推測」，不一定準（要重新安裝一次瑞典語詞典才有）。"))
             }
+            Section {
+                Picker(tr("讀音"), selection: $enRomSaved) {
+                    Text(trs("英式＋美式")).tag(0)
+                    Text(trs("美式")).tag(1)
+                    Text(trs("英式")).tag(2)
+                    Text(trs("不顯示")).tag(3)
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: enRomSaved) { if store.lang == 6 { store.zhRom = enRomSaved } }
+                // 英語的解釋: any of English, Chinese and Swedish (at least one)
+                Toggle(tr("英文解釋"), isOn: $enShowEn).disabled(enShowEn && !enShowZh && !enShowSv)
+                Toggle(tr("中文解釋"), isOn: $enShowZh).disabled(enShowZh && !enShowEn && !enShowSv)
+                Toggle(tr("瑞典文"), isOn: $enShowSv).disabled(enShowSv && !enShowEn && !enShowZh)
+                if store.isEn {
+                    Picker(tr("詞表"), selection: $store.zhList) {
+                        ForEach(0..<Lang.listNames.count, id: \.self) { Text(trs(Lang.listNames[$0])).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            } header: {
+                Text(tr("英語"))
+            } footer: {
+                Text(tr("讀音用 IPA：英式的來自 ECDICT，美式的來自 CMUdict。解釋可以顯示英文、中文（ECDICT，轉成正體字）和瑞典文（Folkets lexikon 反查），至少選一種；卡片和詞典都照這裡。詞表：常用度（照美國當代英語語料庫的詞頻，每組 500 個）、Collins 星級（五星最常用）或考試詞表（中考、高考、CET-4、CET-6、考研、TOEFL／IELTS、GRE，照最早出現的那一個）。"))
+            }
+            .onChange(of: enShowEn) { if store.isEn { store.simplifiedChanged() } }
+            .onChange(of: enShowZh) { if store.isEn { store.simplifiedChanged() } }
+            .onChange(of: enShowSv) { if store.isEn { store.simplifiedChanged() } }
         }
     }
 }

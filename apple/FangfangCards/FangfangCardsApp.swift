@@ -333,6 +333,7 @@ struct LanguageWelcome: View {
     @AppStorage(Lang.hakRomKey) private var hakRom = 0
     @AppStorage(Lang.jaRomKey) private var jaRom = 1
     @AppStorage(Lang.svRomKey) private var svRom = 0
+    @AppStorage(Lang.enRomKey) private var enRom = 0
     @AppStorage(Simp.key) private var simplified = false
     @AppStorage("place") private var twPlace = -1
     @AppStorage("zhPlace") private var zhPlace = 0
@@ -364,7 +365,7 @@ struct LanguageWelcome: View {
         let c = T.langColors(l)
         return VStack(spacing: 22) {
             Spacer(minLength: 0)
-            Text(["台", "華", "粵", "客", "日", "瑞"][min(max(l, 0), 5)]).scaledFont(54, weight: .bold).foregroundStyle(c.ink)
+            Text(["台", "華", "粵", "客", "日", "瑞", "英"][min(max(l, 0), 6)]).scaledFont(54, weight: .bold).foregroundStyle(c.ink)
                 .frame(width: 96, height: 96)
                 .background(Circle().fill(c.edge.opacity(0.35)))
             Text(tr("安裝\(trs(Lang.names[l]))詞典")).ffFont(.title2, .bold).foregroundStyle(T.glyph)
@@ -489,6 +490,7 @@ struct LanguageWelcome: View {
         spelling(3, $hakRom, ["拼音", "注音"])
         spelling(4, $jaRom, ["羅馬字", "假名"])
         spelling(5, $svRom, ["詞素", "不顯示"])
+        spelling(6, $enRom, ["英式＋美式", "美式", "英式", "不顯示"])
     }
 
     @ViewBuilder private var stepPlaces: some View {
@@ -530,7 +532,7 @@ struct LanguageWelcome: View {
     }
 
     private func spelling(_ l: Int, _ v: Binding<Int>, _ names: [String]) -> some View {
-        let ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk, T.svInk][l]
+        let ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk, T.svInk, T.enInk][min(max(l, 0), 6)]
         return HStack(spacing: 10) {
             Text(trs(Lang.names[l])).ffFont(.subheadline, .bold).foregroundStyle(ink).frame(width: 64, alignment: .leading)
             Picker(trs(Lang.names[l]), selection: v) {
@@ -561,6 +563,7 @@ struct LanguageWelcome: View {
                 choice(3, title: "客語", sub: "Hakka", note: tr("教育部《臺灣客語辭典》的詞，六個腔，拼音或注音"))
                 choice(4, title: "日語", sub: "Japanese", note: tr("JMdict 和 KANJIDIC2 的詞和漢字，假名或羅馬字"))
                 choice(5, title: "瑞典語", sub: "Svenska", note: tr("Folkets lexikon 的詞，中文和英文解釋，每個詞分成詞素（詞根、前綴、後綴）用顏色標出來"))
+                choice(6, title: "英語", sub: "English", note: tr("ECDICT 的詞，英文、中文或瑞典文解釋，英式和美式 IPA，詞頻、Collins 星級和考試詞表"))
             }
             .id(uiLang)
             .frame(maxWidth: 520)
@@ -577,10 +580,10 @@ struct LanguageWelcome: View {
     }
 
     private func choice(_ l: Int, title: String, sub: String, note: String) -> some View {
-        let fill = [T.twFill, T.blue, T.olive, T.hakFill, T.jaFill, T.svFill][l], edge = [T.twEdge, T.blueEdge, T.oliveEdge, T.hakEdge, T.jaEdge, T.svEdge][l], ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk, T.svInk][l]
+        let fill = [T.twFill, T.blue, T.olive, T.hakFill, T.jaFill, T.svFill, T.enFill][l], edge = [T.twEdge, T.blueEdge, T.oliveEdge, T.hakEdge, T.jaEdge, T.svEdge, T.enEdge][l], ink = [T.twInk, T.blueInk, T.oliveInk, T.hakInk, T.jaInk, T.svInk, T.enInk][l]
         return Button { choose(l) } label: {
             HStack(spacing: 18) {
-                Text(["台", "華", "粵", "客", "日", "瑞"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
+                Text(["台", "華", "粵", "客", "日", "瑞", "英"][l]).scaledFont(44, weight: .bold).foregroundStyle(ink)
                     .frame(width: 70, height: 70)
                     .background(Circle().fill(edge.opacity(0.35)))
                 VStack(alignment: .leading, spacing: 4) {

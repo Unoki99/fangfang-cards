@@ -559,7 +559,7 @@ struct CoopView: View {
         if kind == 0 { en = TwEnglish.meanings(c.k) }
         else if let d = store.zh, d.lang == kind, let e = d.entry(c.k) {
             en = e.enList
-            if kind == 5 {
+            if kind == 5 || kind == 6 {
                 let e3 = en.prefix(3).joined(separator: "; ")
                 return (e.svZhAll.prefix(2).joined(separator: "；"), e3.isEmpty ? first : e3)
             }

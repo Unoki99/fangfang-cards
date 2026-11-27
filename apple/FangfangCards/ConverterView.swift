@@ -2112,6 +2112,8 @@ struct LookupPane: View {
     @State private var task: Task<Void, Never>?
     /// several words searched: the one whose 更多 is shown (nil = the whole search)
     @State private var picked: Int?
+    /// a word Gemini gave, being saved as your own (自訂)
+    @State private var addOwn: GeminiOwnItem?
 
     /// 部首查字, 依詞類列出, 單詞比較, 日語借詞, (a 腔口 chosen: its own words,) 依常用度列出
     private var tiles: [AnyView] {
@@ -2160,7 +2162,8 @@ struct LookupPane: View {
             }
             // (nothing found: what Gemini thinks was meant, when it's turned on; tap one to search it)
             if !query.isEmpty && result.empty && searched == query {
-                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { _ in nil })
+                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { _ in nil },
+                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
             }
             if result.isPattern {
                 group(tr("台語詞「\(query)」（\(result.pattern.count == 300 ? "300+" : String(result.pattern.count))）"), result.pattern)
@@ -2213,6 +2216,7 @@ struct LookupPane: View {
             Task.detached(priority: .utility) { _ = d.sentences(with: ["\t"]) }
         }
         .onChange(of: query) { picked = nil; search() }
+        .sheet(item: $addOwn) { a in AddOwnWordSheet(dict: dict, han0: a.word, meaning0: a.meaning).environmentObject(store) }
         .onChange(of: place) { search() }
         // (設定 → 搜尋結果的順序 changed: the results again in the new order)
         .onChange(of: searchOrder) { search() }

@@ -88,7 +88,7 @@ enum SafariKnownSync {
     /// the words: 認識 (status 1) and 不熟 (2), by language, as headwords
     /// (text: the same words to copy, for 貼上 on Safari 查詞's settings page when example.com doesn't work)
     static func payload(_ store: Store) -> (url: URL, known: Int, unknown: Int, text: String)? {
-        let names = ["tw", "zh", "yue", "hak", "ja", "sv"]
+        let names = ["tw", "zh", "yue", "hak", "ja", "sv", "eng"]
         var known: [String: Set<String>] = [:], unknown: [String: Set<String>] = [:]
         for (k, st) in store.progress.status where st == 1 || st == 2 {
             let head = Lang.charOf(k) ?? String(k.split(separator: "\t", maxSplits: 1).first ?? "")

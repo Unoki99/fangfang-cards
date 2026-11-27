@@ -22,9 +22,9 @@ enum ZhOwnWords {
     static func of(_ lang: Int) -> [Word] { lock.lock(); defer { lock.unlock() }; return words[lang] ?? [] }
 
     static let suffix = "#自"
-    private static let marker = ["", "", "粵", "客", "日", "瑞"]
+    private static let marker = ["", "", "粵", "客", "日", "瑞", "英"]
     static func key(_ lang: Int, _ h: String, _ tw: [String]) -> String {
-        h + "\t" + marker[min(max(lang, 0), 5)] + tw.joined(separator: " ") + suffix
+        h + "\t" + marker[min(max(lang, 0), 6)] + tw.joined(separator: " ") + suffix
     }
     static func isOwn(_ k: String) -> Bool { k.hasSuffix(suffix) && Lang.kind(k) >= 1 }
     static func han(_ k: String) -> String { k.firstIndex(of: "\t").map { String(k[..<$0]) } ?? k }
@@ -43,6 +43,10 @@ enum ZhOwnWords {
         let typed = typed0.trimmingCharacters(in: .whitespacesAndNewlines)
         let hans = han.filter { $0.unicodeScalars.first.map(Zhuyin.isHan) ?? false }.map(String.init)
         switch lang {
+        case 6:
+            // (英語: the reading in IPA as typed, the same for both; "-" when there isn't one)
+            let r = typed.isEmpty ? "-" : typed.replacingOccurrences(of: " ", with: "")
+            return [r, r]
         case 5:
             let ws = han.split(separator: " ").map { $0.lowercased() + ":r" }
             return ws.isEmpty ? nil : Array(ws.map { [$0] }.joined(separator: ["_:w"]))
@@ -241,7 +245,7 @@ struct ZhOwnPane: View {
             rows.append([ZhOwnWords.han(k), r, i.meaning, i.example].map(q).joined(separator: ","))
         }
         let text = "\u{FEFF}" + rows.joined(separator: "\r\n") + "\r\n"
-        let name = "方方-自訂詞-" + ["", "華語", "粵語", "客語", "日語", "瑞典語"][min(max(dict.lang, 0), 5)] + ".csv"
+        let name = "方方-自訂詞-" + ["", "華語", "粵語", "客語", "日語", "瑞典語", "英語"][min(max(dict.lang, 0), 6)] + ".csv"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(name)
         if (try? Data(text.utf8).write(to: url, options: .atomic)) != nil { shareItem = ShareItem(url: url) } else { message = trs("匯出失敗。") }
     }
@@ -268,6 +272,7 @@ struct AddZhOwnSheet: View {
         case 3: return tr("客語拼音，要有聲調類別的數字：siid8 fan3")
         case 4: return tr("かな（可以不填，詞是かな的話）")
         case 5: return ""
+        case 6: return tr("IPA 讀音（可以不填）")
         default: return tr("拼音（chi1 fan4、chīfàn，聲調可以不打）或注音")
         }
     }
@@ -275,8 +280,8 @@ struct AddZhOwnSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(lang == 5 ? tr("詞") : tr("漢字")) {
-                    TextField(lang == 5 ? tr("例：fika") : tr("例：吃飯"), text: $word).autocorrectionDisabled().textInputAutocapitalization(.never)
+                Section(lang >= 5 ? tr("詞") : tr("漢字")) {
+                    TextField(lang == 6 ? tr("例：doomscroll") : lang == 5 ? tr("例：fika") : tr("例：吃飯"), text: $word).autocorrectionDisabled().textInputAutocapitalization(.never)
                 }
                 if lang != 5 {
                     Section {
@@ -304,7 +309,7 @@ struct AddZhOwnSheet: View {
 
     private var parsed: [String]? {
         let w = word.trimmingCharacters(in: .whitespaces)
-        guard !w.isEmpty, lang == 5 || lang == 4 || !reading.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        guard !w.isEmpty, lang >= 5 || lang == 4 || !reading.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         return ZhOwnWords.syllables(reading, han: w, lang: lang, dict: dict)
     }
 

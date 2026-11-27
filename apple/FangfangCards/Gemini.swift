@@ -84,6 +84,7 @@ enum Gemini {
         switch lang {
         case 4: return ("Japanese dictionary", "Japanese words (dictionary forms, written as a Japanese dictionary would list them)")
         case 5: return ("Swedish dictionary", "Swedish words (base forms, as a Swedish dictionary would list them)")
+        case 6: return ("English dictionary", "English words (base forms, as an English dictionary would list them)")
         case 0: return ("Taiwanese Hokkien dictionary that can also be searched with Mandarin words", "Chinese words (Mandarin as used in Taiwan, \(script) characters)")
         case 2: return ("Cantonese dictionary that can also be searched with Mandarin words", "Chinese words (\(script) characters; Cantonese words or Mandarin ones)")
         case 3: return ("Taiwan Hakka dictionary that can also be searched with Mandarin words", "Chinese words (Mandarin as used in Taiwan, \(script) characters)")
@@ -130,7 +131,7 @@ enum Gemini {
     /// 造句: how the word is used in the sentence, then the whole sentence corrected
     static func correct(word: String, reading: String, meaning: String, sentence: String, lang: Int) async throws -> Correction {
         let language = ["Taiwanese Hokkien (written in Han characters as the Taiwan Ministry of Education does)", "Mandarin Chinese",
-                        "Cantonese", "Taiwan Hakka", "Japanese", "Swedish"][min(max(lang, 0), 5)]
+                        "Cantonese", "Taiwan Hakka", "Japanese", "Swedish", "English"][min(max(lang, 0), 6)]
         let p = """
         A learner of \(language) wrote a sentence to practise the word "\(word)"\(reading.isEmpty ? "" : " (\(reading))")\
         \(meaning.isEmpty ? "" : ", meaning: \(meaning)").
@@ -200,6 +201,8 @@ struct GeminiSuggestSection: View {
     var search: (String) -> Void
     var row: (String) -> AnyView?
     var addTerm: ((Gemini.Term) -> Void)? = nil
+    /// a word Gemini gave that the dictionary doesn't have: saved as your own word (自訂), its meaning what was searched
+    var addOwn: ((String) -> Void)? = nil
     @AppStorage(Gemini.onKey) private var on = false
     @AppStorage(Gemini.keyKey) private var key = ""
     @State private var got: Gemini.Suggestion?
@@ -218,14 +221,24 @@ struct GeminiSuggestSection: View {
                     if !g.note.isEmpty { Text(g.note).ffFont(.footnote).foregroundStyle(T.muted) }
                     ForEach(g.words, id: \.self) { w in
                         if let r = row(w) { r } else {
-                            Button { search(w) } label: {
-                                HStack {
-                                    Text(w).scaledFont(19, weight: .semibold).foregroundStyle(T.glyph)
-                                    Spacer()
-                                    Image(systemName: "magnifyingglass").foregroundStyle(T.btnInk)
+                            HStack {
+                                Button { search(w) } label: {
+                                    HStack {
+                                        Text(w).scaledFont(19, weight: .semibold).foregroundStyle(T.glyph)
+                                        Spacer()
+                                        Image(systemName: "magnifyingglass").foregroundStyle(T.btnInk)
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                // (not in the dictionary: kept as your own word, meaning what you searched)
+                                if let addOwn {
+                                    Button { addOwn(w) } label: {
+                                        Label(tr("存成自訂詞"), systemImage: "plus.circle").labelStyle(.iconOnly).foregroundStyle(T.ownInk)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel(tr("存成自訂詞"))
                                 }
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     if g.words.isEmpty { Text(tr("Gemini 也不知道。")).foregroundStyle(T.muted) }
@@ -238,7 +251,8 @@ struct GeminiSuggestSection: View {
             } header: {
                 Text(tr("Gemini 猜你要找的詞")).textCase(nil)
             } footer: {
-                Text(tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。"))
+                Text(addOwn == nil ? tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。")
+                     : tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。詞典沒有的詞，按旁邊的＋存成自訂詞（意思先填你查的「\(query)」）。"))
             }
             .listRowBackground(T.fn.opacity(0.7))
             .task(id: query) { await run() }
@@ -266,6 +280,8 @@ struct GeminiSuggestSection: View {
 
 /// (for a sheet)
 struct GeminiTermItem: Identifiable { let id = UUID(); let term: Gemini.Term }
+/// (a word Gemini gave, to save as your own: the word and what was searched, as its meaning)
+struct GeminiOwnItem: Identifiable { let id = UUID(); let word: String; let meaning: String }
 
 // MARK: 本週學習 → 造句
 

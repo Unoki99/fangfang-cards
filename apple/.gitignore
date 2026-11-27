@@ -15,5 +15,7 @@ DerivedData/
 build/
 __pycache__/
 FangfangCards/zh_sc.json
+FangfangCards/sv.json
+FangfangCards/en.json
 # Safari 查詞: the words inside the extension (made by install.sh from the data above)
 FangfangSafari/d-*.json

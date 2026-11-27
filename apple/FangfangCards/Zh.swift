@@ -8,9 +8,9 @@ import AVFoundation
 // The dictionary's 注音 is kept as it is; 漢語拼音 is spelled from it here, by rule.
 
 enum Lang {
-    /// 0 = 台語, 1 = 華語, 2 = 粵語, 3 = 客語, 4 = 日語, 5 = 瑞典語
+    /// 0 = 台語, 1 = 華語, 2 = 粵語, 3 = 客語, 4 = 日語, 5 = 瑞典語, 6 = 英語
     static let key = "lang"
-    static let count = 6
+    static let count = 7
     static var current: Int { min(max(UserDefaults.standard.integer(forKey: key), 0), count - 1) }
     /// a language with a 華語-style dictionary (華語, 粵語 or 客語)
     static var isZh: Bool { current != 0 }
@@ -20,44 +20,66 @@ enum Lang {
     static var isHak: Bool { current == 3 }
     /// 日語: the same pages as 華語, its own dictionary (ja.json, JMdict and KANJIDIC2), read in kana or rōmaji
     static var isJa: Bool { current == 4 }
-    /// 瑞典語: the same pages as 華語, its own dictionary (sv.json, Folkets lexikon), each word in its morphemes
-    static var isSv: Bool { current == 5 }
+    /// 瑞典語: the same pages as 華語, its own dictionary (sv.json, Folkets lexikon), each word in its morphemes.
+    /// Also 英語 (the same pages: words in letters); isEn tells it apart
+    static var isSv: Bool { current == 5 || current == 6 }
+    /// 英語: its own dictionary (en.json, ECDICT), read in IPA (British and American)
+    static var isEn: Bool { current == 6 }
     /// 粵語 and 客語: no HSK / TOCFL lists (the words come in groups of how common they are)
     static var ownGroups: Bool { current >= 2 }
-    static let names = ["台語", "華語", "粵語", "客語", "日語", "瑞典語"]
+    static let names = ["台語", "華語", "粵語", "客語", "日語", "瑞典語", "英語"]
     /// 華語 reading: 0 = 拼音, 1 = 注音 (粵語, its own setting: 0 = 粵拼, 1 = 耶魯; 客語: 0 = 拼音, 1 = 注音)
-    static var romKey: String { isSv ? svRomKey : (isJa ? jaRomKey : (isYue ? yueRomKey : (isHak ? hakRomKey : "zhRom"))) }
+    static var romKey: String { isEn ? enRomKey : isSv ? svRomKey : (isJa ? jaRomKey : (isYue ? yueRomKey : (isHak ? hakRomKey : "zhRom"))) }
     /// 瑞典語: 0 = the morphemes under the word (be-tal-a), 1 = not
     static let svRomKey = "svRom"
+    /// 英語: 0 = the British and the American reading, 1 = American, 2 = British, 3 = none
+    static let enRomKey = "enRom"
+    /// 英語's meanings: which are shown (英文, 中文, 瑞典文), at least one
+    static let enShowEnKey = "enShowEn", enShowZhKey = "enShowZh", enShowSvKey = "enShowSv"
+    static var enShow: (en: Bool, zh: Bool, sv: Bool) {
+        let d = UserDefaults.standard
+        let en = d.object(forKey: enShowEnKey) as? Bool ?? true, zh = d.object(forKey: enShowZhKey) as? Bool ?? true
+        let sv = d.object(forKey: enShowSvKey) as? Bool ?? false
+        return (en || (!zh && !sv), zh, sv)
+    }
+    /// 英語's word lists: 0 how common (groups of 500), 1 Collins (★★★★★ … ★), 2 the exams (中考 … GRE)
+    static let enListKey = "enList"
+    static let enExamNames = ["", "中考", "高考", "CET-4", "CET-6", "考研", "TOEFL／IELTS", "GRE"]
     /// 日語: 0 = rōmaji, 1 = かな (the first time: かな)
     static let jaRomKey = "jaRom"
     static let yueRomKey = "yueRom"
     static let hakRomKey = "hakRom"
     static var zhRom: Int { UserDefaults.standard.integer(forKey: romKey) }
     /// 華語 reading of: 0 = 臺灣, 1 = 大陸 (客語: the accent, 0 四縣 … 5 南四縣)
-    static var placeKey: String { isSv ? "svPlace" : (isJa ? "jaPlace" : (isHak ? hakPlaceKey : "zhPlace")) }
+    static var placeKey: String { isEn ? "enPlace" : isSv ? "svPlace" : (isJa ? "jaPlace" : (isHak ? hakPlaceKey : "zhPlace")) }
     static let hakPlaceKey = "hakPlace"
     static var zhPlace: Int { UserDefaults.standard.integer(forKey: placeKey) }
     /// 客語: the accent chosen
     static var hakAccent: Int { min(max(UserDefaults.standard.integer(forKey: hakPlaceKey), 0), hakAccents.count - 1) }
     static let hakAccents = ["四縣", "海陸", "大埔", "饒平", "詔安", "南四縣"]
-    static var romNames: [String] { isSv ? ["詞素", "不顯示"] : (isJa ? ["羅馬字", "假名"] : (isYue ? ["粵拼", "耶魯"] : ["拼音", "注音"])) }
+    static var romNames: [String] { isEn ? ["英式＋美式", "美式", "英式", "不顯示"] : isSv ? ["詞素", "不顯示"] : (isJa ? ["羅馬字", "假名"] : (isYue ? ["粵拼", "耶魯"] : ["拼音", "注音"])) }
     /// HSK 3.0 levels (7 = 7–9)
     static func hskName(_ l: Int) -> String { l >= 7 ? "HSK 7–9" : "HSK \(l)" }
     /// the word list the 華語 cards follow: 0 = HSK 3.0, 1 = TOCFL
-    static let listKey = "zhList"
+    /// (英語 has its own: 0 常用度, 1 Collins, 2 考試)
+    static var listKey: String { isEn ? enListKey : "zhList" }
     static var zhList: Int { UserDefaults.standard.integer(forKey: listKey) }
-    static let listNames = ["HSK", "TOCFL"]
+    static var listNames: [String] { isEn ? ["常用度", "Collins", "考試"] : ["HSK", "TOCFL"] }
     static let tocflNames = ["", "準備一級", "準備二級", "入門級", "基礎級", "進階級", "高階級", "流利級"]
     static func tocflName(_ l: Int) -> String { l > 0 && l < tocflNames.count ? tocflNames[l] : "" }
     static func levelName(_ list: Int, _ l: Int) -> String {
+        if isEn {
+            if list == 0 { return "常用詞 \((l - 1) * yueGroup + 1)–\(l * yueGroup)" }
+            if list == 2 { return l > 0 && l < enExamNames.count ? enExamNames[l] : "" }
+            return l >= 1 && l <= 5 ? "Collins " + String(repeating: "★", count: 6 - l) : ""
+        }
         if ownGroups { return "常用詞 \((l - 1) * yueGroup + 1)–\(l * yueGroup)" }
         return list == 1 ? "TOCFL " + tocflName(l) : hskName(l)
     }
     /// 粵語: the words and characters come in groups of how common they are (no official lists)
     static let yueGroup = 500
     static func yueCharLevelName(_ l: Int) -> String { "常用字 \((l - 1) * yueGroup + 1)–\(l * yueGroup)" }
-    static var placeNames: [String] { isSv ? ["Svenska"] : (isJa ? ["日本語"] : (isHak ? hakAccents : zhPlaceNames)) }
+    static var placeNames: [String] { isEn ? ["English"] : isSv ? ["Svenska"] : (isJa ? ["日本語"] : (isHak ? hakAccents : zhPlaceNames)) }
     /// 華語's readings: 國語 (臺灣), 普通話 (大陸), 四川話 (成都, from Wiktionary; a word without one: 普通話's)
     static let zhPlaceNames = ["國語", "普通話", "四川話"]
 
@@ -65,7 +87,7 @@ enum Lang {
     /// after the tab)
     static func isZhKey(_ k: String) -> Bool {
         guard let t = k.firstIndex(of: "\t"), let s = k[k.index(after: t)...].unicodeScalars.first else { return false }
-        return (0x3100...0x312F).contains(s.value) || (0x31A0...0x31BF).contains(s.value) || s == "˙" || s == "字" || s == "粵" || s == "客" || s == "日" || s == "瑞"
+        return (0x3100...0x312F).contains(s.value) || (0x31A0...0x31BF).contains(s.value) || s == "˙" || s == "字" || s == "粵" || s == "客" || s == "日" || s == "瑞" || s == "英"
     }
     /// a 粵語 word's or character's key ("漢字\t粵…")
     static func isYueKey(_ k: String) -> Bool {
@@ -87,8 +109,13 @@ enum Lang {
         guard let t = k.firstIndex(of: "\t") else { return false }
         return k[k.index(after: t)...].hasPrefix("瑞")
     }
-    /// which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語
-    static func kind(_ k: String) -> Int { isYueKey(k) ? 2 : (isHakKey(k) ? 3 : (isJaKey(k) ? 4 : (isSvKey(k) ? 5 : (isZhKey(k) ? 1 : 0)))) }
+    /// a 英語 word's key ("run\t英")
+    static func isEnKey(_ k: String) -> Bool {
+        guard let t = k.firstIndex(of: "\t") else { return false }
+        return k[k.index(after: t)...].hasPrefix("英")
+    }
+    /// which language a key is of: 0 台語, 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語, 6 英語
+    static func kind(_ k: String) -> Int { isYueKey(k) ? 2 : (isHakKey(k) ? 3 : (isJaKey(k) ? 4 : (isSvKey(k) ? 5 : (isEnKey(k) ? 6 : (isZhKey(k) ? 1 : 0))))) }
     /// a character card's key: "好\t字" (粵語: "好\t粵字", 客語: "好\t客字", 日語: "食\t日字")
     static func charKey(_ ch: String, yue: Bool = isYue, hak: Bool = isHak, ja: Bool = isJa) -> String {
         ch + (ja ? "\t日字" : (yue ? "\t粵字" : (hak ? "\t客字" : "\t字")))
@@ -469,6 +496,21 @@ struct ZhSense {
     let ex: [ZhEx]
 }
 
+extension ZhEntry {
+    /// 英語's own fields (en.json): g the group of how common, x Collins, y the exam, sw the Swedish, o Oxford 3000
+    func withEnglish(_ e: [String: Any]) -> ZhEntry {
+        guard Lang.isEnKey(k) else { return self }
+        var o = self
+        o.hsk = e["g"] as? Int ?? 0
+        o.tocfl = e["x"] as? Int ?? 0
+        o.exam = e["y"] as? Int ?? 0
+        o.sw = e["sw"] as? [String] ?? []
+        o.oxford = (e["o"] as? Int ?? 0) == 1
+        o.rank = e["r"] as? Int ?? 0
+        return o
+    }
+}
+
 struct ZhEntry {
     let k: String
     let h: String
@@ -485,8 +527,15 @@ struct ZhEntry {
     var en: String? = nil   // English (CC-CEDICT)
     var hsk = 0             // HSK 3.0 level (1–6, 7 = 7–9), 0 = not on the list
     var tocfl = 0           // TOCFL level (1 準備一級 … 7 流利級), 0 = not on the list
-    /// the level on a word list (0 HSK, 1 TOCFL)
-    func level(_ list: Int) -> Int { list == 1 ? tocfl : hsk }
+    /// 英語: hsk is the group of how common (500 a group), tocfl the Collins level (1 ★★★★★ … 5 ★), exam the first
+    /// exam list it's on (1 中考 … 7 GRE)
+    var exam = 0
+    /// the level on a word list (0 HSK, 1 TOCFL; 英語: 0 常用度, 1 Collins, 2 考試)
+    func level(_ list: Int) -> Int { list == 2 ? exam : (list == 1 ? tocfl : hsk) }
+    /// 英語: the Swedish words, on the Oxford 3000, how common (its rank; 0 not known)
+    var sw: [String] = []
+    var oxford = false
+    var rank = 0
     var extra = false       // an HSK word the dictionary doesn't have (added, with the English meaning)
     var pos: [String] = []  // 詞類 (from the HSK / TOCFL lists), in the 台語 dictionary's names
     var syn: [String] = []  // 近義詞 (教育部《重編國語辭典修訂本》)
@@ -558,10 +607,13 @@ final class ZhDict: @unchecked Sendable {
     /// the 瑞典語 dictionary (sv.json, Install/swedish.js): `tw` is the word's morphemes ("läs:r a:e"), `eq` its
     /// forms, `jp` its Chinese meanings
     let isSv: Bool
+    /// the 英語 dictionary (en.json, Install/english.js; isSv too, for the pages they share): `tw` is the British and
+    /// the American reading in IPA ("-" for none), `jp` its Chinese meanings, `sw` its Swedish words
+    let isEn: Bool
     /// 瑞典語: 華語 → English (CC-CEDICT, sv.json's "ce"), for looking Swedish words up in Chinese through the English
     let svCE: [String: String]
     /// 1 華語, 2 粵語, 3 客語, 4 日語, 5 瑞典語
-    var lang: Int { isSv ? 5 : (isJa ? 4 : (isHak ? 3 : (isYue ? 2 : 1))) }
+    var lang: Int { isEn ? 6 : isSv ? 5 : (isJa ? 4 : (isHak ? 3 : (isYue ? 2 : 1))) }
     /// 日語: what JMdict's codes mean (in English)
     let jaTags: [String: String]
     /// 日語: each entry's reading in hiragana (for "starts with"); empty for the other languages
@@ -673,6 +725,7 @@ final class ZhDict: @unchecked Sendable {
                        pos: e["w"] as? [String] ?? [], syn: e["j"] as? [String] ?? [], ant: e["f"] as? [String] ?? [],
                        eq: e["m"] as? [String] ?? [], audio: e["u"] as? String, acc: acc, otherWords: others,
                        jp: e["jp"] as? [String] ?? [])
+            .withEnglish(e)
     }
 
     /// reads zh.json: the entries are one per line at the end, so they're read in parts on all the cores at
@@ -816,7 +869,7 @@ final class ZhDict: @unchecked Sendable {
         }
         cardCount = obj["nc"] as? Int ?? out.count
         // your own words (詞典 → 自訂), after the dictionary's (so they're never study cards)
-        let ownLang = ["yue": 2, "hak": 3, "ja": 4, "sv": 5][obj["lang"] as? String ?? ""] ?? 1
+        let ownLang = ["yue": 2, "hak": 3, "ja": 4, "sv": 5, "en": 6][obj["lang"] as? String ?? ""] ?? 1
         for w in ZhOwnWords.of(ownLang) where !w.h.isEmpty && !w.tw.isEmpty {
             let ex = w.example.isEmpty ? [] : [ZhEx(h: w.example, src: "", code: "")]
             var e = ZhEntry(k: w.key, h: w.h, tw: w.tw, lu: nil, spec: 0, alt: nil,
@@ -828,7 +881,8 @@ final class ZhDict: @unchecked Sendable {
         isYue = obj["lang"] as? String == "yue"
         isHak = obj["lang"] as? String == "hak"
         isJa = obj["lang"] as? String == "ja"
-        isSv = obj["lang"] as? String == "sv"
+        isEn = obj["lang"] as? String == "en"
+        isSv = obj["lang"] as? String == "sv" || isEn
         svCE = isSv ? (obj["ce"] as? [String: String] ?? [:]) : [:]
         jaTags = obj["tags"] as? [String: String] ?? [:]
         self.accent = accent
@@ -836,7 +890,7 @@ final class ZhDict: @unchecked Sendable {
         hakZy = obj["hz"] as? [String: String] ?? [:]
         var m = 1
         let ja = obj["lang"] as? String == "ja"
-        let sv = obj["lang"] as? String == "sv"
+        let sv = obj["lang"] as? String == "sv" || obj["lang"] as? String == "en"
         var index: [String: Int] = [:], byHan: [String: [Int]] = [:]
         var byPlain: [String: [Int]] = [:], byToned: [String: [Int]] = [:], byZy: [String: [Int]] = [:], byZyToned: [String: [Int]] = [:]
         var jk: [String] = []
@@ -873,7 +927,7 @@ final class ZhDict: @unchecked Sendable {
             }
         }
         // 瑞典語: comparatives (sen|are) and phrases (hitta på) as their parts
-        if sv { out = Self.svFix(out, byPlain) }
+        if obj["lang"] as? String == "sv" { out = Self.svFix(out, byPlain) }
         entries = out
         jaKana = jk
         Simp.learn(out.map { e in (e.h, e.alt ?? e.h) })
@@ -993,6 +1047,8 @@ final class ZhDict: @unchecked Sendable {
 
     /// a word's reading: 0 = 拼音, 1 = 注音; in tone colours when they're on
     func reading(_ syl: [String], _ mode: Int, colours: Int = ToneColors.system) -> AttributedString {
+        // 英語: the IPA, British and American as 設定 → 語言與讀音 → 英語 says (whatever the mode)
+        if isEn { return AttributedString(Self.enIpa(syl)) }
         // 瑞典語: the morphemes with a hyphen between them (be-tal-a), each in its colour (1: nothing)
         if isSv {
             guard mode == 0 else { return AttributedString() }
@@ -1089,10 +1145,26 @@ final class ZhDict: @unchecked Sendable {
         return out + stop
     }
 
+    /// 英語: a word's readings ([British, American], "-" for none) as 設定 → 英語 → 讀音 says: "UK /…/ · US /…/"
+    static func enIpa(_ syl: [String]) -> String {
+        let uk = syl.first.flatMap { $0 == "-" || $0.isEmpty ? nil : $0 }
+        let us = syl.count > 1 ? (syl[1] == "-" || syl[1].isEmpty ? nil : syl[1]) : nil
+        switch UserDefaults.standard.integer(forKey: Lang.enRomKey) {
+        case 1: return (us ?? uk).map { "/\($0)/" } ?? ""
+        case 2: return (uk ?? us).map { "/\($0)/" } ?? ""
+        case 3: return ""
+        default:
+            if let uk, let us, uk != us { return "UK /\(uk)/ · US /\(us)/" }
+            return (uk ?? us).map { "/\($0)/" } ?? ""
+        }
+    }
+
     func readingPlain(_ syl: [String], _ mode: Int) -> String { String(reading(syl, mode, colours: 0).characters) }
 
     /// 漢字 in tone colours (one syllable per 漢字; 兒 after -ㄦ takes the colour before it)
     func hanText(_ han0: String, _ syl: [String], base: Color?, colours: Int = ToneColors.system) -> AttributedString {
+        // 英語: the word as it is
+        if isEn { var a = AttributedString(han0); if let base { a.swiftUI.foregroundColor = base }; return a }
         // 瑞典語: each morpheme in its colour (the root, a prefix, a suffix, the linking letter, the ending)
         if isSv {
             var ms = SvMorpheme.parse(syl)
@@ -1274,11 +1346,14 @@ final class ZhDict: @unchecked Sendable {
         let zh = isSv ? e.svZh : []
         // (只有中文: the English meanings' sentences kept, without the English)
         let defs1 = isSv && e.svHideEnglish ? defs0.map { Def(p: $0.p, t: "", x: $0.x, sy: nil, an: nil) }.filter { !$0.x.isEmpty } : defs0
-        let defs = !zh.isEmpty ? [Def(p: e.svZhGuessed ? "中≈" : "中", t: zh.joined(separator: "、"), x: [], sy: nil, an: nil)] + defs1 : defs1
+        var defs = !zh.isEmpty ? [Def(p: e.svZhGuessed ? "中≈" : "中", t: zh.joined(separator: isEn ? "；" : "、"), x: [], sy: nil, an: nil)] + defs1 : defs1
+        // 英語: the Swedish words after the Chinese
+        if isEn, !e.enSv.isEmpty { defs.insert(Def(p: "瑞", t: e.enSv.joined(separator: "、"), x: [], sy: nil, an: nil), at: zh.isEmpty ? 0 : 1) }
+        if defs.isEmpty { defs = defs0 }
         let variant: [String: Variant]? = e.lu.map { lu in
             ["1": Variant(r: [readingPlain(lu, 0)], z: readingPlain(lu, 1))]
         }
-        return Card(k: e.k, h: Simp.show(e.h), r: [readingPlain(e.tw, 0)], z: readingPlain(e.tw, 1), a: nil, g: "", d: defs,
+        return Card(k: e.k, h: Simp.show(e.h), r: [readingPlain(e.tw, 0)], z: isEn ? "" : readingPlain(e.tw, 1), a: nil, g: "", d: defs,
                     c: nil, zo: nil, v: variant, o: nil, s: nil,
                     t: e.spec == 1 ? "臺灣特有" : (e.spec == 2 ? "大陸特有" : (e.spec == Self.sichuanSpec ? "四川話" : nil)),
                     sy: nil, an: nil, cats: e.level(list) > 0 ? [e.level(list)] : nil, zs: e.tw, zl: e.lu, web: e.audio, zc: e.sc, zcKind: e.scKind)
@@ -1470,7 +1545,7 @@ final class ZhDict: @unchecked Sendable {
     /// 瑞典語: a word the dictionary has without its parts (jobbigt, Arvsfonden), its parts worked out by the rules
     /// ("text:kind" each; [] when there's nothing to work out); kept, as lists and cards ask often
     func svWordSyl(_ w: String) -> [String] {
-        guard isSv, w.count >= 5, !w.contains(" ") else { return [] }
+        guard isSv, !isEn, w.count >= 5, !w.contains(" ") else { return [] }
         svLock.lock()
         let had = svSylCache[w]
         svLock.unlock()
@@ -1513,8 +1588,15 @@ final class ZhDict: @unchecked Sendable {
         if han {
             // 華語 / Chinese: the words with it in their Chinese meanings (the ones that are just it first)
             var exact: [Int] = [], inside: [Int] = []
+            // (英語: the Chinese lines start with the class, "n. 跑、賽跑")
+            let cls = try? NSRegularExpression(pattern: "^\\s*([a-z]+\\.\\s*)+")
+            func bare(_ p: String) -> String {
+                let t = p.trimmingCharacters(in: .whitespaces)
+                guard isEn, let cls else { return t }
+                return cls.stringByReplacingMatches(in: t, range: NSRange(t.startIndex..., in: t), withTemplate: "")
+            }
             for (i, e) in entries.enumerated() where e.svZhAll.contains(where: { $0.contains(q) }) {
-                if e.svZhAll.contains(where: { $0 == q || $0.components(separatedBy: CharacterSet(charactersIn: "、，,；;")).contains(q) }) { exact.append(i) } else if inside.count < 200 { inside.append(i) }
+                if e.svZhAll.contains(where: { $0 == q || $0.components(separatedBy: CharacterSet(charactersIn: "、，,；;")).contains { bare($0) == q } }) { exact.append(i) } else if inside.count < 200 { inside.append(i) }
             }
             f.english = take(exact) + take(inside)
             f.englishFirst = true
@@ -1539,12 +1621,18 @@ final class ZhDict: @unchecked Sendable {
             return f
         }
         f.words = take(byPlain[low] ?? [])
+        // 英語: the words whose Swedish is it (springa → run), before the English meanings
+        if isEn {
+            var sv: [Int] = []
+            for (i, e) in entries.enumerated() where e.sw.contains(where: { $0.lowercased() == low }) { sv.append(i); if sv.count >= 60 { break } }
+            f.svVia = take(sv)
+        }
         // (a form the dictionary doesn't list: its word; a compound it doesn't have: its parts)
-        if f.words.isEmpty, let est = svEstimate(q.trimmingCharacters(in: .whitespaces)) {
+        if !isEn, f.words.isEmpty, let est = svEstimate(q.trimmingCharacters(in: .whitespaces)) {
             f.svEst = est
             if est.parts.count == 1, let i = est.parts[0].entry { f.words = take([i]) }
         }
-        if f.words.isEmpty, f.svEst == nil, let i = svInflected(low) { f.words = take([i]) }
+        if !isEn, f.words.isEmpty, f.svEst == nil, let i = svInflected(low) { f.words = take([i]) }
         var starts: [Int] = [], inside: [Int] = []
         for (i, e) in entries.enumerated() where !seen.contains(i) {
             let h = e.h.lowercased()
@@ -1794,7 +1882,12 @@ final class ZhSpeech: NSObject, AVSpeechSynthesizerDelegate {
     func speak(_ text: String) {
         synth.stopSpeaking(at: .immediate)
         let u = AVSpeechUtterance(string: text)
-        if Lang.isSv {
+        if Lang.isEn {
+            // 英語: the device's best British voice (American when 讀音 is 美式)
+            let code = UserDefaults.standard.integer(forKey: Lang.enRomKey) == 1 ? "en-US" : "en-GB"
+            let all = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == code }
+            u.voice = all.max(by: { $0.quality.rawValue < $1.quality.rawValue }) ?? AVSpeechSynthesisVoice(language: code)
+        } else if Lang.isSv {
             // 瑞典語: the device's best Swedish voice
             let all = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == "sv-SE" }
             u.voice = all.max(by: { $0.quality.rawValue < $1.quality.rawValue }) ?? AVSpeechSynthesisVoice(language: "sv-SE")

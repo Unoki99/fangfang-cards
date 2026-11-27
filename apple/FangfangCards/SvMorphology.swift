@@ -183,6 +183,8 @@ extension ZhDict {
     /// 瑞典語: a sentence with each word in its morphemes' colours (hyphens: split, sam-tyck-lig-a); punctuation and
     /// words the dictionary doesn't have in `base`
     func svSentence(_ text: String, hyphens: Bool, base: Color, colours: Bool = ToneColors.system != 0) -> AttributedString {
+        // (英語: no morphemes, the sentence as it is)
+        if isEn { var a = AttributedString(text); a.swiftUI.foregroundColor = base; return a }
         var out = AttributedString()
         for (li, line) in text.components(separatedBy: "\n").enumerated() {
             if li > 0 { out += AttributedString("\n") }
@@ -514,7 +516,8 @@ struct SvWordExtras: View {
     @State private var open: SvMorpheme?
 
     var body: some View {
-        let ms = SvMorpheme.parse(dict.svSyl(entry))
+        // (英語: no morphemes; its forms)
+        let ms = dict.isEn ? [] : SvMorpheme.parse(dict.svSyl(entry))
         VStack(alignment: .leading, spacing: 12) {
             // (its Chinese meanings: beside the English at the top, MeaningsOverview)
             if ms.count > 1 {
@@ -576,6 +579,7 @@ struct SvWordExtras: View {
 
     /// a form: the word's morphemes, then the rest (its ending) in colour
     func formText(_ f: String, _ ms: [SvMorpheme]) -> AttributedString {
+        if dict.isEn { return AttributedString(f) }
         let fm = SvMorpheme.forForm(f, lemma: entry.h, ms)
         return SvColors.attributed(fm, base: T.glyph, colours: true)
     }
@@ -1161,7 +1165,7 @@ extension ZhDict {
     /// 瑞典語: a word's morphemes ("text:kind" each): its own, or for a word the dictionary has without them
     /// (Arvsfonden), worked out by the rules (arvs|fond|en)
     func svSyl(_ e: ZhEntry) -> [String] {
-        guard isSv, SvMorpheme.parse(e.tw).count <= 1, !e.h.contains(" ") else { return e.tw }
+        guard isSv, !isEn, SvMorpheme.parse(e.tw).count <= 1, !e.h.contains(" ") else { return e.tw }
         let w = svWordSyl(e.h)
         return w.isEmpty ? e.tw : w
     }
@@ -1534,12 +1538,23 @@ extension ZhEntry {
         let g = SvGuess.on
         return jp.compactMap { $0.hasPrefix("≈") ? (g ? String($0.dropFirst()) : nil) : $0 }
     }
-    /// 瑞典語: the Chinese meanings shown (none: 設定 says English only)
-    var svZh: [String] { SvGuess.show == 2 ? [] : svZhAll }
+    /// 瑞典語: the Chinese meanings shown (none: 設定 says English only). 英語: when 設定 → 英語 shows 中文
+    var svZh: [String] {
+        if isEnWord { return Lang.enShow.zh ? jp : [] }
+        return SvGuess.show == 2 ? [] : svZhAll
+    }
     /// (they're guessed from the English)
-    var svZhGuessed: Bool { SvGuess.show != 2 && SvGuess.on && (jp.first?.hasPrefix("≈") ?? false) }
-    /// 瑞典語, 只有中文: the English meanings not shown (when there are Chinese ones instead)
-    var svHideEnglish: Bool { SvGuess.show == 1 && !svZh.isEmpty }
+    var svZhGuessed: Bool { !isEnWord && SvGuess.show != 2 && SvGuess.on && (jp.first?.hasPrefix("≈") ?? false) }
+    /// 瑞典語, 只有中文: the English meanings not shown (when there are Chinese ones instead). 英語: 設定 → 英語 doesn't
+    /// show 英文 (and there's Chinese or Swedish to show instead)
+    var svHideEnglish: Bool {
+        if isEnWord { return !Lang.enShow.en && (!svZh.isEmpty || !enSv.isEmpty) }
+        return SvGuess.show == 1 && !svZh.isEmpty
+    }
+    /// a 英語 word
+    var isEnWord: Bool { Lang.isEnKey(k) }
+    /// 英語: the Swedish words shown (設定 → 英語 → 瑞典文)
+    var enSv: [String] { isEnWord && Lang.enShow.sv ? sw : [] }
 }
 
 /// 瑞典語: the words the last search found through the English of a 華語 word (their entries say so)

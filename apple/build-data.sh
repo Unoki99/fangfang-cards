@@ -13,6 +13,7 @@
 #   bash build-data.sh twen            (only the 台語 words' English from Wiktionary, FangfangCards/tw_en.json)
 #   bash build-data.sh sc              (only the 華語 words' 四川話 readings from Wiktionary, FangfangCards/zh_sc.json)
 #   bash build-data.sh sv              (only the 瑞典語 data, FangfangCards/sv.json: Folkets lexikon, for the Safari pop-up)
+#   bash build-data.sh en              (only the 英語 data, FangfangCards/en.json: ECDICT, for the Safari pop-up)
 #   bash build-data.sh safari          (only the words inside the Safari extension, FangfangSafari/d-*.json)
 #   Downloaded files are kept (~/Library/Caches/FangfangCards/sources) and used again next time; FANGFANG_REFRESH=1 downloads them again.
 set -e
@@ -183,6 +184,23 @@ build_sv() {
     "$([ -f "$TMP/essay.txt" ] && echo "$TMP/essay.txt" || echo -)"
 }
 if [ "$ODS" = "sv" ]; then build_sv; echo "✓ 完成：FangfangCards/sv.json"; exit 0; fi
+# 英語: ECDICT (MIT), CMUdict (BSD), Folkets lexikon the other way round (CC BY-SA 2.5), FrequencyWords (CC BY-SA 4.0),
+# CC-CEDICT's pairs for 正體 (CC BY-SA): the same as the app makes with Install/english.js
+build_en() {
+  D="$TMP/en"; mkdir -p "$D"
+  echo "下載 ECDICT（約 65 MB）…"
+  fetch "$D/ecdict.csv" en/ecdict.csv "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv" big \
+    || { echo "✗ 下載不到 ECDICT。"; return 1; }
+  fetch "$D/cmudict.dict" en/cmudict.dict "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict" || rm -f "$D/cmudict.dict"
+  fetch "$D/folkets.xml" sv/folkets.xml "https://raw.githubusercontent.com/antonlisq/convert-dict/main/folkets_sv_en_public.xml" || rm -f "$D/folkets.xml"
+  fetch "$D/sv_50k.txt" sv/sv_50k.txt "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt" || rm -f "$D/sv_50k.txt"
+  [ -f "$TMP/cedict_ts.u8" ] || fetch "$TMP/cedict_ts.u8" common/cedict_ts.u8 "https://raw.githubusercontent.com/cschiller/zhongwen/main/data/cedict_ts.u8" || true
+  echo "整理英語資料中…"
+  opt() { [ -f "$1" ] && echo "$1" || echo -; }
+  /usr/bin/env python3 "$HERE/tools/build_english.py" "$D/ecdict.csv" "$(opt "$D/cmudict.dict")" "$(opt "$D/folkets.xml")" \
+    "$(opt "$D/sv_50k.txt")" "$(opt "$TMP/cedict_ts.u8")" "$HERE/FangfangCards/en.json"
+}
+if [ "$ODS" = "en" ]; then build_en; echo "✓ 完成：FangfangCards/en.json"; exit 0; fi
 if [ -n "$ONLY_ZH" ]; then :; elif [ -z "$ODS" ]; then
   ODS="$TMP/kautian.ods"
   echo "下載教育部《臺灣台語常用詞辭典》資料（kautian.ods）…"

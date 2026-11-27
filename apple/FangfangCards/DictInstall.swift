@@ -272,6 +272,20 @@ struct DictPack: Identifiable {
         download: "約 95 MB（中文解釋佔大部分）",
         dataVersion: 4)
 
+    /// 英語: ECDICT (English–Chinese with English definitions, frequencies and word lists, MIT), CMUdict for the
+    /// American readings (BSD), Folkets lexikon the other way round for the Swedish words and example sentences
+    /// (CC BY-SA 2.5), CC-CEDICT's pairs for the Chinese in 正體
+    static let english = DictPack(
+        id: "en", lang: 6, name: "英語", outputs: ["en"],
+        sources: [Source(file: "ecdict.csv", url: "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv", arg: "ecdict"),
+                  Source(file: "cmudict.dict", url: "https://raw.githubusercontent.com/cmusphinx/cmudict/master/cmudict.dict", optional: true, arg: "cmu"),
+                  Source(file: "folkets.xml", url: "https://raw.githubusercontent.com/antonlisq/convert-dict/main/folkets_sv_en_public.xml", optional: true, arg: "folkets"),
+                  Source(file: "sv_50k.txt", url: "https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt", optional: true, arg: "svfreq"),
+                  Source(file: cedict.file, url: cedict.url, optional: true, arg: "cedict")],
+        script: "english", function: "buildEnglish",
+        from: "ECDICT（skywind3000，MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表、牛津 3000）、CMUdict 美式讀音（BSD）、Folkets lexikon 的瑞典文和例句（KTH，CC BY-SA 2.5）、CC-CEDICT（正體字，CC BY-SA）",
+        download: "約 85 MB")
+
     // MARK: where the files come from first
 
     /// the copies of the original files in this project's data repository on GitHub, unoki99/fangfang-data (unchanged,
@@ -284,11 +298,13 @@ struct DictPack: Identifiable {
     func mirrorURL(_ s: Source) -> String? {
         guard !Self.notMirrored.contains(s.file),
               let name = s.file.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
-        return Self.mirror + (Self.sharedFiles.contains(s.file) ? "common" : id) + "/" + name
+        // (英語 uses 瑞典語's copies of Folkets lexikon and its word list)
+        let folder = Self.sharedFiles.contains(s.file) ? "common" : (id == "en" && ["folkets.xml", "sv_50k.txt"].contains(s.file) ? "sv" : id)
+        return Self.mirror + folder + "/" + name
     }
 
     /// every dictionary the app can install
-    static let all: [DictPack] = [taigi, mandarin, cantonese, hakka, japanese, swedish, shuowen]
+    static let all: [DictPack] = [taigi, mandarin, cantonese, hakka, japanese, swedish, english, shuowen]
     static func of(lang: Int) -> DictPack? { all.first { $0.lang == lang } }
 }
 

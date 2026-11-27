@@ -84,7 +84,7 @@ shards = {l: [dict() for _ in range(SHARDS)] for l in ("zh", "tw", "yue", "hak")
 
 def shard_of(lang, word):
     # (瑞典語: by the first two letters, so the files of common first letters aren't big)
-    if lang == "sv": return (ord(word[0]) * 31 + (ord(word[1]) if len(word) > 1 else 0)) % SHARDS
+    if lang in ("sv", "eng"): return (ord(word[0]) * 31 + (ord(word[1]) if len(word) > 1 else 0)) % SHARDS
     return ord(word[0]) % SHARDS
 
 
@@ -123,7 +123,7 @@ def variant_of(h, senses, en):
 
 
 def add(lang, word, e, most=6):
-    if not word or (len(word) > MAXLEN and lang != "sv"): return
+    if not word or (len(word) > MAXLEN and lang not in ("sv", "eng")): return
     d = shards[lang][shard_of(lang, word)]
     lst = d.setdefault(word, [])
     if len(lst) < most and not any(x["k"] == e["k"] for x in lst): lst.append(e)
@@ -495,30 +495,41 @@ if sv:
         sv_count += 1
 print(f"瑞典語 words: {sv_count}", file=sys.stderr)
 
+# ── 英語 (en.json, ECDICT): by the word and each of its forms, in small letters (the same as shards.js's buildEng):
+# {k, u British IPA, a American IPA, w its first word class, m the Chinese meanings, s the Swedish words, e the English
+# meanings, f where it is}
+shards["eng"] = [dict() for _ in range(SHARDS)]
+eng_count = 0
+en_data = load("en.json")
+if en_data:
+    for i, e in enumerate(en_data.get("e", [])):
+        k, h = e.get("k"), e.get("h")
+        if not (k and h): continue
+        parts = (e.get("s") or "").split(" ")
+        o = {"k": k, "f": i}
+        if parts and parts[0] and parts[0] != "-": o["u"] = parts[0]
+        if len(parts) > 1 and parts[1] and parts[1] != "-": o["a"] = parts[1]
+        if e.get("w"): o["w"] = e["w"][0]
+        if e.get("jp"): o["m"] = short("；".join(e["jp"][:3]), 140)
+        if e.get("sw"): o["s"] = "、".join(e["sw"][:4])
+        defs = "; ".join([d[0] for d in (e.get("d") or []) if d and d[0]][:3])
+        if defs: o["e"] = short(defs, 160)
+        for w0 in [h] + (e.get("m") or []):
+            w = (w0 or "").lower()
+            if w and len(w) <= 40: add("eng", w, o, 4)
+        eng_count += 1
+print(f"英語 words: {eng_count}", file=sys.stderr)
+
 # ── written ────────────────────────────────────────────────────────────────────────────────────────────────────
 os.makedirs(OUT, exist_ok=True)
 for f in os.listdir(OUT):
     if f.startswith("d-") and f.endswith(".json"): os.remove(os.path.join(OUT, f))
-for lang in ("zh", "tw", "yue", "hak", "sv"):
+for lang in ("zh", "tw", "yue", "hak", "sv", "eng"):
     for i, sh in enumerate(shards[lang]):
         if sh:
             with open(os.path.join(OUT, f"d-{lang}-{i:03d}.json"), "w", encoding="utf-8") as f:
                 json.dump(sh, f, ensure_ascii=False, separators=(",", ":"))
-# (English: by the word's first two letters, like 瑞典語's; each language's 3 best words)
-en_sh = [dict() for _ in range(SHARDS)]
-for t, by in EN.items():
-    o = {}
-    for lang, lst in by.items():
-        hs = []
-        for _, _, h in sorted(lst):
-            if h not in hs: hs.append(h)
-            if len(hs) >= 3: break
-        o[lang] = hs
-    en_sh[shard_of("sv", t)][t] = o
-for i, sh in enumerate(en_sh):
-    if sh:
-        with open(os.path.join(OUT, f"d-en-{i:03d}.json"), "w", encoding="utf-8") as f:
-            json.dump(sh, f, ensure_ascii=False, separators=(",", ":"))
+# (English words are looked up with 英語's own dictionary: no English → Chinese files any more)
 # (簡體 → 繁體: m the characters to change, s the ones that are only ever 簡體: they tell 簡體 subtitles from 繁體 ones)
 strict = [c for c in S2T if not TRAD_CHARS.get(c)]
 s2t = {}
@@ -541,7 +552,8 @@ if zh:
         if e.get("y") and not (h in ly and ly[h] <= e["y"]): ly[h] = e["y"]
     with open(os.path.join(OUT, "d-levels.json"), "w", encoding="utf-8") as f:
         json.dump({"x": lx, "y": ly}, f, ensure_ascii=False, separators=(",", ":"))
-meta["en"] = len(EN)
+meta["en"] = 0
+meta["eng"] = eng_count
 meta["zh"] = zh_count
 meta["tw"] = tw_count
 meta["yue"] = yue_count

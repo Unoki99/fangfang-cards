@@ -1658,7 +1658,7 @@ final class SongLanguage: ObservableObject {
     }
 
     private func load(_ l: Int) {
-        guard (1...5).contains(l), !loading.contains(l), let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv"][l]) else { return }
+        guard (1...6).contains(l), !loading.contains(l), let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv", "en"][l]) else { return }
         loading.insert(l)
         let accent = Lang.hakAccent
         Task {
@@ -1712,7 +1712,7 @@ struct LyricsLangPane: View {
                     waiting.onAppear { store.loadDict() }
                 }
             } else if let z = tags.dict(l, store) {
-                if l == 5 {
+                if l == 5 || l == 6 {
                     if bar { Text(UserDefaults.standard.string(forKey: textKey) ?? "").ffFont(.title3).foregroundStyle(T.glyph) }
                     else { SvConvertPane(dict: z, textKey: textKey, lyrics: true).id(ObjectIdentifier(z)) }
                 } else {
@@ -1742,7 +1742,7 @@ struct SongLanguageMenu: View {
             Picker(tr("歌的語言"), selection: Binding(get: { t ?? -1 }, set: { tags.set(song, $0 < 0 ? nil : $0) })) {
                 Text(tr("跟詞典一樣（") + trs(Lang.names[min(max(store.lang, 0), Lang.names.count - 1)]) + "）").tag(-1)
                 ForEach(Lang.names.indices, id: \.self) { i in
-                    if i == 0 ? DataFiles.has("dict") : DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][i]) {
+                    if i == 0 ? DataFiles.has("dict") : DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv", "en"][i]) {
                         Text(trs(Lang.names[i])).tag(i)
                     }
                 }

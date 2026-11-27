@@ -2070,5 +2070,22 @@
  "附近的人": "People nearby",
  "透過網路": "Over the internet",
  "連線伺服器的網址不對。": "The relay server's address isn't valid.",
- "找附近的人中…請其他人也打開詞龍的「和別人一起」（同一個 Wi-Fi，或打開藍牙）。": "Looking for people nearby… Ask the others to open Word chain's With others too (same Wi-Fi, or Bluetooth on)."
+ "找附近的人中…請其他人也打開詞龍的「和別人一起」（同一個 Wi-Fi，或打開藍牙）。": "Looking for people nearby… Ask the others to open Word chain's With others too (same Wi-Fi, or Bluetooth on).",
+ "ECDICT 的詞，英文、中文或瑞典文解釋，英式和美式 IPA，詞頻、Collins 星級和考試詞表": "Words from ECDICT, explained in English, Chinese or Swedish, with British and American IPA, frequency, Collins stars and exam word lists",
+ "IPA 讀音（可以不填）": "IPA reading (optional)",
+ "中文解釋": "Chinese meanings",
+ "例：doomscroll": "e.g. doomscroll",
+ "可以查英文（變化過的形也可以：ran → run）、中文的意思（跑步）或瑞典文（springa）。英文的解釋找得到的詞也會列出來。\n讀音用 IPA：英式和美式（設定 → 語言與讀音 → 英語）。解釋要顯示英文、中文或瑞典文，也在那裡選。\n* 代表一個以上的字母，? 代表剛好一個：*ness → ness 結尾\n往右滑一個詞加到「不熟」，往左滑收藏。": "Search in English (inflected forms too: ran → run), by a Chinese meaning (跑步) or in Swedish (springa). Words whose English meanings contain it are listed too.\nReadings are in IPA, British and American (Settings → Languages & readings → English). Whether meanings show in English, Chinese or Swedish is chosen there too.\n* stands for one or more letters, ? for exactly one: *ness → ending in ness\nSwipe a word right to add it to Unknown, left to save it.",
+ "存成自訂詞": "Save as my own word",
+ "瑞": "SV",
+ "美式": "American",
+ "英式": "British",
+ "英式＋美式": "British + American",
+ "英文、中文或瑞典文，例如：run、ran、跑步、springa": "English, Chinese or Swedish, e.g. run, ran, 跑步, springa",
+ "英語": "English",
+ "讀音用 IPA：英式的來自 ECDICT，美式的來自 CMUdict。解釋可以顯示英文、中文（ECDICT，轉成正體字）和瑞典文（Folkets lexikon 反查），至少選一種；卡片和詞典都照這裡。詞表：常用度（照美國當代英語語料庫的詞頻，每組 500 個）、Collins 星級（五星最常用）或考試詞表（中考、高考、CET-4、CET-6、考研、TOEFL／IELTS、GRE，照最早出現的那一個）。": "Readings are in IPA: British from ECDICT, American from CMUdict. Meanings can show English, Chinese (ECDICT, in traditional characters) and Swedish (Folkets lexikon, looked up the other way round); choose at least one. Cards and the dictionary follow this. Word lists: frequency (the Corpus of Contemporary American English, 500 a group), Collins stars (five stars = most common) or exam lists (中考, 高考, CET-4, CET-6, 考研, TOEFL / IELTS, GRE, by the first one a word appears on).",
+ "資料：ECDICT（MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表）；美式讀音：CMUdict（BSD）；瑞典文和例句：Folkets lexikon（KTH，CC BY-SA 2.5）；正體字：CC-CEDICT（CC BY-SA）。": "Sources: ECDICT (MIT: English and Chinese meanings, frequency, Collins stars, exam lists); American readings: CMUdict (BSD); Swedish and example sentences: Folkets lexikon (KTH, CC BY-SA 2.5); traditional characters: CC-CEDICT (CC BY-SA).",
+ "瑞典文「{0}」": "Swedish “{0}”",
+ "Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。詞典沒有的詞，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。": "Gemini's guesses, not the dictionary's: tap a word to look it up. For a word the dictionary doesn't have, press + beside it to save it as your own word (its meaning filled in with what you searched, “{0}”).",
+ "考試": "Exams"
 }

@@ -71,13 +71,28 @@ var FF_DICTS = (() => {
                 ["維基詞典的中文解釋（kaikki.org）", "CC BY-SA 4.0", "https://kaikki.org/"],
                 ["CC-CEDICT", "CC BY-SA 4.0", "https://cc-cedict.org/wiki/"]],
         },
+        {
+            // 英語: ECDICT (its English and Chinese meanings, frequencies and word lists), CMUdict's American readings,
+            // Folkets lexikon the other way round (the Swedish), CC-CEDICT's pairs (the Chinese in 正體)
+            id: "eng", name: "英語", script: "english", fn: "buildEnglish", outs: ["en"], mb: 85,
+            sources: [{ file: "ecdict.csv", url: g + "skywind3000/ECDICT/master/ecdict.csv", arg: "ecdict" },
+                { file: "cmudict.dict", url: g + "cmusphinx/cmudict/master/cmudict.dict", arg: "cmu", optional: true },
+                { file: "folkets.xml", url: g + "antonlisq/convert-dict/main/folkets_sv_en_public.xml", arg: "folkets", optional: true, mirror: "sv" },
+                { file: "sv_50k.txt", url: g + "hermitdave/FrequencyWords/master/content/2018/sv/sv_50k.txt", arg: "svfreq", optional: true, mirror: "sv" },
+                Object.assign({}, cedict, { optional: true })],
+            from: [["ECDICT（skywind3000）", "MIT", "https://github.com/skywind3000/ECDICT"],
+                ["CMUdict", "BSD", "https://github.com/cmusphinx/cmudict"],
+                ["Folkets lexikon（KTH）", "CC BY-SA 2.5", "http://folkets-lexikon.csc.kth.se/folkets/"],
+                ["FrequencyWords", "CC BY-SA 4.0", "https://github.com/hermitdave/FrequencyWords"],
+                ["CC-CEDICT", "CC BY-SA 4.0", "https://cc-cedict.org/wiki/"]],
+        },
     ];
 })();
 /// the copies of the original files, unchanged, in this project's GitHub repository (one folder per dictionary, and
 /// common/ for the files more than one uses)
 const FF_MIRROR = "https://raw.githubusercontent.com/unoki99/fangfang-data/main/";
 function ffMirrorURL(dict, s) {
-    return s.noMirror ? null : FF_MIRROR + (s.shared ? "common" : dict.id) + "/" + encodeURIComponent(s.file);
+    return s.noMirror ? null : FF_MIRROR + (s.shared ? "common" : (s.mirror || dict.id)) + "/" + encodeURIComponent(s.file);
 }
 /// the app's data a language's lookup files are made from (the converters' outputs, and what shards.js reads)
-const FF_DATA_OF = { zh: ["zh"], tw: ["dict", "cards"], yue: ["yue"], hak: ["hak"], sv: ["sv"] };
+const FF_DATA_OF = { zh: ["zh"], tw: ["dict", "cards"], yue: ["yue"], hak: ["hak"], sv: ["sv"], eng: ["en"] };

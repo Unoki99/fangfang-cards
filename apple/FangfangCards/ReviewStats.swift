@@ -425,7 +425,7 @@ struct ProfileView: View {
 
     // ── HSK / TOCFL (華語) or 常用詞 (台語): each level, and the level you're at ──
     private var levelTitle: String {
-        store.lang == 1 ? tr("\(Lang.listNames[min(max(store.zhList, 0), 1)]) 等級") : (store.isZh ? tr("常用詞") : tr("常用詞和常用字"))
+        store.lang == 1 || store.isEn ? tr("\(Lang.listNames[min(max(store.zhList, 0), Lang.listNames.count - 1)]) 等級") : (store.isZh ? tr("常用詞") : tr("常用詞和常用字"))
     }
 
     private var levelTile: some View {

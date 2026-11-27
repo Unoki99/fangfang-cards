@@ -54,13 +54,15 @@ final class Store: ObservableObject {
     /// the cards shown are 華語 ones (the 台語 deck waits in `other` meanwhile)
     @Published private(set) var isZh = false { didSet { T.zh = isZh } }
     /// the language shown: 0 台語, 1 華語, 2 粵語, 3 客語 (粵語 and 客語 use the 華語 pages, with their own dictionaries)
-    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3; T.ja = lang == 4; T.sv = lang == 5; listsChanged() } }
+    @Published private(set) var lang = 0 { didSet { T.yue = lang == 2; T.hak = lang == 3; T.ja = lang == 4; T.sv = lang == 5; T.en = lang == 6; listsChanged() } }
     /// a hint to show (粵語 without a Cantonese voice on the device)
     @Published var speechHint: String?
     var isYue: Bool { lang == 2 }
     var isHak: Bool { lang == 3 }
     var isJa: Bool { lang == 4 }
-    var isSv: Bool { lang == 5 }
+    /// 瑞典語 and 英語: the same pages (words in letters, no 漢字); isEn tells 英語 apart
+    var isSv: Bool { lang == 5 || lang == 6 }
+    var isEn: Bool { lang == 6 }
     /// which of 華語 / 粵語 / 客語 the dictionary in `zh` is (1, 2 or 3)
     private var zhKind: Int { zh?.lang ?? 1 }
     /// switching language: the other deck is being loaded
@@ -73,12 +75,14 @@ final class Store: ObservableObject {
     /// the word list the 華語 cards follow: 0 HSK 3.0, 1 TOCFL
     @Published var zhList = Lang.zhList {
         didSet {
-            guard zhList != oldValue else { return }
+            guard zhList != oldValue, !quietList else { return }
             UserDefaults.standard.set(zhList, forKey: Lang.listKey)
             UserDefaults.standard.set(-1, forKey: "zhTopic")
             rebuildZhDeck()
         }
     }
+    /// (another language's list put in place: nothing is saved or made again)
+    private var quietList = false
     /// changes when the deck is made again (pages showing it start over)
     @Published private(set) var listVersion = 0
     /// 華語 reading of: 0 臺灣, 1 大陸
@@ -187,6 +191,8 @@ final class Store: ObservableObject {
     func setLanguage(_ want0: Int) {
         let want = min(max(want0, 0), Lang.count - 1)
         UserDefaults.standard.set(want, forKey: Lang.key)
+        // (英語 has its own word lists)
+        if zhList != Lang.zhList { quietList = true; zhList = Lang.zhList; quietList = false }
         guard want != lang, !switching else { return }
         if want != 0 { UserDefaults.standard.set(want, forKey: Store.lastZhKey) }
         func shown(_ l: Int) { lang = l; isZh = l != 0; zhRom = Lang.zhRom; undoStack = []; canUndo = false; missingDict = false; recount() }
@@ -211,7 +217,7 @@ final class Store: ObservableObject {
                 useZh(d, deck: deck)
             case .failure(let e):
                 zhLoad = nil
-                if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][want]) {
+                if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv", "en"][want]) {
                     // its dictionary isn't installed yet: the language chosen is still the one shown (and the one the
                     // app opens in), with its dictionary offered to install where its words would be
                     showMissing(want)
@@ -242,10 +248,10 @@ final class Store: ObservableObject {
             do {
                 let d: ZhDict
                 if let have = loadedDict { d = have } else {
-                    guard let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv"][kind]) else { throw CocoaError(.fileNoSuchFile) }
+                    guard let url = DataFiles.url(["zh", "zh", "yue", "hak", "ja", "sv", "en"][kind]) else { throw CocoaError(.fileNoSuchFile) }
                     d = try ZhDict(data: try Data(contentsOf: url, options: .mappedIfSafe), accent: accent, from: url)
                     // 粵語, 客語: the radicals (部首查字) from the 華語 data, if it's there
-                    if d.lang != 1, d.lang != 4, d.lang != 5, let zu = DataFiles.url("zh"),
+                    if d.lang != 1, d.lang != 4, d.lang != 5, d.lang != 6, let zu = DataFiles.url("zh"),
                        let zd = try? Data(contentsOf: zu, options: .mappedIfSafe) { d.borrowRadicals(from: zd) }
                 }
                 return .success((d, Store.makeZhDeck(d, list: list, keys: keys, size: size)))
@@ -314,7 +320,7 @@ final class Store: ObservableObject {
     /// (the app opening in 華語 / 粵語 / …: that language shown at once, its deck filled in once it's read)
     private var startingIn = 0
     private func startIn(_ want: Int) {
-        if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv"][want]) { showMissing(want); return }
+        if !DataFiles.has(["zh", "zh", "yue", "hak", "ja", "sv", "en"][want]) { showMissing(want); return }
         other = Deck(cards: cards, byKey: byKey, rank: rank, pools: pools, topics: topics, kind: 0)
         cards = []; byKey = [:]; rank = [:]; pools = [:]; topics = []
         newStart = 0; queueTopic = -1
@@ -494,7 +500,7 @@ final class Store: ObservableObject {
             let l = d.entries[i].level(list)
             if l > 0 { counts[l, default: 0] += 1 }
         }
-        deck.topics = counts.keys.sorted().map { Topic(id: $0, name: d.lang != 1 ? "常用詞 \(($0 - 1) * Lang.yueGroup + 1)–\($0 * Lang.yueGroup)" : Lang.levelName(list, $0), count: counts[$0]!) }
+        deck.topics = counts.keys.sorted().map { Topic(id: $0, name: d.lang != 1 && d.lang != 6 ? "常用詞 \(($0 - 1) * Lang.yueGroup + 1)–\($0 * Lang.yueGroup)" : Lang.levelName(list, $0), count: counts[$0]!) }
         // the character cards, after the words: level by level of the word list's character list, the more
         // common first; then the more common characters the list doesn't have
         let corder = d.chars.indices.sorted { a, b in
@@ -576,7 +582,7 @@ final class Store: ObservableObject {
 
     // MARK: 本週學習 (this week's words)
 
-    private var weekLang: String { ["tw", "zh", "yue", "hak", "ja", "sv"][min(max(lang, 0), 5)] }
+    private var weekLang: String { ["tw", "zh", "yue", "hak", "ja", "sv", "en"][min(max(lang, 0), 6)] }
 
     /// this week's words (in the language shown), in the order they were picked
     var weekCards: [Card] {
