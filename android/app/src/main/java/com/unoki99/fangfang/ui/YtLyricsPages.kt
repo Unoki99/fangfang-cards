@@ -97,9 +97,19 @@ object YtLyricsState {
         scope.launch {
             val mine = (own?.let { OwnLyrics.get(it) } ?: OwnLyrics.byName(title, artist))?.let { YtLyrics.ofOwn(it) }
             val found = YtLyrics.find(title, artist, d, music)
+            // (none on LRCLIB: the video's own subtitles, kept in the 歌詞 folder for next time)
+            var made: TimedLyrics? = null
+            if (mine == null && found.isEmpty() && own != null && own.startsWith("yt-")) {
+                val lrc = YtLyrics.fromSubtitles(own.removePrefix("yt-"))
+                if (lrc != null && n == asked) {
+                    val x = OwnLyric(own, title, artist, if (d > 0) d else null, lrc, System.currentTimeMillis())
+                    OwnLyrics.set(x)
+                    made = YtLyrics.ofOwn(x)
+                }
+            }
             // (a newer song asked for meanwhile: this answer is for the song before)
             if (n != asked) return@launch
-            hits = listOfNotNull(mine) + found
+            hits = listOfNotNull(mine ?: made) + found
             pick = hits?.firstOrNull()
             busy = false
         }

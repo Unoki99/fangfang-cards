@@ -558,6 +558,7 @@ private struct PracticeSettings: View {
             } footer: {
                 Text(tr("所有的「熟悉」和「不熟」都清掉，從頭開始。"))
             }
+            CoopSettingsSection()
         }
         .confirmationDialog(tr("所有的「熟悉」和「不熟」都會清掉，從頭開始。"), isPresented: $confirmReset, titleVisibility: .visible) {
             Button(tr("全部重來"), role: .destructive) { store.resetAll() }

@@ -2428,13 +2428,44 @@ struct GameWriteSquares: View {
 }
 
 /// someone's writing in squares, as they wrote it (一起玩: the answer on the others' screens)
+/// one stroke of someone's writing in a square, as sent between the players (the same as the Android and computer
+/// versions'): its colour ("#rrggbb") and its points, x, y, width, x, y, width…, as parts of the square's side
+struct InkLine: Codable {
+    var c: String
+    var p: [Double]
+
+    /// one square's writing as lines (side: the square's side in points)
+    static func from(_ d: PKDrawing, side: CGFloat) -> [InkLine] {
+        guard side > 0 else { return [] }
+        return d.strokes.map { s in
+            var p: [Double] = []
+            for q in s.path.interpolatedPoints(by: .distance(3)) {
+                let at = q.location.applying(s.transform)
+                p += [Double(at.x / side), Double(at.y / side), Double(max(q.size.width, 1) / side)]
+            }
+            return InkLine(c: hex(s.ink.color), p: p)
+        }
+    }
+    static func hex(_ u: UIColor) -> String {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        u.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light)).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func h(_ v: CGFloat) -> String { String(format: "%02x", Int((min(max(v, 0), 1) * 255).rounded())) }
+        return "#" + h(r) + h(g) + h(b)
+    }
+    var color: Color {
+        let t = c.hasPrefix("#") ? String(c.dropFirst()) : c
+        guard t.count == 6, let v = UInt32(t, radix: 16) else { return Color(white: 0.1) }
+        return Color(hex: v)
+    }
+}
+
+/// someone's writing in squares, as they wrote it (一起玩: the answer on the others' screens)
 struct WrittenSquares: View {
-    let drawings: [PKDrawing]
-    let side: CGFloat
+    let squares: [[InkLine]]
     var size: CGFloat = 120
     var body: some View {
         FlowLayout(spacing: 8) {
-            ForEach(drawings.indices, id: \.self) { i in
+            ForEach(squares.indices, id: \.self) { i in
                 ZStack {
                     RoundedRectangle(cornerRadius: 12).fill(T.fn.opacity(0.75))
                     GeometryReader { g in
@@ -2445,7 +2476,23 @@ struct WrittenSquares: View {
                         }
                         .stroke(T.fnEdge, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
                     }
-                    Image(uiImage: GameWriteSquares.picture(drawings[i], side)).resizable().scaledToFit()
+                    Canvas { ctx, sz in
+                        let w = sz.width
+                        for l in squares[i] {
+                            let n = l.p.count / 3
+                            func pt(_ k: Int) -> CGPoint { CGPoint(x: l.p[k * 3] * w, y: l.p[k * 3 + 1] * w) }
+                            if n == 1 {
+                                let r = max(l.p[2] * w / 2, 1)
+                                ctx.fill(Path(ellipseIn: CGRect(x: pt(0).x - r, y: pt(0).y - r, width: r * 2, height: r * 2)), with: .color(l.color))
+                            }
+                            if n >= 2 {
+                                for k in 1..<n {
+                                    var seg = Path(); seg.move(to: pt(k - 1)); seg.addLine(to: pt(k))
+                                    ctx.stroke(seg, with: .color(l.color), style: StrokeStyle(lineWidth: max(l.p[k * 3 + 2] * w, 1), lineCap: .round))
+                                }
+                            }
+                        }
+                    }
                 }
                 .frame(width: size, height: size)
                 .overlay(RoundedRectangle(cornerRadius: 12).stroke(T.fnEdge, lineWidth: 1))

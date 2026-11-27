@@ -104,7 +104,7 @@ fun NewDeckTab() {
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 FreqLevelBars(l, Store.lang)
-                                Text(tr("{0}（{1}）", FreqLevels.name(l), tr(FreqLevels.ranges[l] ?: "")), color = if (topic == -100 - l) T.greenInk else T.glyph)
+                                Text(tr("{0}（{1}）", FreqLevels.name(l), FreqLevels.range(l)), color = if (topic == -100 - l) T.greenInk else T.glyph)
                             }
                         }, onClick = { topic = -100 - l; menu = false })
                     // 台語: the most common words / characters, 500 at a time
@@ -176,6 +176,13 @@ object SwipeKeys {
     fun remove(h: (Boolean) -> Unit) { decks.remove(h) }
     /** true: a deck took it */
     fun arrow(right: Boolean): Boolean { val h = decks.lastOrNull() ?: return false; h(right); return true }
+    /** ⇧: the top card's 詳細 opened, or closed when it's open; ⌫: the last card back (復原) */
+    private val details = mutableListOf<() -> Unit>()
+    private val undos = mutableListOf<() -> Unit>()
+    fun addOthers(detail: () -> Unit, undo: (() -> Unit)?) { details.add(detail); undo?.let { undos.add(it) } }
+    fun removeOthers(detail: () -> Unit, undo: (() -> Unit)?) { details.remove(detail); undo?.let { undos.remove(it) } }
+    fun shift(): Boolean { if (decks.isEmpty()) return false; val h = details.lastOrNull() ?: return false; h(); return true }
+    fun back(): Boolean { if (decks.isEmpty()) return false; val h = undos.lastOrNull() ?: return false; h(); return true }
 }
 
 /** a stack plus its buttons */
@@ -259,7 +266,15 @@ fun ColumnScope.DeckArea(cards: List<Card>, leftLabel: String = tr("不熟"), ri
     DisposableEffect(Unit) {
         val h: (Boolean) -> Unit = { right -> topNow.value?.let { flyNow.value(it, right) } }
         SwipeKeys.add(h)
-        onDispose { SwipeKeys.remove(h) }
+        // (⇧ 詳細 open / closed; ⌫ undo)
+        val d: () -> Unit = {
+            val top = topNow.value
+            val open = UI.sheets.lastOrNull()
+            if (open is Sheet.CardSheet) UI.closeSheet() else if (top != null) UI.open(Sheet.CardSheet(top))
+        }
+        val u = undo
+        SwipeKeys.addOthers(d, u)
+        onDispose { SwipeKeys.remove(h); SwipeKeys.removeOthers(d, u) }
     }
 }
 
@@ -516,7 +531,9 @@ fun UnknownTab() {
                         PT(tr("手寫練習"), Icons.Filled.Edit, !Store.isSv, Practice.HANDWRITING),
                         PT(tr("自由寫字"), Icons.Filled.GridOn, !Store.isSv, Practice.FREE_WRITING),
                         // (華語: 四字格 from their meaning)
-                        if (Store.lang == 1) PT(tr("四字格手寫"), Icons.Filled.Apps, Store.zh != null, Practice.IDIOM_WRITE) else null,
+                        if (Store.lang == 1) PT(tr("四字格手寫"), Icons.Filled.Apps, Store.zh != null, Practice.IDIOM_WRITE)
+                        // (台語: 數字練習 in the tile 華語 has 四字格 in: 白 / 文 and sums in spelling)
+                        else if (Store.lang == 0) PT(tr("數字練習"), Icons.Filled.Pin, Store.dict != null, Practice.NUMBERS) else null,
                     )
                     class G(val title: String, val text: String, val icon: androidx.compose.ui.graphics.vector.ImageVector, val enabled: Boolean, val p: Practice)
                     val games = listOfNotNull(
@@ -529,6 +546,8 @@ fun UnknownTab() {
                         if (Store.isJa) null else G(tr("聲調色球"), tr("聽一個詞，照每個字的聲調點顏色球。"), Icons.Filled.BubbleChart, !Store.isSv, Practice.TONE_GAME),
                         G(tr("翻牌配對"), tr("一次翻兩張牌，把漢字和它的讀音配起來。"), Icons.Filled.GridView, all.size > 1, Practice.MEMORY),
                         G(tr("掉下來的字"), tr("詞從上面掉下來：在它掉到底以前點對的那一個，越來越快。"), Icons.Filled.SportsEsports, Store.practiceCards.size > 3, Practice.FALLING),
+                        G(tr("詞龍"), if (Store.isSv) tr("接龍：用上一個詞最後一個字母開頭接下去，一直玩到你接不下去；也可以和別人一起玩。") else tr("接龍：用上一個詞最後一個字開頭接下去，一直玩到你接不下去；也可以和別人一起玩。"), Icons.Filled.Link, true, Practice.DRAGON),
+                        G(tr("一起玩"), tr("兩個人以上輪流答題（用房間代碼連線）：輪到你的時候，詞只出現在別人的畫面上，他們給你提示、看你答得對不對。"), Icons.Filled.Groups, all.isNotEmpty() || due.isNotEmpty(), Practice.COOP),
                     )
                     var help by remember { mutableStateOf(false) }
                     var gamesOpen by remember { mutableStateOf(false) }

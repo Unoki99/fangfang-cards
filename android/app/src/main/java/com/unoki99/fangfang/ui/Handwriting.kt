@@ -831,7 +831,7 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawInk(strokes: Li
 
 /** a square (米字格) to write in; the writing goes into `strokes` (side: the square's size in px) */
 @Composable
-private fun WordPad(strokes: androidx.compose.runtime.snapshots.SnapshotStateList<InkStroke>, modifier: Modifier, onSide: (Float) -> Unit) {
+internal fun WordPad(strokes: androidx.compose.runtime.snapshots.SnapshotStateList<InkStroke>, modifier: Modifier, onSide: (Float) -> Unit) {
     val rainbow = Prefs.handRainbow.value
     val sensitivity = Prefs.handPressure.value
     val ink = HandInk.solid

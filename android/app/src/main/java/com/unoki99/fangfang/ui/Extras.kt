@@ -84,11 +84,13 @@ fun ToneStar(size: Dp = 9.dp, blue: Boolean = false) {
 /** a half-width button (two to a row) */
 @Composable
 fun TileButton(icon: ImageVector, title: String, modifier: Modifier = Modifier, count: Int? = null, cap: Int = 0,
-               ink: Color = T.oliveInk, enabled: Boolean = true, onClick: () -> Unit) {
+               ink: Color = T.oliveInk, enabled: Boolean = true, ring: Boolean = false, onClick: () -> Unit) {
     Row(modifier.heightIn(min = 48.dp).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = if (enabled) 0.7f else 0.4f))
         .border(1.dp, T.fnEdge, RoundedCornerShape(12.dp)).clickable(enabled = enabled, onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(icon, null, tint = if (enabled) ink else T.muted, modifier = Modifier.size(20.dp))
+        // (常用度: the hollow ring, as beside each word)
+        if (ring) FrequencyRingView(size = 17.dp, line = 2.8.dp, fill = 0.7)
+        else Icon(icon, null, tint = if (enabled) ink else T.muted, modifier = Modifier.size(20.dp))
         Text(title, style = ff(FF.Subheadline), color = if (enabled) T.glyph else T.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f))
         if (count != null) Text(if (cap > 0 && count >= cap) "$cap+" else "$count", style = ff(FF.Footnote), color = T.muted)

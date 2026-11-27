@@ -308,6 +308,7 @@ object Store {
     /** kind: 1 華語 (zh.json), 2 粵語 (yue.json), 3 客語 (hak.json); fresh: read again (客語: another accent) */
     private fun zhLoad(kind: Int, fresh: Boolean = false): kotlinx.coroutines.Deferred<Pair<ZhDict, Deck>> {
         if (!fresh) zhJob?.let { if (zhJobKind == kind) return it }
+        ZhOwnWords.words = zhOwnSnapshot()
         val keys = progress.status.keys.filter { Lang.kind(it) == kind } + progress.saved.keys.filter { Lang.kind(it) == kind }
         val have = if (fresh) null else zh?.takeIf { it.lang == kind }
         val list = Prefs.zhList.value
@@ -551,7 +552,9 @@ object Store {
         }
         unknown.removeAll(known)
         // a character card marked 不熟 after its words were learned (held in 認識的漢字): 不熟 wins
-        for ((k, v) in progress.status) if (v == 2) Lang.charOf(k)?.let { known.remove(it); unknown.add(it) }
+        // (this language's character cards only: a 長 marked 不熟 in 台語 or 粵語 stayed orange here however often it
+        // was marked known)
+        for ((k, v) in progress.status) if (v == 2 && Lang.kind(k) == lang) Lang.charOf(k)?.let { known.remove(it); unknown.add(it) }
         return CharSets(all, known, unknown)
     }
 
@@ -582,7 +585,9 @@ object Store {
 
     /** 認識的漢字: hold a character to make it 熟悉 or 不熟 (its character card) */
     fun setCharKnown(ch: String, known: Boolean): Boolean {
-        val c = cardFor(Lang.charKey(ch)) ?: return false
+        // (the character card of the language shown: 粵語's, 客語's, 日語's have keys of their own)
+        val d = zh
+        val c = cardFor(if (d != null) Lang.charKey(ch, d.isYue, d.isHak, d.isJa) else Lang.charKey(ch)) ?: return false
         mark(c, known, undoable = false)
         return true
     }
@@ -722,6 +727,8 @@ object Store {
     val practiceTopics: List<Topic> get() = if (isZh) topics else freqTopics
     /** the 不熟 words to practise (練習範圍) */
     val practiceCards: List<Card> get() {
+        // (收藏: the words you saved, whatever they are: 不熟, 熟悉 or not swiped yet)
+        if (practiceGroup == SAVED_SCOPE) return savedKeys.mapNotNull { cardFor(it) }
         val u = unknownCards
         // (an 影片詞組 or an own scope chosen: its 不熟 words)
         practiceGroup?.let { g ->
@@ -738,7 +745,10 @@ object Store {
         listCache[key] = out
         return out
     }
+    /** 練習範圍 = 收藏 (as practiceGroup) */
+    val SAVED_SCOPE = "saved:"
     val practiceName: String get() {
+        if (practiceGroup == SAVED_SCOPE) return tr("收藏的詞")
         practiceGroup?.let { g ->
             if (g.startsWith("folder:") && isFolderRef(g)) return g.removePrefix("folder:")
             if (isGroup(g)) return groupName(g)
@@ -943,8 +953,10 @@ object Store {
         // common first
         if (topic in -105..-101) {
             val level = -100 - topic
-            val lo = when (level) { 5 -> 0; 4 -> 1000; 3 -> 3000; 2 -> 8000; else -> 20000 }
-            val hi = when (level) { 5 -> 1000; 4 -> 3000; 3 -> 8000; 2 -> 20000; else -> Int.MAX_VALUE }
+            // (the steps by how full the 常用度 ring is: FreqLevels)
+            val b = com.unoki99.fangfang.ui.FreqLevels.bounds(level)
+            val lo = b.first
+            val hi = if (b.last == Int.MAX_VALUE - 1) Int.MAX_VALUE else b.last + 1
             val out = ArrayList<Card>()
             var first: Int? = null
             var i = maxOf(newStart, lo)
@@ -1298,7 +1310,19 @@ object Store {
 
     // MARK: 自訂
 
-    val ownKeys: List<String> get() { rev; return progress.own.filter { it.value > 0 }.entries.sortedByDescending { it.value }.map { it.key } }
+    val ownKeys: List<String> get() { rev; return progress.own.filter { it.value > 0 && Lang.kind(it.key) == 0 }.entries.sortedByDescending { it.value }.map { it.key } }
+    /** 華語, 粵語, 客語, 日語, 瑞典語: your own words of that language, newest first (engine/ZhOwn.kt) */
+    fun zhOwnKeys(lang: Int): List<String> { rev; return progress.own.filter { it.value > 0 && ZhOwnWords.isOwn(it.key) && Lang.kind(it.key) == lang }.entries.sortedByDescending { it.value }.map { it.key } }
+    /** what ZhDict reads your own words from */
+    fun zhOwnSnapshot(): Map<Int, List<ZhOwnWords.Word>> {
+        val m = HashMap<Int, MutableList<ZhOwnWords.Word>>()
+        for ((k, t) in progress.own) {
+            if (t <= 0 || !ZhOwnWords.isOwn(k)) continue
+            val i = ownInfo(k)
+            m.getOrPut(Lang.kind(k)) { ArrayList() }.add(ZhOwnWords.Word(k, ZhOwnWords.han(k), ZhOwnWords.syllables(k), i.first, i.second))
+        }
+        return m
+    }
     fun isOwn(key: String): Boolean { rev; return (progress.own[key] ?: -1.0) > 0 }
     fun addOwn(key: String, meaning: String = "", example: String = "") { addOwn(listOf(Triple(key, meaning, example))) }
     /** several at once (加入 CSV 檔): one save. Each: key, meaning, example */
@@ -1318,6 +1342,13 @@ object Store {
         val keys = ownKeys.toSet()
         dict?.userInfo = progress.ownInfo.filterKeys { it in keys }
         dict?.setUserWords(keys)
+        // (華語 …: the dictionary in use read again when its own words changed)
+        val snap = zhOwnSnapshot()
+        fun sig(l: List<ZhOwnWords.Word>?) = (l ?: emptyList()).map { it.key + "\u0001" + it.meaning + "\u0001" + it.example }.toSet()
+        val z = zh
+        val changedLang = z != null && sig(ZhOwnWords.words[z.lang]) != sig(snap[z.lang])
+        ZhOwnWords.words = snap
+        if (changedLang && z != null) dictionaryChanged(z.lang)
     }
 
     fun rankOf(key: String): Int = rank[key] ?: Int.MAX_VALUE

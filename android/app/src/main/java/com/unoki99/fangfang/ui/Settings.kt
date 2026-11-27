@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
 import com.unoki99.fangfang.*
 import com.unoki99.fangfang.engine.Dict
 import com.unoki99.fangfang.engine.Lang
@@ -116,6 +118,16 @@ fun SettingsScreen() {
                         Spacer(Modifier.height(10.dp))
                         Group { ActionRow(tr("全部重來"), danger = true) { confirmReset = true } }
                         Txt(tr("所有的「熟悉」和「不熟」都清掉，從頭開始。"), ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
+                        Spacer(Modifier.height(14.dp))
+                        SectionTitle(tr("一起玩"))
+                        Group {
+                            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                GameField(Prefs.coopName.value, { Prefs.coopName.value = it.take(24) }, tr("你的名字（別人看到的）"), style = TextStyle(fontSize = 17.sp))
+                                GameField(Prefs.relayServer.value, { Prefs.relayServer.value = it.trim() }, tr("連線伺服器，例如 https://fangfang-relay.你的帳號.workers.dev"), style = TextStyle(fontSize = 15.sp))
+                            }
+                        }
+                        Txt(tr("在不同地方的人透過網路一起玩（一起玩、詞龍）：用專案 relay 資料夾裡的說明，免費放一個自己的連線伺服器，再把網址貼在這裡。一起玩的每個人都要填同一個網址。訊息在 App 裡用房間代碼加密，伺服器只轉送、看不懂內容。"),
+                            ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
                     }
                     3 -> {
                         Group {
@@ -159,6 +171,8 @@ fun SettingsScreen() {
                         Txt(if (Store.inputCodes.has(2)) tr("顯示在詞典每個詞的上面。")
                             else tr("顯示在詞典每個詞的上面。無蝦米要用自己的碼表：把 .cin 檔放到 iOS 專案的 tools 資料夾，執行 build-data.sh ime，再把 inputcodes.json 放到 app/src/main/assets。"),
                             ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
+                        SectionTitle("Gemini")
+                        Group { GeminiSettings() }
                     }
                     4 -> {
                         Group {
@@ -332,8 +346,14 @@ private fun LookPage(openJa: () -> Unit, openColors: () -> Unit) {
         RowDivider(); SwitchRow(tr("主題動畫"), Prefs.themeMotion)
         RowDivider(); SwitchRow(tr("省電動畫"), Prefs.motionSaver, enabled = Prefs.themeMotion.value)
         RowDivider()
+        MenuRow(tr("App 圖示"), if (Prefs.appIcon.value == 1) tr("淺色") else tr("深色"), listOf(0 to tr("深色"), 1 to tr("淺色"))) { com.unoki99.fangfang.AppIcon.set(it) }
+        RowDivider()
         val ts = Prefs.toneSys.value
-        MenuRow(tr("聲調顏色"), when (ts) { 7 -> "七聲"; 5 -> "五聲"; else -> "關" }, listOf(0 to "關", 7 to "七聲", 5 to "五聲")) { Prefs.toneSys.value = it }
+        // (七聲 / 五聲 is 台語's: the other languages on / off)
+        if (com.unoki99.fangfang.Store.lang == 0)
+            MenuRow(tr("聲調顏色"), when (ts) { 7 -> "七聲"; 5 -> "五聲"; else -> "關" }, listOf(0 to "關", 7 to "七聲", 5 to "五聲")) { Prefs.toneSys.value = it }
+        else
+            MenuRow(tr("聲調顏色"), if (ts != 0) "開" else "關", listOf(0 to "關", 7 to "開")) { Prefs.toneSys.value = it }
         if (ts != 0) {
             RowDivider(); SwitchRow(tr("聲調符號照變調寫"), Prefs.toneMarks)
             RowDivider(); SwitchRow(tr("聲調光暈"), Prefs.toneGlow)

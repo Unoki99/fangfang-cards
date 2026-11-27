@@ -26,6 +26,19 @@ struct DragonMsg: Codable {
     var seconds = 0
 }
 
+extension DragonMsg {
+    // (read leniently: a message from another version may leave some out)
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        name = try c.decode(String.self, forKey: .name)
+        on = (try? c.decodeIfPresent(Bool.self, forKey: .on)) ?? false
+        order = (try? c.decodeIfPresent([String].self, forKey: .order)) ?? []
+        word = (try? c.decodeIfPresent(String.self, forKey: .word)) ?? ""
+        seconds = (try? c.decodeIfPresent(Int.self, forKey: .seconds)) ?? 0
+    }
+}
+
 @MainActor
 final class DragonLink: NearbyLink {
     @Published var ready: Set<String> = []
@@ -144,7 +157,7 @@ struct WordDragonView: View {
             VStack(spacing: 0) {
                 Picker("", selection: $together) {
                     Text(tr("一個人")).tag(false)
-                    Text(tr("和附近的人")).tag(true)
+                    Text(tr("和別人一起")).tag(true)
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal).padding(.top, 8)
@@ -152,7 +165,7 @@ struct WordDragonView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 10) {
-                            if together { players }
+                            if together { RoomBar(link: link, locked: link.playing); players }
                             ForEach(Array(words.enumerated()), id: \.offset) { i, w in row(w.word, w.who).id(i) }
                             if let note { Text(note).ffFont(.footnote).foregroundStyle(T.muted) }
                             if !together && lost { lostView }
@@ -185,7 +198,7 @@ struct WordDragonView: View {
             }
         }
         .onAppear { if byFirst.isEmpty { build() }; if solo.isEmpty { startSolo() } }
-        .onChange(of: together) { if together { link.open() } else { link.close() } }
+        .onChange(of: together) { if !together { link.close() } }
         .onDisappear { link.close() }
         .onChange(of: link.allReady) { if link.iStart { startTogether() } }
         .onChange(of: link.game) { newTurn() }
@@ -305,10 +318,11 @@ struct WordDragonView: View {
                     }
                 }
             }
-            if link.players.isEmpty {
+            if link.players.isEmpty && (link.via == .nearby || link.status == 2) {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text(tr("找附近的人中…請其他人也打開詞龍的「和附近的人」（同一個 Wi-Fi，或打開藍牙）。")).ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(link.via == .nearby ? tr("找附近的人中…請其他人也打開詞龍的「和別人一起」（同一個 Wi-Fi，或打開藍牙）。")
+                         : tr("等其他人進房間…")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
         }

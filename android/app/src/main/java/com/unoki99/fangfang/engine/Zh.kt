@@ -424,6 +424,8 @@ class ZhEntry(
     var scKind = 0
     fun syl(place: Int): List<String> = if (place == 2) (sc ?: lu ?: tw) else if (place == 1) (lu ?: tw) else tw
     fun level(list: Int) = if (list == 1) tocfl else hsk
+    /** a word you added yourself (詞典 → 自訂), not from the dictionary */
+    var own = false
 }
 
 /** a character with its meanings from 教育部《重編國語辭典修訂本》 (each reading: 注音, 拼音, [(詞類, meaning)]) */
@@ -666,7 +668,14 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         // 客語: a word the accent chosen doesn't have (惜圓): each character read the way this accent reads it
         if (isHak) fillAccent(out)
         val dictCount = out.size
-        if (!isYue && !isHak && !isJa && !isSv) addSichuan(out)
+        // 華語: an HSK word the 兩岸 dictionary doesn't have: its characters in their Taiwan readings
+        if (!isYue && !isHak && !isJa && !isSv) { fillTaiwan(out); addSichuan(out) }
+        // your own words (詞典 → 自訂), after the dictionary's (so they're never study cards)
+        for (w in ZhOwnWords.words[lang] ?: emptyList()) {
+            if (w.h.isEmpty() || w.tw.isEmpty()) continue
+            val ex = if (w.example.isEmpty()) emptyList() else listOf(ZhEx(w.example, "", ""))
+            out.add(ZhEntry(w.key, w.h, w.tw, null, 0, null, listOf(ZhSense(1, w.meaning.ifEmpty { "（自己加的詞）" }, ex)), null, 0, 0, false).also { it.own = true })
+        }
         entries = out
         Simp.learn(out.map { e -> e.h to (e.alt ?: e.h) })
         for ((i, e) in out.withIndex()) for (m in e.eq) { val l = byMandarin.getOrPut(m) { ArrayList() }; if (l.lastOrNull() != i) l.add(i) }
@@ -741,6 +750,56 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
                 tw[n] = best; changed = true
             }
             if (changed) out[i] = out[i].withTw(tw, true)
+        }
+    }
+
+    /** two readings of one character that are the same word said two ways (擊 jí / jī, 垃 lè / lā): the same letters
+     *  at the start, or the same at the end; not two different words (台 tái / yí) */
+    private fun alike(a: String, b: String): Boolean {
+        val p = Zhuyin.plainSyllable(a); val q = Zhuyin.plainSyllable(b)
+        if (p == q) return true
+        val vowels = "aeiouvü"
+        val ia = p.takeWhile { it !in vowels }; val ib = q.takeWhile { it !in vowels }
+        val fa = p.drop(ia.length); val fb = q.drop(ib.length)
+        return (ia.isNotEmpty() && ia == ib) || (fa.isNotEmpty() && fa == fb)
+    }
+
+    /** 華語: an HSK word the 兩岸 dictionary doesn't have (extra) has CC-CEDICT's mainland reading: each character
+     *  gets its Taiwan one, where the dictionary says that character is said another way in 大陸 (擊 ㄐㄧˊ, 大陸 ㄐㄧ)
+     *  and the two are alike; the mainland reading is kept as 大陸's. A reading the character also has in Taiwan
+     *  stays (比比皆是's 比 ㄅㄧˇ). */
+    private fun fillTaiwan(out: MutableList<ZhEntry>) {
+        val map = HashMap<String, HashSet<String>>(); val own = HashMap<String, HashSet<String>>()
+        for (e in out) {
+            if (e.extra || e.tw.size != 1 || e.h.codePointCount(0, e.h.length) != 1) continue
+            val t = e.tw[0]
+            // (a character's readings under its simplified form too: 臺 ㄊㄞˊ is also 台's, so 電台 keeps ㄊㄞˊ)
+            for (c in setOfNotNull(e.h, e.alt)) {
+                own.getOrPut(c) { HashSet() }.add(t)
+                // (only a reading the dictionary says is said another way in 大陸)
+                val m = e.lu?.firstOrNull()
+                if (m != null && m != t) map.getOrPut(c + "\u0001" + m) { HashSet() }.add(t)
+            }
+        }
+        for (i in out.indices) {
+            val e = out[i]
+            if (!e.extra) continue
+            val cs = e.h.cps()
+            val tw = e.tw.toMutableList()
+            if (cs.size != tw.size) continue
+            var changed = false
+            for (n in cs.indices) {
+                val syl = tw[n]
+                if (own[cs[n]]?.contains(syl) == true) continue
+                val ts = map[cs[n] + "\u0001" + syl] ?: continue
+                if (ts.size != 1) continue
+                val t = ts.first()
+                if (t == syl || !alike(t, syl)) continue
+                tw[n] = t; changed = true
+            }
+            if (!changed) continue
+            out[i] = ZhEntry(e.k, e.h, tw, e.lu ?: e.tw, e.spec, e.alt, e.senses, e.en, e.hsk, e.tocfl, e.extra, e.pos, e.syn, e.ant,
+                e.eq, e.audio, e.acc, e.otherWords, e.jp, e.hakGuess)
         }
     }
 
@@ -885,7 +944,37 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
     fun hakSyllable(s: String, mode: Int): String {
         val (letters, t, a) = Zhuyin.hakParts(s)
         val mark = hakMarks.getOrNull(a)?.getOrNull(t) ?: ""
-        return (if (mode == 1) hakZy[letters] ?: letters else letters) + mark
+        return (if (mode == 1) hakZhuyin(letters, t) ?: hakZy[letters] ?: letters else letters) + mark
+    }
+
+    private val hakIni = listOf("zh" to "ㄓ", "ch" to "ㄔ", "sh" to "ㄕ", "rh" to "ㄖ", "ng" to "ㄫ", "bb" to "ㆠ",
+        "b" to "ㄅ", "p" to "ㄆ", "m" to "ㄇ", "f" to "ㄈ", "v" to "ㄪ", "d" to "ㄉ", "t" to "ㄊ", "n" to "ㄋ", "l" to "ㄌ", "g" to "ㄍ",
+        "k" to "ㄎ", "h" to "ㄏ", "z" to "ㄗ", "c" to "ㄘ", "s" to "ㄙ", "j" to "ㄐ", "q" to "ㄑ", "x" to "ㄒ")
+    private val hakFin = listOf("ang" to "ㄤ", "ai" to "ㄞ", "au" to "ㄠ", "an" to "ㄢ", "ien" to "ㄧㄢ", "ii" to "ㄭ",
+        "ee" to "ㆤ", "oo" to "ㆦ", "er" to "ㄜ", "nn" to "ⁿ", "ng" to "ㄥ", "a" to "ㄚ", "e" to "ㄝ", "i" to "ㄧ", "o" to "ㄛ",
+        "u" to "ㄨ", "m" to "ㄇ", "n" to "ㄣ")
+
+    /** a 客語 syllable in 臺灣方音符號 (the dictionary file's table was made when it was installed; these rules on top):
+     *  ii ㄭ; m by itself ㆬ, ng by itself ㆭ; the 入聲 endings b d g are ㆴ ㆵ ㆻ, with a dot over them in 陽入
+     *  (ㆴ̇ ㆵ̇ ㆻ̇), not ㄅ ㄉ ㄍ */
+    fun hakZhuyin(letters: String, tone: Int): String? {
+        if (letters == "m") return "ㆬ"
+        if (letters == "ng") return "ㆭ"
+        var rest = letters
+        var out = ""
+        var stop = ""
+        val l = rest.lastOrNull()
+        if (l != null && l in "bdg" && rest.length > 1) {
+            stop = when (l) { 'b' -> "ㆴ"; 'd' -> "ㆵ"; else -> "ㆻ" }
+            if (tone == 8) stop += "\u0307"
+            rest = rest.dropLast(1)
+        }
+        hakIni.firstOrNull { rest.startsWith(it.first) && rest.length > it.first.length }?.let { out = it.second; rest = rest.drop(it.first.length) }
+        while (rest.isNotEmpty()) {
+            val m = hakFin.firstOrNull { rest.startsWith(it.first) } ?: return null
+            out += m.second; rest = rest.drop(m.first.length)
+        }
+        return out + stop
     }
 
     fun readingPlain(syl: List<String>, mode: Int): String = reading(syl, mode, 0).plain()
@@ -1567,6 +1656,27 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
     }
 
     // MARK: 轉換
+
+    /** a word's 近／反 words (教育部 keys them by the written word, not the reading): with two readings written the same
+     *  (睡覺 ㄕㄨㄟˋ ㄐㄧㄠˋ / ㄕㄨㄟˋ ㄐㄧㄠˋ…), each reading keeps the ones whose meaning is closest to its own; nothing
+     *  to tell them apart, or a tie: the word's usual reading keeps them */
+    fun links(e: ZhEntry): Pair<List<String>, List<String>> {
+        if (e.syn.isEmpty() && e.ant.isEmpty()) return e.syn to e.ant
+        val sibs = (byHan[e.h] ?: return e.syn to e.ant).filter { entries[it].h == e.h && entries[it].k != e.k && (entries[it].syn.isNotEmpty() || entries[it].ant.isNotEmpty()) }
+        if (sibs.isEmpty()) return e.syn to e.ant
+        fun hans(t: String): Set<String> = t.cps().filter { Zhuyin.isHan(it.firstCp()) }.toSet()
+        fun meaning(x: ZhEntry): Set<String> = hans(x.senses.joinToString("") { it.text }) - hans(e.h)
+        val mine = (listOf(e) + sibs.map { entries[it] }).map { meaning(it) }
+        fun keep(w: String): Boolean {
+            val i = usual(w) ?: return true
+            val other = meaning(entries[i]) + hans(w)
+            val scores = mine.map { (it intersect other).size }
+            val best = scores.maxOrNull() ?: 0
+            if (best == 0 || scores.count { it == best } > 1) return usual(e.h)?.let { entries[it].k == e.k } ?: true
+            return scores[0] == best
+        }
+        return e.syn.filter { keep(it) } to e.ant.filter { keep(it) }
+    }
 
     fun usual(han: String): Int? {
         val l = (byHan[han] ?: return null).filter { entries[it].h == han || entries[it].alt == han }

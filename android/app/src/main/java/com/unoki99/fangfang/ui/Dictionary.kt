@@ -194,6 +194,9 @@ fun DictEntryBody(d: Dict, key: String) {
                     if (en.isNotEmpty()) enCol(Modifier)
                 }
             } else Txt(tr("沒有簡短的解釋。往左滑看各地讀音。"), ff(FF.Footnote), T.muted)
+            // (臺華共同詞 in the dictionary: written the same and meaning the same in 華語, a real 台語 word, not one
+            // that came over from the 華語 side)
+            if (d.raw.typ[key] == 1) Txt(tr("華語也這樣寫、這個意思（臺華共同詞）"), ff(FF.Caption), T.oliveInk)
         }
         // the meanings and their sentences on one page, every 腔口's reading and the map on the other (swipe, or tap
         // the tabs); the two take the same room, so nothing jumps when you switch
@@ -230,7 +233,6 @@ fun DictEntryBody(d: Dict, key: String) {
                 LinkChips(d, tr("近"), wl.first, T.blue, T.blueEdge, T.blueInk)
                 LinkChips(d, tr("反"), wl.second, T.rust, T.rustEdge, T.rustInk)
             }
-            if (d.raw.typ[key] == 1) Txt(tr("臺華共同詞：台語和華語寫法、意思一樣的詞。"), ff(FF.Caption), T.muted)
             // names (last: the least needed)
             if (han.cpCount == 1) {
                 val part: (String, List<List<String>>?) -> String? = { lab, list ->
@@ -238,6 +240,9 @@ fun DictEntryBody(d: Dict, key: String) {
                 val s = listOfNotNull(part("人名", d.raw.names[han]), part("姓", d.raw.sur[han])).joinToString("　")
                 if (s.isNotEmpty()) Txt(s, lat(14f), T.muted)
             }
+            // (where each part of the entry comes from: the very bottom)
+            Txt(tr("資料：教育部《臺灣台語常用詞辭典》（CC BY-ND 3.0 TW），讀音、例句和各地讀音；英文解釋：維基詞典（CC BY-SA 4.0）。標「推測」的各地讀音是照規則推算的。"),
+                ff(FF.Caption2), T.muted)
         }
         if (d.raw.places.isEmpty()) meaningsAndSentences()
         else SwipePages(listOf(tr("解釋"), tr("各地讀音")), "entry.page") { page ->
@@ -726,7 +731,9 @@ fun PlacesBlock(d: Dict, e: PlaceGroup) {
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Txt(e.zh, ff(FF.Headline), T.pinkInk, Modifier.background(T.pink, RoundedCornerShape(8.dp)).border(1.5.dp, T.pinkEdge, RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 3.dp))
-        for (row in e.rows) {
+        for ((ri, row) in e.rows.withIndex()) {
+            // (each word its own row, divided like the dictionary's list)
+            if (ri > 0) RowDivider()
             val key = d.keyOf(Opt(row.han, row.codes.split(' ')))
             Column(Modifier.fillMaxWidth().then(if (key != null && d.raw.defs.m[key] != null) Modifier.clickable { nav.push(Route.Entry(key)) } else Modifier),
                 verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -864,13 +871,13 @@ fun DictionaryTab() {
         DictGate { d ->
             var tab by Prefs.dictTab
             Column(Modifier.fillMaxSize()) {
-                Segmented(listOf(0 to tr("查詞"), 3 to tr("各地讀音"), 1 to tr("分類"), 2 to tr("收藏"), 4 to tr("自訂")), tab, { tab = it },
+                // (the old 各地讀音 and 分類 tabs taken out: each word's entry has its 各地讀音 and map; tab 1 / 3 kept
+                // from before show 查詞)
+                Segmented(listOf(0 to tr("查詞"), 2 to tr("收藏"), 4 to tr("自訂")), if (tab == 1 || tab == 3) 0 else tab, { tab = it },
                     Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
                 Box(Modifier.weight(1f)) {
                     when (tab) {
-                        1 -> CategoryPane(d)
                         2 -> SavedPane(d)
-                        3 -> PronunciationPane(d)
                         4 -> OwnPane(d)
                         else -> LookupPane(d)
                     }
@@ -953,11 +960,12 @@ private fun LookupList(d: Dict) {
                     2 -> TileButton(Icons.Filled.VerticalSplit, tr("單詞比較"), m) { nav.push(Route.Compare) }
                     3 -> TileButton(Icons.Filled.Translate, tr("日語借詞"), m) { nav.push(Route.Japanese) }
                     4 -> TileButton(Icons.Filled.Place, PlaceWords.title(d, place), m) { nav.push(Route.PlaceWords(place)) }
-                    else -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m) { nav.push(Route.FreqBands(false)) }
+                    else -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m, ring = true) { nav.push(Route.FreqBands(false)) }
                 }
             }
         }
         if (query.isNotEmpty() && r.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        if (query.isNotEmpty() && r.empty && searched == query && Gemini.on) item { GeminiSuggestions(query, 0, { query = it }) }
         if (r.isPattern) {
             keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)
             keyItems(d, tr("華語「{0}」的台語講法", query), r.patternZh)

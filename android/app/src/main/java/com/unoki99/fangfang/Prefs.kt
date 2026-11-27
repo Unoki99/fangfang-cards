@@ -239,6 +239,25 @@ object Prefs : KeyValue {
     val handTestPad = Pref("handwritingTestPadSize", 300f)
     /** 遊戲: the best score */
     val fallingBest = Pref("fallingBest", 0)
+    /** 數字練習: 0 算數, 1 白還是文; 算數 up to 20 / 100 / 1000 / 10 000 */
+    val numbersMode = Pref("numbersMode", 0)
+    val numbersLevel = Pref("numbersLevel", 1)
+    /** 詞龍: the most words chained; the seconds a turn (0 no limit); 手寫 */
+    val dragonBest = Pref("dragonBest", 0)
+    val dragonSeconds = Pref("dragonSeconds", 0)
+    val dragonHand = Pref("dragonHand", false)
+    /** 一起玩 / 詞龍 together: the relay (設定 → 一起玩), my name there, how I answer and how many words */
+    val relayServer = Pref("relayServer", "")
+    /** Gemini (設定 → 詞典 → Gemini): your own key, turned on, the model */
+    val geminiKey = Pref("geminiKey", "")
+    val geminiOn = Pref("geminiOn", false)
+    val geminiModel = Pref("geminiModel", "")
+    /** the first-run setup is done; the app's icon (0 dark, 1 light) */
+    val setupDone = Pref("setupDone", false)
+    val appIcon = Pref("appIcon", 0)
+    val coopName = Pref("coopName", "")
+    val coopMode = Pref("coopMode", 0)
+    val coopRounds = Pref("coopRounds", 5)
     /** 設定 → 詞典 → 字體: 0 the system's, then Kai's fonts (文楷, 芫荽) */
     val dictFont = Pref("dictFontAndroid", 0)
     /** 本週學習 → 選詞: the 分類 the words are picked from (-1 = 不熟) */
@@ -249,7 +268,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, numbersMode, numbersLevel, dragonBest, dragonSeconds, dragonHand, relayServer, geminiKey, geminiOn, geminiModel, setupDone, appIcon, coopName, coopMode, coopRounds, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return

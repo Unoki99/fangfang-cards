@@ -178,36 +178,71 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 InstallPanel(l, onSkip = { pick(l) }, onBack = { installing = null })
             }
-        } else if (step == 0) {
+        } else if (step < SETUP_STEPS) {
+            // the steps before choosing the language (the same as the iPhone app's): 0 the app's language and 正體 /
+            // 簡體; 1 the meanings and each language's spelling; 2 each language's 腔口 / reading; 3 tone colours and 方音
+            fun meaningsEnglish(en: Boolean) { Prefs.zhEnglish.value = en; Prefs.twEnglish.value = en; Prefs.hakEnglish.value = en }
+            LaunchedEffect(Unit) { if (Prefs.uiLanguage.value == 1) meaningsEnglish(true) }
             Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
-                Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
-                // (English chosen as the app's language: the meanings in English too, unless changed below)
-                fun meaningsEnglish(en: Boolean) { Prefs.zhEnglish.value = en; Prefs.twEnglish.value = en; Prefs.hakEnglish.value = en }
-                LaunchedEffect(Unit) { if (Prefs.uiLanguage.value == 1) meaningsEnglish(true) }
-                Box(Modifier.widthIn(max = 320.dp)) {
-                    Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it; meaningsEnglish(it == 1) })
+                Row(Modifier.widthIn(max = 520.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    if (step > 0) TextButton(onClick = { step -= 1 }) { Text(tr("上一步"), color = T.muted) }
+                    Spacer(Modifier.weight(1f))
+                    Txt("${step + 1}／${SETUP_STEPS + 1}", ff(FF.Caption), T.muted)
                 }
+                Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
                 Column(Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(22.dp)).background(T.fn.copy(alpha = 0.8f))
                     .border(1.5.dp, T.fnEdge, RoundedCornerShape(22.dp)).padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Txt(tr("解釋先用哪一種語言？"), ff(FF.Headline), T.glyph)
-                    Segmented(listOf(false to tr("華語"), true to tr("英文")), Prefs.zhEnglish.value, { meaningsEnglish(it) })
-                    Txt(tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。之後每個語言可以在「設定 → 詞典 → 主要解釋」分開改。"), ff(FF.Caption), T.muted)
-                    Txt(tr("每個語言用哪一種拼寫？"), ff(FF.Headline), T.glyph)
-                    Spelling(0, Prefs.rom, listOf("皓羅", "台羅", "白話字", "方音"))
-                    Spelling(1, Prefs.mandRom, listOf("拼音", "注音"))
-                    Spelling(2, Prefs.yueRom, listOf("粵拼", "耶魯"))
-                    Spelling(3, Prefs.hakRom, listOf("拼音", "注音"))
-                    Spelling(4, Prefs.jaRom, listOf("羅馬字", "假名"))
-                    Txt(tr("台語的拼寫下面會再加一行方音。"), ff(FF.Caption), T.muted)
+                    when (step) {
+                        0 -> {
+                            SetupHeading(tr("App 的語言"), tr("按鈕、選單和說明的語言。"))
+                            Segmented(listOf(0 to "中文", 1 to "English"), Prefs.uiLanguage.value, { Prefs.uiLanguage.value = it; meaningsEnglish(it == 1) })
+                            SetupHeading(tr("字形"), tr("華語、粵語和日語的漢字用正體字還是簡體字（台語和客語的詞典是正體字）。"))
+                            Segmented(listOf(false to tr("正體字"), true to tr("簡體字")), Prefs.simplified.value, { Prefs.simplified.value = it; Store.simplifiedChanged() })
+                        }
+                        1 -> {
+                            SetupHeading(tr("解釋先用哪一種語言？"), tr("卡片和列表上先顯示的解釋（粵語的解釋是英文）。點進一個詞兩種都看得到。"))
+                            Segmented(listOf(false to tr("華語"), true to tr("英文")), Prefs.zhEnglish.value, { meaningsEnglish(it) })
+                            SetupHeading(tr("每個語言用哪一種拼寫？"), tr("台語選「方音」的話只顯示方音；其他的下面會再加一行方音。"))
+                            Spelling(0, Prefs.rom, listOf("皓羅", "台羅", "白話字", "方音"))
+                            Spelling(1, Prefs.mandRom, listOf("拼音", "注音"))
+                            Spelling(2, Prefs.yueRom, listOf("粵拼", "耶魯"))
+                            Spelling(3, Prefs.hakRom, listOf("拼音", "注音"))
+                            Spelling(4, Prefs.jaRom, listOf("羅馬字", "假名"))
+                            Spelling(5, Prefs.svRom, listOf("詞素", "不顯示"))
+                        }
+                        2 -> {
+                            SetupHeading(tr("每個語言照哪裡的讀音？"), tr("台語的「通行」是教育部辭典的讀音；選一個地方的話，詞典有記錄的地方讀音會換成那裡的。"))
+                            val place = Prefs.place.value
+                            SetupMenu(0, if (place in PLACE_NAMES.indices) tr(PLACE_NAMES[place]) else tr("通行"), listOf(-1 to tr("通行")) + PLACE_NAMES.mapIndexed { i, p -> i to tr(p) }) { Prefs.place.value = it }
+                            Spelling(1, Prefs.zhPlace, listOf("臺灣", "大陸"))
+                            SetupMenu(3, tr(com.unoki99.fangfang.engine.Lang.hakAccents.getOrElse(Prefs.hakAccent.value) { "四縣" }),
+                                com.unoki99.fangfang.engine.Lang.hakAccents.mapIndexed { i, p -> i to tr(p) }) { Prefs.hakAccent.value = it }
+                        }
+                        else -> {
+                            SetupHeading(tr("聲調顏色"), tr("每個字照聲調上顏色。七聲、五聲只差在台語：五聲把台語的聲調合成五種顏色；其他語言打開就是照自己的聲調。"))
+                            Segmented(listOf(0 to tr("關"), 7 to tr("七聲"), 5 to tr("五聲")), Prefs.toneSys.value, { Prefs.toneSys.value = it })
+                            SetupHeading(tr("方音（台語的注音）"))
+                            SetupSwitch(tr("方音標第一聲（ˉ）"), Prefs.hongimTone1)
+                            SetupSwitch(tr("第一聲的地方空一格"), Prefs.hongimTone1Space, enabled = !Prefs.hongimTone1.value)
+                            SetupSwitch(tr("方音每個音節中間空一格"), Prefs.hongimSpaceAll)
+                            SetupSwitch(tr("方音輕聲保留原本的調號"), Prefs.hongimLightKeep)
+                            // (what it looks like: 食飯, 一寡; read again whenever one of them changes)
+                            Prefs.hongimTone1.value; Prefs.hongimTone1Space.value; Prefs.hongimSpaceAll.value; Prefs.hongimLightKeep.value
+                            val e = com.unoki99.fangfang.engine.EngineSettings
+                            val sample = e.hongim("ㄐㄧㄚㆷ˙ㄅㆭ˫") + "　" + e.hongim("ㄐㄧㆵ˙") + (if (Prefs.hongimSpaceAll.value) " " else "") + e.hongimLight("ㄍㄨㄚˋ")
+                            Txt(tr("例：") + sample, ff(FF.Title3), T.purpleInk)
+                        }
+                    }
                 }
-                ProminentButton(onClick = { step = 1 }, modifier = Modifier.widthIn(min = 240.dp)) { Text(tr("下一步")) }
+                ProminentButton(onClick = { step += 1 }, modifier = Modifier.widthIn(min = 240.dp)) { Text(tr("下一步")) }
+                Txt(tr("這些之後都可以在「設定」改。"), ff(FF.Caption), T.muted)
             }
         } else {
             Column(Modifier.fillMaxSize().dragScrollY(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(Modifier.widthIn(max = 520.dp).fillMaxWidth()) {
-                    TextButton(onClick = { step = 0 }) { Text(tr("上一步"), color = T.muted) }
+                    TextButton(onClick = { step = SETUP_STEPS - 1 }) { Text(tr("上一步"), color = T.muted) }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Txt(tr("方方詞卡"), ff(FF.LargeTitle, FontWeight.Bold), T.glyph)
@@ -242,12 +277,46 @@ private fun LanguageWelcome(pick: (Int) -> Unit) {
     }
 }
 
+private const val SETUP_STEPS = 4
+
+@Composable
+private fun SetupHeading(t: String, note: String? = null) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Txt(t, ff(FF.Headline), T.glyph)
+        if (note != null) Txt(note, ff(FF.Caption), T.muted)
+    }
+}
+
+@Composable
+private fun SetupSwitch(t: String, pref: Pref<Boolean>, enabled: Boolean = true) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled) { pref.value = !pref.value }, verticalAlignment = Alignment.CenterVertically) {
+        Txt(t, ff(FF.Body), if (enabled) T.glyph else T.muted, Modifier.weight(1f))
+        Switch(pref.value, { pref.value = it }, enabled = enabled, colors = SwitchDefaults.colors(checkedTrackColor = T.btnEdge, checkedThumbColor = T.btnInk))
+    }
+}
+
+/** one language's 腔口, as a menu */
+@Composable
+private fun <V> SetupMenu(l: Int, current: String, options: List<Pair<V, String>>, onPick: (V) -> Unit) {
+    val (_, _, ink) = langColors(l)
+    var open by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
+        Box(Modifier.weight(1f)) {
+            SoftButton({ open = true }, Modifier.fillMaxWidth()) { Text(current) }
+            DropdownMenu(open, { open = false }, containerColor = T.fn) {
+                for ((v, n) in options) DropdownMenuItem(text = { Text(n, color = T.glyph) }, onClick = { onPick(v); open = false })
+            }
+        }
+    }
+}
+
 /** one language's spelling, on the first screen */
 @Composable
 private fun Spelling(l: Int, pref: Pref<Int>, names: List<String>) {
     val (_, _, ink) = langColors(l)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
+        Txt(tr(listOf("台語", "華語", "粵語", "客語", "日語", "瑞典語")[l]), ff(FF.Subheadline, FontWeight.Bold), ink, Modifier.width(64.dp))
         Box(Modifier.weight(1f)) {
             Segmented(names.indices.map { it to tr(names[it]) }, pref.value.coerceIn(0, names.size - 1), { pref.value = it })
         }

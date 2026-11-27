@@ -9,6 +9,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
@@ -74,8 +75,8 @@ fun ZhDictionaryTab() {
         ZhGate { z ->
             var tab by Prefs.zhDictTab
             Column(Modifier.fillMaxSize()) {
-                Segmented(listOf(0 to tr("查詞"), 1 to tr("收藏")), tab, { tab = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
-                Box(Modifier.weight(1f)) { if (tab == 1) ZhSavedPane(z) else ZhLookupPane(z) }
+                Segmented(listOf(0 to tr("查詞"), 1 to tr("收藏"), 2 to tr("自訂")), tab, { tab = it }, Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                Box(Modifier.weight(1f)) { if (tab == 1) ZhSavedPane(z) else if (tab == 2) ZhOwnPane(z) else ZhLookupPane(z) }
             }
         }
     }
@@ -119,6 +120,9 @@ private fun ZhLookupList(z: ZhDict) {
     var found by remember(z) { mutableStateOf(ZhDict.Found()) }
     /** what `found` was searched for ("找不到" only once the search for what's typed has finished) */
     var searched by remember(z) { mutableStateOf<String?>(null) }
+    /** a term Gemini knows, being added to 自訂 */
+    var addTerm by remember { mutableStateOf<Gemini.Term?>(null) }
+    addTerm?.let { t -> AddZhOwnDialog(z, t.h, t.pinyin, t.meaning) { addTerm = null } }
     // make the English search's text ahead of the first English search
     LaunchedEffect(z) { withContext(Dispatchers.Default) { z.warmEnglish() } }
     LaunchedEffect(query, place, z) {
@@ -144,7 +148,7 @@ private fun ZhLookupList(z: ZhDict) {
                     add { m -> TileButton(Icons.Filled.Hub, tr("助詞"), m) { nav.push(Route.JaParticles) } }
                     add { m -> TileButton(Icons.Filled.Tune, tr("實驗室"), m) { nav.push(Route.JaLab(null)) } }
                 }
-                add { m -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m) { nav.push(Route.FreqBands(true)) } }
+                add { m -> TileButton(Icons.Filled.BarChart, tr("依常用度列出"), m, ring = true) { nav.push(Route.FreqBands(true)) } }
                 // 四川話's own words (耍朋友, 日白 …), when 讀音 is 四川話
                 if (z.lang == 1 && place == 2 && z.sichuanWords.isNotEmpty())
                     add { m -> TileButton(Icons.Filled.Landscape, tr("四川話的詞"), m) { nav.push(Route.ZhClass(SICHUAN_WORDS)) } }
@@ -162,7 +166,12 @@ private fun ZhLookupList(z: ZhDict) {
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp)) else
             Txt(tr("可以查漢字（正體或簡體）、拼音（聲調可以不打，或用數字：chi1fan4）、注音或英文（eat、computer）。\n* 代表一個以上的字，? 代表剛好一個字：\n人* → 人開頭的詞　*子 → 子結尾　*水* → 水在中間　?子 → 兩個字、子結尾\n打聲調數字找聲調組合：1-4、3 3、2 0（0 或 5 = 輕聲）。\n讀音照上面選的「臺灣／大陸」和「拼音／注音」顯示。\n往右滑一個詞加到「不熟」，往左滑收藏。"),
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
-        } else if (f.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+        } else if (f.empty && searched == query) {
+            item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+            if (Gemini.on && f.svEst == null) item {
+                GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null)
+            }
+        }
         // 瑞典語: a word the dictionary doesn't have, worked out; words found through a 華語 word's English
         f.svEst?.let { est -> if (est.parts.size > 1 || est.steps.isNotEmpty()) item { Box(Modifier.padding(8.dp)) { SvEstimateBlock(z, est) } } }
         zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
@@ -213,6 +222,7 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             Txt(remember(e.k, zk) { z.hanText(e.h, e.syl(place), T.glyph.argbInt()).annotated() }, sz(20f, FontWeight.SemiBold))
             Txt(remember(e.k, zk) { z.reading(e.syl(place), rom).annotated() }, lat(16f), T.greenInk, Modifier.weight(1f, fill = false), maxLines = 1)
             if (e.spec != 0) ZhSpecChip(e.spec)
+            if (e.own) OwnChip()
             if (z.lang == 1 && place == 2) sichuanKind(e)?.let { SichuanChip(it, small = true) }
             if (e.level(list) > 0) Txt(UILang.label(Lang.levelName(list, e.level(list))), ff(FF.Caption2, FontWeight.Bold), T.greenInk)
             Spacer(Modifier.weight(0.01f))
@@ -377,9 +387,11 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             // the English meanings, one per line (日語: the meanings are English already)
             // (華語 / 客語: its own meanings, short and numbered as the meanings below, beside the English)
             if (!z.isJa) {
-                val zhShort = if (z.isYue || z.lang == 5) emptyList() else e.senses.mapNotNull { s -> shortMeaning(s.text).takeIf { it.isNotEmpty() }?.let { s.n to it } }
+                // (瑞典語: its Chinese meanings in the 中 column, beside the English)
+                val zhShort = if (z.isSv) e.svZh.mapIndexed { i, t -> (i + 1) to t }
+                    else if (z.isYue) emptyList() else e.senses.mapNotNull { s -> shortMeaning(s.text).takeIf { it.isNotEmpty() }?.let { s.n to it } }
                 // (瑞典語, 只有中文: no English)
-                MeaningsOverview(zhShort, if (z.isHak) tr("客") else tr("華"), if (z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish) emptyList() else e.enList)
+                MeaningsOverview(zhShort, if (z.isSv) (if (e.svZhGuessed) tr("中（由英文推測）") else tr("中")) else if (z.isHak) tr("客") else tr("華"), if (z.isSv && Prefs.svMeanings.value == 1 && e.svHideEnglish) emptyList() else e.enList)
             }
             // 瑞典語: its Chinese meanings, its parts (tap one), its forms
             if (z.isSv) SvWordExtras(z, e)
@@ -399,6 +411,7 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
                     if (e.tocfl > 0) Chip(UILang.label(Lang.levelName(1, e.tocfl)), T.blue, T.blueEdge, T.blueInk)
                 }
                 if (e.spec != 0) ZhSpecChip(e.spec)
+                if (e.own) OwnChip()
                 val a = e.alt
                 if (a != null && a != e.h) { Chip(tr("簡"), T.fn, T.fnEdge, T.muted); Txt(a, ff(FF.Subheadline), T.glyph.copy(alpha = 0.85f)) }
             }
@@ -428,8 +441,10 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             }
         }
         // 近義詞 / 反義詞 (《重編國語辭典修訂本》), the ones this dictionary has
-        val syn = remember(e.k) { e.syn.mapNotNull { z.usualEntry(it) } }
-        val ant = remember(e.k) { e.ant.mapNotNull { z.usualEntry(it) } }
+        // (each reading its own 近／反: a word written the same with two readings no longer shows the same ones twice)
+        val lk = remember(e.k) { z.links(e) }
+        val syn = remember(e.k) { lk.first.mapNotNull { z.usualEntry(it) } }
+        val ant = remember(e.k) { lk.second.mapNotNull { z.usualEntry(it) } }
         if (syn.isNotEmpty() || ant.isNotEmpty()) Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             ZhLinks(z, tr("近"), syn, T.blue, T.blueEdge, T.blueInk)
             ZhLinks(z, tr("反"), ant, T.rust, T.rustEdge, T.rustInk)
@@ -441,10 +456,6 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
         if (e.h.cpCount == 1 && !z.isJa && !z.isSv) ShuowenBlock(e.h)
         if (e.extra) Txt(tr("這個詞表裡的詞《兩岸常用詞典》裡沒有：讀音用 CC-CEDICT 的（有臺灣讀音的話用臺灣的），沒有的話照組成它的詞推算；意思用 CC-CEDICT 的英文解釋。"),
             ff(FF.Caption), T.muted)
-        Txt(if (z.isSv) tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）、維基詞典（kaikki.org，CC BY-SA）、FrequencyWords（CC BY-SA 4.0）、CC-CEDICT（CC BY-SA）。詞素依規則推算，可能有誤。")
-            else if (z.isJa) tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。") else if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
-            else if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
-            else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
         // 《重編國語辭典修訂本》 always at the very bottom. A single character: its meanings in 教育部《重編國語辭典修訂本》 too (the reading this entry has)
         val ci = if (e.h.cpCount == 1 && !z.isHak && !z.isJa && !z.isSv) z.charIndex[e.h] else null
         val reading = ci?.let { z.chars[it].readings.firstOrNull { r -> r.zy == e.tw.firstOrNull() } }
@@ -460,6 +471,11 @@ fun ZhEntryBody(z: ZhDict, e: ZhEntry) {
             }
         }
         if (reading != null) Txt(if (z.isYue) tr("資料：開放詞典《開放粵語字典》（CC BY 3.0）。") else tr("資料：教育部《重編國語辭典修訂本》（CC BY-ND 3.0 TW），g0v 萌典整理。只收字的解釋和用例，引用的古書省略。"), ff(FF.Caption2), T.muted)
+        // (the dictionary's source: the very bottom)
+        Txt(if (z.isSv) tr("資料：Folkets lexikon（KTH，CC BY-SA 2.5）、維基詞典（kaikki.org，CC BY-SA）、FrequencyWords（CC BY-SA 4.0）、CC-CEDICT（CC BY-SA）。詞素依規則推算，可能有誤。")
+            else if (z.isJa) tr("資料：JMdict（EDRDG，CC BY-SA 4.0）。活用表依規則產生。") else if (z.isHak) tr("資料：教育部《臺灣客語辭典》（CC BY-ND 3.0 TW）；英文解釋：CC-CEDICT（華語寫法相同的詞）。注音依拼音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。")
+            else if (z.isYue) tr("資料：CC-Canto、CC-CEDICT（CC BY-SA）、維基詞典（CC BY-SA）、rime-cantonese（CC BY）、開放粵語字典（CC BY）。耶魯拼音依粵拼照規則轉寫；例句的讀音依維基詞典。")
+            else tr("資料：中華文化總會《兩岸常用詞典》（CC BY-NC-ND）。拼音依注音照規則轉寫；例句的讀音依詞典的詞推算，可能有誤。"), ff(FF.Caption2), T.muted)
     }
 }
 
@@ -783,6 +799,28 @@ fun ZhProgressPage(onBack: () -> Unit) {
 }
 
 /** a level of HSK / TOCFL: every word, and checking them off */
+/** a level's characters as a grid (like 認識的漢字): tap one to open it, hold to make it 熟悉 / 不熟 */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun CharLevelGrid(cards: List<com.unoki99.fangfang.engine.Card>) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    FlowRow(Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        for (c in cards) {
+            val st = Store.status(c)
+            val k = st == 1; val u = st == 2
+            Box(Modifier.size(46.dp).clip(RoundedCornerShape(10.dp))
+                .background(if (k) Color(0xFF4F7DFF).copy(alpha = 0.35f) else if (u) Color(0xFFFFA94D).copy(alpha = 0.3f) else T.fn.copy(alpha = 0.7f))
+                .border(1.dp, if (k) Color(0xFF6EAAFF) else if (u) Color(0xFFFFA94D) else T.fnEdge, RoundedCornerShape(10.dp))
+                .combinedClickable(onLongClick = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                    Store.mark(c, !k, false)
+                }) { UI.open(Sheet.CardSheet(c)) }, contentAlignment = Alignment.Center) {
+                Txt(c.h, sz(24f), if (k) Color(0xFFCFE2FF) else if (u) Color(0xFFFFE1C2) else T.glyph)
+            }
+        }
+    }
+}
+
 @Composable
 fun LevelWordsPage(level: Int, onBack: () -> Unit) {
     Store.rev
@@ -821,7 +859,9 @@ fun LevelWordsPage(level: Int, onBack: () -> Unit) {
                 Segmented(listOf(0 to tr("全部"), 1 to tr("沒看過"), 2 to tr("熟悉"), 3 to tr("不熟")), filter, { filter = it }, Modifier.padding(vertical = 6.dp))
                 SectionTitle(tr("{0} 個詞（往右滑 = 熟悉，往左滑 = 不熟）", shown.size))
             }
-            items(shown, key = { "l|" + it.k }) { c ->
+            // (a level of characters: the characters as a grid, like 認識的漢字; hold one to make it 熟悉 / 不熟)
+            if ((level > Lang.charTopicBase && level < Lang.freqWordBase) || level >= Lang.freqCharBase) item { CharLevelGrid(shown) }
+            else items(shown, key = { "l|" + it.k }) { c ->
                 SwipeRow(start = Pair(tr("熟悉"), T.greenEdge), end = Pair(tr("不熟"), T.rustEdge),
                     onStart = { Store.mark(c, true, false) }, onEnd = { Store.mark(c, false, false) }, onClick = { UI.open(Sheet.CardSheet(c)) }) {
                     Row(Modifier.padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {

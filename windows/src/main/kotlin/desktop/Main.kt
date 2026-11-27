@@ -92,9 +92,13 @@ fun main(args: Array<String>) {
         } catch (_: Exception) {}
     }
 
-    val icon = try { Thread.currentThread().contextClassLoader.getResourceAsStream("icon.png")?.use { BitmapPainter(loadImageBitmap(it)) } } catch (_: Exception) { null }
+    // the window's icon: the usual dark one or the light one (設定 → 顏色與外觀 → App 圖示)
+    fun loadIcon(name: String) = try { Thread.currentThread().contextClassLoader.getResourceAsStream(name)?.use { BitmapPainter(loadImageBitmap(it)) } } catch (_: Exception) { null }
+    val darkIcon = loadIcon("icon.png")
+    val lightIcon = loadIcon("icon-light.png") ?: darkIcon
 
     application {
+        val icon = if (com.unoki99.fangfang.Prefs.appIcon.value == 1) lightIcon else darkIcon
         val state = rememberWindowState(size = DpSize(1280.dp, 880.dp), position = WindowPosition(Alignment.Center))
         fun quit() {
             Quitting.prepare()
@@ -105,11 +109,17 @@ fun main(args: Array<String>) {
             onPreviewKeyEvent = { e -> EditorKeys.handler?.invoke(e) ?: false },
             // (Escape: back. ← →: the card deck on screen swiped, like its buttons; not when a text field has them)
             onKeyEvent = { e ->
-                if (e.type != KeyEventType.KeyDown) false
+                // (⇧ pressed and let go by itself, nothing typed with it: the top card's 詳細 open / closed, as on the iPad)
+                val shiftKey = e.key == Key.ShiftLeft || e.key == Key.ShiftRight
+                if (e.type == KeyEventType.KeyDown) LoneShift.down = shiftKey && !e.isCtrlPressed && !e.isMetaPressed && !e.isAltPressed
+                if (e.type == KeyEventType.KeyUp && shiftKey) { val lone = LoneShift.down; LoneShift.down = false; if (lone) SwipeKeys.shift() else false }
+                else if (e.type != KeyEventType.KeyDown) false
                 else when (e.key) {
                     Key.Escape -> Back.go()
                     Key.DirectionLeft -> SwipeKeys.arrow(false)
                     Key.DirectionRight -> SwipeKeys.arrow(true)
+                    // (⌫: the last card back, as on the iPad; ⇧ by itself: see below)
+                    Key.Backspace -> SwipeKeys.back()
                     // (⌘+ ⌘− ⌘0 / Ctrl: the app's text size bigger, smaller, back to 100%, as on the iPad and the Mac)
                     Key.Equals, Key.Plus, Key.NumPadAdd -> if (e.isCtrlPressed || e.isMetaPressed) {
                         Prefs.textSize.value = (Prefs.textSize.value + 1).coerceAtMost(TextSize.names.size - 1); true } else false
@@ -248,3 +258,6 @@ object Quitting {
         Thread({ try { Thread.sleep(2000) } catch (_: Exception) {}; Runtime.getRuntime().halt(0) }, "quit-end").apply { isDaemon = true; start() }
     }
 }
+
+/** a ⇧ pressed with nothing else since (for 新詞's 詳細) */
+private object LoneShift { var down = false }

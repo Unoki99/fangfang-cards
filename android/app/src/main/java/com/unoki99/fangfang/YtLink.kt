@@ -114,6 +114,46 @@ object YtLyrics {
         return out.map { it.replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() && seen.add(it.lowercase()) }.take(8)
     }
 
+    /** a video with no lyrics on LRCLIB: its own subtitles (a Chinese track first, else the language shown, else the
+     *  first), as LRC ("[mm:ss.xx]line" a line); null when it has none or YouTube won't give them. The same as the
+     *  iPhone app's (YouTube.swift subtitleLyrics). */
+    @Suppress("UNCHECKED_CAST")
+    suspend fun fromSubtitles(videoId: String): String? = withContext(Dispatchers.IO) {
+        try {
+            fun get(u: String): String? {
+                val c = URL(u).openConnection() as HttpURLConnection
+                c.connectTimeout = 10000; c.readTimeout = 15000
+                c.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36")
+                c.setRequestProperty("Accept-Language", "zh-TW,zh;q=0.9,en;q=0.8")
+                if (c.responseCode != 200) { c.disconnect(); return null }
+                return c.inputStream.bufferedReader().use { it.readText() }.also { c.disconnect() }
+            }
+            val html = get("https://www.youtube.com/watch?v=" + URLEncoder.encode(videoId, "UTF-8")) ?: return@withContext null
+            val at = html.indexOf("\"captionTracks\":")
+            if (at < 0) return@withContext null
+            val start = html.indexOf('[', at)
+            var depth = 0; var end = start
+            while (end < html.length) { val ch = html[end]; if (ch == '[') depth++ else if (ch == ']') { depth--; if (depth == 0) break }; end++ }
+            val tracks = (JReader(html.substring(start, end + 1)).any() as? List<Any?>)?.mapNotNull { it as? Map<String, Any?> } ?: return@withContext null
+            val want = listOf("zh-TW", "zh-Hant", "zh", "zh-HK", "yue", "zh-CN", "zh-Hans", "nan", "hak", "ja", "sv")
+            val t = want.firstNotNullOfOrNull { w -> tracks.firstOrNull { (it["languageCode"] as? String)?.startsWith(w) == true } } ?: tracks.firstOrNull()
+                ?: return@withContext null
+            val base = (t["baseUrl"] as? String ?: return@withContext null).replace("\\u0026", "&")
+            val js = get(base + "&fmt=json3") ?: return@withContext null
+            val events = ((JReader(js).any() as? Map<String, Any?>)?.get("events") as? List<Any?>) ?: return@withContext null
+            val out = StringBuilder()
+            for (e in events) {
+                val m = e as? Map<String, Any?> ?: continue
+                val ms = (m["tStartMs"] as? Number)?.toLong() ?: continue
+                val text = ((m["segs"] as? List<Any?>) ?: continue).joinToString("") { ((it as? Map<String, Any?>)?.get("utf8") as? String) ?: "" }
+                    .replace(Regex("\\s*\\n\\s*"), " ").trim()
+                if (text.isEmpty()) continue
+                out.append("[%02d:%05.2f]".format(java.util.Locale.ROOT, ms / 60000, (ms % 60000) / 1000.0)).append(text).append('\n')
+            }
+            out.toString().ifBlank { null }
+        } catch (_: Exception) { null }
+    }
+
     /** the song's lyrics: the first search that finds any; timed ones first, then those about as long as the video */
     suspend fun find(title: String, artist: String, duration: Double, music: Boolean): List<TimedLyrics> {
         for (q in queries(title, artist, music)) {

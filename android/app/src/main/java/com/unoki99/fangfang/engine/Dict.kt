@@ -487,6 +487,9 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
     fun codesFor(key: String, place: Int): String {
         // (新竹, which says some 字 with -ir and -i both: the -ir one first, the -i one 也講)
         irForms(key, place)?.let { return it.first }
+        // (your own word: each 字 as the place says it, the same rules as the dictionary's words put together from
+        // their 字 (轉換); before, it kept the 通行 reading everywhere)
+        if (place >= 0 && isUser(key)) composedCodes(key, place)?.let { return it }
         return statedCodes(key, place)
     }
 
@@ -589,6 +592,9 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
 
     fun guessedSyllables(key: String, place: Int): Set<Int> {
         if (place < 0) return emptySet()
+        // (your own word: a 字 whose place reading is itself worked out by rule)
+        if (isUser(key) && raw.dia[key] == null && canSplit(key))
+            return (0 until sylCount(key)).filter { sylAt(key, it, place).guessed }.toSet()
         val out = HashSet<Int>()
         val dc = if (isStated(key, place)) null else raw.dia[key]?.get(place.toString())
         if (dc != null) {
@@ -634,6 +640,25 @@ class Dict(val raw: DictRaw, private val prefs: KeyValue) {
 
     fun codes(cs: String, sys: Int, place: Int, tokens: String? = null): String =
         render((tokens ?: cs).split(' ').filter { it.isNotEmpty() }, sys, place)
+
+    private val evidenceCache = java.util.concurrent.ConcurrentHashMap<String, List<String>>()
+    /** 讀音推測來源: the dictionary's words that have the 字 ch said `code` in the place, the dictionary stating it
+     *  (the most common first) */
+    fun placeEvidence(ch: String, code: String, place: Int): List<String> {
+        val ck = ch + "\u0001" + code + "\u0001" + place
+        evidenceCache[ck]?.let { return it }
+        val out = ArrayList<String>()
+        for (k in raw.dia.keys) {
+            val han = hanOf(k).cps()
+            if (ch !in han || han.size != sylCount(k) || !(isStated(k, place) || place < 0)) continue
+            val pc = codesFor(k, place).split(' ').filter { it.isNotEmpty() }
+            if (pc.size != han.size) continue
+            if (han.indices.any { han[it] == ch && pc[it] == code }) out.add(k)
+        }
+        out.sortWith(compareByDescending<String> { raw.freq[it] ?: 0.0 }.thenBy { it })
+        evidenceCache[ck] = out
+        return out
+    }
 
     fun isStated(key: String, place: Int): Boolean {
         if (place < 0) return false

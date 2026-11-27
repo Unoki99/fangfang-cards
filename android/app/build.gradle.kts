@@ -50,6 +50,8 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    // (一起玩 and 詞龍 over the internet: the relay's WebSocket; also used by the Windows / Mac version)
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // (.xz: 華語's 《重編國語辭典修訂本》 comes packed that way, for installing it in the app)
     implementation("org.tukaani:xz:1.10")
     // 電台: streams (also HLS), the song's name the station sends, and playing on with the app left

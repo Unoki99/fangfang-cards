@@ -32,39 +32,84 @@ import androidx.compose.ui.input.key.type
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// 常用度: the five bars beside each word (the same steps as the iPhone app: the first 1000 words 5 bars, then
-// 3000, 8000, 20000), 依常用度列出 (a dictionary's words by those steps), and an entry's 加到「不熟」 / 認識 buttons.
+// 常用度: the hollow ring beside each word (as full as the word is common, the same as the iPhone app's),
+// 依常用度列出 (a dictionary's words in five steps by how full the ring is), and an entry's 加到「不熟」 / 認識 buttons.
+
+/** the ring: how full (rank 0 → 1, 100 → about 0.8, 1000 → 0.6, 10 000 → 0.3, 60 000 and past → nearly empty) and its
+ *  colour, from full to nearly empty: pink, red, orange, yellow, green, teal, blue, purple (and the shades between) */
+object FrequencyRing {
+    fun fill(rank: Int): Double {
+        val x = Math.log(rank.toDouble() + 1) / Math.log(60000.0)
+        return (1 - x * x).coerceIn(0.04, 1.0)
+    }
+    private val stops = listOf(
+        Triple(0.58f, 0.38f, 0.86f),   // purple
+        Triple(0.24f, 0.48f, 0.95f),   // blue
+        Triple(0.10f, 0.68f, 0.70f),   // teal
+        Triple(0.30f, 0.72f, 0.32f),   // green
+        Triple(0.95f, 0.78f, 0.16f),   // yellow
+        Triple(0.97f, 0.55f, 0.14f),   // orange
+        Triple(0.90f, 0.22f, 0.20f),   // red
+        Triple(0.96f, 0.36f, 0.62f),   // pink
+    )
+    fun color(f: Double): androidx.compose.ui.graphics.Color {
+        val x = f.coerceIn(0.0, 1.0) * (stops.size - 1)
+        val i = minOf(x.toInt(), stops.size - 2); val t = (x - i).toFloat()
+        val p = stops[i]; val q = stops[i + 1]
+        return androidx.compose.ui.graphics.Color(p.first + (q.first - p.first) * t, p.second + (q.second - p.second) * t, p.third + (q.third - p.third) * t)
+    }
+}
+
+/** the ring itself: as full as `fill` (or the place's), in its colour */
+@Composable
+fun FrequencyRingView(rank: Int = 0, size: androidx.compose.ui.unit.Dp = 16.dp, line: androidx.compose.ui.unit.Dp = 3.dp, fill: Double? = null) {
+    val f = fill ?: FrequencyRing.fill(rank)
+    val c = FrequencyRing.color(f)
+    val track = T.fnEdge.copy(alpha = 0.6f)
+    androidx.compose.foundation.Canvas(Modifier.size(size)) {
+        val w = line.toPx()
+        val inset = w / 2
+        val box = androidx.compose.ui.geometry.Size(this.size.width - w, this.size.height - w)
+        val at = androidx.compose.ui.geometry.Offset(inset, inset)
+        drawArc(track, 0f, 360f, false, at, box, style = androidx.compose.ui.graphics.drawscope.Stroke(w))
+        drawArc(c, -90f, (360 * f).toFloat(), false, at, box,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(w, cap = androidx.compose.ui.graphics.StrokeCap.Round))
+    }
+}
 
 object FreqLevels {
     val names = mapOf(5 to "很常用", 4 to "常用", 3 to "一般", 2 to "不常用", 1 to "少見")
-    val ranges = mapOf(5 to "前 1000 個", 4 to "1001–3000", 3 to "3001–8000", 2 to "8001–20000", 1 to "20000 以後")
     fun name(l: Int): String = tr(names[l] ?: "")
-    /** the bars a place gets */
+    /** where the ring crosses 80, 60, 40 and 20 % (about 136, 1046, 5029, 18 800) */
+    val cuts: List<Int> = listOf(0.8, 0.6, 0.4, 0.2).map { f -> maxOf(1, Math.pow(60000.0, Math.sqrt(1 - f)).toInt() - 1) }
+    /** a step's 圓圈 % and its places */
+    fun range(l: Int): String {
+        val pc = listOf("", "0–20%", "20–40%", "40–60%", "60–80%", "80–100%")[l.coerceIn(1, 5)]
+        val b = bounds(l)
+        val at = if (b.last == Int.MAX_VALUE - 1) tr("{0} 以後", b.first) else if (b.first == 0) tr("前 {0} 個", b.last + 1) else "${b.first + 1}–${b.last + 1}"
+        return tr("圓圈 {0}・", pc) + at
+    }
+    /** the step a place is in: by how full its ring is */
     fun level(rank: Int): Int = when {
-        rank < 1000 -> 5; rank < 3000 -> 4; rank < 8000 -> 3; rank < 20000 -> 2; else -> 1
+        rank < cuts[0] -> 5; rank < cuts[1] -> 4; rank < cuts[2] -> 3; rank < cuts[3] -> 2; else -> 1
     }
     /** the places (from 0) of a step's words */
     fun bounds(l: Int): IntRange = when (l) {
-        5 -> 0 until 1000; 4 -> 1000 until 3000; 3 -> 3000 until 8000; 2 -> 8000 until 20000; else -> 20000 until Int.MAX_VALUE
+        5 -> 0 until cuts[0]; 4 -> cuts[0] until cuts[1]; 3 -> cuts[1] until cuts[2]; 2 -> cuts[2] until cuts[3]; else -> cuts[3] until Int.MAX_VALUE
     }
 }
 
-/** the bars of a step, in the language's colour */
+/** a step's icon: the ring as full as the step's middle (like the ring beside each word) */
 @Composable
 fun FreqLevelBars(level: Int, kind: Int, small: Boolean = true) {
-    val ink = langColors(kind).third
-    val w = if (small) 4.dp else 5.dp
-    Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.Bottom) {
-        for (i in 1..5) Box(Modifier.width(w).height(((if (small) 4 else 5) + i * (if (small) 2 else 3)).dp)
-            .clip(RoundedCornerShape(1.5.dp)).background(if (i <= level) ink else T.fnEdge))
-    }
+    FrequencyRingView(size = if (small) 18.dp else 22.dp, line = if (small) 3.dp else 3.5.dp, fill = listOf(0.0, 0.1, 0.3, 0.5, 0.7, 0.92)[level.coerceIn(0, 5)])
 }
 
-/** the bars beside a word in a list (nothing for a word without a place) */
+/** the ring beside a word in a list (nothing for a word without a place) */
 @Composable
 fun FrequencyBars(key: String) {
     val r = remember(key, Store.zh) { Store.freqRank(key) }
-    if (r != Int.MAX_VALUE) FreqLevelBars(FreqLevels.level(r), Lang.kind(key))
+    if (r != Int.MAX_VALUE) FrequencyRingView(r)
 }
 
 /** 加到「不熟」 and 認識 for a word, showing where it is now (also for a word that isn't one of the cards) */
@@ -122,7 +167,7 @@ fun FreqBandsPage(zh: Boolean, onBack: () -> Unit) {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 FreqLevelBars(l, kind, small = false)
                                 Txt(FreqLevels.name(l), ff(FF.Body, FontWeight.SemiBold), T.glyph)
-                                Txt(tr(FreqLevels.ranges[l] ?: ""), ff(FF.Caption), T.muted, Modifier.weight(1f))
+                                Txt(FreqLevels.range(l), ff(FF.Caption), T.muted, Modifier.weight(1f))
                                 if (a != null) Txt(tr("{0} 個詞", a[0]), ff(FF.Caption), T.muted)
                                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted)
                             }

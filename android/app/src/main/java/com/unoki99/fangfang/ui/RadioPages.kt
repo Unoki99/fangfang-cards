@@ -55,7 +55,7 @@ fun RadioScreen() {
                 IconButton(onClick = { adding = true }) { Icon(Icons.Filled.Add, tr("自己加網址"), tint = T.glyph) }
             }
             if (searching) { RadioSearch(lang) { searching = false }; return@Column }
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item { NowPlayingPanel { metaOpen = true } }
                 // (Windows: the song playing on YouTube in the browser, its lyrics following it)
                 if (YtLink.available) item {
@@ -63,16 +63,18 @@ fun RadioScreen() {
                         IconLabel(Icons.Filled.MusicNote, tr("YouTube 歌詞") + if (YtLink.live()) "：" + (YtLink.song?.title ?: "") else "", ff(FF.Subheadline))
                     }
                 }
+                // (the radios by language, the language shown first; the 放大鏡 and + find and add them for the
+                // language chosen here)
                 item {
                     Segmented((0 until RadioLang.languages.size).map { it to tr(Lang.names[it]) }, lang, { lang = it })
                 }
-                val list = Radio.stations.filter { it.lang == lang }
-                if (list.isEmpty()) item { Txt(tr("這個語言還沒有電台。按上面的放大鏡找。"), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
-                // (by the kind of stream each sends: MP3, AAC, AAC+, HLS, the rest; not known yet until it has played)
-                val groups = list.groupBy { it.format }.toList().sortedBy { RadioFormat.rank(it.first) }
-                for ((format, inGroup) in groups) {
-                item(key = "format-" + (format ?: "?")) {
-                    Txt(RadioFormat.title(format), ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(start = 4.dp, top = 6.dp))
+                if (Radio.stations.isEmpty()) item { Txt(tr("還沒有電台。按上面的放大鏡找。"), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
+                val langs = listOf(Store.lang.coerceIn(0, RadioLang.languages.size - 1)) + (0 until RadioLang.languages.size).filter { it != Store.lang }
+                for (l in langs) {
+                val inGroup = Radio.stations.filter { it.lang == l }
+                if (inGroup.isEmpty()) continue
+                item(key = "lang-$l") {
+                    Txt(tr(Lang.names[l]), ff(FF.Footnote, FontWeight.SemiBold), T.muted, Modifier.padding(start = 4.dp, top = 6.dp))
                 }
                 items(inGroup, key = { it.id }) { s ->
                     val playing = Radio.current?.id == s.id && Radio.state != Radio.State.IDLE
@@ -103,6 +105,12 @@ fun RadioScreen() {
                     Txt(tr("電台來自 Radio Browser（radio-browser.info）。離開 App 也會繼續播，通知裡可以停。電台有送歌名的話，按「歌詞」可以看歌詞（LRCLIB）。"),
                         ff(FF.Footnote), T.muted, Modifier.padding(horizontal = 4.dp))
                     Spacer(Modifier.height(40.dp))
+                }
+            }
+            // 歌詞: at the bottom of the window (the song playing: the radio's, or YouTube's on the computer)
+            Box(Modifier.fillMaxWidth().background(T.fn.copy(alpha = 0.35f)).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                ProminentButton({ if (YtLink.available && YtLink.live()) UI.ytLyricsOpen = true else UI.lyricsOpen = true }, Modifier.fillMaxWidth().heightIn(min = 44.dp)) {
+                    IconLabel(Icons.Filled.MusicNote, tr("歌詞"), ff(FF.Headline))
                 }
             }
         }

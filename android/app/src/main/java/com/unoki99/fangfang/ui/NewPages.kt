@@ -477,7 +477,10 @@ fun ZhCharListPage(onBack: () -> Unit) {
         } && (query.isEmpty() || query.contains(ch))
     }
     Column(Modifier.fillMaxSize()) {
-        TopBar(tr("認識的漢字"), onBack, settings = false)
+        TopBar(tr("認識的漢字"), onBack, settings = false) {
+            // 猜字義: a game with these characters (it doesn't change whether a character is 熟悉 or 不熟)
+            TextButton(onClick = { UI.practice = Practice.CHAR_MEANING }, enabled = sets.all.size > 4) { Text(tr("猜字義"), color = T.btnInk) }
+        }
         LazyVerticalGrid(GridCells.Adaptive(48.dp), Modifier.fillMaxSize(), contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             item(span = { GridItemSpan(maxLineSpan) }) {
@@ -522,8 +525,12 @@ fun ZhCharListPage(onBack: () -> Unit) {
 fun PracticeScopeMenu() {
     val ts = Store.practiceTopics
     val groups = Store.groupIds
-    if (ts.isEmpty() && groups.isEmpty()) return
+    if (ts.isEmpty() && groups.isEmpty() && Store.savedKeys.isEmpty()) return
     val nav = LocalNav.current
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    // 匯出這個範圍（CSV）: the words of the 練習範圍 (for Anki and the like)
+    var pending by remember { mutableStateOf("") }
+    val saveCsv = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("text/csv")) { uri -> writeTo(ctx, uri, pending) }
     var open by remember { mutableStateOf(false) }
     val unknown = remember(Store.rev) { Store.unknownCards.map { it.k }.toHashSet() }
     val pg = Store.practiceGroup
@@ -533,7 +540,7 @@ fun PracticeScopeMenu() {
         Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.7f))
             .border(1.dp, T.fnEdge, RoundedCornerShape(12.dp)).clickable { open = true }.padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Icon(if (pg?.startsWith("folder:") == true) Icons.Filled.Layers else if (pg != null) Icons.Filled.Movie else Icons.Filled.Tune, null, tint = T.greenInk, modifier = Modifier.size(20.dp))
+            Icon(if (pg == Store.SAVED_SCOPE) Icons.Filled.Bookmark else if (pg?.startsWith("folder:") == true) Icons.Filled.Layers else if (pg != null) Icons.Filled.Movie else Icons.Filled.Tune, null, tint = T.greenInk, modifier = Modifier.size(20.dp))
             Txt(tr("練習範圍"), ff(FF.Subheadline), T.muted)
             Txt(Store.practiceName, ff(FF.Subheadline), T.glyph, Modifier.weight(1f), maxLines = 1)
             Txt("${Store.practiceCards.size}", ff(FF.Footnote), T.muted)
@@ -578,6 +585,11 @@ fun PracticeScopeMenu() {
             } else {
                 DropdownMenuItem(text = { Text(tr("全部不熟的詞（{0}）", Store.unknownCount), color = if (Store.practiceTopic < 0 && pg == null) T.greenInk else T.glyph) },
                     onClick = { Store.practiceGroup = null; Store.practiceTopic = -1; open = false })
+                // 收藏: the words saved in the dictionary, whatever they are (不熟, 熟悉 or not swiped yet)
+                val nSaved = Store.savedKeys.size
+                if (nSaved > 0) DropdownMenuItem(text = { Text(tr("收藏的詞（{0}）", nSaved), color = if (pg == Store.SAVED_SCOPE) T.greenInk else T.glyph) },
+                    leadingIcon = { Icon(Icons.Filled.Bookmark, null, tint = if (pg == Store.SAVED_SCOPE) T.greenInk else T.muted, modifier = Modifier.size(18.dp)) },
+                    onClick = { Store.practiceGroup = Store.SAVED_SCOPE; open = false })
                 // 自己的範圍 (made with 創作範圍: some 影片詞組 together)
                 val scopes = Store.groupFolders
                 if (scopes.isNotEmpty()) {
@@ -592,7 +604,7 @@ fun PracticeScopeMenu() {
                 }
                 HorizontalDivider(color = T.fnEdge)
                 // the folders: 影片詞組, the word levels, the character levels
-                if (groups.isNotEmpty()) FolderItem("groups", tr("影片詞組"), pg != null && !pg.startsWith("folder:"))
+                if (groups.isNotEmpty()) FolderItem("groups", tr("影片詞組"), pg != null && pg != Store.SAVED_SCOPE && !pg.startsWith("folder:"))
                 if (words.isNotEmpty()) FolderItem("words", wordsName, pg == null && words.any { it.id == Store.practiceTopic })
                 if (chars.isNotEmpty()) FolderItem("chars", charsName, pg == null && chars.any { it.id == Store.practiceTopic })
                 // 創作範圍: a name and some 影片詞組; 編輯 the one chosen
@@ -605,6 +617,17 @@ fun PracticeScopeMenu() {
                         text = { Text(tr("編輯「{0}」", pg.removePrefix("folder:")), color = T.btnInk) },
                         leadingIcon = { Icon(Icons.Filled.Edit, null, tint = T.btnInk, modifier = Modifier.size(18.dp)) },
                         onClick = { open = false; nav.push(Route.ScopeEditor(pg.removePrefix("folder:"))) })
+                }
+                // 匯出這個範圍（CSV）
+                if (Store.practiceCards.isNotEmpty()) {
+                    HorizontalDivider(color = T.fnEdge)
+                    DropdownMenuItem(text = { Text(tr("匯出這個範圍（CSV）"), color = T.btnInk) },
+                        leadingIcon = { Icon(Icons.Filled.IosShare, null, tint = T.btnInk, modifier = Modifier.size(18.dp)) },
+                        onClick = {
+                            open = false
+                            pending = Store.csv(Store.practiceCards)
+                            saveCsv.launch("方方-" + Store.practiceName.replace("/", "-").replace(":", "-") + ".csv")
+                        })
                 }
             }
         }

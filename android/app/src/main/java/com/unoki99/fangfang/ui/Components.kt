@@ -320,6 +320,8 @@ fun ToneMenu() {
         DropdownMenu(open, { open = false }, containerColor = T.fn) {
             val choices = if (com.unoki99.fangfang.Store.isSv) listOf(0 to tr("詞素顏色關"), 7 to tr("詞素顏色開"))
                 else if (com.unoki99.fangfang.Store.isJa) listOf(0 to tr("文字顏色關"), 7 to tr("文字顏色開"))
+                // (七聲 / 五聲 is 台語's: the other languages on / off)
+                else if (com.unoki99.fangfang.Store.lang != 0) listOf(0 to tr("關"), 7 to tr("開"))
                 else listOf(0 to tr("關"), 7 to tr("七聲（1 2 3 4 5 7 8）"), 5 to tr("五聲（1=8、3=4）"))
             for ((v, name) in choices) {
                 DropdownMenuItem(text = { Text(name, color = if (system == v) T.greenInk else T.glyph) },

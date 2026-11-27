@@ -6,6 +6,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -220,6 +222,120 @@ fun TwPlacesAndMap(d: Dict, key: String) {
         }
     }
     Txt(tr("地圖上的點是辭典記錄各地讀音的地方，不是腔口的界線。"), ff(FF.Caption2), T.muted)
+    // (where each worked-out reading comes from, so you can judge it yourself: right under the map)
+    Spacer(Modifier.height(10.dp))
+    PlaceSources(d, key)
+}
+
+/** 讀音推測來源 (under the map), only the readings worked out (the dictionary's own aren't listed): for each 字 of
+ *  the word, each place whose reading of it is 推測 (by rule) or 照字 (from the 字's own reading), and how many of
+ *  the dictionary's words have the 字 said that way there. Tap the number: those words open right below with their
+ *  meanings; tap one for its entry. Laid out like 各地讀音 above: by 腔, each place a chip with its reading. */
+@Composable
+fun PlaceSources(d: Dict, key: String) {
+    if (d.raw.places.isEmpty()) return
+    val rom = TwRom.lat(Prefs.rom.value)
+    val place = Prefs.place.value
+    val han = Dict.hanOf(key).cps()
+    val n = d.sylCount(key)
+    val places = d.raw.places.indices.toList()
+    fun estimated(j: Int, p: Int): Boolean {
+        val s = d.sylAt(key, j, p)
+        val stated = !s.guessed && d.raw.dia[key] != null && d.isStated(key, p)
+        return !stated && (s.guessed || (s.charKey != null && s.charKey != key))
+    }
+    val shownSyl = remember(key, place) { (0 until n).filter { j -> places.any { estimated(j, it) } } }
+    if (shownSyl.isEmpty()) return
+    var shown by remember(key) { mutableStateOf<Pair<Int, Int>?>(null) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Txt(tr("讀音推測來源"), ff(FF.Headline), T.glyph)
+        Txt(tr("只列出辭典沒有記錄、照規則推測的讀音（「推測」）或照那個字自己的讀音（「照字」）。數字是辭典裡有幾個詞，這個字在那個地方也這樣講；點數字看那些詞。"),
+            ff(FF.Caption), T.muted)
+        for ((idx, j) in shownSyl.withIndex()) {
+            val ch = if (han.size == n) han[j] else null
+            // (a line between the characters, in the theme's own edge colour)
+            if (idx > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(T.fnEdge))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (ch != null) Txt(ch, ff(FF.Title2, FontWeight.SemiBold), T.glyph)
+                    Txt(d.codes(d.sylAt(key, j, -1).code, rom, -1), lat(15f), T.greenInk)
+                    Txt(tr("（通行）"), ff(FF.Caption), T.muted)
+                }
+                for (k in listOf("泉", "混", "漳")) {
+                    val ps = places.filter { d.raw.places[it].contains(k) && estimated(j, it) }
+                    if (ps.isEmpty()) continue
+                    SourcesKindRow(d, key, j, ch, k, ps, place, rom, shown) { shown = it }
+                }
+                val sh = shown
+                if (sh != null && sh.first == j && ch != null) SourcesWords(d, ch, sh.second, d.sylAt(key, j, sh.second).code, rom)
+            }
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun SourcesKindRow(d: Dict, key: String, j: Int, ch: String?, k: String, ps: List<Int>, place: Int, rom: Int,
+                           shown: Pair<Int, Int>?, onShow: (Pair<Int, Int>?) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // (the same look as 各地讀音 above: the 腔 in its colour, each place as a chip with its reading)
+        val on = twLit(-2, place) || ps.contains(place)
+        val kc = twKindColor(k)
+        Box(Modifier.size(24.dp).background(kc.copy(alpha = if (on) 0.55f else 0.18f), CircleShape)
+            .border(1.5.dp, kc.copy(alpha = if (on) 1f else 0.4f), CircleShape), contentAlignment = Alignment.Center) {
+            Txt(tr(k), ff(FF.Caption), if (on) T.glyph else T.muted)
+        }
+        FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (p in ps) SourcesCell(d, key, j, ch, p, place, rom, shown == (j to p)) { onShow(if (shown == (j to p)) null else j to p) }
+        }
+    }
+}
+
+@Composable
+private fun SourcesCell(d: Dict, key: String, j: Int, ch: String?, p: Int, place: Int, rom: Int, on: Boolean, onTap: () -> Unit) {
+    val s = d.sylAt(key, j, p)
+    val words = remember(ch, s.code, p) { if (ch != null) d.placeEvidence(ch, s.code, p) else emptyList() }
+    val mine = p == place
+    val lit = if (twLit(p, place)) twGroupColor(d, p) else null
+    val name = tr(d.raw.places[p].take(2))
+    Column(Modifier.widthIn(min = 78.dp).width(IntrinsicSize.Max), horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        if (lit != null) Chip(name, lit.copy(alpha = 0.28f), lit, T.glyph)
+        else Chip(name, if (mine) T.twFill else T.fn, if (mine) T.twEdge else T.fnEdge, if (mine) T.twInk else T.muted)
+        Txt(d.codes(s.code, rom, p), lat(15f), T.greenInk, maxLines = 1)
+        if (TwRom.line) Txt(d.codes(s.code, 3, p), ff(FF.Caption), T.purpleInk, maxLines = 1)
+        // where it's from
+        Txt(if (s.guessed) tr("推測") else tr("照字"), ff(FF.Caption2), if (s.guessed) T.rustInk else T.muted)
+        val ck = s.charKey
+        if (ck != null && ck != key) Txt(tr("從「") + Dict.hanOf(ck) + tr("」"), ff(FF.Caption2), T.muted, maxLines = 1)
+        if (words.isNotEmpty()) {
+            Txt(tr("{0} 個詞", words.size) + if (on) " ▴" else " ▾", ff(FF.Caption2, FontWeight.SemiBold), if (on) T.glyph else T.btnInk,
+                Modifier.clip(CircleShape).background(if (on) T.btn else T.fn).border(1.dp, if (on) T.btnInk.copy(alpha = 0.5f) else T.fnEdge, CircleShape)
+                    .clickable { onTap() }.hand().padding(horizontal = 7.dp, vertical = 2.dp))
+        }
+    }
+}
+
+/** the words with the 字 said this way in the place, most common first; tap one for its entry */
+@Composable
+private fun SourcesWords(d: Dict, ch: String, p: Int, code: String, rom: Int) {
+    val nav = LocalNav.current
+    val ws = remember(ch, code, p) { d.placeEvidence(ch, code, p) }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(T.fn.copy(alpha = 0.6f)).padding(10.dp)) {
+        Txt(tr("{0}：「{1}」這樣講的詞", d.raw.places[p].take(2), ch), ff(FF.Subheadline, FontWeight.SemiBold), T.muted, Modifier.padding(bottom = 4.dp))
+        for (k in ws.take(200)) {
+            Row(Modifier.fillMaxWidth().clickable { nav.push(Route.Entry(k)) }.hand().padding(vertical = 7.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Txt(Dict.hanOf(k), ff(FF.Title3, FontWeight.SemiBold), T.glyph)
+                Txt(d.wordText(k, rom, p).plain(), lat(14f), T.greenInk, maxLines = 1)
+                val g = d.gl[k]
+                val m = if (!g.isNullOrEmpty()) g.joinToString("、") { it.t } else d.defText(k)?.replace("\n", " ")
+                if (m != null) Txt(m, ff(FF.Footnote), T.muted, Modifier.weight(1f), maxLines = 1) else Spacer(Modifier.weight(1f))
+            }
+            HorizontalDivider(color = T.fnEdge)
+        }
+        if (ws.size > 200) Txt(tr("（只列最常用的 200 個）"), ff(FF.Caption), T.muted, Modifier.padding(top = 4.dp))
+    }
 }
 
 /** the three 腔 the places lean to, each in a colour of its own: 泉 teal (台語's 6th tone), 混 orange, 漳 purple */

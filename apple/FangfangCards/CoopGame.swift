@@ -33,12 +33,36 @@ struct CoopMsg: Codable {
     var lang = 0
     /// hint: how many clues are shown now
     var hints = 1
-    /// submit: what was typed or picked, or the writing (one drawing a square, and the squares' side)
+    /// submit: what was typed or picked, or the writing (squares)
     var text = ""
-    var drawings: [Data] = []
-    var side: Double = 0
+    /// the writing: each square a list of strokes (InkLine: the same as the Android and computer versions')
+    var squares: [[InkLine]] = []
     /// judge
     var right = false
+
+    init(kind: Kind, name: String, mode: Int = 0, rounds: Int = 0, word: String = "", reading: String = "", clues: [String] = [],
+         lang: Int = 0, hints: Int = 1, text: String = "", right: Bool = false) {
+        self.kind = kind; self.name = name; self.mode = mode; self.rounds = rounds; self.word = word; self.reading = reading
+        self.clues = clues; self.lang = lang; self.hints = hints; self.text = text; self.right = right
+    }
+    // (read leniently: a message from another version may leave some out)
+    init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        name = try c.decode(String.self, forKey: .name)
+        mode = (try? c.decodeIfPresent(Int.self, forKey: .mode)) ?? 0
+        rounds = (try? c.decodeIfPresent(Int.self, forKey: .rounds)) ?? 0
+        word = (try? c.decodeIfPresent(String.self, forKey: .word)) ?? ""
+        reading = (try? c.decodeIfPresent(String.self, forKey: .reading)) ?? ""
+        clues = (try? c.decodeIfPresent([String].self, forKey: .clues)) ?? []
+        clueKinds = (try? c.decodeIfPresent([String].self, forKey: .clueKinds)) ?? []
+        english = (try? c.decodeIfPresent(String.self, forKey: .english)) ?? ""
+        lang = (try? c.decodeIfPresent(Int.self, forKey: .lang)) ?? 0
+        hints = (try? c.decodeIfPresent(Int.self, forKey: .hints)) ?? 1
+        text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? ""
+        squares = (try? c.decodeIfPresent([[InkLine]].self, forKey: .squares)) ?? []
+        right = (try? c.decodeIfPresent(Bool.self, forKey: .right)) ?? false
+    }
 }
 
 /// the question of the turn, as everyone knows it
@@ -52,8 +76,7 @@ struct CoopQuestion {
     let lang: Int
     var shown = 1
     var text = ""
-    var drawings: [PKDrawing] = []
-    var side: CGFloat = 0
+    var squares: [[InkLine]] = []
     var submitted = false
 }
 
@@ -167,8 +190,7 @@ final class CoopLink: NearbyLink {
         case .submit:
             guard question?.from == m.name else { return }
             question?.text = m.text
-            question?.drawings = m.drawings.compactMap { try? PKDrawing(data: $0) }
-            question?.side = CGFloat(m.side)
+            question?.squares = m.squares
             question?.submitted = true
         case .judge:
             // (the first one to judge counts)
@@ -219,6 +241,7 @@ struct CoopView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
+                    RoomBar(link: link, locked: link.playing && !link.over)
                     scoreboard
                     if !link.playing { lobby }
                     else if link.over { finished; lobby }
@@ -241,7 +264,6 @@ struct CoopView: View {
                 ToolbarItem(placement: .topBarTrailing) { RomButton() }
             }
         }
-        .onAppear { link.open() }
         .onDisappear { link.close() }
         .onChange(of: link.game) { begin() }
         .onChange(of: link.turn) { turnChanged() }
@@ -276,10 +298,11 @@ struct CoopView: View {
                     if link.playing { Text("\(link.scores[n] ?? 0)").scaledFont(22, weight: .bold).foregroundStyle(T.blueInk) }
                 }
             }
-            if link.players.isEmpty {
+            if link.players.isEmpty && (link.via == .nearby || link.status == 2) {
                 HStack(spacing: 8) {
                     ProgressView()
-                    Text(tr("找附近的人中…請其他人也打開「一起玩」（同一個 Wi-Fi，或打開藍牙）。")).ffFont(.footnote).foregroundStyle(T.muted)
+                    Text(link.via == .nearby ? tr("找附近的人中…請其他人也打開「一起玩」（同一個 Wi-Fi，或打開藍牙）。")
+                         : tr("等其他人進房間…")).ffFont(.footnote).foregroundStyle(T.muted)
                 }
             }
         }
@@ -390,8 +413,8 @@ struct CoopView: View {
                 .background(RoundedRectangle(cornerRadius: 12).fill(T.fn))
                 if q.submitted {
                     Text(tr("\(q.from) 的答案")).ffFont(.subheadline, .semibold).foregroundStyle(T.muted)
-                    if !q.drawings.isEmpty {
-                        WrittenSquares(drawings: q.drawings, side: q.side, size: 130)
+                    if !q.squares.isEmpty {
+                        WrittenSquares(squares: q.squares, size: 130)
                     } else {
                         Text(q.text).scaledFont(32, weight: .semibold).foregroundStyle(T.glyph)
                     }
@@ -554,7 +577,7 @@ struct CoopView: View {
     private func submit() {
         var m = CoopMsg(kind: .submit, name: link.myName)
         switch myMode {
-        case 0: m.drawings = drawings.map { $0.dataRepresentation() }; m.side = Double(side)
+        case 0: m.squares = drawings.map { InkLine.from($0, side: side) }
         case 1: m.text = picked ?? ""
         default: m.text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         }

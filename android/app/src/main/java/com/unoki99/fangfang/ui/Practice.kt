@@ -57,6 +57,11 @@ fun PracticeHost(p: Practice) {
                 Practice.TONE_GAME -> ToneGameScreen(stars) { close() }
                 Practice.FREE_WRITING -> FreeWritingScreen { close() }
                 Practice.IDIOM_WRITE -> IdiomWriteScreen { close() }
+                Practice.NUMBERS -> NumbersScreen { close() }
+                Practice.DRAGON -> WordDragonScreen { close() }
+                Practice.CHAR_MEANING -> CharMeaningScreen { close() }
+                Practice.COOP -> CoopScreen { close() }
+                Practice.USAGE -> UsagePracticeScreen(Store.weekCards) { close() }
                 Practice.STATS -> ReviewStatsScreen { close() }
                 Practice.WEEK_WRITE -> StudyScreen(false, stars, words = Store.weekCards, writeOnly = true)
                 Practice.WORD_WRITE -> UI.writeCard?.let { WordWriteScreen(it) { UI.writeCard = null; close() } }
@@ -148,11 +153,24 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
         return true
     }
 
+    /** every word a single character: a round of characters */
+    private fun charsOnly(cs: List<Card>) = cs.isNotEmpty() && cs.all { it.h.codePointCount(0, it.h.length) == 1 }
+
+    /** the most common first: the dictionary's order, else the cards' (which go most common first) */
+    private fun byFrequency(cs: List<Card>): List<Card> {
+        val at = HashMap<String, Int>()
+        for ((i, c) in Store.cards.withIndex()) if (c.h.codePointCount(0, c.h.length) == 1 && c.h !in at) at[c.h] = i
+        fun r(c: Card): Long { val d = Store.rankOf(c.k); return if (d != Int.MAX_VALUE) d.toLong() else at[c.h]?.let { 1_000_000L + it } ?: Long.MAX_VALUE }
+        return cs.sortedBy { r(it) }
+    }
+
     fun start() {
         missed.clear(); wroteRight = null
         if (writeOnly) {
             // every word that can be written, once (one wrong is asked again later)
-            queue.clear(); queue.addAll((pool0 ?: Store.studyCards).filter { Store.canWrite(it.h) }.shuffled().map { make(it, QuizKind.WRITE) })
+            val ws = (pool0 ?: Store.studyCards).filter { Store.canWrite(it.h) }
+            // (single characters only: the most common first)
+            queue.clear(); queue.addAll((if (charsOnly(ws)) byFrequency(ws) else ws.shuffled()).map { make(it, QuizKind.WRITE) })
             idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear(); writeTries.clear(); practiceAgain.clear()
             started = true
             saveNow()
@@ -169,8 +187,11 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
         }
         val pool = pool0 ?: Store.studyCards
         // the words due for review first, then the ones answered right the fewest times
-        val words = pool.filter { !blanksOnly || Store.blanks(it).isNotEmpty() }.shuffled()
-            .sortedBy { if (Store.isDue(it.k)) -1 else Store.streak(it) }
+        val p1 = pool.filter { !blanksOnly || Store.blanks(it).isNotEmpty() }
+        // (single characters only: the most common first, always; those due for review before them)
+        val chars = !blanksOnly && charsOnly(p1)
+        val words = (if (chars) byFrequency(p1).sortedBy { if (Store.isDue(it.k)) 0 else 1 }
+                     else p1.shuffled().sortedBy { if (Store.isDue(it.k)) -1 else Store.streak(it) })
             .take(maxOf(1, if (pool0 != null) pool.size else size))
         val first = ArrayList<Question>(); val second = ArrayList<Question>()
         for (c in words) {
@@ -184,7 +205,8 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
                 if (ks.size > 1) second.add(make(c, ks[1]))
             }
         }
-        queue.clear(); queue.addAll(first.shuffled() + second.shuffled())
+        // (characters: in that order, not shuffled)
+        queue.clear(); queue.addAll(if (chars) first + second else first.shuffled() + second.shuffled())
         idx = 0; chosen = null; right = 0; wrong = 0; learned.clear(); retried.clear(); writeTries.clear(); practiceAgain.clear()
         started = true
         saveNow()

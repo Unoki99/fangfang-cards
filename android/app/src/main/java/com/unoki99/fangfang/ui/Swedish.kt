@@ -37,12 +37,7 @@ fun SvWordExtras(z: ZhDict, e: ZhEntry) {
     svColorKey()
     val ms = remember(e.k) { SvMorpheme.parse(z.svSyl(e)) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        val zh = e.svZh
-        if (zh.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Chip(tr("中"), T.rust, T.rustEdge, T.rustInk)
-            Txt(zh.joinToString("、"), ff(FF.Body), T.glyph, Modifier.weight(1f, fill = false))
-            if (e.svZhGuessed) Txt(tr("（由英文推測）"), ff(FF.Caption), T.muted)
-        }
+        // (the Chinese meanings are in the 中 column beside the English now, not a row of their own here)
         SvVia.found[e.k]?.let { v ->
             Txt(tr("由華語「{0}」的英文（{1}）找到的，不一定是同一個意思。", v.zh, v.en), ff(FF.Caption), T.muted)
         }
