@@ -86,12 +86,20 @@ object Gemini {
     private fun script() = if (Simp.on) "Simplified" else "Traditional"
     private fun target(lang: Int): Pair<String, String> = when (lang) {
         4 -> "Japanese dictionary" to "Japanese words (dictionary forms, written as a Japanese dictionary would list them)"
-        5 -> "Swedish dictionary" to "Swedish words (base forms, as a Swedish dictionary would list them)"
-        6 -> "English dictionary" to "English words (base forms, as an English dictionary would list them)"
+        5 -> "Swedish dictionary" to "Swedish words (base forms, as a Swedish dictionary would list them: no article, no \"att\"; when the search is a meaning in Chinese, English or another language, the Swedish words for it)"
+        6 -> "English dictionary" to "English words (base forms, as an English dictionary would list them: no article, no \"to\"; when the search is a meaning in Chinese, Swedish or another language, the English words for it)"
         0 -> "Taiwanese Hokkien dictionary that can also be searched with Mandarin words" to "Chinese words (Mandarin as used in Taiwan, ${script()} characters)"
         2 -> "Cantonese dictionary that can also be searched with Mandarin words" to "Chinese words (${script()} characters; Cantonese words or Mandarin ones)"
         3 -> "Taiwan Hakka dictionary that can also be searched with Mandarin words" to "Chinese words (Mandarin as used in Taiwan, ${script()} characters)"
         else -> "Mandarin Chinese dictionary" to "Chinese words (${script()} characters)"
+    }
+
+    /** 瑞典語, 英語: a word as a dictionary lists it, without the article or infinitive marker Gemini sometimes puts
+     *  before it ("att springa" → springa, "to run" → run, "en bil" → bil) */
+    fun latinHeadword(w: String): String {
+        var s = w.trim().trim('.', ',', ';', '"', '\'')
+        for (pre in listOf("att ", "en ", "ett ", "to ", "a ", "an ", "the ")) if (s.length > pre.length + 1 && s.startsWith(pre, ignoreCase = true)) { s = s.drop(pre.length); break }
+        return s.trim()
     }
 
     class Term(val h: String, val pinyin: String, val meaning: String)
@@ -109,7 +117,8 @@ Reply with JSON only: {"words": [...], "note": "..."}
 If "$q" itself is a real Chinese word, expression, name or slang term, also add "term": {"pinyin": its Mandarin reading in pinyin with tone numbers, one syllable per character separated by spaces (e.g. "chi1 fan4"), "meaning": a short explanation in ${script()} Chinese}. Otherwise "term": null."""
         val j = ask(p)
         val ws = j.optJSONArray("words")
-        val list = if (ws == null) emptyList() else (0 until ws.length()).map { ws.optString(it).trim() }.filter { it.isNotEmpty() && it != q }
+        val list = if (ws == null) emptyList() else (0 until ws.length()).map { ws.optString(it).trim() }
+            .map { if (lang == 5 || lang == 6) latinHeadword(it) else it }.filter { it.isNotEmpty() && it != q }.distinct()
         val t = j.optJSONObject("term")
         val term = t?.optString("pinyin")?.takeIf { it.isNotEmpty() }?.let { Term(q, it, t.optString("meaning")) }
         return Suggestion(list, j.optString("note"), term)

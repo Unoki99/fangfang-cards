@@ -1379,6 +1379,9 @@ final class ZhDict: @unchecked Sendable {
         /// 瑞典語: words found through the English of a 華語 word (汽車 → car → bil), and that English
         var svVia: [Int] = []
         var svViaEnglish = ""
+        /// 瑞典語, 英語: no word found as it was searched (only a compound worked out, or words with it inside):
+        /// Gemini is asked too
+        var weak: Bool { words.isEmpty && starts.isEmpty && svVia.isEmpty && mandarin.isEmpty && defs.isEmpty && english.isEmpty && parts.isEmpty && tones.isEmpty }
         var empty: Bool { svEst == nil && svVia.isEmpty && mandarin.isEmpty && parts.isEmpty && words.isEmpty && starts.isEmpty && contains.isEmpty && defs.isEmpty && english.isEmpty && tones.isEmpty }
     }
 

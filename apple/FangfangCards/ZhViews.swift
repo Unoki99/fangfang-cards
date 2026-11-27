@@ -99,7 +99,10 @@ struct ZhLookupPane: View {
 
     /// a word Gemini gave, when the dictionary has it
     private func geminiRow(_ w: String) -> AnyView? {
-        let idx = Array((dict.isSv ? dict.svIndices(w) : (dict.byHan[w] ?? [])).prefix(3)).filter { $0 < dict.entries.count }
+        // (瑞典語, 英語: a form of a word too, ran → run)
+        var found = dict.isSv ? dict.svIndices(w) : (dict.byHan[w] ?? [])
+        if found.isEmpty && dict.isSv, let k = dict.svKey(w), let i = dict.index[k] { found = [i] }
+        let idx = Array(found.prefix(3)).filter { $0 < dict.entries.count }
         guard !idx.isEmpty else { return nil }
         return AnyView(ForEach(idx, id: \.self) { i in
             EntryLink(value: ZhKey(k: dict.entries[i].k)) { ZhWordRow(dict: dict, entry: dict.entries[i]) }
@@ -167,8 +170,8 @@ struct ZhLookupPane: View {
             } else if found.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
-            // (nothing found: what Gemini thinks was meant, when it's turned on)
-            if !query.isEmpty && found.empty && searched == query {
+            // (nothing found, or 瑞典語 / 英語 nothing as it was searched: what Gemini thinks was meant, when it's on)
+            if !query.isEmpty && (found.empty || (dict.isSv && found.weak)) && searched == query {
                 GeminiSuggestSection(query: query, lang: dict.lang, search: { query = $0 }, row: { geminiRow($0) },
                                      addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil,
                                      addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })

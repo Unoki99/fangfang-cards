@@ -83,8 +83,8 @@ enum Gemini {
         let script = Simp.on ? "Simplified" : "Traditional"
         switch lang {
         case 4: return ("Japanese dictionary", "Japanese words (dictionary forms, written as a Japanese dictionary would list them)")
-        case 5: return ("Swedish dictionary", "Swedish words (base forms, as a Swedish dictionary would list them)")
-        case 6: return ("English dictionary", "English words (base forms, as an English dictionary would list them)")
+        case 5: return ("Swedish dictionary", "Swedish words (base forms, as a Swedish dictionary would list them: no article, no \"att\"; when the search is a meaning in Chinese, English or another language, the Swedish words for it)")
+        case 6: return ("English dictionary", "English words (base forms, as an English dictionary would list them: no article, no \"to\"; when the search is a meaning in Chinese, Swedish or another language, the English words for it)")
         case 0: return ("Taiwanese Hokkien dictionary that can also be searched with Mandarin words", "Chinese words (Mandarin as used in Taiwan, \(script) characters)")
         case 2: return ("Cantonese dictionary that can also be searched with Mandarin words", "Chinese words (\(script) characters; Cantonese words or Mandarin ones)")
         case 3: return ("Taiwan Hakka dictionary that can also be searched with Mandarin words", "Chinese words (Mandarin as used in Taiwan, \(script) characters)")
@@ -93,6 +93,16 @@ enum Gemini {
     }
 
     struct Suggestion { var words: [String] = []; var note = ""; var term: Term? }
+
+    /// 瑞典語, 英語: a word as a dictionary lists it, without the article or infinitive marker Gemini sometimes puts
+    /// before it ("att springa" → springa, "to run" → run, "en bil" → bil)
+    static func latinHeadword(_ w: String) -> String {
+        var s = w.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".,;\"'")))
+        for pre in ["att ", "en ", "ett ", "to ", "a ", "an ", "the "] where s.count > pre.count + 1 && s.lowercased().hasPrefix(pre) {
+            s = String(s.dropFirst(pre.count)); break
+        }
+        return s.trimmingCharacters(in: .whitespaces)
+    }
     /// 華語: the search itself, a term Gemini knows (for 自訂)
     struct Term { let h: String; let pinyin: String; let meaning: String }
 
@@ -119,7 +129,10 @@ enum Gemini {
         let j = try await ask(p)
         var s = Suggestion()
         s.words = ((j["words"] as? [Any]) ?? []).compactMap { $0 as? String }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty && $0 != q }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { lang == 5 || lang == 6 ? latinHeadword($0) : $0 }.filter { !$0.isEmpty && $0 != q }
+        var seenWords = Set<String>()
+        s.words = s.words.filter { seenWords.insert($0).inserted }
         s.note = j["note"] as? String ?? ""
         if let tm = j["term"] as? [String: Any], let py = tm["pinyin"] as? String, !py.isEmpty {
             s.term = Term(h: q, pinyin: py, meaning: tm["meaning"] as? String ?? "")

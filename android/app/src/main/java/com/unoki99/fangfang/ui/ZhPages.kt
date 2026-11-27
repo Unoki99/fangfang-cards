@@ -173,10 +173,11 @@ private fun ZhLookupList(z: ZhDict) {
                 ff(FF.Footnote), T.muted, Modifier.padding(8.dp))
         } else if (f.empty && searched == query) {
             item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
-            if (Gemini.on && f.svEst == null) item {
-                GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
-                    has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query })
-            }
+        }
+        // (nothing found, or 瑞典語 / 英語 nothing as it was searched: what Gemini thinks was meant, when it's on)
+        if (query.isNotEmpty() && searched == query && Gemini.on && (f.empty || (z.isSv && f.weak))) item {
+            GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
+                has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query })
         }
         // 瑞典語: a word the dictionary doesn't have, worked out; words found through a 華語 word's English
         f.svEst?.let { est -> if (est.parts.size > 1 || est.steps.isNotEmpty()) item { Box(Modifier.padding(8.dp)) { SvEstimateBlock(z, est) } } }

@@ -915,7 +915,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
 
     fun entry(k: String): ZhEntry? = index[k]?.let { entries[it] }
     /** whether the dictionary has the word (as written; 瑞典語 / 英語: in small letters, or one of its forms) */
-    fun has(w: String): Boolean = byHan.containsKey(w) || byHan.containsKey(buildString { w.codePoints().forEach { appendCodePoint(Simp.reverse(it) ?: it) } }) || (isSv && byPlain.containsKey(w.lowercase()))
+    fun has(w: String): Boolean = byHan.containsKey(w) || byHan.containsKey(buildString { w.codePoints().forEach { appendCodePoint(Simp.reverse(it) ?: it) } }) || (isSv && (byPlain.containsKey(w.lowercase()) || svKey(w) != null))
     fun others(e: ZhEntry): List<ZhEntry> = (byHan[e.h] ?: emptyList<Int>()).map { entries[it] }.filter { it.k != e.k && it.h == e.h }
 
     // MARK: readings
@@ -1272,6 +1272,9 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         /** 瑞典語: words found through the English of a 華語 word (汽車 → car → bil), and that English */
         val svVia = ArrayList<Int>()
         var svViaEnglish = ""
+        /** 瑞典語, 英語: no word found as it was searched (only a compound worked out, or words with it inside): Gemini is
+         *  asked too */
+        val weak: Boolean get() = words.isEmpty() && starts.isEmpty() && svVia.isEmpty() && mandarin.isEmpty() && defs.isEmpty() && english.isEmpty() && parts.isEmpty() && tones.isEmpty()
         val empty: Boolean get() = svEst == null && svVia.isEmpty() && mandarin.isEmpty() && parts.isEmpty() && words.isEmpty() && starts.isEmpty() && contains.isEmpty() && defs.isEmpty() && english.isEmpty() && tones.isEmpty()
     }
 
