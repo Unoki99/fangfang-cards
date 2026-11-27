@@ -112,17 +112,22 @@ object RadioDirectory {
 
 /** the words to search Radio Browser with, for each language of the app */
 object RadioLang {
-    val languages = listOf(listOf("taiwanese", "hokkien", "min nan", "台語"), listOf("mandarin", "chinese", "華語", "國語"),
-        listOf("cantonese", "粵語", "廣東話"), listOf("hakka", "客家", "客語"), listOf("japanese"))
-    val countries = listOf(listOf("TW"), listOf("TW", "CN"), listOf("HK", "MO"), listOf("TW"), listOf("JP"))
+    // (瑞典語, 英語: only where the app has them, on a computer)
+    private val allLanguages = listOf(listOf("taiwanese", "hokkien", "min nan", "台語"), listOf("mandarin", "chinese", "華語", "國語"),
+        listOf("cantonese", "粵語", "廣東話"), listOf("hakka", "客家", "客語"), listOf("japanese"), listOf("swedish"), listOf("english"))
+    val languages: List<List<String>> get() = allLanguages.take(com.unoki99.fangfang.engine.Lang.count)
+    val countries = listOf(listOf("TW"), listOf("TW", "CN"), listOf("HK", "MO"), listOf("TW"), listOf("JP"), listOf("SE"), listOf("GB", "US"))
     /** the stations a language starts with: found by name in Radio Browser the first time they're played */
-    val starters = listOf(
+    val starters: List<Triple<Int, String, Pair<String, String>>> get() = allStarters.filter { it.first < com.unoki99.fangfang.engine.Lang.count }
+    private val allStarters = listOf(
         Triple(0, "國立教育廣播電台", "教育廣播" to "TW"), Triple(0, "寶島聯播網", "寶島" to "TW"), Triple(0, "Rti 中央廣播電臺", "Rti" to "TW"),
         Triple(1, "飛碟電台 UFO", "飛碟" to "TW"), Triple(1, "Hit FM", "Hit FM" to "TW"), Triple(1, "中廣流行網 i like radio", "中廣" to "TW"),
         Triple(1, "中國之聲", "中国之声" to "CN"),
         Triple(2, "香港電台第一台", "RTHK Radio 1" to "HK"), Triple(2, "香港電台第二台", "RTHK Radio 2" to "HK"), Triple(2, "商業電台 叱咤903", "903" to "HK"),
         Triple(3, "講客廣播電台", "講客" to "TW"), Triple(3, "寶島客家廣播電台", "客家" to "TW"),
         Triple(4, "NHK ラジオ第1", "NHK" to "JP"), Triple(4, "J-WAVE", "J-WAVE" to "JP"),
+        Triple(5, "Sveriges Radio P1", "P1" to "SE"), Triple(5, "Sveriges Radio P4 Stockholm", "P4 Stockholm" to "SE"), Triple(5, "Sveriges Radio P3", "P3" to "SE"),
+        Triple(6, "BBC World Service", "BBC World Service" to "GB"), Triple(6, "BBC Radio 1", "BBC Radio 1" to "GB"), Triple(6, "NPR", "NPR" to "US"),
     )
 }
 

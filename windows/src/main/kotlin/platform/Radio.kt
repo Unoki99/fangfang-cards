@@ -43,6 +43,12 @@ object Radio {
         @Suppress("UNCHECKED_CAST")
         val l = try { (JReader(Prefs.radioStations.value.ifEmpty { "[]" }).any() as? List<Any?>)?.mapNotNull { (it as? Map<String, Any?>)?.let(RadioStation::from) } } catch (_: Exception) { null }
         if (l.isNullOrEmpty() && !Prefs.radioStarted.value) { restoreStarters(); Prefs.radioStarted.value = true } else stations.addAll(l ?: emptyList())
+        // (瑞典語's and 英語's stations, added later: given once to a list made before, where the app has them)
+        if (com.unoki99.fangfang.engine.Lang.count > 5 && !Prefs.radioStartedSvEn.value) {
+            for ((lang, name, q) in RadioLang.starters) if (lang >= 5 && stations.none { it.starter && it.name == name })
+                stations.add(RadioStation(java.util.UUID.randomUUID().toString(), name, lang, query = q.first, country = q.second, starter = true))
+            save(); Prefs.radioStartedSvEn.value = true
+        }
         // (the minutes listened, what the station sends, 電台鬧鐘: RadioExtras.kt)
         RadioExtras.start()
     }

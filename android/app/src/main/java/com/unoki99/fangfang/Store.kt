@@ -287,6 +287,7 @@ object Store {
                 // (said only when it's still the one wanted; another one chosen meanwhile is read next)
                 if (latestWanted == want) {
                     zhError = if (e is java.io.FileNotFoundException) tr("還沒有{0}詞典：到「設定 → 詞典資料」安裝。", tr(Lang.names[want]))
+                        else if (e is BrokenDictionary) tr("{0}詞典的檔案壞了：到「設定 → 詞典資料」重新安裝。", tr(Lang.names[want]))
                         else "${Lang.names[want]}詞典讀取失敗：${e.javaClass.simpleName} ${e.message ?: ""}"
                     // (shown with an empty deck while it was being read: back to 台語)
                     if (placeholder) { placeholder = false; if (otherKind == 0) swapDecks(); shown(0) }
@@ -321,7 +322,13 @@ object Store {
             val name = listOf("zh", "zh", "yue", "hak", "ja", "sv", "en")[kind.coerceIn(0, 6)]
             // (the dictionary shown before is let go first: two big ones at once don't fit in memory)
             if (have == null && zh != null) { withContext(Dispatchers.Main) { zh = null }; System.gc() }
-            val d = have ?: ZhDict(DataFiles.reader(name) ?: throw java.io.FileNotFoundException("$name.json"), accent).also { d ->
+            // (a file that isn't this language's dictionary, or can't be read as one, e.g. half made, or the iPad's
+            // copy on a Mac from before: "not installed yet" when the app has none of its own, "broken" when it has)
+            val d = have ?: (try { ZhDict(DataFiles.reader(name) ?: throw java.io.FileNotFoundException("$name.json"), accent) }
+                catch (e: OutOfMemoryError) { throw e }
+                catch (e: java.io.FileNotFoundException) { throw e }
+                catch (e: Exception) { throw if (DataFiles.isInstalled(name)) BrokenDictionary(e) else java.io.FileNotFoundException("$name.json") }
+                ).also { if (it.lang != kind) throw if (DataFiles.isInstalled(name)) BrokenDictionary(null) else java.io.FileNotFoundException("$name.json") }.also { d ->
                 // 粵語, 客語: the radicals (部首查字) from the 華語 data, when it's there
                 if (d.lang != 1 && d.lang != 4 && d.lang != 5 && d.lang != 6) DataFiles.reader("zh")?.let { z -> try { d.borrowRadicals(z) } catch (_: Exception) {} }
             }
@@ -1702,3 +1709,6 @@ object Store {
         return "這不是方方的備份檔。"
     }
 }
+
+/** a dictionary file installed in the app that can't be read as that language's dictionary */
+class BrokenDictionary(cause: Throwable?) : Exception("broken dictionary file", cause)

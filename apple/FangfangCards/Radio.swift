@@ -212,6 +212,7 @@ enum RadioLang {
         ["hakka", "客家", "客語"],
         ["japanese"],
         ["swedish"],
+        ["english"],
     ]
     static let countries = [["TW"], ["TW", "CN"], ["HK", "MO"], ["TW"], ["JP"], ["SE"], ["GB", "US"]]
 
@@ -307,7 +308,16 @@ final class RadioPlayer: ObservableObject {
     private init() {
         if let d = UserDefaults.standard.data(forKey: key), let s = try? JSONDecoder().decode([RadioStation].self, from: d) {
             stations = s
+            // (英語's stations, added later: given once to a list made before)
+            if !UserDefaults.standard.bool(forKey: "radioStartedEn") {
+                for st in RadioLang.starters where st.lang == 6 && !stations.contains(where: { $0.starter && $0.name == st.name }) {
+                    stations.append(RadioStation(name: st.name, lang: st.lang, query: st.query, country: st.country, starter: true))
+                }
+                if let d = try? JSONEncoder().encode(stations) { UserDefaults.standard.set(d, forKey: key) }
+            }
+            UserDefaults.standard.set(true, forKey: "radioStartedEn")
         } else {
+            UserDefaults.standard.set(true, forKey: "radioStartedEn")
             stations = RadioLang.starters.map {
                 RadioStation(name: $0.name, lang: $0.lang, query: $0.query, country: $0.country, starter: true)
             }

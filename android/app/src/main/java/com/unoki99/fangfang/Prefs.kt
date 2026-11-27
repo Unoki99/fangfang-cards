@@ -153,6 +153,8 @@ object Prefs : KeyValue {
     /** 電台: 我的電台 (JSON), and whether the starter stations were put in once */
     val radioStations = Pref("radioStations", "")
     val radioStarted = Pref("radioStarted", false)
+    /** 瑞典語's and 英語's stations (added later, on a computer) given once to a list made before */
+    val radioStartedSvEn = Pref("radioStartedSvEn", false)
     /** 電台鬧鐘: on / off, the time (minutes after midnight), the station; 我的歌 (JSON) */
     val radioAlarmOn = Pref("radioAlarmOn", false)
     val radioAlarmTime = Pref("radioAlarmTime", 7 * 60)
@@ -277,7 +279,7 @@ object Prefs : KeyValue {
         swaps, swapOff, compareA, compareB, backupFolder, lastBackup, deviceId,
         lang, zhRom, zhPlace, zhList, zhTopic, zhDictTab, zhLookupQuery, zhConvText, wordGap, imeOn, imeCJ, imeWB, imeLiu,
         copyTpl, copyEx, copySep, copyGap, memoryPairs, practiceTw, practiceZh, practiceByLang, practiceGroups, zhEnglish, hideReading, practiceWrite, themeMotion, motionSaver,
-        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, numbersMode, numbersLevel, dragonBest, dragonSeconds, dragonHand, relayServer, geminiKey, geminiOn, geminiModel, setupDone, appIcon, coopName, coopMode, coopRounds, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, enRom, enShowEn, enShowZh, enShowSv, enList, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
+        zhCopyTpl, zhCopyEx, zhCopySep, handTrace, freeCell, freeText, idiomSource, idiomCount, idiomReading, lockWord, lockSource, radioStations, radioStarted, radioStartedSvEn, handList, handShuffle, handOwn, handPad, handPressure, handRainbow, handInk, handFont, handWidth, handDelay, radicalMode, zhCompareA, zhCompareB, toneColorsTw, toneColorsZh, toneColorsYue, toneColorsHak, mandRom, yueRom, hakRom, hakAccent, lastZh, convertTab, readingsQuery, simplified, pickedLanguage, sidewaysButtons, uiLanguage, jaRom, twEnglish, hakEnglish, handNumbers, handTestPad, fallingBest, numbersMode, numbersLevel, dragonBest, dragonSeconds, dragonHand, relayServer, geminiKey, geminiOn, geminiModel, setupDone, appIcon, coopName, coopMode, coopRounds, weekPickTopic, dictFont, lyricsReadings, lyricsFloatSize, lyricsFloatReadings, lyricsFloatWidth, songLanguages, radioAlarmOn, radioAlarmTime, radioAlarmStation, savedSongs, karaokeSize, karaokeReadings, lyricsBall, lyricsBallLead, svRom, enRom, enShowEn, enShowZh, enShowSv, enList, svGuessZh, svMeanings, convAnyPlace) + copyOn + copyStyle + copyPreText + jaColors + svColors
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return

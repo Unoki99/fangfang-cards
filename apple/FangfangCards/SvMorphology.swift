@@ -802,6 +802,8 @@ struct SvConvertPane: View {
         let newLine: Bool
         /// (a compound the dictionary doesn't have: its parts' entries)
         var parts: [String] = []
+        /// 英語: the word's IPA (英式 or 美式, as chosen; "" none)
+        var ipa: String = ""
     }
 
     /// (歌詞: the page on screen. Off it (another tab, the lyrics bar over another page) its words stop following
@@ -825,7 +827,7 @@ struct SvConvertPane: View {
                 if lyrics {
                     if !words.isEmpty {
                         // (letters only: no glow here, it got slow)
-                        LyricsColumns { coloured; if lyricsReadings { split } }.environment(\.noToneGlow, true)
+                        LyricsColumns { coloured; if lyricsReadings && !(dict.isEn && UserDefaults.standard.integer(forKey: Lang.enRomKey) == 3) { split } }.environment(\.noToneGlow, true)
                     }
                 } else {
                 ZStack(alignment: .topLeading) {
@@ -906,7 +908,10 @@ struct SvConvertPane: View {
     private func ink(_ w: Tok, hyphens: Bool) -> AttributedString {
         var out = AttributedString()
         var lead = AttributedString(w.lead); lead.swiftUI.foregroundColor = T.muted; out += lead
-        if w.ms.isEmpty {
+        if dict.isEn && hyphens {
+            // (英語: the IPA side, the word itself where there's none)
+            var a = AttributedString(w.ipa.isEmpty ? w.core : w.ipa); a.swiftUI.foregroundColor = w.ipa.isEmpty ? T.muted : T.glyph; out += a
+        } else if w.ms.isEmpty {
             var a = AttributedString(w.core); a.swiftUI.foregroundColor = T.glyph; out += a
         } else if hyphens {
             for (i, m) in w.ms.enumerated() {
@@ -934,7 +939,7 @@ struct SvConvertPane: View {
     }
 
     private var coloured: some View {
-        box(trs("瑞典文"), copy: 0) {
+        box(trs(dict.isEn ? "英文" : "瑞典文"), copy: 0) {
             SwellWords(pieces: words.map { (ink($0, hyphens: false) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3,
                        beat: liveBeat) { j in
                 if let k = words[j].key { focused = false; remember(k, j); tapped = ZhKey(k: k) }
@@ -947,7 +952,7 @@ struct SvConvertPane: View {
 
     /// the text with its words split into morphemes
     private var split: some View {
-        box(trs("詞素"), copy: 1) {
+        box(trs(dict.isEn ? "讀音（IPA）" : "詞素"), copy: 1) {
             if lyrics {
                 // (the 歌詞 window: these words swell and open too)
                 SwellWords(pieces: words.map { (ink($0, hyphens: true) + AttributedString(" "), $0.key != nil || !$0.parts.isEmpty, $0.newLine, 0) }, vPad: 3,
@@ -1005,7 +1010,7 @@ struct SvConvertPane: View {
         var out = ""
         for (n, w) in words.enumerated() {
             if n > 0 { out += w.newLine ? "\n" : " " }
-            out += w.lead + (w.ms.isEmpty ? w.core : w.ms.map(\.text).joined(separator: "-")) + w.tail
+            out += w.lead + (dict.isEn ? (w.ipa.isEmpty ? w.core : w.ipa) : w.ms.isEmpty ? w.core : w.ms.map(\.text).joined(separator: "-")) + w.tail
         }
         return out
     }
@@ -1038,6 +1043,20 @@ struct SvConvertPane: View {
                 let rest = s.dropFirst(lead.count)
                 let tail = String(rest.reversed().prefix { !$0.isLetter && !$0.isNumber }.reversed())
                 let core = String(rest.dropLast(tail.count))
+                if d.isEn {
+                    // (英語: no morphemes; the word's entry (or the word its form is of) and its IPA, one only)
+                    let key = core.isEmpty ? nil : d.svKey(core)
+                    var ipa = ""
+                    if let k = key, let e = d.entry(k) {
+                        let uk = e.tw.first.flatMap { $0 == "-" || $0.isEmpty ? nil : $0 }
+                        let us = e.tw.count > 1 ? (e.tw[1] == "-" || e.tw[1].isEmpty ? nil : e.tw[1]) : nil
+                        let r = UserDefaults.standard.integer(forKey: Lang.enRomKey)
+                        if r != 3 { ipa = (r == 1 ? (us ?? uk) : (uk ?? us)) ?? "" }
+                    }
+                    out.append(Tok(lead: lead, core: core, tail: tail, ms: [], key: key, newLine: first, ipa: ipa))
+                    first = false
+                    continue
+                }
                 let ms = core.isEmpty ? [] : d.svMorphemes(ofWord: core)
                 let key = ms.isEmpty ? nil : d.svKey(core)
                 let parts = key == nil && !ms.isEmpty ? (d.svEstimate(core)?.parts ?? []).compactMap { $0.entry.map { d.entries[$0].k } } : []

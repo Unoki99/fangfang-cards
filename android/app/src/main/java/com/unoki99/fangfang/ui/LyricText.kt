@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.withStyle
 import com.unoki99.fangfang.*
 import com.unoki99.fangfang.engine.*
 
@@ -180,7 +182,8 @@ internal fun lyricWords(line: String): List<LyricWord> = try {
 /** the line's reading (華語: 拼音／注音; 台語: in the spelling chosen), in tone colours when they're on */
 internal fun lyricReading(line: String): AnnotatedString? = try {
     val z = lyricZh(); val d = Store.dict
-    if (readAsZh(z) && z!!.isSv) (if (Prefs.zhRom.value == 0) z.svSentence(line, true, T.greenInk.argbInt()).annotated() else null)
+    if (readAsZh(z) && z!!.isEn) (if (Prefs.enRom.value == 3) null else enIpaLine(z, line))
+    else if (readAsZh(z) && z!!.isSv) (if (Prefs.zhRom.value == 0) z.svSentence(line, true, T.greenInk.argbInt()).annotated() else null)
     else if (readAsZh(z)) z!!.sentence(z.convertPieces(line), Prefs.zhRom.value, Prefs.zhPlace.value).annotated()
     else if (d != null && !waitingForSongDict()) {
         val e = twEngine(d)
@@ -227,5 +230,20 @@ object LyricsScript {
         var n = 0
         for (c in s) if (c in marks) { n++; if (n >= 3) return true }
         return false
+    }
+}
+
+/** 英語 lyrics: each word's IPA (英式, or 美式 when that's chosen), the word itself in grey where there's none */
+private fun enIpaLine(z: ZhDict, line: String): AnnotatedString = buildAnnotatedString {
+    val us = Prefs.enRom.value == 1
+    for ((n, w) in line.split(" ").filter { it.isNotEmpty() }.withIndex()) {
+        if (n > 0) append("  ")
+        val (lead, core, tail) = svSplitWord(w)
+        val e = if (core.isEmpty()) null else z.svKey(core)?.let { z.entry(it) }
+        val uk = e?.tw?.getOrNull(0)?.takeIf { it != "-" && it.isNotEmpty() }
+        val am = e?.tw?.getOrNull(1)?.takeIf { it != "-" && it.isNotEmpty() }
+        val ipa = if (us) am ?: uk else uk ?: am
+        if (ipa != null) { append(lead); withStyle(SpanStyle(color = T.greenInk)) { append(ipa) }; append(tail) }
+        else withStyle(SpanStyle(color = T.muted)) { append(w) }
     }
 }

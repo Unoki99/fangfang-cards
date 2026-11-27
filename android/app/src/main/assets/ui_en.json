@@ -1961,5 +1961,7 @@
  "資料：ECDICT（MIT：英文解釋、中文解釋、詞頻、Collins 星級、考試詞表）；美式讀音：CMUdict（BSD）；瑞典文和例句：Folkets lexikon（KTH，CC BY-SA 2.5）；正體字：CC-CEDICT（CC BY-SA）。": "Sources: ECDICT (MIT: English and Chinese meanings, frequency, Collins stars, exam lists); American readings: CMUdict (BSD); Swedish and example sentences: Folkets lexikon (KTH, CC BY-SA 2.5); traditional characters: CC-CEDICT (CC BY-SA).",
  "選幾個等級": "Pick some levels",
  "選擇": "Select",
- "＋存成自訂詞": "+ Save as my own word"
+ "＋存成自訂詞": "+ Save as my own word",
+ "{0}詞典的檔案壞了：到「設定 → 詞典資料」重新安裝。": "The {0} dictionary's file is broken: install it again in Settings → Dictionary data.",
+ "讀音（IPA）": "Reading (IPA)"
 }
