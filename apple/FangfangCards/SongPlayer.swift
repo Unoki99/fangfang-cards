@@ -184,7 +184,7 @@ final class SongPlayer: ObservableObject {
 
     /// (to compare names: 繁體, small letters, no brackets, only letters and numbers)
     static func norm(_ s: String) -> String {
-        var t = LyricsSource.traditional(s) ?? s
+        var t = LyricsSource.traditionalForMatching(s) ?? s
         for junk in [#"\([^)]*\)"#, #"（[^）]*）"#, #"\[[^\]]*\]"#, #"(?i)\bfeat\..*$"#] {
             t = t.replacingOccurrences(of: junk, with: "", options: .regularExpression)
         }

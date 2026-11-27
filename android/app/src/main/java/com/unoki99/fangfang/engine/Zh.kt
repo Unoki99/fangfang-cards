@@ -100,6 +100,9 @@ object Simp {
             val best = m.maxByOrNull { it.value } ?: continue
             if (best.value <= (kept[x] ?: 0)) continue
             table.putIfAbsent(x, best.key)
+            // (back to 正體 only when the 簡體 character isn't a 正體 one of its own in more words: 法 stays 法, not
+            // 灋, though 灋's 簡體 is 法)
+            if (best.value <= (kept[best.key] ?: 0)) continue
             val b = backVotes[best.key]
             if (b == null || best.value > b.second) backVotes[best.key] = Pair(x, best.value)
         }

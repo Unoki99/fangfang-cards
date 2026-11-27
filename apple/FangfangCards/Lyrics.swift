@@ -146,10 +146,27 @@ enum LyricsSource {
         return []
     }
 
-    /// 簡體 → 繁體 (nil when the text doesn't change or the phone can't do it)
+    /// 簡體 → 繁體 (nil when the text doesn't change): character by character with the dictionaries' own pairs (the
+    /// same as the Android and computer versions'), so a 正體 character is left as it is (法 stays 法). Lyrics that
+    /// look 台語 are left as they are: 台語 writes 个 and 個 as two words.
     static func traditional(_ s: String) -> String? {
+        guard Simp.canReverse, !looksTaiwanese(s) else { return nil }
+        let t = String(s.map { Simp.reverse($0) ?? $0 })
+        return t == s ? nil : t
+    }
+
+    /// (for comparing names only: the phone's own 簡 → 繁)
+    static func traditionalForMatching(_ s: String) -> String? {
         guard let t = s.applyingTransform(StringTransform("Hans-Hant"), reverse: false), t != s else { return nil }
         return t
+    }
+
+    /// words only 台語 writes (佇, 毋, 袂, 恁, 阮, 咧 …): three or more of them, the lyrics are 台語
+    static func looksTaiwanese(_ s: String) -> Bool {
+        let marks: Set<Character> = ["佇", "毋", "袂", "恁", "阮", "咧", "佮", "媠", "攏", "矣", "囝", "遮", "遐", "閣"]
+        var n = 0
+        for c in s where marks.contains(c) { n += 1; if n >= 3 { return true } }
+        return false
     }
 }
 

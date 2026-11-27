@@ -211,11 +211,21 @@ object LyricsScript {
     /** whether the lyrics are shown changed (only when they had 簡體 in them) */
     fun applies(): Boolean = langNow() in 1..3 && !Prefs.simplified.value
     fun shown(text: String): String = if (keepSimplified || !applies()) text else traditional(text)
+    /** (lyrics that look 台語 are left as they are: 台語 writes 个 and 個 as two words) */
     fun traditional(text: String): String {
+        if (looksTaiwanese(text)) return text
         val sb = StringBuilder()
         text.codePoints().forEach { sb.appendCodePoint(Simp.reverse(it) ?: it) }
         return sb.toString()
     }
     /** there's something to switch (the lyrics have 簡體 characters) */
     fun canSwitch(text: String): Boolean = applies() && traditional(text) != text
+
+    /** words only 台語 writes (佇, 毋, 袂, 恁, 阮, 咧 …): three or more of them, the lyrics are 台語 */
+    private val marks = "佇毋袂恁阮咧佮媠攏矣囝遮遐閣".toSet()
+    fun looksTaiwanese(s: String): Boolean {
+        var n = 0
+        for (c in s) if (c in marks) { n++; if (n >= 3) return true }
+        return false
+    }
 }

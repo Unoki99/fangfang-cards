@@ -390,20 +390,28 @@ enum Simp {
         for (x, m) in changed {
             guard let best = m.max(by: { $0.value < $1.value }), best.value > kept[x, default: 0] else { continue }
             t[x] = best.key
+            // (back to 正體 only when the 簡體 character isn't a 正體 one of its own in more words: 法 stays 法, not
+            // 灋, though 灋's 簡體 is 法)
+            guard best.value > kept[best.key, default: 0] else { continue }
             if b[best.key].map({ best.value > $0.1 }) ?? true { b[best.key] = (x, best.value) }
         }
         lock.lock()
         table.merge(t) { old, _ in old }
         for (s, v) in b where backVotes[s] == nil { backVotes[s] = v.0 }
+        for (c, n) in kept { keptCount[c, default: 0] += n }
         back = [:]
         lock.unlock()
     }
     nonisolated(unsafe) private static var backVotes: [Character: Character] = [:]
+    /// how many words have each character unchanged (a 正體 character of its own)
+    nonisolated(unsafe) private static var keptCount: [Character: Int] = [:]
+    /// whether there are pairs to go back to 正體 with
+    static var canReverse: Bool { lock.lock(); defer { lock.unlock() }; return !backVotes.isEmpty || !table.isEmpty }
 
     /// a 簡體 character's 正體 one (the one most words have)
     static func reverse(_ c: Character) -> Character? {
         lock.lock(); defer { lock.unlock() }
-        if back.isEmpty { back = backVotes; for (t, s) in table where back[s] == nil { back[s] = t } }
+        if back.isEmpty { back = backVotes; for (t, s) in table where back[s] == nil && keptCount[s, default: 0] == 0 { back[s] = t } }
         return back[c]
     }
     nonisolated(unsafe) private static var back: [Character: Character] = [:]
