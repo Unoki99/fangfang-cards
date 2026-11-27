@@ -1076,8 +1076,14 @@ final class LateInk: UIView {
         setNeedsDisplay()
     }
 
+    // (taken off the screen, as the iPhone's big square is when another is chosen: the timer stops)
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { link?.invalidate(); link = nil }
+    }
+
     private func run() {
-        guard link == nil else { return }
+        guard link == nil, window != nil else { return }
         let l = CADisplayLink(target: self, selector: #selector(tick))
         l.add(to: .main, forMode: .common)
         link = l
@@ -2329,8 +2335,10 @@ struct GameWriteSquares: View {
                         ForEach(drawings.indices, id: \.self) { i in
                             ZStack {
                                 RoundedRectangle(cornerRadius: 10).fill(T.fn.opacity(0.75))
-                                if !drawings[i].strokes.isEmpty, side > 0 {
-                                    Image(uiImage: Self.picture(drawings[i], side)).resizable().scaledToFit()
+                                // (drawn from the strokes' points: making a picture of a canvas's drawing here, while
+                                // the canvas is being taken away and a new one made, stopped the app on iPhone)
+                                if drawings.indices.contains(i), !drawings[i].strokes.isEmpty, side > 0 {
+                                    InkLinesView(lines: InkLine.from(drawings[i], side: side)).padding(3)
                                 }
                             }
                             .frame(width: 52, height: 52)
@@ -2339,7 +2347,8 @@ struct GameWriteSquares: View {
                         }
                     }
                 }
-                square(cur).id(cur).frame(width: sideFor(1), height: sideFor(1)).frame(maxWidth: .infinity)
+                let at = min(max(cur, 0), max(drawings.count - 1, 0))
+                square(at).id(at).frame(width: sideFor(1), height: sideFor(1)).frame(maxWidth: .infinity)
             }
             HStack(spacing: 10) {
                 Button { clear(wide ? nil : cur) } label: {
@@ -2388,7 +2397,7 @@ struct GameWriteSquares: View {
                 .onAppear { side = w }
                 .onChange(of: w) { side = w }
             }
-            if i < clears.count {
+            if i < clears.count, i < drawings.count {
                 WritingPad(clearCount: clears[i], initial: drawings[i]) { d in
                     if i < drawings.count { drawings[i] = d }
                 }
@@ -2408,13 +2417,16 @@ struct GameWriteSquares: View {
         }
     }
     private func add() {
-        drawings.append(PKDrawing()); clears.append(0)
-        cur = drawings.count - 1
+        guard drawings.count < 8 else { return }
+        clears.append(0)
+        drawings.append(PKDrawing())
+        // (the new square once the list has it: on iPhone the big square is made again for it)
+        DispatchQueue.main.async { cur = max(drawings.count - 1, 0) }
     }
     private func removeLast() {
         guard drawings.count > 1 else { return }
-        drawings.removeLast(); clears.removeLast()
-        cur = min(cur, drawings.count - 1)
+        cur = min(cur, drawings.count - 2)
+        drawings.removeLast(); if clears.count > drawings.count { clears.removeLast() }
     }
 
     /// a square's writing as a picture (in the colours as written)
@@ -2456,6 +2468,31 @@ struct InkLine: Codable {
         let t = c.hasPrefix("#") ? String(c.dropFirst()) : c
         guard t.count == 6, let v = UInt32(t, radix: 16) else { return Color(white: 0.1) }
         return Color(hex: v)
+    }
+}
+
+/// strokes drawn from their points (InkLine: parts of the square's side)
+struct InkLinesView: View {
+    let lines: [InkLine]
+    var body: some View {
+        Canvas { ctx, sz in
+            let w = min(sz.width, sz.height)
+            for l in lines {
+                let n = l.p.count / 3
+                func pt(_ k: Int) -> CGPoint { CGPoint(x: l.p[k * 3] * w, y: l.p[k * 3 + 1] * w) }
+                if n == 1 {
+                    let r = max(l.p[2] * w / 2, 0.75)
+                    ctx.fill(Path(ellipseIn: CGRect(x: pt(0).x - r, y: pt(0).y - r, width: r * 2, height: r * 2)), with: .color(l.color))
+                }
+                if n >= 2 {
+                    for k in 1..<n {
+                        var seg = Path(); seg.move(to: pt(k - 1)); seg.addLine(to: pt(k))
+                        ctx.stroke(seg, with: .color(l.color), style: StrokeStyle(lineWidth: max(l.p[k * 3 + 2] * w, 0.75), lineCap: .round))
+                    }
+                }
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
     }
 }
 
