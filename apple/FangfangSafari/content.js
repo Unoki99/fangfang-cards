@@ -2230,6 +2230,8 @@
     // the language wanted: 台語, then 繁體, 粵語, 簡體, 日語, 瑞典語; written ones before automatic ones
     const SUBS_ORDER = ["nan", "zh-TW", "zh-Hant", "zh-HK", "yue", "zh", "zh-Hans", "zh-CN", "zh-SG", "ja", "sv"];
     function subsRank(t) {
+        // (英語 on: English ones first)
+        if (activeLang() === "eng" && /^en/i.test(t.lang)) return t.kind === "asr" ? 1 : 0;
         let i = SUBS_ORDER.findIndex(l => t.lang === l || t.lang.toLowerCase() === l.toLowerCase());
         if (i < 0) i = /^zh/i.test(t.lang) ? 8 : 99;
         return i * 2 + (t.kind === "asr" ? 1 : 0);
@@ -3491,7 +3493,7 @@
     function subsLangNow(meta) {
         // (自動: the add-on's one language, when it's one the subtitles can be read in; else the subtitles' own)
         const a = activeLang();
-        const auto = ["zh", "tw", "yue", "hak"].includes(a) ? a : subsLangOfTrack();
+        const auto = ["zh", "tw", "yue", "hak", "eng"].includes(a) ? a : subsLangOfTrack();
         const want = prefs.subsLang && prefs.subsLang !== "auto" ? prefs.subsLang : auto;
         return subsHas(want, meta) ? want : "zh";
     }
@@ -3499,7 +3501,7 @@
     function subsParts(e, L, meta) {
         // (the subtitles' own tone-colour setting, while their words are made)
         colFor = subsCol();
-        try { return L === "tw" ? twParts(e, meta) : L === "yue" ? yueParts(e) : L === "hak" ? hakParts(e, meta) : zhParts(e, meta); }
+        try { return L === "eng" ? engParts(e) : L === "tw" ? twParts(e, meta) : L === "yue" ? yueParts(e) : L === "hak" ? hakParts(e, meta) : zhParts(e, meta); }
         finally { colFor = null; }
     }
     /// the entry to use of a word's entries (華語: not 四川話's own words, unless 四川話 is chosen)
@@ -3531,9 +3533,12 @@
             const nm = `d-${SL}-${String(i).padStart(3, "0")}.json`;
             if (!files.has(nm)) files.set(nm, await getFile(nm));
         }));
-        // English subtitles: the parts of the 英語 dictionary their words are in (each word, and without -s / -ing / -ed)
-        const enOn = !!(prefs.subsEnZh && meta.eng);
-        if (enOn) {
+        // English subtitles: the parts of the 英語 dictionary their words are in (each word, and without -s / -ing / -ed).
+        // 英語 on: the words you don't know marked, with their Chinese over them (engMode); else, with 英文字幕下面標中文,
+        // the Chinese under every English word (enOn)
+        const engMode = SL === "eng" && !!meta.eng;
+        const enOn = !engMode && !!(prefs.subsEnZh && meta.eng);
+        if (enOn || engMode) {
             const names = new Set();
             for (const c of st.cues) for (const m of String(c.t).matchAll(/[A-Za-z][A-Za-z'-]+/g)) {
                 for (const w of subsEnForms(m[0].toLowerCase())) names.add(engShard(w, meta));
@@ -3557,10 +3562,37 @@
             const annoOn = !!(prefs.subsRd || prefs.subsGl);
             const flush = () => {
                 if (!plain) return;
-                if (!annoOn && !enOn) frag.appendChild(document.createTextNode(plain));
+                if (!annoOn && !enOn && !engMode) frag.appendChild(document.createTextNode(plain));
                 else for (const t of plain.split(/(\s+)/)) {
                     if (!t) continue;
                     if (/^\s+$/.test(t)) { frag.appendChild(document.createTextNode(t)); continue; }
+                    // 英語: a word you don't know (認識 ones as they are): its Chinese over it, a line under it
+                    if (engMode) {
+                        const hit = subsEngEntry(t, files, meta);
+                        if (hit) {
+                            const head = hit.e.k.split("\t")[0];
+                            const known = isKnownIn(hit.w, "eng") || isKnownIn(head, "eng") || isKnownIn(head.toLowerCase(), "eng");
+                            const rare = hit.e.f == null || hit.e.f >= (prefs.subsRare || 3000);
+                            const mode = prefs.subsMark || "new";
+                            const marked = mode === "rare" ? rare : mode === "both" ? (!known && rare) : !known;
+                            if (knownSet) { total++; if (known) knownN++; }
+                            if (marked) {
+                                if (!unk.some(u => u.w === head)) unk.push({ w: head, e: hit.e, L: "eng", learn: learnIn(head, "eng") });
+                                st.hasEn = true;
+                                let box = subsEngBox(frag, subsEngZh(hit.e));
+                                if (knownSet && !known) {
+                                    const u = document.createElement("span");
+                                    u.className = learnIn(head, "eng") ? "learn" : "new";
+                                    box.appendChild(u); box = u;
+                                }
+                                box.appendChild(document.createTextNode(t));
+                                continue;
+                            }
+                        }
+                        if (annoOn) subsAnnotate(frag, null, null).appendChild(document.createTextNode(t));
+                        else frag.appendChild(document.createTextNode(t));
+                        continue;
+                    }
                     // (an English word: the Chinese for it under it)
                     const g = enOn ? subsEnGloss(t, SL, files, meta) : "";
                     if (g) { st.hasEn = true; subsEnBox(frag, g).appendChild(document.createTextNode(t)); }
@@ -3709,6 +3741,36 @@
         // (the 英語 dictionary's first Chinese meaning, without its word class: "n. 跑、賽跑" → 跑、賽跑)
         const zh = String(hit[0].m || "").split("；")[0].replace(/^\s*([a-z]+\.\s*)+/, "");
         return zh.split(/[、，,]/).map(x => x.trim()).filter(Boolean).slice(0, 2).join("、");
+    }
+    /// 英語: a word of the subtitles in the dictionary (as it is, or a form of it): {e: its entry, w: as looked up}
+    function subsEngEntry(token, files, meta) {
+        const m = token.match(/^[^A-Za-z]*([A-Za-z][A-Za-z'-]*)[^A-Za-z]*$/);
+        if (!m) return null;
+        const w = m[1].toLowerCase();
+        if (w.length < 2 || SUBS_EN_SKIP.has(w)) return null;
+        for (const f of subsEnForms(w)) {
+            const sh = files.get(engShard(f, meta));
+            if (sh && sh[f] && sh[f].length) return { e: sh[f][0], w: f };
+        }
+        return null;
+    }
+    /// 英語: a word's Chinese, short (its first meaning, without the word class)
+    function subsEngZh(e) {
+        const zh = String(e.m || "").split("；")[0].replace(/^\s*([a-z]+\.\s*)+/, "").replace(/^(\s*[［\[（(][^］\]）)]*[］\]）)])+/, "");
+        const t = zh.split(/[、，,]/).map(x => x.trim()).filter(Boolean).slice(0, 2).join("、");
+        return t || (e.e ? e.e.replace(/^([a-z]+\.\s*)+/, "").split(/[;,]/)[0].trim() : "");
+    }
+    /// 英語: the box of a word you don't know: the Chinese over it (where the other languages have the reading)
+    function subsEngBox(frag, g) {
+        const w = document.createElement("span"); w.className = "w a r" + (prefs.subsGl ? " g" : "");
+        const rd = document.createElement("span"); rd.className = "rd ffx zh"; rd.textContent = g || "\u00a0";
+        if (g) rd.title = g;
+        w.appendChild(rd);
+        const cw = document.createElement("span"); cw.className = "cw";
+        w.appendChild(cw);
+        if (prefs.subsGl) { const gl = document.createElement("span"); gl.className = "gl ffx"; gl.textContent = "\u00a0"; w.appendChild(gl); }
+        frag.appendChild(w);
+        return cw;
     }
     /// the box of an English word: the Chinese under it (the same box as a marked word's, so the line stays level)
     function subsEnBox(frag, g) {
