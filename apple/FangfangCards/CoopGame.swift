@@ -4,7 +4,8 @@ import PencilKit
 
 // MARK: - 一起玩 (two or more players nearby, taking turns)
 //
-// The players take turns. On your turn, a word from your own 練習範圍 (in your own language) is picked, but it's
+// Each player picks how they answer (手寫, 八選一 or 打字) and how many words, and presses 準備好了; the game
+// starts once everyone has. The players take turns. On your turn, a word from your own 練習範圍 (in your own language) is picked, but it's
 // shown only on the others' screens, never on yours: they see its clues one at a time and read them to you
 // (first its reading; then, if you ask for more, its meaning; then its radicals), and they see the answer.
 // You answer on your own screen — write it (手寫), pick it out of eight words that sound alike (八選一) or type it
@@ -15,13 +16,12 @@ import PencilKit
 
 /// what's sent between the players (JSON)
 struct CoopMsg: Codable {
-    enum Kind: String, Codable { case hello, start, question, hint, submit, judge }
+    enum Kind: String, Codable { case hello, ready, question, hint, submit, judge }
     var kind: Kind
     var name: String
+    /// ready: the way this player answers, and how many words they get (`right`: ready or not)
     var mode = 0
     var rounds = 0
-    /// start: the players, in the order they take turns
-    var order: [String] = []
     /// question: the word, its reading, and its clues (reading, meaning, radicals)
     var word = ""
     var reading = ""
@@ -74,11 +74,18 @@ final class CoopLink: NSObject, ObservableObject {
     private let browser: MCNearbyServiceBrowser
     @Published var players: [MCPeerID: String] = [:]
 
+    /// who has pressed 準備好了, with their way of answering and how many words; the game starts once everyone has
+    @Published var ready: [String: (mode: Int, rounds: Int)] = [:]
+    /// mine, sent again to anyone who joins
+    private var mine: (mode: Int, rounds: Int)?
+
     // the game, the same on every device
     @Published var playing = false
-    @Published var mode = 0
-    @Published var rounds = 0
+    /// the players (by name) and each one's way of answering
     @Published var order: [String] = []
+    @Published var modes: [String: Int] = [:]
+    /// whose turn each turn is: round and round, a player left out once they've had all their words
+    @Published var schedule: [String] = []
     @Published var turn = 0
     @Published var question: CoopQuestion?
     @Published var scores: [String: Int] = [:]
@@ -87,11 +94,49 @@ final class CoopLink: NSObject, ObservableObject {
     @Published var game = 0
 
     var myName: String { me.displayName }
-    var total: Int { order.count * rounds }
-    var over: Bool { playing && turn >= total }
+    var over: Bool { playing && turn >= schedule.count }
     /// whose turn it is
-    var answerer: String? { order.isEmpty || turn >= total ? nil : order[turn % order.count] }
+    var answerer: String? { turn < schedule.count ? schedule[turn] : nil }
     var myTurn: Bool { answerer == myName }
+    /// how many of my turns came before this one
+    var myTurnsBefore: Int { schedule.prefix(turn).filter { $0 == myName }.count }
+    /// everyone here (me and the ones connected)
+    var everyone: Set<String> { Set([myName] + Array(players.values)) }
+
+    /// 準備好了 (or not any more)
+    func setReady(_ on: Bool, mode: Int, rounds: Int) {
+        mine = on ? (mode, rounds) : nil
+        send(CoopMsg(kind: .ready, name: myName, mode: mode, rounds: rounds, right: on))
+    }
+
+    /// a player who left: their turns are passed over
+    fileprivate func skipGone() {
+        let here = everyone
+        while playing, let a = answerer, !here.contains(a) {
+            if question?.from == a { question = nil }
+            turn += 1
+        }
+    }
+
+    /// everyone (two or more) ready: the game starts, on every device the same way
+    private func startIfReady() {
+        guard !playing || over else { return }
+        let all = everyone
+        guard all.count >= 2, all.isSubset(of: Set(ready.keys)) else { return }
+        order = all.sorted()
+        modes = Dictionary(uniqueKeysWithValues: order.map { ($0, ready[$0]?.mode ?? 0) })
+        var left = Dictionary(uniqueKeysWithValues: order.map { ($0, max(1, ready[$0]?.rounds ?? 5)) })
+        var s: [String] = []
+        while left.values.contains(where: { $0 > 0 }) {
+            for n in order where (left[n] ?? 0) > 0 { s.append(n); left[n]! -= 1 }
+        }
+        schedule = s
+        turn = 0; question = nil; results = []
+        scores = Dictionary(uniqueKeysWithValues: order.map { ($0, 0) })
+        ready = [:]; mine = nil
+        playing = true
+        game += 1
+    }
 
     init(name: String) {
         me = MCPeerID(displayName: String(name.prefix(40)))
@@ -122,12 +167,9 @@ final class CoopLink: NSObject, ObservableObject {
     fileprivate func handle(_ m: CoopMsg) {
         switch m.kind {
         case .hello: break
-        case .start:
-            order = m.order; mode = m.mode; rounds = m.rounds
-            turn = 0; question = nil; results = []
-            scores = Dictionary(uniqueKeysWithValues: m.order.map { ($0, 0) })
-            playing = true
-            game += 1
+        case .ready:
+            if m.right { ready[m.name] = (m.mode, m.rounds) } else { ready[m.name] = nil }
+            startIfReady()
         case .question:
             question = CoopQuestion(from: m.name, word: m.word, reading: m.reading, clues: m.clues, clueKinds: m.clueKinds, english: m.english, lang: m.lang)
         case .hint:
@@ -145,6 +187,7 @@ final class CoopLink: NSObject, ObservableObject {
             results.append(CoopResult(who: q.from, word: q.word, reading: q.reading, right: m.right, points: pts))
             question = nil
             turn += 1
+            skipGone()
         }
     }
 }
@@ -153,8 +196,16 @@ extension CoopLink: MCSessionDelegate, MCNearbyServiceAdvertiserDelegate, MCNear
     nonisolated func session(_ s: MCSession, peer p: MCPeerID, didChange state: MCSessionState) {
         let name = p.displayName
         Task { @MainActor in
-            if state == .connected { self.players[p] = name }
-            else if state == .notConnected { self.players[p] = nil }
+            if state == .connected {
+                self.players[p] = name
+                // (someone joined: they're told I'm ready, if I am)
+                if let r = self.mine { self.send(CoopMsg(kind: .ready, name: self.myName, mode: r.mode, rounds: r.rounds, right: true)) }
+            } else if state == .notConnected {
+                self.players[p] = nil
+                self.ready[name] = nil
+                self.skipGone()
+            }
+            self.startIfReady()
         }
     }
     nonisolated func session(_ s: MCSession, didReceive data: Data, fromPeer p: MCPeerID) {
@@ -207,6 +258,9 @@ struct CoopView: View {
     @FocusState private var focused: Bool
 
     private static let modes = ["手寫", "八選一", "打字"]
+    /// the way I answer in this game (the one I chose when I pressed 準備好了)
+    private var myMode: Int { link.modes[link.myName] ?? mode }
+    private var iAmReady: Bool { link.ready[link.myName] != nil }
 
     var body: some View {
         NavigationStack {
@@ -214,7 +268,7 @@ struct CoopView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     scoreboard
                     if !link.playing { lobby }
-                    else if link.over { finished }
+                    else if link.over { finished; lobby }
                     else if link.myTurn { myTurnView }
                     else { theirTurnView }
                     answered
@@ -254,7 +308,16 @@ struct CoopView: View {
                 HStack(spacing: 8) {
                     if link.playing && link.answerer == n { Image(systemName: "arrowtriangle.right.fill").foregroundStyle(T.blueInk).ffFont(.caption) }
                     Text(n + (n == link.myName ? tr("（你）") : "")).ffFont(.subheadline, .semibold).foregroundStyle(T.glyph)
+                    if link.playing, let m = link.modes[n] { Text(trs(Self.modes[min(max(m, 0), 2)])).ffFont(.caption).foregroundStyle(T.muted) }
                     Spacer()
+                    if !link.playing || link.over {
+                        if let r = link.ready[n] {
+                            Label(tr("準備好了") + "・" + trs(Self.modes[min(max(r.mode, 0), 2)]) + "・" + tr("\(r.rounds) 題"), systemImage: "checkmark.circle.fill")
+                                .ffFont(.caption).foregroundStyle(T.greenInk)
+                        } else {
+                            Text(tr("還沒準備好")).ffFont(.caption).foregroundStyle(T.muted)
+                        }
+                    }
                     if link.playing { Text("\(link.scores[n] ?? 0)").scaledFont(22, weight: .bold).foregroundStyle(T.blueInk) }
                 }
             }
@@ -274,18 +337,21 @@ struct CoopView: View {
             Text(tr("你的名字")).ffFont(.subheadline, .semibold).foregroundStyle(T.muted)
             TextField(UIDevice.current.name, text: $name).textFieldStyle(.roundedBorder)
             Text(tr("（改名字要重新打開「一起玩」才會用上）")).ffFont(.caption2).foregroundStyle(T.muted)
-            Picker(tr("怎麼答"), selection: $mode) {
+            Picker(tr("你怎麼答"), selection: $mode) {
                 ForEach(Self.modes.indices, id: \.self) { Text(trs(Self.modes[$0])).tag($0) }
             }
             .pickerStyle(.segmented)
-            Stepper(tr("每個人 \(rounds) 題"), value: $rounds, in: 1...20)
-            Text(tr("輪流答題。輪到你的時候，詞只會出現在別人的畫面上：他們一次給你一個提示（先是讀音，要的話再給意思、部首），你在自己的畫面上答，按「完成」，他們再按對或錯。每個人的詞都從自己的練習範圍（\(store.practiceName)）出，用自己的語言。答對 10 分，每多要一個提示少 3 分。"))
+            .disabled(iAmReady)
+            Stepper(tr("你答 \(rounds) 題"), value: $rounds, in: 1...20).disabled(iAmReady)
+            Text(tr("輪流答題，每個人用自己選的方式答。輪到你的時候，詞只會出現在別人的畫面上：他們一次給你一個提示（先是讀音，要的話再給意思、部首），你在自己的畫面上答，按「完成」，他們再按對或錯。每個人的詞都從自己的練習範圍（\(store.practiceName)）出，用自己的語言。答對 10 分，每多要一個提示少 3 分。"))
                 .ffFont(.footnote).foregroundStyle(T.muted)
-            Button { start() } label: {
-                Text(tr("開始")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 34)
+            Button { toggleReady() } label: {
+                Text(iAmReady ? tr("不要了，先等一下") : tr("準備好了")).ffFont(.headline).frame(maxWidth: .infinity, minHeight: 34)
             }
-            .prominentButton(T.blueEdge)
+            .prominentButton(iAmReady ? T.rustEdge : T.blueEdge)
             .disabled(link.players.isEmpty)
+            Text(iAmReady ? tr("等其他人也按「準備好了」，大家都準備好就開始。") : tr("每個人選自己怎麼答，大家都按「準備好了」才會開始。"))
+                .ffFont(.caption).foregroundStyle(T.muted)
         }
     }
 
@@ -300,7 +366,7 @@ struct CoopView: View {
                 HStack(spacing: 8) { ProgressView(); Text(tr("等對方看你的答案…")).foregroundStyle(T.muted) }
             } else {
                 Text(tr("請對方唸提示給你聽（第 \(hints) 個提示）。")).ffFont(.footnote).foregroundStyle(T.muted)
-                switch link.mode {
+                switch myMode {
                 case 0:
                     ZStack(alignment: .topTrailing) {
                         RoundedRectangle(cornerRadius: 14).fill(Color(white: 0.97))
@@ -342,7 +408,7 @@ struct CoopView: View {
     }
 
     private var canSubmit: Bool {
-        switch link.mode {
+        switch myMode {
         case 0: return !drawing.strokes.isEmpty
         case 1: return picked != nil
         default: return !typed.trimmingCharacters(in: .whitespaces).isEmpty
@@ -422,8 +488,6 @@ struct CoopView: View {
             let best = link.scores.values.max() ?? 0
             let winners = link.order.filter { (link.scores[$0] ?? 0) == best }
             Text(winners.count == 1 ? tr("\(winners[0]) 贏了！") : tr("平手！")).ffFont(.title2, .bold).foregroundStyle(T.blueInk)
-            Button { start() } label: { Text(tr("再玩一局")).frame(maxWidth: .infinity, minHeight: 30) }
-                .prominentButton(T.blueEdge)
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
@@ -447,17 +511,15 @@ struct CoopView: View {
 
     // MARK: the game
 
-    private func start() {
-        let names = ([link.myName] + Array(link.players.values)).sorted()
-        link.send(CoopMsg(kind: .start, name: link.myName, mode: mode, rounds: rounds, order: names))
-    }
+    /// 準備好了 / 不要了
+    private func toggleReady() { link.setReady(!iAmReady, mode: mode, rounds: rounds) }
 
     /// a game started: my words for it (the ones due for 複習 first, then the practice scope's)
     private func begin() {
         var seen = Set<String>()
         let pool = (store.dueCards.shuffled() + store.practiceCards.shuffled())
-            .filter { seen.insert($0.k).inserted && (link.mode != 0 || store.isSv || Store.canWrite($0.h)) }
-        queue = Array(pool.prefix(link.rounds))
+            .filter { seen.insert($0.k).inserted && (myMode != 0 || store.isSv || Store.canWrite($0.h)) }
+        queue = Array(pool.prefix(link.schedule.filter { $0 == link.myName }.count))
         mine = nil
         turnChanged()
     }
@@ -469,7 +531,7 @@ struct CoopView: View {
 
     /// my turn: the next of my words, sent to the others (not shown here)
     private func ask() {
-        let k = link.turn / max(link.order.count, 1)
+        let k = link.myTurnsBefore
         sent = false; picked = nil; typed = ""; clearN += 1; drawing = PKDrawing(); hints = 1
         guard k < queue.count else { mine = nil; return }
         let c = queue[k]
@@ -488,7 +550,7 @@ struct CoopView: View {
         q.clueKinds = kinds
         q.english = m.en
         link.send(q)
-        focused = link.mode == 2
+        focused = myMode == 2
     }
 
     /// seven words that sound like it (the same number of syllables, as much of the reading the same as can be)
@@ -545,7 +607,7 @@ struct CoopView: View {
 
     private func submit() {
         var m = CoopMsg(kind: .submit, name: link.myName)
-        switch link.mode {
+        switch myMode {
         case 0: m.drawing = drawing.dataRepresentation()
         case 1: m.text = picked ?? ""
         default: m.text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
