@@ -40,7 +40,7 @@ Done on iOS this round — still to do on **Android, Windows / Mac (desktop), th
 | 常用度 steps (依常用度列出, 新詞 topics) by how full the ring is: 80/60/40/20 % = places 136 / 1050 / 5024 / 18779 (was 1000/3000/8000/20000) | done | todo | todo | todo |
 | 華語 readings: HSK words not in the 兩岸 dictionary get Taiwan readings per character (not where the reading really differs, 比比皆是) | done (Zh.swift fillTaiwan) | todo | todo | todo (build_safari) |
 | YouTube: lyrics made from the video's own subtitles when LRCLIB has none, saved to the 歌詞 folder as "title - artist [yt-id].lrc" | done | — | todo | — |
-| 台語 各地讀音 → 讀音從哪裡來: each 字's reading per place, by 腔, where it's from (辭典 / 推測 / 照字), and how many words have it (tap: the words with meanings) | done | todo | todo | — |
+| 台語 各地讀音: 讀音從哪裡來 right under the map (same look as the readings above): each 字's reading per place, by 腔, where it's from (辭典 / 推測 / 照字), and how many words have it (tap: the words open below with meanings; tap one for its entry) | done | todo | todo | — |
 | Own words (自訂) in 華語, 粵語, 客語, 日語, 瑞典語 (word, reading, meaning, example), CSV export; keys "word\t<reading>#自" in Progress.own | done (no CSV import for these yet) | todo | todo | todo |
 | Gemini (own API key, 設定 → 詞典): no search result → its guesses, shown as dictionary words (瑞典語: only when no English match either); 華語: add the term to 自訂; 本週學習 → 造句 (usage corrected, then the whole sentence) | done | todo | todo | — |
 | First-run setup in steps: app language + 正體／簡體; meanings + spelling; each language's place (台語 腔口, 華語 讀音, 客語 腔); tone colours + 方音 options | done | todo | todo | — |
