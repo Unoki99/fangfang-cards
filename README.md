@@ -58,6 +58,22 @@ Terminal is in Applications → Utilities → Terminal. If the folder isn't in D
 - Connect the iPhone / iPad to the Mac by USB (the first time, tap Trust on the device).
 - More: `apple/README.md`.
 
+### Playing together over the internet (一起玩, 詞龍)
+
+On iPhone / iPad, people in the same place can play without any setup: choose 附近的人 (same Wi-Fi, or Bluetooth on). To play with someone somewhere else, or between iPhone, Android and computers, the apps connect through a small relay server. **One person sets it up once**, on their own free Cloudflare account; everyone else only pastes its address.
+
+1. Make a free account at [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) (no credit card).
+2. Install [Node.js](https://nodejs.org) (the LTS version) on a Mac or Windows computer.
+3. Upload the relay:
+   - **Mac**: in Terminal, run `bash ~/Downloads/fangfang-cards-main/relay/deploy-relay.command`. It logs in to Cloudflare (a browser page opens: press **Allow**), uploads the relay, and copies its address.
+   - **Windows, or by hand**: open a terminal in the `relay` folder and run `npx wrangler login`, then `npx wrangler deploy`.
+   - The first time, it may ask for a workers.dev name: type a short English name (e.g. your own) and press Enter.
+4. At the end it shows an address like `https://fangfang-relay.yourname.workers.dev`. You can also find it at dash.cloudflare.com → Compute (Workers) → fangfang-relay.
+5. In the app: **Settings → 一起玩 → 連線伺服器**, paste the address (and set the name others see). Send the same address to everyone you play with; they paste it in the same place.
+6. To play: open 一起玩 or 詞龍, choose **透過網路**. One person presses **開一個新房間** and tells the others the room code (e.g. KX7P-2MQA); they type it and press **進房間**.
+
+The relay stays online by itself: no computer needs to be on. It's free on Cloudflare's free plan (a game uses a tiny part of the daily allowance; if it were ever used up, it would just stop until the next day, never charge you). Messages are encrypted in the app with a key made from the room code, so the relay only passes on data it can't read, and it stores nothing. More: `relay/README.md`.
+
 ### Dictionary data
 
 The licences of the Ministry of Education's and the Chinese Language Society's dictionaries don't allow sharing processed versions, so they aren't in this repository. Copies of the original files are in [unoki99/fangfang-data](https://github.com/unoki99/fangfang-data), each under its own licence (see its README.md), **not covered by this project's MIT licence**. They are processed on your own computer when you install. Sources and licences: "資料來源與授權" in `apple/README.md`.
@@ -122,6 +138,22 @@ The licences of the Ministry of Education's and the Chinese Language Society's d
 - `install.sh apple` 一次裝 iPhone／iPad 和 Mac；只寫 `install.sh` 的話會問你要哪一個。
 - iPhone／iPad 用 USB 接上 Mac（第一次在手機上按「信任」）。
 - 詳細：`apple/README.md`。
+
+### 透過網路一起玩（一起玩、詞龍）
+
+iPhone／iPad 在同一個地方的話不用設定：選「附近的人」（同一個 Wi-Fi，或打開藍牙）。要和在別的地方的人玩，或是 iPhone、Android、電腦一起玩，App 透過一個小小的連線伺服器連線。**只要一個人放一次**，放在自己的免費 Cloudflare 帳號上；其他人只要貼上網址。
+
+1. 在 [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) 申請免費帳號（不用信用卡）。
+2. 在 Mac 或 Windows 電腦上安裝 [Node.js](https://nodejs.org)（LTS 版）。
+3. 把連線伺服器放上去：
+   - **Mac**：在終端機執行 `bash ~/Downloads/fangfang-cards-main/relay/deploy-relay.command`。它會登入 Cloudflare（瀏覽器打開一個頁面：按 **Allow**）、上傳，最後把網址複製好。
+   - **Windows，或自己打指令**：在 `relay` 資料夾打開終端機，執行 `npx wrangler login`，再執行 `npx wrangler deploy`。
+   - 第一次可能會問 workers.dev 的名字：打一個短短的英文名字（例如你的名字），按 Enter。
+4. 最後會顯示網址，像 `https://fangfang-relay.你的名字.workers.dev`。也可以在 dash.cloudflare.com → Compute (Workers) → fangfang-relay 找到。
+5. App 裡：**設定 → 一起玩 → 連線伺服器**，貼上網址（也可以設別人看到的名字）。把同一個網址傳給一起玩的人，他們貼在同一個地方。
+6. 開始玩：打開「一起玩」或「詞龍」，選 **透過網路**。一個人按 **開一個新房間**，把房間代碼（例如 KX7P-2MQA）告訴其他人；他們打代碼，按 **進房間**。
+
+連線伺服器放上去以後自己一直開著，不用開著哪一台電腦。用 Cloudflare 的免費方案就夠了（一場遊戲只用到每天額度的一點點；萬一用完了，只是當天不能用，第二天再恢復，不會收費）。訊息在 App 裡用房間代碼算出來的金鑰加密，伺服器只轉送看不懂的資料，什麼都不存。詳細：`relay/README.md`。
 
 ### 詞典資料
 

@@ -12,7 +12,7 @@
 
 1. 申請 Cloudflare 帳號（免費）：<https://dash.cloudflare.com/sign-up>
 2. 電腦上要有 Node.js（<https://nodejs.org>）。
-3. Mac：按兩下這個資料夾裡的 `deploy-relay.command`（第一次如果說「無法打開」：按右鍵 → 打開 → 打開）。它會幫你登入、上傳，最後把網址複製好。其他電腦：在這個資料夾（`relay`）打開終端機，執行：
+3. Mac：在終端機執行 `bash ~/Downloads/fangfang-cards-main/relay/deploy-relay.command`（從 git 下載的話也可以直接按兩下它）。它會幫你登入、上傳，最後把網址複製好。其他電腦：在這個資料夾（`relay`）打開終端機，執行：
 
    ```
    npx wrangler login
@@ -34,7 +34,7 @@ Play 一起玩 and 詞龍 with others over the internet (iPhone / iPad, Android 
 
 1. A Cloudflare account (free): <https://dash.cloudflare.com/sign-up>
 2. Node.js on the computer (<https://nodejs.org>).
-3. On a Mac: double-click `deploy-relay.command` in this folder (if the first time it says it can't be opened: right-click → Open → Open). It logs in, uploads, and copies the address for you. On other computers: in this folder (`relay`), in a terminal:
+3. On a Mac: in Terminal, run `bash ~/Downloads/fangfang-cards-main/relay/deploy-relay.command` (GitHub's ZIP doesn't keep it executable; from a git clone you can double-click it). It logs in, uploads, and copies the address for you. On other computers: in this folder (`relay`), in a terminal:
 
    ```
    npx wrangler login
