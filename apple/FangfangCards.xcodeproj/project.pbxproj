@@ -278,7 +278,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "FangfangCards-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "方方詞卡";
+				INFOPLIST_KEY_CFBundleDisplayName = "Fangfang Cards";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -311,7 +311,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "FangfangCards-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "方方詞卡";
+				INFOPLIST_KEY_CFBundleDisplayName = "Fangfang Cards";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -341,7 +341,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "FangfangSafari-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "方方詞卡 查詞";
+				INFOPLIST_KEY_CFBundleDisplayName = "Fangfang Lookup";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -369,7 +369,7 @@
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "FangfangSafari-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "方方詞卡 查詞";
+				INFOPLIST_KEY_CFBundleDisplayName = "Fangfang Lookup";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

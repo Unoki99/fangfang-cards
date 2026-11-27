@@ -1,0 +1,3 @@
+/* The name in Safari's extension settings. (Info.plist has an English one, "Fangfang Lookup": AltStore / SideStore send
+   that name to Apple when they install the app, and Apple takes only English letters, numbers and spaces.) */
+"CFBundleDisplayName" = "方方詞卡 查詞";

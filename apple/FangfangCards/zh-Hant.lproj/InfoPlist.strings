@@ -1,0 +1,3 @@
+/* The name under the icon. (Info.plist has an English one, "Fangfang Cards": AltStore / SideStore send that
+   name to Apple when they install the app, and Apple takes only English letters, numbers and spaces.) */
+"CFBundleDisplayName" = "方方詞卡";
