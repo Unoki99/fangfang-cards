@@ -303,8 +303,8 @@ object Prefs : KeyValue {
         svGuessZh.onChange = { com.unoki99.fangfang.engine.SvGuess.on = svGuessZh.value }
         com.unoki99.fangfang.engine.SvGuess.show = svMeanings.value
         svMeanings.onChange = { com.unoki99.fangfang.engine.SvGuess.show = svMeanings.value }
-        val en = { com.unoki99.fangfang.engine.EngineSettings.let { e -> e.enShowEn = enShowEn.value; e.enShowZh = enShowZh.value; e.enShowSv = enShowSv.value } }
-        en(); enShowEn.onChange = en; enShowZh.onChange = en; enShowSv.onChange = en
+        val en = { _: Boolean -> com.unoki99.fangfang.engine.EngineSettings.let { e -> e.enShowEn = enShowEn.value; e.enShowZh = enShowZh.value; e.enShowSv = enShowSv.value } }
+        en(true); enShowEn.onChange = en; enShowZh.onChange = en; enShowSv.onChange = en
     }
 
     /** 瑞典語's colours, for the engine */

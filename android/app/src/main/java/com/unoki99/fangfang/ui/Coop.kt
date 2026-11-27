@@ -1,5 +1,6 @@
 package com.unoki99.fangfang.ui
 
+import com.unoki99.fangfang.engine.svZhAll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -179,7 +180,7 @@ fun CoopScreen(onClose: () -> Unit) {
                 if (kind == 5 || kind == 6) {
                     val e3 = en.take(3).joinToString("; ")
                     // (英語: the Chinese lines without their word class, "n. 跑、賽跑" → 跑、賽跑)
-                    val zh = e.svZhAll.take(2).map { if (kind == 6) it.replace(Regex("""^\s*([a-z]+\.\s*)+"""), "") else it }
+                    val zh = (if (kind == 6) e.jp else e.svZhAll).take(2).map { if (kind == 6) it.replace(Regex("""^\s*([a-z]+\.\s*)+"""), "") else it }
                     return zh.joinToString("；").ifEmpty { first } to e3.ifEmpty { first }
                 }
             }
