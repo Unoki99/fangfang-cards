@@ -17,7 +17,17 @@
 # touches the public one: ~/Desktop/fangfang-firefox-test.xpi (also: test withdata)
 #   bash tools/build_firefox.sh test
 set -e
-HERE="$(cd "$(dirname "$0")/.." && pwd)"
+# the project: the one this script is in, else the downloaded one (Downloads/fangfang-cards-main), else the one
+# install.sh put in ~/FangfangCards (so the script also works on its own, e.g. from Downloads)
+HERE=""
+for d in "$(cd "$(dirname "$0")/.." && pwd)" "$(pwd)" "$(pwd)/apple" "$HOME/Downloads/fangfang-cards-main/apple" "$HOME/FangfangCards"; do
+  if [ -f "$d/FangfangSafari/manifest.json" ] && [ -f "$d/FangfangCards/Install/english.js" ]; then HERE="$d"; break; fi
+done
+if [ -z "$HERE" ]; then
+  echo "找不到方方詞卡的專案。把 GitHub 的 zip 解壓縮在「下載」（Downloads/fangfang-cards-main），再執行一次。"
+  exit 1
+fi
+echo "用這裡的程式：$HERE"
 CODE="$HERE/FangfangSafari"
 CONV="$HERE/FangfangCards/Install"
 WITH=""; TEST=""
