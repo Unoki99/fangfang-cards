@@ -17,6 +17,7 @@ import com.unoki99.fangfang.Prefs
 import com.unoki99.fangfang.Store
 import com.unoki99.fangfang.UILang
 import com.unoki99.fangfang.tr
+import com.unoki99.fangfang.engine.plain
 import kotlin.random.Random
 
 // MARK: - 認識的漢字 → 猜字義 (the same as the iPhone app's CharMeaningGame): a character, four meanings, pick its own.

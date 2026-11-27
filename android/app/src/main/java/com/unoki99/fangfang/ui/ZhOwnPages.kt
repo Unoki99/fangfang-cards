@@ -20,6 +20,7 @@ import com.unoki99.fangfang.Store
 import com.unoki99.fangfang.engine.ZhDict
 import com.unoki99.fangfang.engine.ZhOwnWords
 import com.unoki99.fangfang.tr
+import com.unoki99.fangfang.engine.plain
 
 // MARK: - 詞典 → 自訂 in 華語, 粵語, 客語, 日語, 瑞典語 (the same as the iPhone app's ZhOwnPane): your own words, with
 // a reading in the language's own spelling, a meaning and an example; found by the search, marked 自訂; 匯出 CSV.

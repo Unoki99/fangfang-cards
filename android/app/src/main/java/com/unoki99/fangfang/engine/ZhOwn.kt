@@ -136,7 +136,8 @@ fun ZhDict.zhuyinOf(typed: String, han: List<String>): List<String>? {
         val (p, t) = s
         val byTone = table[p] ?: return null
         if (t != null) {
-            byTone[t]?.let { out.add(it); continue }
+            val exact = byTone[t]
+            if (exact != null) { out.add(exact); continue }
             val any = listOf(1, 2, 3, 4, 0).firstNotNullOfOrNull { byTone[it] } ?: return null
             out.add(Zhuyin.withTone(any, t)); continue
         }

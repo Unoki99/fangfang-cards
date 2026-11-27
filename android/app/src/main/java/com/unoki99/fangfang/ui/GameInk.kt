@@ -72,12 +72,13 @@ fun GameWriteSquares(squares: SnapshotStateList<SnapshotStateList<InkStroke>>, o
     if (squares.isEmpty()) squares.add(mutableStateListOf())
     if (cur >= squares.size) cur = squares.size - 1
     BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val wide = maxWidth > 600.dp
+        val mw = maxWidth
+        val wide = mw > 600.dp
         val want = fixed.coerceIn(140f, 640f).dp
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
             if (wide) {
                 val n = squares.size
-                val s = minOf(want, (maxWidth - 12.dp * (n - 1)) / n).coerceAtLeast(110.dp)
+                val s = minOf(want, (mw - 12.dp * (n - 1)) / n).coerceAtLeast(110.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { for (i in 0 until n) WordPad(squares[i], Modifier.size(s), setSide) }
             } else {
                 if (squares.size > 1) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -86,7 +87,7 @@ fun GameWriteSquares(squares: SnapshotStateList<SnapshotStateList<InkStroke>>, o
                         InkPreview(squares[i], side)
                     }
                 }
-                key(cur) { WordPad(squares[cur], Modifier.size(minOf(want, maxWidth)), setSide) }
+                key(cur) { WordPad(squares[cur], Modifier.size(minOf(want, mw)), setSide) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 SoftButton({ if (wide) for (s in squares) s.clear() else squares[cur].clear() }, Modifier.weight(1f)) { Text(if (wide && squares.size > 1) tr("全部清掉") else tr("清掉")) }

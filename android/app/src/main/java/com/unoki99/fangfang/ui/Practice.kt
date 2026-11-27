@@ -154,10 +154,10 @@ private fun StudyScreen(blanksOnly: Boolean, stars: StarField, words: List<Card>
     }
 
     /** every word a single character: a round of characters */
-    private fun charsOnly(cs: List<Card>) = cs.isNotEmpty() && cs.all { it.h.codePointCount(0, it.h.length) == 1 }
+    fun charsOnly(cs: List<Card>) = cs.isNotEmpty() && cs.all { it.h.codePointCount(0, it.h.length) == 1 }
 
     /** the most common first: the dictionary's order, else the cards' (which go most common first) */
-    private fun byFrequency(cs: List<Card>): List<Card> {
+    fun byFrequency(cs: List<Card>): List<Card> {
         val at = HashMap<String, Int>()
         for ((i, c) in Store.cards.withIndex()) if (c.h.codePointCount(0, c.h.length) == 1 && c.h !in at) at[c.h] = i
         fun r(c: Card): Long { val d = Store.rankOf(c.k); return if (d != Int.MAX_VALUE) d.toLong() else at[c.h]?.let { 1_000_000L + it } ?: Long.MAX_VALUE }

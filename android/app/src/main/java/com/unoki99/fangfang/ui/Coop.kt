@@ -21,6 +21,8 @@ import com.unoki99.fangfang.engine.Card
 import com.unoki99.fangfang.engine.Lang
 import com.unoki99.fangfang.engine.TwEnglish
 import com.unoki99.fangfang.tr
+import com.unoki99.fangfang.engine.plain
+import com.unoki99.fangfang.engine.cps
 import org.json.JSONArray
 import org.json.JSONObject
 
