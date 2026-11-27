@@ -26,6 +26,10 @@ struct CoopMsg: Codable {
     var word = ""
     var reading = ""
     var clues: [String] = []
+    /// what each clue is ("reading", "meaning", "radicals", "letters"), so each screen labels it in its own language
+    var clueKinds: [String] = []
+    /// the meaning in English too: each screen shows the one its own 設定 → 主要解釋 says
+    var english = ""
     var lang = 0
     /// hint: how many clues are shown now
     var hints = 1
@@ -42,6 +46,8 @@ struct CoopQuestion {
     let word: String
     let reading: String
     let clues: [String]
+    var clueKinds: [String] = []
+    var english = ""
     let lang: Int
     var shown = 1
     var text = ""
@@ -123,7 +129,7 @@ final class CoopLink: NSObject, ObservableObject {
             playing = true
             game += 1
         case .question:
-            question = CoopQuestion(from: m.name, word: m.word, reading: m.reading, clues: m.clues, lang: m.lang)
+            question = CoopQuestion(from: m.name, word: m.word, reading: m.reading, clues: m.clues, clueKinds: m.clueKinds, english: m.english, lang: m.lang)
         case .hint:
             if question?.from == m.name { question?.shown = max(question?.shown ?? 1, m.hints) }
         case .submit:
@@ -349,10 +355,10 @@ struct CoopView: View {
             if let q = link.question {
                 Text(tr("輪到 \(q.from)：唸提示給他聽")).ffFont(.title3, .bold).foregroundStyle(T.blueInk)
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(q.clues.prefix(q.shown).enumerated()), id: \.offset) { i, c in
+                    ForEach(Array(q.clues.prefix(q.shown).enumerated()), id: \.offset) { i, _ in
                         HStack(alignment: .firstTextBaseline, spacing: 8) {
                             Text("\(i + 1)").ffFont(.caption, .bold).foregroundStyle(T.muted).frame(width: 18)
-                            Text(c).ffFont(.title3).foregroundStyle(T.glyph).textSelection(.enabled)
+                            Text(clueText(q, i)).ffFont(.title3).foregroundStyle(T.glyph).textSelection(.enabled)
                         }
                     }
                     if q.shown < q.clues.count {
@@ -392,6 +398,23 @@ struct CoopView: View {
         }
         .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
+    }
+
+    /// a clue as this screen shows it: labelled in this app's language; the meaning in the language this app's
+    /// 設定 → 主要解釋 says for the word's language (華語 or English)
+    private func clueText(_ q: CoopQuestion, _ i: Int) -> String {
+        let v = q.clues[i]
+        let kind = i < q.clueKinds.count ? q.clueKinds[i] : ""
+        switch kind {
+        case "reading": return tr("讀音：") + v
+        case "meaning":
+            let en = !q.english.isEmpty && (ZhMeaning.english(q.lang) || v.isEmpty)
+            return tr("意思：") + (en ? q.english : v)
+        case "radicals": return v.isEmpty ? "" : tr("部首：") + v
+        case "letters": return tr("\(q.word.count) 個字母，開頭是「\(String(q.word.prefix(1)))」")
+        case "count": return tr("\(q.word.count) 個字")
+        default: return v
+        }
     }
 
     private var finished: some View {
@@ -453,14 +476,18 @@ struct CoopView: View {
         mine = c
         options = (soundAlike(c) + [c]).shuffled()
         let reading = store.isSv ? "" : String(store.cardRom(c, rom, place).characters)
-        let meaning = store.practiceMeaning(c).t
-        var clues: [String] = []
+        let m = meanings(c)
+        var clues: [String], kinds: [String]
         if store.isSv {
-            clues = [tr("意思：") + meaning, tr("\(c.h.count) 個字母，開頭是「\(String(c.h.prefix(1)))」")]
+            clues = [m.zh, ""]; kinds = ["meaning", "letters"]
         } else {
-            clues = [tr("讀音：") + reading, tr("意思：") + meaning, radicals(c.h)]
+            let r = radicals(c.h)
+            clues = [reading, m.zh, r]; kinds = ["reading", "meaning", r.isEmpty ? "count" : "radicals"]
         }
-        link.send(CoopMsg(kind: .question, name: link.myName, word: c.h, reading: reading, clues: clues, lang: Lang.kind(c.k)))
+        var q = CoopMsg(kind: .question, name: link.myName, word: c.h, reading: reading, clues: clues, lang: Lang.kind(c.k))
+        q.clueKinds = kinds
+        q.english = m.en
+        link.send(q)
         focused = link.mode == 2
     }
 
@@ -486,14 +513,29 @@ struct CoopView: View {
         return Array(out.prefix(7))
     }
 
-    /// 部首 of each character (the 華語 dictionary's), or how many characters
+    /// 部首 of each character (the 華語 dictionary's), "" when it hasn't any of them
     private func radicals(_ h: String) -> String {
-        let cs = h.map(String.init)
-        if let z = store.zh {
-            let rs = cs.map { ch in z.charIndex[ch].flatMap { z.chars[$0].radical } ?? "？" }
-            if rs.contains(where: { $0 != "？" }) { return tr("部首：") + rs.joined(separator: "、") + tr("（\(cs.count) 個字）") }
+        guard let z = store.zh else { return "" }
+        let rs = h.map(String.init).map { ch in z.charIndex[ch].flatMap { z.chars[$0].radical } ?? "？" }
+        return rs.contains(where: { $0 != "？" }) ? rs.joined(separator: "、") : ""
+    }
+
+    /// the word's meaning in 中文 and in English (either can be ""), for the others' screens to pick from
+    private func meanings(_ c: Card) -> (zh: String, en: String) {
+        let kind = Lang.kind(c.k)
+        let first = c.d.prefix(2).map(\.t).joined(separator: "；")
+        var en: [String] = []
+        if kind == 0 { en = TwEnglish.meanings(c.k) }
+        else if let d = store.zh, d.lang == kind, let e = d.entry(c.k) {
+            en = e.enList
+            if kind == 5 {
+                let e3 = en.prefix(3).joined(separator: "; ")
+                return (e.svZhAll.prefix(2).joined(separator: "；"), e3.isEmpty ? first : e3)
+            }
         }
-        return tr("\(cs.count) 個字")
+        // (粵語, 日語: the meanings are English already)
+        if kind == 2 || kind == 4 { return (first, first) }
+        return (first, en.prefix(3).joined(separator: "; "))
     }
 
     private func moreHint() {
@@ -519,7 +561,7 @@ struct CoopView: View {
 
     private func skip() {
         // (no word: the turn passes as a wrong answer with nothing asked)
-        link.send(CoopMsg(kind: .question, name: link.myName, word: "—", clues: [tr("沒有題目")]))
+        link.send(CoopMsg(kind: .question, name: link.myName, word: "—", clues: ["—"]))
         link.send(CoopMsg(kind: .submit, name: link.myName, text: "—"))
         link.send(CoopMsg(kind: .judge, name: link.myName, right: false))
     }
