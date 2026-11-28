@@ -170,13 +170,6 @@ struct ZhLookupPane: View {
             } else if found.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
-            // (nothing found, or 瑞典語 / 英語 nothing as it was searched, or searched in Chinese (the meanings found
-            // that way are rough): what Gemini thinks was meant, when it's on)
-            if !query.isEmpty && (found.empty || (dict.isSv && (found.weak || query.unicodeScalars.contains(where: Zhuyin.isHan)))) && searched == query {
-                GeminiSuggestSection(query: query, lang: dict.lang, search: { query = $0 }, row: { geminiRow($0) },
-                                     addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil,
-                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
-            }
             group(tr("聲調「\(found.toneLabel)」（\(found.tones.count >= 500 ? "500+" : String(found.tones.count))）"), found.tones)
             group(dict.isYue ? tr("華語「\(query)」的粵語講法") : (dict.isHak ? tr("華語「\(query)」的客語講法") : tr("「\(query)」的四川話講法")), found.mandarin)
             if found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
@@ -214,6 +207,14 @@ struct ZhLookupPane: View {
             if !found.englishFirst { group(tr("英文「\(query)」"), found.english, english: true) }
             group(tr("裡面有「\(query)」"), found.contains)
             group(tr("解釋裡有「\(query)」"), found.defs)
+            // (nothing found, or 瑞典語 / 英語 nothing as it was searched, or searched in Chinese (the meanings found
+            // that way are rough): what Gemini thinks was meant, when it's on), after
+            // everything the dictionary (and your own words) found
+            if !query.isEmpty && (found.empty || (dict.isSv && (found.weak || query.unicodeScalars.contains(where: Zhuyin.isHan)))) && searched == query {
+                GeminiSuggestSection(query: query, lang: dict.lang, search: { query = $0 }, row: { geminiRow($0) },
+                                     addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil,
+                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
+            }
         }
         .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
@@ -321,7 +322,8 @@ struct ZhWordRow: View {
                 }
             } else if dict.isSv && !(query != nil && english) {
                 // (瑞典語: the meaning in the language 設定 says; both: 中文 · English)
-                let enFirst = entry.enList.first ?? entry.senses.first?.text
+                // (your own word: its meaning once, not as both 中文 and English)
+                let enFirst = (entry.enList.first ?? entry.senses.first?.text).flatMap { $0 == entry.svZh.first ? nil : $0 }
                 let m = dict.isEn ? [entry.svZh.first, entry.enSv.isEmpty ? nil : entry.enSv.prefix(3).joined(separator: "、"), Lang.enShow.en || (entry.svZh.isEmpty && entry.enSv.isEmpty) ? enFirst : nil].compactMap { $0 }.joined(separator: " · ")
                     : SvGuess.show == 0 ? [entry.svZh.first, enFirst].compactMap { $0 }.joined(separator: " · ") : dict.svGloss(entry)
                 if !m.isEmpty { Text(m).ffFont(.footnote).foregroundStyle(T.muted).lineLimit(2) }

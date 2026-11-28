@@ -172,7 +172,10 @@ object Lookup {
         val low = q.lowercase()
         val info = d.userInfo
         val own = d.userKeys.filter { k -> Dict.hanOf(k).contains(q) || (info[k]?.firstOrNull()?.lowercase()?.contains(low) == true) }.sorted()
-        if (own.isNotEmpty()) { val s = own.toSet(); r.exact = own + r.exact.filter { it !in s } }
+        // (one found already stays in its place; the others go first among the words found)
+        val shown = (r.exact + r.taigi + r.contains + r.gloss + r.synonyms + r.defs + r.english + r.tones).toSet()
+        val rest = own.filter { it !in shown }
+        if (rest.isNotEmpty()) r.exact = rest + r.exact
         return r
     }
 

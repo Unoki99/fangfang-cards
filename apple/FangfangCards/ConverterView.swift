@@ -1950,7 +1950,10 @@ enum Lookup {
         let own = d.userKeys.filter { k in
             Dict.hanOf(k).contains(q) || (d.userInfo[k]?.first?.lowercased().contains(low) ?? false)
         }.sorted()
-        if !own.isEmpty { let s = Set(own); r.exact = own + r.exact.filter { !s.contains($0) } }
+        // (one found already stays in its place; the others go first among the words found)
+        let shown = Set(r.exact + r.taigi + r.contains + r.gloss + r.synonyms + r.defs + r.english + r.tones)
+        let rest = own.filter { !shown.contains($0) }
+        if !rest.isEmpty { r.exact = rest + r.exact }
         return r
     }
 

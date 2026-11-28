@@ -701,7 +701,7 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
             val ex = if (w.example.isEmpty()) emptyList() else listOf(ZhEx(w.example, "", ""))
             // (瑞典語, 英語: a meaning in Chinese is the word's Chinese meaning, so searching it in Chinese finds it)
             val zhMeaning = lang >= 5 && w.meaning.codePoints().anyMatch { Zhuyin.isHan(it) }
-            out.add(ZhEntry(w.key, w.h, w.tw, null, 0, null, listOf(ZhSense(1, if (w.meaning.isEmpty() || zhMeaning) "（自己加的詞）" else w.meaning, ex)), null, 0, 0, false,
+            out.add(ZhEntry(w.key, w.h, w.tw, null, 0, null, listOf(ZhSense(1, w.meaning.ifEmpty { "（自己加的詞）" }, ex)), null, 0, 0, false,
                 jp = if (zhMeaning) listOf(w.meaning) else emptyList()).also { it.own = true })
         }
         entries = out
@@ -1314,8 +1314,17 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
 
     fun search(q0: String, place: Int = 0): Found {
         val f = searchSorted(q0, place)
+        // (one found already stays in its place, moved to the front of its list; the others go first in 「…」)
         val own = ownHits(q0)
-        if (own.isNotEmpty()) { val s = own.toSet(); val rest = f.words.filter { it !in s }; f.words.clear(); f.words.addAll(own + rest) }
+        if (own.isEmpty()) return f
+        val s = own.toSet()
+        for (l in listOf(f.words, f.english, f.svVia, f.mandarin, f.starts, f.contains, f.defs)) {
+            val mine = l.filter { it in s }; if (mine.isEmpty()) continue
+            val others = l.filter { it !in s }; l.clear(); l.addAll(mine + others)
+        }
+        val shown = (f.words + f.english + f.svVia + f.mandarin + f.starts + f.contains + f.defs + f.tones).toSet()
+        val rest = own.filter { it !in shown }
+        if (rest.isNotEmpty()) f.words.addAll(0, rest)
         return f
     }
 

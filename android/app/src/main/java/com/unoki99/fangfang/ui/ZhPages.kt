@@ -174,14 +174,6 @@ private fun ZhLookupList(z: ZhDict) {
         } else if (f.empty && searched == query) {
             item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         }
-        // (nothing found, or 瑞典語 / 英語 nothing as it was searched, or searched in Chinese (the meanings found that
-        // way are rough): what Gemini thinks was meant, when it's on)
-        if (query.isNotEmpty() && searched == query && Gemini.on &&
-            (f.empty || (z.isSv && (f.weak || query.codePoints().anyMatch { Zhuyin.isHan(it) })))) item {
-            GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
-                has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query },
-                found = { w -> z.wordIndices(w).filter { it < z.entries.size } }, row = { i -> ZhListRow(z, i) })
-        }
         // 瑞典語: a word the dictionary doesn't have, worked out; words found through a 華語 word's English
         f.svEst?.let { est -> if (est.parts.size > 1 || est.steps.isNotEmpty()) item { Box(Modifier.padding(8.dp)) { SvEstimateBlock(z, est) } } }
         zhItems(z, tr("聲調「{0}」（{1}）", f.toneLabel, if (f.tones.size >= 500) "500+" else f.tones.size.toString()), f.tones)
@@ -198,6 +190,15 @@ private fun ZhLookupList(z: ZhDict) {
             zhItems(z, tr("由英文推測：「{0}」", query), f.svVia)
         }
         zhItems(z, tr("解釋裡有「{0}」", query), f.defs)
+        // (nothing found, or 瑞典語 / 英語 nothing as it was searched, or searched in Chinese (the meanings found that
+        // way are rough): what Gemini thinks was meant, when it's on), after
+        // everything the dictionary (and your own words) found
+        if (query.isNotEmpty() && searched == query && Gemini.on &&
+            (f.empty || (z.isSv && (f.weak || query.codePoints().anyMatch { Zhuyin.isHan(it) })))) item {
+            GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
+                has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query },
+                found = { w -> z.wordIndices(w).filter { it < z.entries.size } }, row = { i -> ZhListRow(z, i) })
+        }
         item { Spacer(Modifier.height(40.dp)) }
     }
 }
@@ -269,7 +270,8 @@ fun ZhWordRow(z: ZhDict, e: ZhEntry, english: Boolean = false, meanings: Int = 1
             if (!z.isYue && !Prefs.zhEnglish.value) e.senses.firstOrNull()?.let { Txt(it.text, ff(FF.Footnote), T.muted, maxLines = 1) }
         } else if (z.isSv) {
             // (瑞典語: the meaning in the language 設定 says; both: 中文 · English)
-            val enFirst = e.enList.firstOrNull() ?: e.senses.firstOrNull()?.text
+            // (your own word: its meaning once, not as both 中文 and English)
+            val enFirst = (e.enList.firstOrNull() ?: e.senses.firstOrNull()?.text)?.takeIf { it != e.svZh.firstOrNull() }
             val m = when {
                 z.isEn -> listOfNotNull(e.svZh.firstOrNull(), e.enSv.takeIf { it.isNotEmpty() }?.take(3)?.joinToString("、"),
                     if (EngineSettings.enShowEn || (e.svZh.isEmpty() && e.enSv.isEmpty())) enFirst else null).joinToString(" · ")

@@ -875,7 +875,7 @@ final class ZhDict: @unchecked Sendable {
             // (瑞典語, 英語: a meaning in Chinese is the word's Chinese meaning, so searching it in Chinese finds it)
             let zhMeaning = ownLang >= 5 && w.meaning.unicodeScalars.contains(where: Zhuyin.isHan)
             var e = ZhEntry(k: w.key, h: w.h, tw: w.tw, lu: nil, spec: 0, alt: nil,
-                            senses: [ZhSense(n: 1, text: w.meaning.isEmpty || zhMeaning ? "（自己加的詞）" : w.meaning, ex: ex)])
+                            senses: [ZhSense(n: 1, text: w.meaning.isEmpty ? "（自己加的詞）" : w.meaning, ex: ex)])
             if zhMeaning { e.jp = [w.meaning] }
             if !w.en.isEmpty { e.en = w.en }
             e.own = true
@@ -1413,8 +1413,14 @@ final class ZhDict: @unchecked Sendable {
 
     func search(_ q0: String, place: Int = 0) -> Found {
         var f = searchSorted(q0, place: place)
+        // (one found already stays in its place, moved to the front of its list; the others go first in 「…」)
         let own = ownHits(q0)
-        if !own.isEmpty { let s = Set(own); f.words = own + f.words.filter { !s.contains($0) } }
+        guard !own.isEmpty else { return f }
+        func front(_ l: inout [Int]) { let s = Set(own); l = l.filter { s.contains($0) } + l.filter { !s.contains($0) } }
+        front(&f.words); front(&f.english); front(&f.svVia); front(&f.mandarin); front(&f.starts); front(&f.contains); front(&f.defs)
+        let shown = Set(f.words + f.english + f.svVia + f.mandarin + f.starts + f.contains + f.defs + f.tones)
+        let rest = own.filter { !shown.contains($0) }
+        if !rest.isEmpty { f.words = rest + f.words }
         return f
     }
 
