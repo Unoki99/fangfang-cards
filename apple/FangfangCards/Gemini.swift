@@ -110,7 +110,7 @@ enum Gemini {
         let t = target(lang)
         let han = q.unicodeScalars.contains(where: Zhuyin.isHan)
         var p = """
-        A learner searched a \(t.dict) for "\(q)" and it found nothing. Work out what they most likely meant: it may be \
+        A learner searched a \(t.dict) for "\(q)" and it found nothing (or only rough matches). Work out what they most likely meant: it may be \
         misspelt, typed in a romanisation (pinyin, zhuyin, Jyutping, Tâi-lô, Hakka pinyin, rōmaji…), written in English \
         or another language, a description, slang, a name or a new expression.
         Reply with JSON only: {"words": [...], "note": "..."}

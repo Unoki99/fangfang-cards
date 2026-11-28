@@ -170,8 +170,9 @@ struct ZhLookupPane: View {
             } else if found.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
-            // (nothing found, or 瑞典語 / 英語 nothing as it was searched: what Gemini thinks was meant, when it's on)
-            if !query.isEmpty && (found.empty || (dict.isSv && found.weak)) && searched == query {
+            // (nothing found, or 瑞典語 / 英語 nothing as it was searched, or searched in Chinese (the meanings found
+            // that way are rough): what Gemini thinks was meant, when it's on)
+            if !query.isEmpty && (found.empty || (dict.isSv && (found.weak || query.unicodeScalars.contains(where: Zhuyin.isHan)))) && searched == query {
                 GeminiSuggestSection(query: query, lang: dict.lang, search: { query = $0 }, row: { geminiRow($0) },
                                      addTerm: dict.lang == 1 ? { addTerm = GeminiTermItem(term: $0) } : nil,
                                      addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })

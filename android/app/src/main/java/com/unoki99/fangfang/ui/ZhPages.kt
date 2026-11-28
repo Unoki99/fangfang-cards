@@ -174,8 +174,10 @@ private fun ZhLookupList(z: ZhDict) {
         } else if (f.empty && searched == query) {
             item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         }
-        // (nothing found, or 瑞典語 / 英語 nothing as it was searched: what Gemini thinks was meant, when it's on)
-        if (query.isNotEmpty() && searched == query && Gemini.on && (f.empty || (z.isSv && f.weak))) item {
+        // (nothing found, or 瑞典語 / 英語 nothing as it was searched, or searched in Chinese (the meanings found that
+        // way are rough): what Gemini thinks was meant, when it's on)
+        if (query.isNotEmpty() && searched == query && Gemini.on &&
+            (f.empty || (z.isSv && (f.weak || query.codePoints().anyMatch { Zhuyin.isHan(it) })))) item {
             GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
                 has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query })
         }

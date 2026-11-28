@@ -108,7 +108,7 @@ object Gemini {
     suspend fun suggest(q: String, lang: Int): Suggestion {
         val (dict, words) = target(lang)
         val han = q.cps().any { Zhuyin.isHan(it.firstCp()) }
-        var p = """A learner searched a $dict for "$q" and it found nothing. Work out what they most likely meant: it may be misspelt, typed in a romanisation (pinyin, zhuyin, Jyutping, Tâi-lô, Hakka pinyin, rōmaji…), written in English or another language, a description, slang, a name or a new expression.
+        var p = """A learner searched a $dict for "$q" and it found nothing (or only rough matches). Work out what they most likely meant: it may be misspelt, typed in a romanisation (pinyin, zhuyin, Jyutping, Tâi-lô, Hakka pinyin, rōmaji…), written in English or another language, a description, slang, a name or a new expression.
 Reply with JSON only: {"words": [...], "note": "..."}
 "words": up to 8 $words, the most likely first; each one a single dictionary word or set phrase, nothing else (no readings, no explanations).
 "note": at most one short sentence in ${script()} Chinese on what the search most likely was."""
