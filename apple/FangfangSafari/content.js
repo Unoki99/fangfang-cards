@@ -2966,14 +2966,14 @@
 #ff-subs .swapbox .line .tm { display: none; }
 #ff-subs .swapbox .line .t2 { white-space: normal; }
 /* 字跟著時間變大: the part said so far a little bigger, the one being said the biggest */
-#ff-subs.swell .tx .h, #ff-subs.swell .tx .su { display: inline-block; transform-origin: 50% 85%; transition: transform .22s ease-out; }
+#ff-subs.swell .tx .h, #ff-subs.swell .tx .sh, #ff-subs.swell .tx .su { display: inline-block; transform-origin: 50% 85%; transition: transform .22s ease-out; }
 #ff-subs.swell .tx .sw1 { transform: scale(1.06); }
 #ff-subs.swell .tx .sw2 { transform: scale(1.3); }
 /* (words in letters (English, Swedish…): a little hop up instead of growing, so a long word doesn't cover the
    ones beside it) */
-#ff-subs.swell .tx .su { transform-origin: 50% 100%; transition: transform .28s cubic-bezier(.3, 1.8, .5, 1); }
+#ff-subs.swell .tx .su { transform-origin: 50% 100%; transition: transform .5s cubic-bezier(.33, 1.25, .55, 1); }
 #ff-subs.swell .tx .su.sw1 { transform: none; }
-#ff-subs.swell .tx .su.sw2 { transform: translateY(-.24em); }
+#ff-subs.swell .tx .su.sw2 { transform: translateY(-.18em); }
 @media (prefers-reduced-motion: reduce) { #ff-subs .rail, #ff-subs .swapbox .line { transition: none; } }`;
         (document.head || document.documentElement).appendChild(css);
         const p = document.createElement("div");
@@ -4294,18 +4294,19 @@
         while ((n = w.nextNode())) texts.push(n);
         for (const t of texts) {
             const pe = t.parentElement;
-            if (!pe || pe.closest(".rd, .gl, .h, .su")) continue;
+            if (!pe || pe.closest(".rd, .gl, .h, .sh, .su")) continue;
             if (!/\S/.test(t.textContent)) continue;
+            // (each 漢字 a box of its own that grows, like the dictionary's; the rest by words, which hop)
             const frag = document.createDocumentFragment();
-            for (const part of t.textContent.split(/(\s+)/)) {
+            for (const part of t.textContent.split(/(\s+|\p{Script=Han})/u)) {
                 if (!part) continue;
                 if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(part)); continue; }
-                const s = document.createElement("span"); s.className = "su"; s.textContent = part;
+                const s = document.createElement("span"); s.className = /^\p{Script=Han}$/u.test(part) ? "sh" : "su"; s.textContent = part;
                 frag.appendChild(s);
             }
             t.replaceWith(frag);
         }
-        const units = [...tx.querySelectorAll(".h, .su")].filter(e => !e.closest(".rd, .gl"));
+        const units = [...tx.querySelectorAll(".h, .sh, .su")].filter(e => !e.closest(".rd, .gl"));
         const cum = [];
         let total = 0;
         for (const u of units) {
