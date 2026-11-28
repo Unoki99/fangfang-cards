@@ -38,6 +38,12 @@
         subsMark: "new", subsRare: 3000,
         // subsFlow: the subtitles in one row at the bottom, flowing sideways (always so when the video is full screen)
         subsFlow: false,
+        // subsFlowStyle: that row "scroll" (moving sideways all the time) or "swap" (one line at a time, the next one
+        // coming up into its place, as in the app's 卡拉 OK; the line after it small underneath)
+        subsFlowStyle: "scroll",
+        // subsSwell: the words of the line being said get bigger as it goes, as if timed like the lyrics (the line's
+        // time shared out over its characters)
+        subsSwell: false,
         // that row's height as dragged by its top edge (0 = as its words need); it keeps the whole width, centred
         subsFlowH: 0,
         // over / under the words you don't know in the subtitles: their reading, and their meaning (English or 中文, as 英文 is set)
@@ -2859,7 +2865,20 @@
 #ff-subs.wide.mini { bottom: auto; }
 #ff-subs.mini .view { display: none; }
 #ff-subs.mini .top { border-bottom: none; }
-@media (prefers-reduced-motion: reduce) { #ff-subs .rail { transition: none; } }`;
+/* 一句一句往上換: the line being said, the next one small under it; a new line comes up into its place */
+#ff-subs .swapbox { display: none; }
+#ff-subs.flow.swap .rail { visibility: hidden; }
+#ff-subs.flow.swap .swapbox { display: block; position: absolute; inset: 0; overflow: hidden; z-index: 1; }
+#ff-subs .swapbox .line { position: absolute; left: 0; right: 0; top: 0; margin: 0 auto; width: fit-content; max-width: calc(100% - 24px);
+  box-sizing: border-box; white-space: normal; text-align: center; transform-origin: 50% 0;
+  transition: transform .5s cubic-bezier(.2,.9,.3,1), opacity .45s ease; }
+#ff-subs .swapbox .line .tm { display: none; }
+#ff-subs .swapbox .line .t2 { white-space: normal; }
+/* 字跟著時間變大: the part said so far a little bigger, the one being said the biggest */
+#ff-subs.swell .tx .h, #ff-subs.swell .tx .su { display: inline-block; transform-origin: 50% 85%; transition: transform .22s ease-out; }
+#ff-subs.swell .tx .sw1 { transform: scale(1.06); }
+#ff-subs.swell .tx .sw2 { transform: scale(1.3); }
+@media (prefers-reduced-motion: reduce) { #ff-subs .rail, #ff-subs .swapbox .line { transition: none; } }`;
         (document.head || document.documentElement).appendChild(css);
         const p = document.createElement("div");
         p.id = "ff-subs";
@@ -2988,6 +3007,12 @@
         st.panel.classList.toggle("wide", !flow && wide);
         st.panel.classList.toggle("narrow", !flow && !wide);
         st.panel.classList.toggle("mini", st.collapsed);
+        // (下面一行: one line at a time, or moving all the time)
+        const swap = flow && prefs.subsFlowStyle === "swap";
+        const swapChanged = swap !== !!st.swap;
+        st.swap = swap;
+        st.panel.classList.toggle("swap", swap);
+        st.panel.classList.toggle("swell", !!prefs.subsSwell);
         const bare = prefs.subsBar === false;
         st.panel.classList.toggle("bare", bare);
         if (st.gear) st.gear.title = ffT("字幕設定");
@@ -2997,13 +3022,17 @@
         const fs = 18 * (prefs.subsFont || 1), anno = prefs.subsRd || prefs.subsGl || st.hasEn;
         // (the second language: a smaller line under each one)
         const two = st.sec && st.sec.cues.length ? fs * 0.58 * 1.3 * 2 + 3 : 0;
-        const autoH = Math.round((bare ? 0 : 38) + two + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3)));
+        // (一句一句往上換: room for the next line, small, under the one being said)
+        const nextRoom = swap ? fs * 0.75 + 8 : 0;
+        const autoH = Math.round((bare ? 0 : 38) + two + nextRoom + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3)));
         // (dragged taller or lower by its top edge: as dragged, between a little room for one line and most of the screen)
         const flowH = prefs.subsFlowH > 0 ? Math.round(Math.min(Math.max(prefs.subsFlowH, (bare ? 0 : 38) + 44), window.innerHeight * 0.85)) : autoH;
         st.panel.style.height = flow && !st.collapsed && !air ? flowH + "px" : "";
         const has = st.cues.length > 0 && prefs.subs;
         st.panel.classList.toggle("hidden", !has);
         if (changed) { st.manual = 0; st.manualUntil = 0; subsHeader(); }
+        if (swap && (swapChanged || changed)) subsSwapShow(st.now, false);
+        else if (swap) subsSwapPlace();
         if (airChanged) { subsSize(); return; }
         // (a new width: the words may break onto other rows)
         const wNow = st.view ? st.view.clientWidth : 0;
@@ -3079,6 +3108,8 @@
         row(ffT("字的大小"), [size(-1), size(1)]);
         row(ffT("影片上原本的字幕"), choice("subsHideVideo", [[false, ffT("顯示")], [true, ffT("隱藏")]], () => { subsHeader(); subsTick(); }));
         if (fsTarget() === document.documentElement || st.air) row(ffT("面板"), choice("subsFlow", [[false, ffT("旁邊，往上捲")], [true, ffT("下面一行")]], () => subsLayout()));
+        if (st.flow) row(ffT("下面一行的字幕"), choice("subsFlowStyle", [["scroll", ffT("一直往旁邊移")], ["swap", ffT("一句一句往上換")]], () => subsLayout()));
+        row(ffT("字跟著時間變大"), choice("subsSwell", [[false, ffT("關")], [true, ffT("開")]], () => subsLayout()));
         row(ffT("面板上的按鈕"), choice("subsBar", [[true, ffT("顯示")], [false, ffT("隱藏")]], () => subsLayout()));
         const done = document.createElement("button"); done.className = "done"; done.textContent = ffT("完成");
         done.addEventListener("click", () => sh.remove());
@@ -3838,7 +3869,12 @@
         if (st.manualUntil && Date.now() > st.manualUntil) { st.manualUntil = 0; st.manual = 0; subsPlace(true); }
         if (st.slow && v.playbackRate !== 0.75) v.playbackRate = 0.75;
         // (the row at the bottom: moving all the time, at the pace of the lines)
-        if (st.flow && !st.manualUntil) subsFlowAt(smoothTime(v), at);
+        const tNow = smoothTime(v);
+        if (st.flow && !st.swap && !st.manualUntil) subsFlowAt(tNow, at);
+        // (一句一句往上換: a line coloured since it was put up (the words, readings, meanings) put up again)
+        if (st.swap) subsSwapFresh(at);
+        // 字跟著時間變大
+        subsSwell(tNow, at);
         // 重複: back to the line's start when it's over
         if (st.loop >= 0 && st.cues[st.loop]) {
             const c = st.cues[st.loop], end = subsEnd(st.loop);
@@ -3859,6 +3895,7 @@
         if (prev < 0 || Math.abs(at - prev) > 1) st.lines.forEach((l, i) => l.classList.toggle("past", i < at));
         else for (let i = from; i <= to; i++) if (st.lines[i]) st.lines[i].classList.toggle("past", i < at);
         if (at >= 0 && st.lines[at]) st.lines[at].classList.add("now");
+        if (st.swap) subsSwapShow(at, Math.abs(at - prev) === 1);
         if (!st.manualUntil) subsPlace(true);
         subsDefs(false);
     }
@@ -3957,6 +3994,158 @@
         if (Math.abs(t - smooth.out) > 0.6) smooth.out = t;          // (a jump)
         else smooth.out = Math.max(smooth.out, t);
         return smooth.out;
+    }
+
+    // ── 一句一句往上換 (下面一行): the line being said, and the next one small under it. When the next line starts it
+    // moves up into place, getting big, and the one said goes up and away; a new next line comes in from below.
+    // The lines shown are copies of the row's own (so a tap on a word looks it up the same way) ──
+    function subsSwapBox() {
+        const st = subs;
+        if (!st.swapbox) { st.swapbox = document.createElement("div"); st.swapbox.className = "swapbox"; }
+        if (st.swapbox.parentNode !== st.view) st.view.appendChild(st.swapbox);
+        return st.swapbox;
+    }
+    function subsSwapCopy(i) {
+        const st = subs, src = st.lines[i];
+        if (!src) return null;
+        const c = src.cloneNode(true);
+        c.classList.remove("far", "past", "now");
+        c.dataset.src = i;
+        const tx = src.querySelector(".tx");
+        c.dataset.n = tx ? tx.childNodes.length + ":" + tx.textContent.length + ":" + (tx.firstChild ? tx.firstChild.nodeName : "") : "";
+        return c;
+    }
+    // (where each one goes: with a next line, the line being said ends a little below the middle and the next one
+    // starts under it, half the size; without one, the line in the middle)
+    function subsSwapSet(el, role) {
+        if (!el) return;
+        const st = subs, H = st.swapbox.clientHeight || 100, h = el.offsetHeight;
+        const hasNext = !!st.swapbox.querySelector(".sw-nxt:not(.sw-out)");
+        const line = H * 0.6;
+        let y, sc = 1, op = 1;
+        if (role === "cur") y = hasNext ? Math.max(0, line - h) : Math.max(0, (H - h) / 2);
+        else if (role === "nxt") { y = line + 2; sc = 0.5; op = 0.55; }
+        else if (role === "in") { y = line + 28; sc = 0.5; op = 0; }
+        else { y = -h * 0.8; op = 0; }                                  // (out: up and away)
+        el.style.transform = `translate3d(0,${y.toFixed(1)}px,0) scale(${sc})`;
+        el.style.opacity = op;
+    }
+    function subsSwapPlace() {
+        const st = subs;
+        if (!st.swapbox) return;
+        const cur = st.swapbox.querySelector(".sw-cur"), nxt = st.swapbox.querySelector(".sw-nxt");
+        subsSwapSet(nxt, "nxt"); subsSwapSet(cur, "cur");
+    }
+    function subsSwapShow(at, anim) {
+        const st = subs;
+        if (!st.panel || !st.view) return;
+        const box = subsSwapBox();
+        const mk = (i, cls) => { const c = subsSwapCopy(i); if (c) c.classList.add(cls); return c; };
+        if (!anim) {
+            const cur = at >= 0 ? mk(at, "sw-cur") : null, nxt = mk(at + 1, "sw-nxt");
+            if (cur) cur.classList.add("now");
+            box.replaceChildren(...[cur, nxt].filter(Boolean));
+            for (const el of box.children) el.style.transition = "none";
+            subsSwapPlace();
+            void box.offsetWidth;
+            for (const el of box.children) el.style.transition = "";
+            return;
+        }
+        const oldCur = box.querySelector(".sw-cur"), oldNxt = box.querySelector(".sw-nxt");
+        if (oldCur) {
+            oldCur.classList.remove("sw-cur", "now"); oldCur.classList.add("sw-out");
+            subsSwapSet(oldCur, "out");
+            setTimeout(() => oldCur.remove(), 550);
+        }
+        // (the one that was next: a fresh copy (it may have been coloured since) in its place, then up)
+        let cur = mk(at, "sw-cur");
+        if (cur) {
+            cur.style.transition = "none";
+            if (oldNxt && +oldNxt.dataset.src === at) { cur.style.transform = oldNxt.style.transform; cur.style.opacity = oldNxt.style.opacity; oldNxt.replaceWith(cur); }
+            else { if (oldNxt) oldNxt.remove(); box.appendChild(cur); subsSwapSet(cur, "nxt"); }
+        } else if (oldNxt) oldNxt.remove();
+        const nxt = mk(at + 1, "sw-nxt");
+        if (nxt) { nxt.style.transition = "none"; box.appendChild(nxt); subsSwapSet(nxt, "in"); }
+        void box.offsetWidth;
+        if (cur) { cur.style.transition = ""; cur.classList.add("now"); subsSwapSet(cur, "cur"); }
+        if (nxt) { nxt.style.transition = ""; subsSwapSet(nxt, "nxt"); }
+    }
+    // (a line coloured after it was put up: put up again, where it is)
+    function subsSwapFresh(at) {
+        const st = subs;
+        if (!st.swapbox || at < 0) return;
+        for (const el of st.swapbox.querySelectorAll(".sw-cur, .sw-nxt")) {
+            const i = +el.dataset.src, src = st.lines[i], tx = src && src.querySelector(".tx");
+            if (!tx) continue;
+            const n = tx.childNodes.length + ":" + tx.textContent.length + ":" + (tx.firstChild ? tx.firstChild.nodeName : "");
+            if (n === el.dataset.n) continue;
+            const c = subsSwapCopy(i);
+            const role = el.classList.contains("sw-cur") ? "cur" : "nxt";
+            c.classList.add("sw-" + role);
+            if (role === "cur") c.classList.add("now");
+            c.style.transition = "none";
+            el.replaceWith(c);
+            subsSwapSet(c, role);
+            void c.offsetWidth;
+            c.style.transition = "";
+        }
+    }
+
+    // ── 字跟著時間變大: the line being said, its characters (and words in letters) bigger as the line goes on, the
+    // line's time shared out by how long each one is; as if it were timed like the lyrics ──
+    function subsSwellUnits(line) {
+        const tx = line && line.querySelector(".tx");
+        if (!tx) return null;
+        if (line._sw && line._sw.tx === tx && line._sw.first === tx.firstChild) return line._sw;
+        // (words in letters: each in a box of its own, once; the 漢字 are already one to a box)
+        const texts = [];
+        const w = document.createTreeWalker(tx, NodeFilter.SHOW_TEXT);
+        let n;
+        while ((n = w.nextNode())) texts.push(n);
+        for (const t of texts) {
+            const pe = t.parentElement;
+            if (!pe || pe.closest(".rd, .gl, .h, .su")) continue;
+            if (!/\S/.test(t.textContent)) continue;
+            const frag = document.createDocumentFragment();
+            for (const part of t.textContent.split(/(\s+)/)) {
+                if (!part) continue;
+                if (/^\s+$/.test(part)) { frag.appendChild(document.createTextNode(part)); continue; }
+                const s = document.createElement("span"); s.className = "su"; s.textContent = part;
+                frag.appendChild(s);
+            }
+            t.replaceWith(frag);
+        }
+        const units = [...tx.querySelectorAll(".h, .su")].filter(e => !e.closest(".rd, .gl"));
+        const cum = [];
+        let total = 0;
+        for (const u of units) {
+            const letters = u.classList.contains("su") ? u.textContent.replace(/[^\p{L}\p{N}]/gu, "").length : 1;
+            total += Math.max(letters ? 1 : 0.3, Math.min(letters, 12) * (u.classList.contains("su") ? 0.45 : 1));
+            cum.push(total);
+        }
+        line._sw = { tx, first: tx.firstChild, units, cum, total };
+        return line._sw;
+    }
+    function subsSwellClear(line) {
+        if (!line || !line._sw) return;
+        for (const u of line._sw.units) u.classList.remove("sw1", "sw2");
+    }
+    function subsSwell(t, at) {
+        const st = subs;
+        const target = !prefs.subsSwell || at < 0 ? null
+            : st.swap ? (st.swapbox && st.swapbox.querySelector(".sw-cur")) : st.lines[at];
+        if (st.swellEl && st.swellEl !== target) { subsSwellClear(st.swellEl); st.swellEl = null; st.swellK = -1; }
+        if (!target) return;
+        const sw = subsSwellUnits(target);
+        if (!sw || !sw.units.length) return;
+        const c = st.cues[at], end = subsEnd(at);
+        // (said a little ahead of the clock, the way it sounds; past the end: all of it)
+        const p = Math.min(1, Math.max(0, (t + 0.08 - c.s) / Math.max(0.3, end - c.s)));
+        let k = sw.cum.findIndex(x => x > p * sw.total);
+        if (k < 0) k = sw.units.length;
+        if (target === st.swellEl && k === st.swellK) return;
+        st.swellEl = target; st.swellK = k;
+        sw.units.forEach((u, i) => { u.classList.toggle("sw1", i < k); u.classList.toggle("sw2", i === k); });
     }
 
     /// where a line ends: its own end, or the next line's start when that comes first

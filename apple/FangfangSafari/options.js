@@ -92,7 +92,7 @@
     dictPart(part("dicts", ffT("詞典"), "#7fd1b9", ffT("查詞要用的詞典。詞典的授權不允許散布改過的版本，所以查詞裡面沒有附詞典：按「安裝」會下載詞典原本的檔案（先從方方詞卡在 GitHub 上的原檔副本，沒有的話從原本發布的地方），在這個瀏覽器裡整理好，存在瀏覽器裡。只會下載詞典的檔案，不會傳出任何東西。")));
 
     // ── 語言 ──
-    const lg = part("languages", ffT("語言"), v("--tw"), ffT("查詞用哪一個語言（一次一個：打開一個，其他的會自己關掉），和它們的讀音、拼寫。顏色和 App 裡每個語言的顏色一樣。"));
+    const lg = part("languages", ffT("語言"), v("--tw"), ffT("查詞用的語言，一次只能開一個。"));
     const langs = el("div", null, "langs");
     lg.appendChild(langs);
     // (one language at a time: turning one on turns the others off; the one on can't be turned off)
@@ -135,30 +135,30 @@
         [ffT("中文解釋"), "engZh", [[true, ffT("顯示")], [false, ffT("不顯示")]]],
         [ffT("瑞典文"), "engSv", [[true, ffT("顯示")], [false, ffT("不顯示")]]]]);
     paintLangs();
-    tip(lg, "how", ffT("一次只開一個語言：卡片、網頁上的顏色、影片字幕（「自動」的時候）和按鍵標的詞都用這個語言。傳到 App 的詞也照它自己的語言放，不會混在一起。"));
+    tip(lg, "how", ffT("卡片、網頁、字幕和按鍵都用開著的這個語言。"));
     // (English: the Chinese languages' English meanings; English words are looked up with 英語 on, its own dictionary)
-    group(lg, ffT("英文"), ffT("中文語言的英文解釋。英文的詞要查的話，打開上面的「英語」（它自己的詞典）。"));
+    group(lg, ffT("英文"), ffT("華語、台語、粵語、客語的英文解釋。要查英文的詞，打開「英語」。"));
     const enG = grid(lg);
-    tile(enG, ffT("英文解釋"), ffT("卡片和字幕下面的意思用英文（華語、台語、粵語、客語）"), choice("en", [[false, ffT("不顯示")], [true, ffT("顯示")]], v("--tw")));
-    needSubs.push(tile(enG, ffT("英文字幕下面標中文"), ffT("英文的字幕：每個英文字下面標它的中文（用英語詞典的中文解釋，要先安裝英語詞典）"), choice("subsEnZh", onOff, v("--eng"))));
+    tile(enG, ffT("英文解釋"), ffT("意思用英文，不用中文"), choice("en", [[false, ffT("不顯示")], [true, ffT("顯示")]], v("--tw")));
+    needSubs.push(tile(enG, ffT("英文字幕下面標中文"), ffT("英文字幕的每個字下面加中文（要先裝英語詞典）"), choice("subsEnZh", onOff, v("--eng"))));
 
     // ── 聲調顏色 ──
-    const cl = part("colours", ffT("聲調顏色和標記"), "#4fd8c4", ffT("字照聲調上色（和 App 選的顏色一樣）。卡片、字幕和網頁各有自己的開關。"));
+    const cl = part("colours", ffT("顏色"), "#4fd8c4", ffT("字照聲調上色，顏色和 App 一樣。"));
     const clG = grid(cl);
     const cc = "#4fd8c4";
-    tile(clG, ffT("卡片"), ffT("跳出來的卡片裡的字和讀音"), choice("colours", onOff, cc));
-    needSubs.push(tile(clG, ffT("字幕"), ffT("字幕面板裡的字和讀音"), choice("subsColours", onOff, cc)));
-    needWeb.push(tile(clG, ffT("網頁上的字"), ffT("網頁上的中文字照聲調上色"), choice("tint", [[false, ffT("不上色")], ["saved", ffT("收藏的詞")], ["all", ffT("全部（華語）")]], cc)));
-    needWeb.push(tile(clG, ffT("網頁上不認識的詞"), ffT("像字幕一樣：不認識的詞上面標讀音、下面標意思，字照聲調上色（哪些詞照「字幕 → 標哪些詞」）"),
+    tile(clG, ffT("卡片"), ffT("查詞卡片上的字和讀音"), choice("colours", onOff, cc));
+    needSubs.push(tile(clG, ffT("字幕"), ffT("字幕裡的字和讀音"), choice("subsColours", onOff, cc)));
+    needWeb.push(tile(clG, ffT("網頁上的字"), ffT("網頁上哪些中文字上色"), choice("tint", [[false, ffT("不上色")], ["saved", ffT("收藏的詞")], ["all", ffT("全部（華語）")]], cc)));
+    needWeb.push(tile(clG, ffT("網頁上的讀音和意思"), ffT("標出來的詞上面加讀音、下面加意思，和字幕一樣"),
         choice("pageAnno", [[false, ffT("不標")], ["both", ffT("讀音和意思")], ["rd", ffT("只有讀音")], ["gl", ffT("只有意思")]], cc)));
     const onlySw = ffSwitch(prefs, "onlyNew");
     onlySw.style.setProperty("--c", cc);
-    tile(clG, ffT("只替標出來的詞上色"), ffT("其他的詞不上聲調顏色（網頁上也是：只有不認識的詞有顏色）"), onlySw);
-    needWeb.push(tile(clG, ffT("收藏的詞"), ffT("網頁上出現收藏過的詞時"), choice("ring", [[false, ffT("不標")], [true, ffT("彩虹框")]], cc)));
-    tip(cl, "warn", ffT("「全部」會替整頁的字上色，很長的網頁可能會慢一點。"));
+    tile(clG, ffT("只有標出來的詞上色"), ffT("其他的詞不上色（字幕和網頁都是）"), onlySw);
+    needWeb.push(tile(clG, ffT("收藏的詞"), ffT("網頁上收藏過的詞加彩虹框"), choice("ring", [[false, ffT("不標")], [true, ffT("彩虹框")]], cc)));
+    tip(cl, "warn", ffT("「全部」在很長的網頁上可能會慢。"));
 
     // ── 卡片 ──
-    const cd = part("card", ffT("卡片"), v("--card"), ffT("跳出來的卡片長什麼樣子。"));
+    const cd = part("card", ffT("卡片"), v("--card"), ffT("查詞時跳出來的卡片。"));
     const cdG = grid(cd);
     tile(cdG, ffT("字的大小"), null, choice("font", FF_SIZES, v("--card")), true);
     tile(cdG, ffT("位置"), ffT("卡片出現在哪裡"), choice("pos", [["word", ffT("詞的旁邊")], ["tl", ffT("左上角")], ["tr", ffT("右上角")], ["bl", ffT("左下角")], ["br", ffT("右下角")]], v("--card")));
@@ -168,7 +168,7 @@
     tile(cdG, ffT("卡片大小"), ffT("拖拉卡片右下角可以改大小"), resetRow);
 
     // ── 鍵盤 ──
-    const kb = part("keys", ffT("鍵盤"), "#ffe066", ffT("游標（觸控板、滑鼠或 Pencil）停在一個詞上，按一個鍵就標記它，不用打開卡片。網頁和影片字幕上都可以。"));
+    const kb = part("keys", ffT("鍵盤"), "#ffe066", ffT("游標停在詞上，按一個鍵就標記它，不用打開卡片。"));
     const kbG = grid(kb);
     const kSw = ffSwitch(prefs, "keys"); kSw.style.setProperty("--c", "#ffe066");
     tile(kbG, ffT("用鍵盤標記"), null, kSw);
@@ -187,36 +187,38 @@
         });
         return i;
     };
-    tile(kbG, ffT("認識"), ffT("標成認識：馬上不上色（只替不認識的詞上色開著的話），傳到 App 時變成熟悉"), keyBox("keyKnown"));
-    tile(kbG, ffT("不熟＋收藏"), ffT("加到不熟，也收藏（連同那一句話）"), keyBox("keyNew"));
-    tip(kb, "how", ffT("游標停在詞上按鍵，旁邊會跳出一個小提示說標了什麼。標的是卡片上第一個語言的那個詞。按「傳到 App」的時候一起傳過去。"));
-    tip(kb, "warn", ffT("YouTube 自己用 K、J、L 和數字鍵控制影片，所以預設是 A 和 S。游標沒有停在詞上的時候，按鍵照網站原本的用法。"));
+    tile(kbG, ffT("認識"), ffT("標成認識，傳到 App 時變成熟悉"), keyBox("keyKnown"));
+    tile(kbG, ffT("不熟＋收藏"), ffT("加到不熟並收藏，連同那一句"), keyBox("keyNew"));
+    tip(kb, "how", ffT("標了什麼會跳出小提示，按「傳到 App」時一起傳。"));
+    tip(kb, "warn", ffT("預設是 A 和 S，因為 YouTube 用 K、J、L 和數字鍵。游標不在詞上時，按鍵照網站原本的用法。"));
 
     // ── 影片字幕 ──
-    const subPart = part("subs", ffT("影片字幕"), v("--subs"), ffT("在 YouTube 和 Viki 看影片時，字幕出現在旁邊（iPhone 在下面），說到哪一句就亮到哪一句。"));
+    const subPart = part("subs", ffT("影片字幕"), v("--subs"), ffT("YouTube 和 Viki 的字幕放在面板裡，正在說的那一句會亮。"));
     if (!prefs.subs) subPart.classList.add("dim");
     const sc = (k, o, f) => choice(k, o, v("--subs"), f);
     // (the panel: where, how big, how it looks)
     group(subPart, ffT("面板"));
     const pG = grid(subPart);
-    tile(pG, ffT("位置"), ffT("旁邊往上捲，或下面一行往旁邊流（全螢幕時一定在下面）"), sc("subsFlow", [[false, ffT("旁邊")], [true, ffT("下面")]]));
+    tile(pG, ffT("位置"), ffT("旁邊：一句一句往上捲。下面：一行字幕（全螢幕時都在下面）"), sc("subsFlow", [[false, ffT("旁邊")], [true, ffT("下面")]]));
+    tile(pG, ffT("下面一行的字幕"), ffT("一直往旁邊移，或一句說完往上換下一句（下一句小小的在下面）"), sc("subsFlowStyle", [["scroll", ffT("一直往旁邊移")], ["swap", ffT("一句一句往上換")]]));
+    tile(pG, ffT("字跟著時間變大"), ffT("正在說的字變大，像歌詞一樣"), sc("subsSwell", onOff));
     tile(pG, ffT("大小"), ffT("面板上的 A− A+ 也可以調"), sc("subsFont", FF_SIZES));
-    tile(pG, ffT("面板的底"), ffT("黑色；跟著底下的畫面：用底下大部分的顏色（太亮的會調暗）；沒有底：只看得到字幕一句一句的框、按鈕和詞卡"), sc("subsBg", [["dark", ffT("黑色")], ["tint", ffT("跟著底下的畫面")], ["clear", ffT("沒有底")]]));
+    tile(pG, ffT("面板的底"), ffT("黑色、跟著影片的顏色，或透明"), sc("subsBg", [["dark", ffT("黑色")], ["tint", ffT("跟著底下的畫面")], ["clear", ffT("沒有底")]]));
     tile(pG, ffT("影片上原本的字幕"), ffT("面板開著的時候"), sc("subsHideVideo", [[true, ffT("隱藏")], [false, ffT("顯示")]]));
-    tile(pG, ffT("查詞時影片暫停"), ffT("點字幕的詞時（卡片關掉後繼續）"), sc("subsPause", onOff));
-    tile(pG, ffT("字幕在下面橫排時的詞卡"), ffT("畫面最上面一排一樣大小的詞卡：正在說的這一句標出來的詞"), sc("subsDefs", [[true, ffT("顯示")], [false, ffT("不顯示")]]));
+    tile(pG, ffT("查詞時影片暫停"), ffT("點字幕的詞時暫停，關掉卡片後繼續"), sc("subsPause", onOff));
+    tile(pG, ffT("字幕在下面橫排時的詞卡"), ffT("字幕在下面時，畫面上面列出這一句標出來的詞"), sc("subsDefs", [[true, ffT("顯示")], [false, ffT("不顯示")]]));
     // (which subtitles: their language, the script, a second language under them)
     group(subPart, ffT("字幕的語言"));
     const lG = grid(subPart);
-    tile(lG, ffT("字幕的語言"), ffT("讀音、意思、聲調顏色和生詞用哪個語言的詞典。自動：跟著上面開著的那一個語言（瑞典語的話，看字幕本身的語言）"), sc("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]]));
-    tile(lG, ffT("簡體／繁體字幕"), ffT("簡體的字幕轉成繁體（照詞典的詞：头发 → 頭髮），認識的詞也照繁體認得；或全部轉成簡體（只看簡體字）"), sc("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")], ["simp", ffT("轉成簡體")]]));
-    tile(lG, ffT("第二種語言"), ffT("每一行下面用小小的灰色字顯示另一種語言（例如英文），影片有那個語言的字幕才會出現。在字幕面板上選。"), sc("subs2", [["", ffT("不顯示")], ["en", "English"], ["zh-hant", ffT("繁體中文")], ["zh-hans", ffT("簡體中文")], ["ja", "日本語"], ["ko", "한국어"]]));
+    tile(lG, ffT("字幕的語言"), ffT("用哪個語言的詞典看字幕。自動：跟查詞的語言。"), sc("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]]));
+    tile(lG, ffT("簡體／繁體字幕"), ffT("把字幕轉成繁體或簡體"), sc("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")], ["simp", ffT("轉成簡體")]]));
+    tile(lG, ffT("第二種語言"), ffT("每一句下面用小字顯示另一種語言（影片要有那種字幕）"), sc("subs2", [["", ffT("不顯示")], ["en", "English"], ["zh-hant", ffT("繁體中文")], ["zh-hans", ffT("簡體中文")], ["ja", "日本語"], ["ko", "한국어"]]));
 
     // (標出來的詞: which words of the subtitles get their reading, meaning and colour)
-    group(subPart, ffT("標出來的詞"), ffT("字幕裡哪些詞上面標讀音、下面標意思、有聲調顏色（詞卡和「有生詞才停」也照這個）。"));
+    group(subPart, ffT("標出來的詞"), ffT("這些詞會加讀音、意思和顏色。"));
     const mG = grid(subPart);
-    tile(mG, ffT("標哪些詞"), ffT("不認識：還沒在 App 標成熟悉的詞；不常用：不在最常用的那些詞裡面（不管認不認識）"), sc("subsMark", [["new", ffT("不認識的詞")], ["rare", ffT("不常用的詞")], ["both", ffT("不認識又不常用的詞")]], () => paintRare()), true);
-    const rareRow = tile(mG, ffT("多不常用才標"), ffT("和 App 裡每個詞旁邊的常用度（五格）一樣：選的那一級以下的詞才標"), rareChoice(), true);
+    tile(mG, ffT("標哪些詞"), ffT("不認識：App 裡還沒熟悉的詞。不常用：常用詞以外的詞。"), sc("subsMark", [["new", ffT("不認識的詞")], ["rare", ffT("不常用的詞")], ["both", ffT("不認識又不常用的詞")]], () => paintRare()), true);
+    const rareRow = tile(mG, ffT("多不常用才標"), ffT("比選的這一級少見的詞才標"), rareChoice(), true);
     // (each choice: the bars beside the words in the App, the level it starts at, and which words that is)
     function rareChoice() {
         const opts = [[1000, 4, ffT("常用和更少見的"), ffT("第 1001 個以後的詞")], [3000, 3, ffT("一般和更少見的"), ffT("第 3001 個以後的詞")],
@@ -246,11 +248,11 @@
     function paintRare() { rareRow.classList.toggle("dim", (prefs.subsMark || "new") === "new"); }
     paintRare();
     // (the reading over them and the meaning under them: each with its size)
-    tile(mG, ffT("上面標讀音"), ffT("注音或拼音（照華語的設定），也有聲調顏色"), [sc("subsRd", onOff),
+    tile(mG, ffT("上面標讀音"), ffT("詞上面加讀音"), [sc("subsRd", onOff),
         [ffT("讀音的大小"), sc("subsRdSize", [[0.25, ffT("最小")], [0.32, ffT("很小")], [0.4, ffT("小一點")], [0.45, ffT("小")], [0.56, ffT("中")], [0.7, ffT("大")], [0.85, ffT("更大")], [1, ffT("和字一樣")]])]]);
-    tile(mG, ffT("下面標意思"), prefs.en ? ffT("現在是英文（語言裡的「英文」開著）") : ffT("現在是中文（語言裡的「英文」打開就變英文）"), [sc("subsGl", onOff),
+    tile(mG, ffT("下面標意思"), prefs.en ? ffT("詞下面加意思（現在是英文）") : ffT("詞下面加意思（現在是中文）"), [sc("subsGl", onOff),
         [ffT("意思的大小"), sc("subsGlSize", [[0.25, ffT("最小")], [0.32, ffT("很小")], [0.4, ffT("小一點")], [0.5, ffT("中")], [0.6, ffT("大")], [0.75, ffT("更大")]])]]);
-    subPart.appendChild(el("p", ffT("字幕的聲調顏色在上面的「聲調顏色和標記」。"), "lead"));
+    subPart.appendChild(el("p", ffT("字幕的顏色在上面的「顏色」。"), "lead"));
 
     group(subPart, ffT("面板上的學習工具"));
     const tools = el("div", null, "tools");
@@ -259,14 +261,14 @@
         const x = el("div", null, "tool"); x.append(el("b", b), el("span", t)); tools.appendChild(x);
     }
     subPart.appendChild(tools);
-    tip(subPart, "how", ffT("點每一行前面的時間會跳到那裡。用手指拖（或捲動）可以往前往後看，幾秒後會自己跟回影片。"));
-    tip(subPart, "how", ffT("「不認識」是還沒在 App 裡標成熟悉的詞（用 A 標認識以後，讀音和意思就會拿掉）。還沒從 App 傳認識的詞過來時，每個詞都會標。"));
-    tip(subPart, "good", ffT("在 YouTube 字幕語言可以選「自動翻譯」：影片沒有中文字幕時，會自己用自動翻譯成繁體中文。"));
-    tip(subPart, "warn", ffT("iPhone 上影片全螢幕時看不到面板（全螢幕是 iOS 自己的播放器），要在網頁裡看。"));
+    tip(subPart, "how", ffT("點一句前面的時間跳到那裡。拖動字幕可以往前往後看。"));
+    tip(subPart, "how", ffT("還沒從 App 傳認識的詞過來時，每個詞都算不認識。"));
+    tip(subPart, "good", ffT("影片沒有中文字幕時，會用 YouTube 的自動翻譯。"));
+    tip(subPart, "warn", ffT("iPhone 全螢幕時看不到面板，要在網頁裡看。"));
     paintNeeds();
 
     // ── 認識的詞 ──
-    const kn = part("known", ffT("認識的詞"), v("--known"), ffT("從 App 傳過來的「熟悉」和「不熟」的詞：影片字幕裡沒學過的詞有虛線，不熟的詞有黃線，面板上顯示你懂多少。"));
+    const kn = part("known", ffT("認識的詞"), v("--known"), ffT("從 App 傳來的詞：沒學過的有虛線，不熟的有黃線。"));
     const k = d.known;
     const st = el("div", null, "stats");
     const count = o => Object.values(o || {}).reduce((a, x) => a + x.length, 0);
@@ -355,8 +357,8 @@
     }
     tip(kn, "how", ffT("在 App 的「設定 → Safari 查詞」按「複製認識的詞」，再回到這裡按「貼上從 App 複製的詞」。或者按「把認識的詞傳到 Safari 查詞」：它會在 Safari 打開 example.com，詞放在網址的 # 後面，不會傳到網路上（Safari 查詞要允許在 example.com 上，或允許所有網站）。"));
     tip(kn, "how", ffT("Android 的 Firefox：在 App 的「設定 → 匯出與匯入 → 瀏覽器查詞（Firefox）」按「把認識的詞傳到瀏覽器查詞」，或「複製認識的詞」再回到這裡貼上。"));
-    tip(kn, "good", ffT("學了新詞以後再傳一次，懂的百分比就會更新。卡片上的「認識」按鈕也算：按了馬上不上色，傳到 App 的時候 App 也會把它標成熟悉。"));
-    tip(kn, "warn", ffT("網頁上要上色，「網頁」的聲調顏色要選「全部（華語）」。")); 
+    tip(kn, "good", ffT("學了新詞再傳一次，百分比就會更新。"));
+    tip(kn, "warn", ffT("網頁上要上色，「網頁上的字」選「全部（華語）」。")); 
     if (k) {
         const clr = el("button", ffT("清除"), "act");
         clr.addEventListener("click", async () => { await ffStore.set({ ffKnown: null }).catch(() => {}); clr.textContent = ffT("清除了"); });
@@ -364,7 +366,7 @@
     }
 
     // ── 傳到 App ──
-    const sd = part("send", ffT("傳到 App"), v("--send"), ffT("卡片上按「加到不熟」「收藏」的詞先存在這裡，傳到 App 的時候連你存詞的那一句話一起傳。看影片字幕的時間也一起傳（App 的練習統計）。"));
+    const sd = part("send", ffT("傳到 App"), v("--send"), ffT("你在卡片上加的詞先存在這裡，按「傳到 App」連同句子一起傳。"));
     const q = d.queue;
     const mins = Object.values(d.watch).reduce((a, x) => a + x, 0);
     // (the buttons first, the words under them)
