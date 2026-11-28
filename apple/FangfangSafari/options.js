@@ -203,6 +203,28 @@
     tile(pG, ffT("下面一行的字幕"), ffT("一直往旁邊移，或一句說完往上換下一句（下一句小小的在下面）"), sc("subsFlowStyle", [["scroll", ffT("一直往旁邊移")], ["swap", ffT("一句一句往上換")]]));
     tile(pG, ffT("字跟著時間變大"), ffT("正在說的字變大，像歌詞一樣"), sc("subsSwell", onOff));
     tile(pG, ffT("大小"), ffT("面板上的 A− A+ 也可以調"), sc("subsFont", FF_SIZES));
+    // 字幕時間: −/+ a tenth of a second, for every video
+    {
+        const box = el("div", null, "seg");
+        box.style.setProperty("--c", v("--subs"));
+        const show = el("span");
+        show.style.cssText = "align-self:center;min-width:6.5em;text-align:center;font-weight:600";
+        const paint = () => {
+            const o = +prefs.subsOffset || 0;
+            show.textContent = Math.abs(o) < 0.05 ? ffT("準時") : (o > 0 ? ffT("提早 ") : ffT("延後 ")) + Math.abs(o).toFixed(1) + ffT(" 秒");
+        };
+        const btn = (t, d) => {
+            const b = el("button", t);
+            b.addEventListener("click", () => {
+                const o = d === 0 ? 0 : Math.round(((+prefs.subsOffset || 0) + d) * 10) / 10;
+                prefs.subsOffset = Math.max(-5, Math.min(5, o)); ffSave(prefs); paint();
+            });
+            return b;
+        };
+        box.append(btn(ffT("延後"), -0.1), show, btn(ffT("提早"), 0.1), btn(ffT("歸零"), 0));
+        paint();
+        tile(pG, ffT("字幕時間"), ffT("字幕早一點或晚一點出現，一次 0.1 秒（每部影片都一樣）"), box);
+    }
     tile(pG, ffT("面板的底"), ffT("黑色、跟著影片的顏色，或透明"), sc("subsBg", [["dark", ffT("黑色")], ["tint", ffT("跟著底下的畫面")], ["clear", ffT("沒有底")]]));
     tile(pG, ffT("影片上原本的字幕"), ffT("面板開著的時候"), sc("subsHideVideo", [[true, ffT("隱藏")], [false, ffT("顯示")]]));
     tile(pG, ffT("查詞時影片暫停"), ffT("點字幕的詞時暫停，關掉卡片後繼續"), sc("subsPause", onOff));

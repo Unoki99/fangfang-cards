@@ -2,7 +2,7 @@
 // defaults, saving them, and sending the chosen words (and the minutes watched) to the app.
 const FF_DEFAULTS = { pcLink: false, pageAnno: false, on: true, zhPlace: 0, zhRom: 1, twRom: 1, twPlace: -1, colours: true, en: false, zh: true, tw: false,
     yue: false, hak: false, hakAcc: 0, hakRom: 0, sv: false, svGuess: true, eng: false, engRom: 0, engEn: true, engZh: true, engSv: false, font: 1, ring: false, tint: false, pos: "word", w: 0, h: 0,
-    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFlowStyle: "scroll", subsSwell: false, subsSwapNext: true, subsFlowH: 0, subs2: "", subsColours: true, subsBar: true, subsFont: 1, subsRd: true, subsGl: true, subsRdSize: 0.56, subsGlSize: 0.5, subsEnZh: true, subsLang: "auto", subsTrad: true, subsDefs: false, subsBg: "dark", subsMark: "new", subsRare: 3000, onlyNew: false,
+    subs: true, subsPause: true, subsHideVideo: true, subsFlow: false, subsFlowStyle: "scroll", subsSwell: false, subsSwapNext: true, subsOffset: 0, subsFlowH: 0, subs2: "", subsColours: true, subsBar: true, subsFont: 1, subsRd: true, subsGl: true, subsRdSize: 0.56, subsGlSize: 0.5, subsEnZh: true, subsLang: "auto", subsTrad: true, subsDefs: false, subsBg: "dark", subsMark: "new", subsRare: 3000, onlyNew: false,
     keys: true, keyKnown: "a", keyNew: "s", uiLang: "zh" };
 const FF_SIZES = [[0.85, "小"], [1, "中"], [1.15, "大"], [1.3, "更大"], [1.5, "很大"], [1.8, "特大"], [2.2, "超大"], [2.7, "最大"]];
 const ffStore = browser.storage.local;

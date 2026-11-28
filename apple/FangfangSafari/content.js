@@ -46,6 +46,8 @@
         subsSwell: false,
         // subsSwapNext: 一句一句往上換 shows the next line, small, at the bottom (off: more room for the line being said)
         subsSwapNext: true,
+        // subsOffset: the subtitles shown this many seconds earlier (+) or later (−), for every video
+        subsOffset: 0,
         // that row's height as dragged by its top edge (0 = as its words need); it keeps the whole width, centred
         subsFlowH: 0,
         // over / under the words you don't know in the subtitles: their reading, and their meaning (English or 中文, as 英文 is set)
@@ -3036,7 +3038,7 @@
             if (tm) {
                 const v = subsVideo(); const i = +tm.dataset.i;
                 if (v && st.cues[i]) {
-                    v.currentTime = st.cues[i].s + 0.01; st.manual = 0; st.manualUntil = 0;
+                    v.currentTime = Math.max(0, st.cues[i].s - subsOff() + 0.01); st.manual = 0; st.manualUntil = 0;
                     if (st.loop >= 0) { st.loop = i; subsStudy(); }        // (repeating: now this line)
                     st.stopped = -1;
                 }
@@ -3220,6 +3222,21 @@
             return b;
         };
         row(ffT("字的大小"), [size(-1), size(1)]);
+        // 字幕時間: a tenth of a second at a time (for every video)
+        const offNow = subsOff();
+        const offLabel = Math.abs(offNow) < 0.05 ? ffT("準時") : (offNow > 0 ? ffT("提早 ") : ffT("延後 ")) + Math.abs(offNow).toFixed(1) + ffT(" 秒");
+        const offBtn = (t, d) => {
+            const b = document.createElement("button"); b.textContent = t;
+            b.addEventListener("click", () => {
+                prefs.subsOffset = d === 0 ? 0 : Math.round((subsOff() + d) * 10) / 10;
+                prefs.subsOffset = Math.max(-5, Math.min(5, prefs.subsOffset));
+                savePrefs(); st.now = -2; redraw();
+            });
+            return b;
+        };
+        const offShow = document.createElement("span"); offShow.textContent = offLabel;
+        offShow.style.cssText = "align-self:center;min-width:6.5em;text-align:center;font-weight:600";
+        row(ffT("字幕時間（每部影片都一樣）"), [offBtn(ffT("延後"), -0.1), offShow, offBtn(ffT("提早"), 0.1), offBtn(ffT("歸零"), 0)]);
         sec(ffT("字幕的語言"));
         row(ffT("主要的字幕"), choice("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]], () => { relay(); subsRepick(); }));
         const s2 = subs2Select();
@@ -3992,14 +4009,16 @@
         const v = subsVideo();
         if (!v) return;
         subsClock(v);
-        const t = v.currentTime;
+        // (字幕時間: earlier or later, the same for every video)
+        const off = subsOff();
+        const t = v.currentTime + off;
         // (the last line that has started)
         let lo = 0, hi = st.cues.length - 1, at = -1;
         while (lo <= hi) { const m = (lo + hi) >> 1; if (st.cues[m].s <= t + 0.05) { at = m; lo = m + 1; } else hi = m - 1; }
         if (st.manualUntil && Date.now() > st.manualUntil) { st.manualUntil = 0; st.manual = 0; subsPlace(true); }
         if (st.slow && v.playbackRate !== 0.75) v.playbackRate = 0.75;
         // (the row at the bottom: moving all the time, at the pace of the lines)
-        const tNow = smoothTime(v);
+        const tNow = smoothTime(v) + off;
         if (st.flow && !st.swap && !st.manualUntil) subsFlowAt(tNow, at);
         // (一句一句往上換: a line coloured since it was put up (the words, readings, meanings) put up again)
         if (st.swap) subsSwapFresh(at);
@@ -4008,7 +4027,7 @@
         // 重複: back to the line's start when it's over
         if (st.loop >= 0 && st.cues[st.loop]) {
             const c = st.cues[st.loop], end = subsEnd(st.loop);
-            if (t >= end + 0.12 || t < c.s - 1.5) { v.currentTime = c.s + 0.01; return; }
+            if (t >= end + 0.12 || t < c.s - 1.5) { v.currentTime = Math.max(0, c.s - off + 0.01); return; }
         }
         // 一句一停: the video waits at the end of each line (play goes on to the next)
         // (有生詞才停: only after a line with a word you don't know yet)
@@ -4305,6 +4324,9 @@
         sw.units.forEach((u, i) => { u.classList.toggle("sw1", i < k); u.classList.toggle("sw2", i === k); });
     }
 
+    /// 字幕時間: how many seconds earlier (+) the subtitles are shown, at most 5 either way
+    function subsOff() { const o = +prefs.subsOffset; return isFinite(o) ? Math.max(-5, Math.min(5, o)) : 0; }
+
     /// where a line ends: its own end, or the next line's start when that comes first
     function subsEnd(i) {
         const st = subs, c = st.cues[i], n = st.cues[i + 1];
@@ -4325,7 +4347,7 @@
         const go = d => {
             const vv = v(); if (!vv || !st.cues.length) return;
             const i = Math.max(0, Math.min(st.cues.length - 1, (st.now < 0 ? 0 : st.now) + d));
-            vv.currentTime = st.cues[i].s + 0.01; st.stopped = -1; st.manual = 0; st.manualUntil = 0;
+            vv.currentTime = Math.max(0, st.cues[i].s - subsOff() + 0.01); st.stopped = -1; st.manual = 0; st.manualUntil = 0;
             if (st.loop >= 0) st.loop = i;
             if (vv.paused) vv.play().catch(() => {});
         };

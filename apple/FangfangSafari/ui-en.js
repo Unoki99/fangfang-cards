@@ -1,6 +1,16 @@
 // 方方詞卡 查詞: the add-on's own words in English, for 設定 → 介面語言 → English. Each Chinese text of the add-on
 // (as it is in content.js, options.js, popup.js) → its English. Words and meanings from the dictionaries stay as they are.
 var FF_EN = {
+    "字幕早一點或晚一點出現，一次 0.1 秒（每部影片都一樣）": "Subtitles a little earlier or later, a tenth of a second at a time (the same for every video)",
+    "字幕時間": "Subtitle timing",
+    "歸零": "Reset",
+    "提早": "Earlier",
+    "延後": "Later",
+    "字幕時間（每部影片都一樣）": "Subtitle timing (the same for every video)",
+    " 秒": " s",
+    "延後 ": "Later by ",
+    "提早 ": "Earlier by ",
+    "準時": "On time",
     "只有不熟的詞上色": "Colour only unknown words",
     "橫的字幕：畫面上面的詞卡": "Horizontal subtitles: word cards at the top",
     "標哪些詞（加讀音和意思）": "Which words to mark (reading and meaning)",
