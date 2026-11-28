@@ -12,22 +12,16 @@ enum Gemini {
     static let keyKey = "geminiKey"
     static let onKey = "geminiOn"
     static let modelKey = "geminiModel"
-    static let defaultModel = "gemini-3.8-flash"
-    /// the Flash models to choose from (Google's model list, November 2026): code, name. 2.5: only for keys that
-    /// used it before
+    static let defaultModel = "gemini-3.5-flash"
+    /// the models to choose from: code, name (only these two; one chosen before that isn't is the default)
     static let models: [(String, String)] = [
-        ("gemini-3.8-flash", "Gemini 3.8 Flash"),
-        ("gemini-3.6-flash", "Gemini 3.6 Flash"),
-        ("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite"),
-        ("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite"),
-        ("gemini-3-flash-preview", "Gemini 3 Flash (preview)"),
+        ("gemini-3.5-flash", "Gemini 3.5 Flash"),
         ("gemini-2.5-flash", "Gemini 2.5 Flash"),
-        ("gemini-2.5-flash-lite", "Gemini 2.5 Flash-Lite"),
     ]
     static var key: String { (UserDefaults.standard.string(forKey: keyKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     static var model: String {
         let m = (UserDefaults.standard.string(forKey: modelKey) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return m.isEmpty ? defaultModel : m
+        return models.contains(where: { $0.0 == m }) ? m : defaultModel
     }
     /// turned on, with a key
     static var on: Bool { UserDefaults.standard.bool(forKey: onKey) && !key.isEmpty }
@@ -204,11 +198,9 @@ struct GeminiSettingsSection: View {
             Toggle(tr("用 Gemini 幫忙"), isOn: $on)
             SecureField(tr("API 金鑰"), text: $key)
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
-            let current = model.isEmpty ? Gemini.defaultModel : model
+            let current = Gemini.models.contains(where: { $0.0 == model }) ? model : Gemini.defaultModel
             Picker(tr("模型"), selection: Binding(get: { current }, set: { model = $0 })) {
                 ForEach(Gemini.models, id: \.0) { Text($0.1).tag($0.0) }
-                // (one typed in an older version, not on the list)
-                if !Gemini.models.contains(where: { $0.0 == current }) { Text(current).tag(current) }
             }
             Button(testing ? tr("試試看中…") : tr("試試看")) { test() }.disabled(testing || key.isEmpty)
             if let result { Text(result).ffFont(.footnote).foregroundStyle(T.muted) }

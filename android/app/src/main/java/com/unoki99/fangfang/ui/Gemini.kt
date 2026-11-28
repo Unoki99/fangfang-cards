@@ -40,13 +40,11 @@ import java.net.URL
 //    whole sentence corrected.
 
 object Gemini {
-    const val defaultModel = "gemini-3.8-flash"
-    /** the Flash models to choose from (Google's list, November 2026): code, name. 2.5: only for keys that used it before */
-    val models = listOf("gemini-3.8-flash" to "Gemini 3.8 Flash", "gemini-3.6-flash" to "Gemini 3.6 Flash", "gemini-3.5-flash-lite" to "Gemini 3.5 Flash-Lite",
-        "gemini-3.1-flash-lite" to "Gemini 3.1 Flash-Lite", "gemini-3-flash-preview" to "Gemini 3 Flash (preview)",
-        "gemini-2.5-flash" to "Gemini 2.5 Flash", "gemini-2.5-flash-lite" to "Gemini 2.5 Flash-Lite")
+    const val defaultModel = "gemini-3.5-flash"
+    /** the models to choose from: code, name (only these two; one chosen before that isn't is the default) */
+    val models = listOf("gemini-3.5-flash" to "Gemini 3.5 Flash", "gemini-2.5-flash" to "Gemini 2.5 Flash")
     val key: String get() = Prefs.geminiKey.value.trim()
-    val model: String get() = Prefs.geminiModel.value.trim().ifEmpty { defaultModel }
+    val model: String get() = Prefs.geminiModel.value.trim().let { m -> if (models.any { it.first == m }) m else defaultModel }
     /** turned on, with a key */
     val on: Boolean get() = Prefs.geminiOn.value && key.isNotEmpty()
 
