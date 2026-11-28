@@ -2861,7 +2861,9 @@
   display: flex; align-items: center; justify-content: center; color: #c9cce0; background: rgba(255,255,255,0.08); }
 #ff-subs .gear svg { width: 18px; height: 18px; display: block; }
 #ff-subs.flow .gear { top: auto; bottom: 5px; }
-#ff-subs .top { padding-left: 44px; }
+#ff-subs .top { padding-left: 78px; }
+/* 生詞, next to the gear: all the words of the video you don't know yet */
+#ff-subs .gear.words { left: 42px; }
 #ff-subs.bare .top, #ff-subs.bare .study { display: none; }
 #ff-subs.bare .view { top: 0; }
 #ff-subs.bare.flow .view { bottom: 0; }
@@ -2955,6 +2957,11 @@
         gear.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M17.47 10.78 L19.14 11.07 L19.14 12.93 L17.47 13.22 L16.73 15.00 L17.71 16.39 L16.39 17.71 L15.00 16.73 L13.22 17.47 L12.93 19.14 L11.07 19.14 L10.78 17.47 L9.00 16.73 L7.61 17.71 L6.29 16.39 L7.27 15.00 L6.53 13.22 L4.86 12.93 L4.86 11.07 L6.53 10.78 L7.27 9.00 L6.29 7.61 L7.61 6.29 L9.00 7.27 L10.78 6.53 L11.07 4.86 L12.93 4.86 L13.22 6.53 L15.00 7.27 L16.39 6.29 L17.71 7.61 L16.73 9.00 Z M12 9.6 A2.4 2.4 0 1 0 12 14.4 A2.4 2.4 0 1 0 12 9.6 Z"/></svg>';
         // (the subtitles' settings on a page of their own, big enough to tap: the row of small buttons was hard to hit)
         gear.addEventListener("click", e => { e.stopPropagation(); subsSheet(); });
+        // 生詞: next to the gear, always there (the video's words you don't know yet, in a big window)
+        const words = document.createElement("div"); words.className = "gear words";
+        words.setAttribute("role", "button");
+        words.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 5.5h2.2v2.2H4zM8.5 5.6h11.5v2H8.5zM4 10.9h2.2v2.2H4zM8.5 11h11.5v2H8.5zM4 16.3h2.2v2.2H4zM8.5 16.4h11.5v2H8.5z"/></svg>';
+        words.addEventListener("click", e => { e.stopPropagation(); subsWordList(); });
         // 橫排: its top edge dragged up or down makes the row taller or lower (the width stays the screen's, centred);
         // a double click (or double tap) back to the height its words need
         const vgrip = document.createElement("div"); vgrip.className = "vgrip";
@@ -2985,8 +2992,8 @@
         vgrip.addEventListener("pointercancel", hEnd);
         vgrip.addEventListener("dblclick", e => { e.stopPropagation(); prefs.subsFlowH = 0; savePrefs(); subsLayout(); });
         vgrip.addEventListener("click", e => e.stopPropagation());
-        p.append(top, study, view, gear, vgrip);
-        st.study = study; st.gear = gear;
+        p.append(top, study, view, gear, words, vgrip);
+        st.study = study; st.gear = gear; st.wordsBtn = words;
         document.documentElement.appendChild(p);
         st.panel = p; st.rail = rail; st.view = view; st.top = top;
 
@@ -3074,6 +3081,7 @@
         const bare = prefs.subsBar === false;
         st.panel.classList.toggle("bare", bare);
         if (st.gear) st.gear.title = ffT("字幕設定");
+        if (st.wordsBtn) { st.wordsBtn.title = ffT("生詞：這部影片裡還不認識的詞"); st.wordsBtn.setAttribute("aria-label", ffT("生詞")); }
         st.panel.classList.toggle("clear", subsBgMode() === "clear");
         // (the row at the bottom: tall enough for the letters)
         // (one line on top; the readings and meanings over and under the words need room too)
@@ -4305,8 +4313,7 @@
         if (st.flow) b(ffT("詞卡"), !!prefs.subsDefs, ffT("畫面最上面顯示這句不認識的詞的詞卡"), () => { prefs.subsDefs = !prefs.subsDefs; savePrefs(); subsDefs(true); });
         b(ffT("讀音"), !!prefs.subsRd, ffT("不認識的詞上面標讀音"), () => { prefs.subsRd = !prefs.subsRd; savePrefs(); subsRedraw(); });
         b(ffT("意思"), !!prefs.subsGl, ffT("不認識的詞下面標意思（英文或中文，跟著「英文」的設定）"), () => { prefs.subsGl = !prefs.subsGl; savePrefs(); subsRedraw(); });
-        // (all the words of the video you don't know yet, in a big window: tick the ones you know)
-        b(ffT("生詞"), false, ffT("這部影片裡還不認識的詞，一次標完"), () => subsWordList());
+        // (生詞: the button next to the gear)
         // (how much of the video's words you know: 懂 87%)
         const m = document.createElement("span"); m.className = "meter";
         m.textContent = st.known != null ? ffT("懂 ") + st.known + "%" : "";

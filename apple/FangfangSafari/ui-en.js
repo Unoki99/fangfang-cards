@@ -1,6 +1,7 @@
 // 方方詞卡 查詞: the add-on's own words in English, for 設定 → 介面語言 → English. Each Chinese text of the add-on
 // (as it is in content.js, options.js, popup.js) → its English. Words and meanings from the dictionaries stay as they are.
 var FF_EN = {
+    "生詞：這部影片裡還不認識的詞": "New words: the words in this video you don't know yet",
     "詞典裡沒有「": "Not in the dictionary: \u201c",
     "」。": "\u201d.",
     "用哪個語言的詞典看字幕": "Which dictionary reads the subtitles",
