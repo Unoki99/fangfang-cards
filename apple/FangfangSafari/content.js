@@ -305,7 +305,15 @@
         return `d-sv-${String((w.charCodeAt(0) * 31 + (w.length > 1 ? w.charCodeAt(1) : 0)) % n).padStart(3, "0")}.json`;
     }
     // (the languages looked up: the ones chosen that have a dictionary)
-    const findLangs = meta => ["zh", "tw", "yue", "hak"].filter(l => prefs[l] && (meta[l] === undefined || meta[l] > 0));
+    // (Chinese characters with 瑞典語 or 英語 on: the subtitles' Chinese language when one is set for them, else
+    // 華語, so a tap on a Chinese word still shows it instead of nothing)
+    const findLangs = meta => {
+        const has = l => meta[l] === undefined || meta[l] > 0;
+        const on = ["zh", "tw", "yue", "hak"].filter(l => prefs[l] && has(l));
+        if (on.length) return on;
+        const sl = ["zh", "tw", "yue", "hak"].includes(prefs.subsLang) ? prefs.subsLang : "zh";
+        return [sl, "zh"].filter((l, i, a) => a.indexOf(l) === i && has(l)).slice(0, 1);
+    };
     // (the files for a character read ahead where they're kept, in the add-on: only the words found come to the page.
     // Sending whole files to the page on every new character made hovering slow on long pages in Firefox)
     let warmed = new Set();
@@ -606,7 +614,11 @@
             show(rect, spot, box);
             return;
         }
-        if (!res.zh && !res.tw && !res.yue && !res.hak && !res.sv && !res.eng) { hide(); return; }
+        if (!res.zh && !res.tw && !res.yue && !res.hak && !res.sv && !res.eng) {
+            // (a word tapped in the subtitles: say so, instead of the video just going on)
+            if (spot && spot.startsWith("subs:")) { show(rect, spot, message(ffT("詞典裡沒有「") + [...text].slice(0, 4).join("") + ffT("」。"))); return; }
+            hide(); return;
+        }
         last = { res, rect, spot };
         show(rect, spot, render(res));
         // the word on the page, marked in light blue (the longer of the 華語 and the 台語 word found)
@@ -1437,6 +1449,50 @@
         .note { font-size: 12px; color: #a3a3a8; margin-top: 6px; }
         .mark { position: fixed; z-index: 2147483646; pointer-events: none; box-sizing: border-box;
             border: 2px solid #7cc4ff; border-radius: 5px; background: rgba(124, 196, 255, 0.16); }
+
+        /* ── the app's look: a dark, warm night with the words glowing in their tone colours, round pill buttons and
+           boxes edged in each language's colour ── */
+        .card { background: linear-gradient(180deg, rgba(38, 30, 29, .97), rgba(23, 18, 18, .97)); color: #f4ece8;
+            border: 1px solid rgba(255, 255, 255, .10); border-radius: 20px;
+            box-shadow: 0 0 0 1px rgba(195, 155, 255, .16), 0 0 26px rgba(195, 155, 255, .14), 0 14px 40px rgba(0, 0, 0, .55);
+            font: 15px/1.4 -apple-system, "PingFang TC", "Heiti TC", sans-serif; }
+        .body { padding: 10px 14px 16px; }
+        .sec { --lc: #c39bff; border-left: none; border-radius: 16px; padding: 10px 12px 12px;
+            background: linear-gradient(180deg, color-mix(in srgb, var(--lc) 10%, transparent), color-mix(in srgb, var(--lc) 4%, transparent));
+            border: 1px solid color-mix(in srgb, var(--lc) 38%, transparent);
+            box-shadow: inset 0 0 18px color-mix(in srgb, var(--lc) 8%, transparent); }
+        .sec + .sec { margin-top: 10px; }
+        .sec.zh { --lc: #4f7dff; } .sec.tw { --lc: #3fae66; } .sec.yue { --lc: #e0b830; }
+        .sec.hak { --lc: #ff5a6a; } .sec.sv { --lc: #3fc9bd; } .sec.eng { --lc: #f08a3c; }
+        .lang { border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 600; margin-bottom: 6px;
+            box-shadow: 0 0 10px color-mix(in srgb, var(--lc) 45%, transparent); }
+        .han { font-size: 32px; font-weight: 700; letter-spacing: .02em;
+            text-shadow: 0 0 4px color-mix(in srgb, currentColor 70%, transparent), 0 0 14px color-mix(in srgb, currentColor 45%, transparent); }
+        .han span { text-shadow: 0 0 4px color-mix(in srgb, currentColor 70%, transparent), 0 0 14px color-mix(in srgb, currentColor 45%, transparent); }
+        .r { font-size: 18px; color: #c8f0a8; text-shadow: 0 0 8px color-mix(in srgb, currentColor 45%, transparent); }
+        .r span, .r2 span { text-shadow: 0 0 8px color-mix(in srgb, currentColor 45%, transparent); }
+        .r2 { font-size: 14px; color: #e3c6f7; }
+        .m { font-size: 15px; color: #f4ece8; margin-top: 4px; }
+        .en { font-size: 13.5px; color: #b9aea9; margin-top: 3px; }
+        .via, .note, .part .pk { color: #b0a39e; }
+        .chip { border-radius: 999px; padding: 1px 8px; background: rgba(255, 255, 255, .05); border-color: rgba(255, 255, 255, .16); color: #c8bcb7; }
+        .part { border-radius: 12px; background: rgba(255, 255, 255, .03); }
+        .steps { border-radius: 12px; background: rgba(255, 255, 255, .04); }
+        .btns { gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+        button { border-radius: 999px; padding: 6px 14px; font-size: 13.5px; font-weight: 600;
+            background: rgba(255, 255, 255, .05); border: 1.5px solid rgba(255, 255, 255, .18); color: #f4ece8;
+            transition: box-shadow .2s ease, background-color .2s ease; }
+        button.small { padding: 3px 10px; font-size: 12px; }
+        button.u { border-color: #ff8a5c; color: #ffc6ad; }
+        button.s { border-color: #ffd84d; color: #fff1a8; }
+        button.k { border-color: #b9aea9; color: #e8e0dc; }
+        button.on.u { background: rgba(255, 138, 92, .28); border-color: #ff8a5c; color: #fff; box-shadow: 0 0 12px rgba(255, 138, 92, .55); }
+        button.on.s { background: rgba(255, 216, 77, .30); border-color: #ffd84d; color: #fff; box-shadow: 0 0 12px rgba(255, 216, 77, .5); }
+        button.on.k { background: rgba(63, 174, 102, .30); border-color: #5fd68a; color: #fff; box-shadow: 0 0 12px rgba(95, 214, 138, .5); }
+        button.send { background: rgba(195, 155, 255, .22); border-color: #c39bff; color: #fff; box-shadow: 0 0 12px rgba(195, 155, 255, .45); }
+        .msg { font-size: 15px; }
+        .set select { border-radius: 10px; background: rgba(255, 255, 255, .06); border-color: rgba(255, 255, 255, .18); }
+        .mark { border-color: #c39bff; border-radius: 7px; background: rgba(195, 155, 255, .16); box-shadow: 0 0 12px rgba(195, 155, 255, .45); }
     `;
 
     function ensureHost() {
