@@ -3160,6 +3160,15 @@
 #ff-subs-sheet .row { margin: 0; padding: 10px 12px 12px; border-radius: 14px; background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.09); }
 #ff-subs-sheet .row button { min-height: 40px; padding: 0 12px; }
+/* (the page's own styles can't change a tile: the name on top, the choices side by side under it, wrapping) */
+#ff-subs-sheet .row { display: block !important; box-sizing: border-box !important; min-width: 0 !important; }
+#ff-subs-sheet .lab { display: block !important; width: auto !important; margin: 0 0 8px !important; writing-mode: horizontal-tb !important; }
+#ff-subs-sheet .seg { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: center !important;
+  justify-content: flex-start !important; gap: 8px !important; width: auto !important; }
+#ff-subs-sheet .seg > * { flex: 0 0 auto !important; width: auto !important; height: auto !important; max-width: 100% !important; }
+#ff-subs-sheet .seg button { min-height: 40px !important; white-space: normal !important; line-height: 1.25 !important; }
+#ff-subs-sheet .seg select { width: 100% !important; min-height: 40px !important; height: 40px !important; }
+#ff-subs-sheet .grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)) !important; gap: 10px !important; }
 #ff-subs-sheet .lab { font-size: 13px; color: #9aa0b8; margin-bottom: 6px; }
 #ff-subs-sheet .seg { display: flex; flex-wrap: wrap; gap: 8px; }
 #ff-subs-sheet button, #ff-subs-sheet select { min-height: 44px; padding: 0 16px; border-radius: 12px; font: inherit; cursor: pointer;
