@@ -1295,7 +1295,31 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         e.syl(place).filter { it != "-" && it != "_" }.joinToString("") { Zhuyin.tone(it).toString() }
 
     /** (設定 → 詞典 → 搜尋結果的順序: 自己排) */
+    /** your own words (自訂) whose word or meaning has the search (as typed, or in small letters): listed first, so a
+     *  word you added always shows */
+    fun ownHits(q0: String): List<Int> {
+        val q = q0.trim()
+        if (q.isEmpty() || q.any { it in "*＊?？" } || Regex("^[0-9\\s-]+$").matches(q)) return emptyList()
+        val low = q.lowercase()
+        val out = ArrayList<Int>()
+        var i = entries.size - 1
+        while (i >= 0 && entries[i].own) {
+            val e = entries[i]
+            if (e.h.lowercase().contains(low) || (e.alt?.contains(q) == true) || e.senses.any { it.text.lowercase().contains(low) }
+                || e.jp.any { it.contains(q) } || (e.en?.lowercase()?.contains(low) == true)) out.add(i)
+            i--
+        }
+        return out.reversed()
+    }
+
     fun search(q0: String, place: Int = 0): Found {
+        val f = searchSorted(q0, place)
+        val own = ownHits(q0)
+        if (own.isNotEmpty()) { val s = own.toSet(); val rest = f.words.filter { it !in s }; f.words.clear(); f.words.addAll(own + rest) }
+        return f
+    }
+
+    private fun searchSorted(q0: String, place: Int = 0): Found {
         val f = search0(q0, place)
         // (四川話's own words: only when 讀音 is 四川話)
         if (lang == 1 && place != 2 && sichuanWords.isNotEmpty()) {

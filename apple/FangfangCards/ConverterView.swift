@@ -1941,7 +1941,20 @@ enum Lookup {
         return out
     }
 
+    /// your own words (自訂) whose word or meaning has the search: listed first, so a word you added always shows
     static func run(_ d: Dict, _ q0: String, place: Int = -1, split: Bool = true) -> LookupResult {
+        var r = runSorted(d, q0, place: place, split: split)
+        let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, !r.isPattern, q.range(of: #"^[0-9\s-]+$"#, options: .regularExpression) == nil else { return r }
+        let low = q.lowercased()
+        let own = d.userKeys.filter { k in
+            Dict.hanOf(k).contains(q) || (d.userInfo[k]?.first?.lowercased().contains(low) ?? false)
+        }.sorted()
+        if !own.isEmpty { let s = Set(own); r.exact = own + r.exact.filter { !s.contains($0) } }
+        return r
+    }
+
+    private static func runSorted(_ d: Dict, _ q0: String, place: Int = -1, split: Bool = true) -> LookupResult {
         var r = run0(d, q0, place: place, split: split)
         // the core order of the words found by their meaning: (1) the more common, the higher; (2) the longer the
         // meaning that matched, the lower (人: the word 人 itself first, not 影 or 幹 because a meaning of theirs

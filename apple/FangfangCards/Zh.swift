@@ -1394,7 +1394,31 @@ final class ZhDict: @unchecked Sendable {
     }
 
     /// (四川話's own words only when 讀音 = 四川話)
+    /// your own words (自訂) whose word or meaning has the search (as typed, or in small letters): listed first, so a
+    /// word you added always shows
+    func ownHits(_ q0: String) -> [Int] {
+        let q = q0.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty, !q.contains(where: { "*＊?？".contains($0) }), q.range(of: #"^[0-9\s-]+$"#, options: .regularExpression) == nil else { return [] }
+        let low = q.lowercased()
+        var out: [Int] = []
+        var i = entries.count - 1
+        while i >= 0, entries[i].own {
+            let e = entries[i]
+            if e.h.lowercased().contains(low) || (e.alt?.contains(q) ?? false) || e.senses.contains(where: { $0.text.lowercased().contains(low) })
+                || e.jp.contains(where: { $0.contains(q) }) || (e.en?.lowercased().contains(low) ?? false) { out.append(i) }
+            i -= 1
+        }
+        return out.reversed()
+    }
+
     func search(_ q0: String, place: Int = 0) -> Found {
+        var f = searchSorted(q0, place: place)
+        let own = ownHits(q0)
+        if !own.isEmpty { let s = Set(own); f.words = own + f.words.filter { !s.contains($0) } }
+        return f
+    }
+
+    private func searchSorted(_ q0: String, place: Int = 0) -> Found {
         var f = search0(q0, place: place)
         // the core order of what's found in the meanings: the more common the higher, the longer the meaning that
         // matched the lower

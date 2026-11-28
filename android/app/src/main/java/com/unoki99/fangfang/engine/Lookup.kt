@@ -164,7 +164,19 @@ object Lookup {
     private val toneRe = Regex("^[1-9](?:[-\\s]?[1-9]){0,7}$")
 
     /** the search, its lists in the order chosen in 設定 → 詞典 → 搜尋結果的順序 (標準: as they come) */
+    /** your own words (自訂) whose word or meaning has the search: listed first, so a word you added always shows */
     fun run(d: Dict, q0: String, place: Int, prefs: KeyValue, split: Boolean = true): LookupResult {
+        val r = runSorted(d, q0, place, prefs, split)
+        val q = q0.trim()
+        if (q.isEmpty() || r.isPattern || Regex("^[0-9\\s-]+$").matches(q)) return r
+        val low = q.lowercase()
+        val info = d.userInfo
+        val own = d.userKeys.filter { k -> Dict.hanOf(k).contains(q) || (info[k]?.firstOrNull()?.lowercase()?.contains(low) == true) }.sorted()
+        if (own.isNotEmpty()) { val s = own.toSet(); r.exact = own + r.exact.filter { it !in s } }
+        return r
+    }
+
+    private fun runSorted(d: Dict, q0: String, place: Int, prefs: KeyValue, split: Boolean = true): LookupResult {
         val r = run0(d, q0, place, prefs, split)
         if (EngineSettings.searchOrder.isEmpty()) return r
         val q = q0.trim()
