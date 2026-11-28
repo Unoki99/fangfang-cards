@@ -1513,9 +1513,9 @@ final class Store: ObservableObject {
         dict?.setUserWords(keys)
         // (華語 …: the dictionary in use read again when its own words changed)
         let snap = zhOwnSnapshot()
-        let old = (1..<6).map { ZhOwnWords.of($0).map { $0.key + "\u{1}" + $0.meaning + "\u{1}" + $0.example } }
+        let old = (1..<7).map { ZhOwnWords.of($0).map { $0.key + "\u{1}" + $0.meaning + "\u{1}" + $0.example } }
         ZhOwnWords.set(snap)
-        let new = (1..<6).map { (snap[$0] ?? []).map { $0.key + "\u{1}" + $0.meaning + "\u{1}" + $0.example } }
+        let new = (1..<7).map { (snap[$0] ?? []).map { $0.key + "\u{1}" + $0.meaning + "\u{1}" + $0.example } }
         if let z = zh, Set(old[z.lang - 1]) != Set(new[z.lang - 1]) { dictionaryChanged(z.lang) }
     }
 

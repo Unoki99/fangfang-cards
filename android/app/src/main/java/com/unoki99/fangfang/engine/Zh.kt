@@ -699,7 +699,10 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         for (w in ZhOwnWords.words[lang] ?: emptyList()) {
             if (w.h.isEmpty() || w.tw.isEmpty()) continue
             val ex = if (w.example.isEmpty()) emptyList() else listOf(ZhEx(w.example, "", ""))
-            out.add(ZhEntry(w.key, w.h, w.tw, null, 0, null, listOf(ZhSense(1, w.meaning.ifEmpty { "（自己加的詞）" }, ex)), null, 0, 0, false).also { it.own = true })
+            // (瑞典語, 英語: a meaning in Chinese is the word's Chinese meaning, so searching it in Chinese finds it)
+            val zhMeaning = lang >= 5 && w.meaning.codePoints().anyMatch { Zhuyin.isHan(it) }
+            out.add(ZhEntry(w.key, w.h, w.tw, null, 0, null, listOf(ZhSense(1, if (w.meaning.isEmpty() || zhMeaning) "（自己加的詞）" else w.meaning, ex)), null, 0, 0, false,
+                jp = if (zhMeaning) listOf(w.meaning) else emptyList()).also { it.own = true })
         }
         entries = out
         Simp.learn(out.map { e -> e.h to (e.alt ?: e.h) })

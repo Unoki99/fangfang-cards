@@ -872,8 +872,11 @@ final class ZhDict: @unchecked Sendable {
         let ownLang = ["yue": 2, "hak": 3, "ja": 4, "sv": 5, "en": 6][obj["lang"] as? String ?? ""] ?? 1
         for w in ZhOwnWords.of(ownLang) where !w.h.isEmpty && !w.tw.isEmpty {
             let ex = w.example.isEmpty ? [] : [ZhEx(h: w.example, src: "", code: "")]
+            // (瑞典語, 英語: a meaning in Chinese is the word's Chinese meaning, so searching it in Chinese finds it)
+            let zhMeaning = ownLang >= 5 && w.meaning.unicodeScalars.contains(where: Zhuyin.isHan)
             var e = ZhEntry(k: w.key, h: w.h, tw: w.tw, lu: nil, spec: 0, alt: nil,
-                            senses: [ZhSense(n: 1, text: w.meaning.isEmpty ? "（自己加的詞）" : w.meaning, ex: ex)])
+                            senses: [ZhSense(n: 1, text: w.meaning.isEmpty || zhMeaning ? "（自己加的詞）" : w.meaning, ex: ex)])
+            if zhMeaning { e.jp = [w.meaning] }
             if !w.en.isEmpty { e.en = w.en }
             e.own = true
             out.append(e)
