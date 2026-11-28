@@ -96,10 +96,13 @@ fun main(args: Array<String>) {
     // the window's icon: the usual dark one or the light one (設定 → 顏色與外觀 → App 圖示)
     fun loadIcon(name: String) = try { Thread.currentThread().contextClassLoader.getResourceAsStream(name)?.use { BitmapPainter(loadImageBitmap(it)) } } catch (_: Exception) { null }
     val darkIcon = loadIcon("icon.png")
-    val lightIcon = loadIcon("icon-light.png") ?: darkIcon
+    // (each theme's too: picked in 設定, the window's (and the Dock's) changes at once)
+    val icons = HashMap<Int, BitmapPainter?>()
+    com.unoki99.fangfang.AppIcon.set(com.unoki99.fangfang.Prefs.appIcon.value)
 
     application {
-        val icon = if (com.unoki99.fangfang.Prefs.appIcon.value == 1) lightIcon else darkIcon
+        val iconAt = com.unoki99.fangfang.Prefs.appIcon.value
+        val icon = icons.getOrPut(iconAt) { loadIcon(com.unoki99.fangfang.AppIcon.file(iconAt)) } ?: darkIcon
         val state = rememberWindowState(size = DpSize(1280.dp, 880.dp), position = WindowPosition(Alignment.Center))
         fun quit() {
             Quitting.prepare()

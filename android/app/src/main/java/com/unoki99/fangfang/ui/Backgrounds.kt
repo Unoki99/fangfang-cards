@@ -32,6 +32,11 @@ fun AppBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.(
             AppTheme.SAKURA -> FallingThingsBackground(true)
             AppTheme.MOMIJI -> FallingThingsBackground(false)
         }
+        // 背景照片: over the theme, as much of it as chosen
+        com.unoki99.fangfang.BgPhoto.image(com.unoki99.fangfang.Prefs.bgPhotoVersion.value)?.let {
+            androidx.compose.foundation.Image(it, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                alpha = com.unoki99.fangfang.Prefs.bgPhotoAmount.value)
+        }
         content()
     }
 }

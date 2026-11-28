@@ -20,7 +20,7 @@ sourceSets {
             // (Android's own: each has its Windows version in src/main/kotlin, with the same name, or isn't needed on
             // Windows; only the Android folder's copies are left out)
             val androidOnly = setOf("MainActivity.kt", "LookupActivity.kt", "LockWord.kt", "Radio.kt", "Backup.kt",
-                "BrowserLink.kt", "WidgetBridge.kt", "JsRunner.kt", "ZhSpeech.kt", "AppIcon.kt")
+                "BrowserLink.kt", "WidgetBridge.kt", "JsRunner.kt", "ZhSpeech.kt", "AppIcon.kt", "BgPhoto.kt")
             exclude { e ->
                 val path = e.file.path.replace('\\', '/')
                 path.contains("/android/app/src/main/java/") && (e.name in androidOnly || path.contains("/fangfang/widget/"))
@@ -31,7 +31,7 @@ sourceSets {
             // made on this computer by install-windows.bat and read from %LOCALAPPDATA%\FangfangCards\data)
             srcDir("$shared/assets")
             srcDir("$shared/res/font")
-            include("ui_en.json", "install/**", "*.ttf", "icon.png", "icon-light.png")
+            include("ui_en.json", "install/**", "*.ttf", "icon.png", "icon-*.png")
         }
     }
 }

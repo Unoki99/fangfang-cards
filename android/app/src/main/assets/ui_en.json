@@ -1968,5 +1968,11 @@
  "Gemini 猜的詞，詞典有的直接列出來；沒有的，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。": "Gemini's guesses: the ones the dictionary has are listed right here; one it hasn't, press ＋ beside it to save it as your own word (its meaning filled in as what you searched, “{0}”).",
  "整句的講法": "The whole phrase",
  "點要標成熟悉的等級": "Tap the levels to mark as known",
- "選了 {0} 個等級（{1} 個詞）": "{0} levels picked ({1} words)"
+ "選了 {0} 個等級（{1} 個詞）": "{0} levels picked ({1} words)",
+ "背景照片": "Background photo",
+ "換一張照片": "Choose another photo",
+ "選一張照片": "Choose a photo",
+ "拿掉照片": "Remove the photo",
+ "照片顯示多少：{0}%": "How much of the photo shows: {0}%",
+ "電腦裡的一張照片當整個 App 的背景，蓋在主題上面。顯示得少一點，字比較好讀。": "A picture from your computer as the whole app's background, over the theme. Showing less of it keeps the text easier to read."
 }

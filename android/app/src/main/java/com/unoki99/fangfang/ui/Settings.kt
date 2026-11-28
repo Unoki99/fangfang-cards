@@ -7,6 +7,8 @@ import kotlinx.coroutines.launch
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -347,8 +349,45 @@ private fun LookPage(openJa: () -> Unit, openColors: () -> Unit) {
         RowDivider(); SwitchRow(tr("主題動畫"), Prefs.themeMotion)
         RowDivider(); SwitchRow(tr("省電動畫"), Prefs.motionSaver, enabled = Prefs.themeMotion.value)
         RowDivider()
-        MenuRow(tr("App 圖示"), if (Prefs.appIcon.value == 1) tr("淺色") else tr("深色"), listOf(0 to tr("深色"), 1 to tr("淺色"))) { com.unoki99.fangfang.AppIcon.set(it) }
+        val iconNames = com.unoki99.fangfang.AppIcon.names
+        if (com.unoki99.fangfang.AppIcon.preview(0) == null)
+            MenuRow(tr("App 圖示"), tr(iconNames.getOrElse(Prefs.appIcon.value) { iconNames[0] }), iconNames.mapIndexed { i, n -> i to tr(n) }) { com.unoki99.fangfang.AppIcon.set(it) }
+        else Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp)) {
+            // (the icons themselves to pick from)
+            Txt(tr("App 圖示"), ff(FF.Body), T.glyph)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                iconNames.forEachIndexed { i, n ->
+                    val on = Prefs.appIcon.value == i
+                    Column(Modifier.width(76.dp).clip(RoundedCornerShape(12.dp)).clickable { com.unoki99.fangfang.AppIcon.set(i) }.padding(vertical = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        com.unoki99.fangfang.AppIcon.preview(i)?.let {
+                            androidx.compose.foundation.Image(it, tr(n), Modifier.size(60.dp)
+                                .border(3.dp, if (on) T.btnEdge else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(16.dp)).padding(5.dp))
+                        }
+                        Txt(tr(n), ff(FF.Caption2, if (on) FontWeight.SemiBold else FontWeight.Normal), if (on) T.glyph else T.muted)
+                    }
+                }
+            }
+        }
         RowDivider()
+        // 背景照片: a photo from the computer behind everything, and how much of it shows
+        if (com.unoki99.fangfang.BgPhoto.canPick) {
+            val has = com.unoki99.fangfang.BgPhoto.exists.also { Prefs.bgPhotoVersion.value }
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Txt(tr("背景照片"), ff(FF.Body), T.glyph, Modifier.weight(1f))
+                    SoftButton({ if (com.unoki99.fangfang.BgPhoto.pick()) Prefs.bgPhotoVersion.value += 1 }) { Text(if (has) tr("換一張照片") else tr("選一張照片")) }
+                    if (has) SoftButton({ com.unoki99.fangfang.BgPhoto.remove(); Prefs.bgPhotoVersion.value += 1 }) { Text(tr("拿掉照片")) }
+                }
+                if (has) {
+                    Txt(tr("照片顯示多少：{0}%", (Prefs.bgPhotoAmount.value * 100).roundToInt()), ff(FF.Subheadline), T.muted)
+                    Slider(Prefs.bgPhotoAmount.value, { Prefs.bgPhotoAmount.value = it }, valueRange = 0.05f..1f,
+                        colors = SliderDefaults.colors(thumbColor = T.btnInk, activeTrackColor = T.btnEdge))
+                }
+                Txt(tr("電腦裡的一張照片當整個 App 的背景，蓋在主題上面。顯示得少一點，字比較好讀。"), ff(FF.Footnote), T.muted)
+            }
+            RowDivider()
+        }
         val ts = Prefs.toneSys.value
         // (七聲 / 五聲 is 台語's: the other languages on / off)
         if (com.unoki99.fangfang.Store.lang == 0)

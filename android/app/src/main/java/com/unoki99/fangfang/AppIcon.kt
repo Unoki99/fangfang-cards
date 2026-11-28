@@ -7,6 +7,10 @@ import android.content.pm.PackageManager
  *  Two launcher entries in the manifest (.LauncherDark, .LauncherLight); one is turned on. The launcher may take a
  *  moment to show the new one. (The computer version: its window icon, in Main.kt.) */
 object AppIcon {
+    /** each one's name (Android: the two the launcher has) */
+    val names = listOf("深色", "淺色")
+    /** its picture for the choices in 設定 (Android: none, the choices are words) */
+    fun preview(i: Int): androidx.compose.ui.graphics.ImageBitmap? = null
     fun set(light: Int) {
         Prefs.appIcon.value = light
         val ctx = Store.app
