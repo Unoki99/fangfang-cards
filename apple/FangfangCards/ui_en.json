@@ -2096,5 +2096,6 @@
  "標好了：{0} 個詞。": "Done: {0} words.",
  "把選的 {0} 個等級標成熟悉（{1} 個詞）": "Mark the {0} levels picked as known ({1} words)",
  "等級：那一級（和前面每一級）的詞你認識八成以上。按「選擇」可以選幾個等級，把它們的詞一次標成熟悉。": "Level: you know at least 80% of the words of that level (and of every level before it). Press Select to pick several levels and mark all their words as known at once.",
- "讀音（IPA）": "Reading (IPA)"
+ "讀音（IPA）": "Reading (IPA)",
+ "整句的講法": "The whole phrase"
 }

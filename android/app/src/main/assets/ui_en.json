@@ -1965,5 +1965,6 @@
  "{0}詞典的檔案壞了：到「設定 → 詞典資料」重新安裝。": "The {0} dictionary's file is broken: install it again in Settings → Dictionary data.",
  "讀音（IPA）": "Reading (IPA)",
  "Gemini 猜的詞，詞典有的直接列出來；沒有的，點一下再查。": "Gemini's guesses: the ones the dictionary has are listed right here; tap one it hasn't to search it.",
- "Gemini 猜的詞，詞典有的直接列出來；沒有的，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。": "Gemini's guesses: the ones the dictionary has are listed right here; one it hasn't, press ＋ beside it to save it as your own word (its meaning filled in as what you searched, “{0}”)."
+ "Gemini 猜的詞，詞典有的直接列出來；沒有的，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。": "Gemini's guesses: the ones the dictionary has are listed right here; one it hasn't, press ＋ beside it to save it as your own word (its meaning filled in as what you searched, “{0}”).",
+ "整句的講法": "The whole phrase"
 }

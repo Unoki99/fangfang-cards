@@ -103,7 +103,18 @@ object Gemini {
     }
 
     class Term(val h: String, val pinyin: String, val meaning: String)
-    class Suggestion(val words: List<String>, val note: String, val term: Term?)
+    class Suggestion(val words: List<String>, val note: String, val term: Term?,
+                     /** 瑞典語, 英語: a phrase searched (久別的朋友), said as a whole (long-lost friend) */
+                     val phrase: String = "") {
+        /** the phrase's own words worth looking up (not "a", "the", "en", "som"…, nor ones already in words) */
+        val phraseWords: List<String> get() {
+            val skip = setOf("a", "an", "the", "of", "to", "and", "or", "in", "on", "at", "for", "with", "by", "is", "be",
+                "en", "ett", "och", "att", "som", "i", "på", "av", "för", "med", "till", "de", "det", "den", "är", "har", "man", "inte")
+            val seen = words.map { it.lowercase() }.toHashSet()
+            return phrase.split(' ', '-').map { it.trim { c -> !c.isLetterOrDigit() } }
+                .filter { it.length > 1 && it.lowercase() !in skip && seen.add(it.lowercase()) }.take(6)
+        }
+    }
 
     suspend fun suggest(q: String, lang: Int): Suggestion {
         val (dict, words) = target(lang)
@@ -112,6 +123,13 @@ object Gemini {
 Reply with JSON only: {"words": [...], "note": "..."}
 "words": up to 8 $words, the most likely first; each one a single dictionary word or set phrase, nothing else (no readings, no explanations).
 "note": at most one short sentence in ${script()} Chinese on what the search most likely was."""
+        if (lang == 5 || lang == 6) {
+            val l = if (lang == 5) "Swedish" else "English"
+            val ex = if (lang == 5) "en gammal vän man inte har träffat på länge" else "long-lost friend"
+            p += """
+
+If the search is a phrase or sentence (more than one word, e.g. "久別的朋友"), also add "phrase": the whole of it said in natural $l, short, as a learner would write it on a card (e.g. "$ex"). If it's a single word, or already $l, "phrase": ""."""
+        }
         if (han && (lang == 1 || lang == 0)) p += """
 
 If "$q" itself is a real Chinese word, expression, name or slang term, also add "term": {"pinyin": its Mandarin reading in pinyin with tone numbers, one syllable per character separated by spaces (e.g. "chi1 fan4"), "meaning": a short explanation in ${script()} Chinese}. Otherwise "term": null."""
@@ -121,7 +139,7 @@ If "$q" itself is a real Chinese word, expression, name or slang term, also add 
             .map { if (lang == 5 || lang == 6) latinHeadword(it) else it }.filter { it.isNotEmpty() && it != q }.distinct()
         val t = j.optJSONObject("term")
         val term = t?.optString("pinyin")?.takeIf { it.isNotEmpty() }?.let { Term(q, it, t.optString("meaning")) }
-        return Suggestion(list, j.optString("note"), term)
+        return Suggestion(list, j.optString("note"), term, if (lang == 5 || lang == 6) j.optString("phrase").trim() else "")
     }
 
     class Correction(val usage: String, val corrected: String, val good: Boolean)
@@ -197,7 +215,7 @@ fun <K> GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, ad
         delay(900)
         try {
             val s = Gemini.suggest(q, lang)
-            foundMap = if (row == null) emptyMap() else withContext(Dispatchers.Default) { s.words.associateWith { runCatching { found(it).take(3) }.getOrDefault(emptyList()) } }
+            foundMap = if (row == null) emptyMap() else withContext(Dispatchers.Default) { (s.words + s.phraseWords).associateWith { runCatching { found(it).take(3) }.getOrDefault(emptyList()) } }
             got = s; gotFor = query
         } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { failed = Gemini.message(e) }
     }
@@ -209,6 +227,17 @@ fun <K> GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, ad
         else if (g == null || gotFor != query) Txt(tr("問 Gemini 中…"), ff(FF.Footnote), T.muted)
         else {
             if (g.note.isNotEmpty()) Txt(g.note, ff(FF.Footnote), T.muted)
+            // (瑞典語, 英語: the whole phrase said in the language, to keep as your own word; its words below)
+            if (g.phrase.isNotEmpty()) {
+                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Txt(g.phrase, ff(FF.Title3, FontWeight.SemiBold), T.glyph)
+                        Txt(tr("整句的講法"), ff(FF.Caption), T.muted)
+                    }
+                    if (addOwn != null) TextButton(onClick = { addOwn(g.phrase) }) { Text(tr("＋存成自訂詞"), color = T.ownInk) }
+                }
+                if (row != null) for (w in g.phraseWords) foundMap[w].orEmpty().forEach { row(it) }
+            }
             for (w in g.words) {
                 val idx = foundMap[w].orEmpty()
                 if (row != null && idx.isNotEmpty()) idx.forEach { row(it) }

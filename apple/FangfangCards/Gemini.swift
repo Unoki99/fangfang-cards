@@ -92,7 +92,23 @@ enum Gemini {
         }
     }
 
-    struct Suggestion { var words: [String] = []; var note = ""; var term: Term? }
+    struct Suggestion {
+        var words: [String] = []; var note = ""; var term: Term?
+        /// 瑞典語, 英語: a phrase searched (久別的朋友), said as a whole (long-lost friend)
+        var phrase = ""
+        /// the phrase's own words worth looking up (not "a", "the", "en", "som"…, nor ones already in words)
+        var phraseWords: [String] {
+            let skip: Set<String> = ["a", "an", "the", "of", "to", "and", "or", "in", "on", "at", "for", "with", "by", "is", "be",
+                                     "en", "ett", "och", "att", "som", "i", "på", "av", "för", "med", "till", "de", "det", "den", "är", "har", "man", "inte"]
+            var seen = Set(words.map { $0.lowercased() }), out: [String] = []
+            for w in phrase.split(whereSeparator: { $0 == " " || $0 == "-" }) {
+                let c = String(w).trimmingCharacters(in: .punctuationCharacters)
+                guard c.count > 1, !skip.contains(c.lowercased()), seen.insert(c.lowercased()).inserted else { continue }
+                out.append(c)
+            }
+            return Array(out.prefix(6))
+        }
+    }
 
     /// 瑞典語, 英語: a word as a dictionary lists it, without the article or infinitive marker Gemini sometimes puts
     /// before it ("att springa" → springa, "to run" → run, "en bil" → bil)
@@ -118,6 +134,16 @@ enum Gemini {
         (no readings, no explanations).
         "note": at most one short sentence in \(Simp.on ? "Simplified" : "Traditional") Chinese on what the search most likely was.
         """
+        if lang == 5 || lang == 6 {
+            let l = lang == 5 ? "Swedish" : "English"
+            let ex = lang == 5 ? "en gammal vän man inte har träffat på länge" : "long-lost friend"
+            p += """
+
+            If the search is a phrase or sentence (more than one word, e.g. "久別的朋友"), also add "phrase": the whole of it \
+            said in natural \(l), short, as a learner would write it on a card (e.g. "\(ex)"). If it's a single word, or \
+            already \(l), "phrase": "".
+            """
+        }
         if han && (lang == 1 || lang == 0) {
             p += """
 
@@ -134,6 +160,7 @@ enum Gemini {
         var seenWords = Set<String>()
         s.words = s.words.filter { seenWords.insert($0).inserted }
         s.note = j["note"] as? String ?? ""
+        if lang == 5 || lang == 6 { s.phrase = (j["phrase"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
         if let tm = j["term"] as? [String: Any], let py = tm["pinyin"] as? String, !py.isEmpty {
             s.term = Term(h: q, pinyin: py, meaning: tm["meaning"] as? String ?? "")
         }
@@ -232,6 +259,24 @@ struct GeminiSuggestSection: View {
                     Text(failed).ffFont(.footnote).foregroundStyle(T.rustInk)
                 } else if let g = got, gotFor == query {
                     if !g.note.isEmpty { Text(g.note).ffFont(.footnote).foregroundStyle(T.muted) }
+                    // (瑞典語, 英語: the whole phrase said in the language, to keep as your own word; its words below)
+                    if !g.phrase.isEmpty {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(g.phrase).scaledFont(19, weight: .semibold).foregroundStyle(T.glyph).textSelection(.enabled)
+                                Text(tr("整句的講法")).ffFont(.caption).foregroundStyle(T.muted)
+                            }
+                            Spacer()
+                            if let addOwn {
+                                Button { addOwn(g.phrase) } label: {
+                                    Label(tr("存成自訂詞"), systemImage: "plus.circle").labelStyle(.iconOnly).foregroundStyle(T.ownInk)
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(tr("存成自訂詞"))
+                            }
+                        }
+                        ForEach(g.phraseWords, id: \.self) { w in if let r = row(w) { r } }
+                    }
                     ForEach(g.words, id: \.self) { w in
                         if let r = row(w) { r } else {
                             HStack {
