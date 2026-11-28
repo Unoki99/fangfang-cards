@@ -786,10 +786,44 @@ fun HSKProgressList() {
     val list = if (zh) Store.topics else Store.freqTopics.filter { it.id >= Lang.freqCharBase } + Store.freqTopics.filter { it.id < Lang.freqCharBase }
     val all = Store.allTopicProgress()
     val firstChar = Store.topics.firstOrNull { it.id > Lang.charTopicBase }?.id
+    // 選擇: several levels picked (a tap picks instead of opening), then all their words marked 熟悉 at once
+    var picking by remember { mutableStateOf(false) }
+    val picked = remember { mutableStateListOf<Int>() }
+    var confirming by remember { mutableStateOf(false) }
+    var doneNote by remember { mutableStateOf<String?>(null) }
+    // (the words of the levels picked that aren't 熟悉 yet)
+    val toMark = if (picked.isEmpty()) emptyList() else picked.sorted().flatMap { Store.levelCards(it) }.filter { Store.status(it) != 1 }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Txt(if (!picking) "" else if (picked.isEmpty()) tr("點要標成熟悉的等級") else tr("選了 {0} 個等級（{1} 個詞）", picked.size, toMark.size),
+                        ff(FF.Subheadline), T.glyph, Modifier.weight(1f))
+                    SoftButton({ picking = !picking; picked.clear(); confirming = false; doneNote = null }) { Text(if (picking) tr("取消") else tr("選擇")) }
+                }
+                if (picking) {
+                    if (confirming) {
+                        Txt(tr("把 {0} 個詞標成「熟悉」？（不熟的也會標成熟悉）", toMark.size), ff(FF.Subheadline), T.glyph)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            SoftButton({ confirming = false }) { Text(tr("取消")) }
+                            ProminentButton({
+                                val n = toMark.size
+                                Store.markAll(toMark, true)
+                                doneNote = tr("標好了：{0} 個詞。", n)
+                                picking = false; picked.clear(); confirming = false
+                            }, tint = T.greenEdge) { Text(tr("標成熟悉")) }
+                        }
+                    } else ProminentButton({ confirming = true }, Modifier.fillMaxWidth().heightIn(min = 36.dp), tint = T.greenEdge, enabled = toMark.isNotEmpty()) {
+                        Text(if (picked.isEmpty()) tr("選幾個等級") else tr("把選的 {0} 個等級標成熟悉（{1} 個詞）", picked.size, toMark.size))
+                    }
+                }
+                doneNote?.let { Txt(it, ff(FF.Caption), T.greenInk) }
+            }
+        }
         // 華語: the word list switched right here too (HSK 3.0 ⇄ TOCFL), not only in 新詞
         if (Store.lang == 1 || Store.isEn) item { Segmented(Lang.listNames.mapIndexed { i, n -> i to n }, Prefs.listNow, { Store.setZhList(it) }) }
-        if (zh) item { CharMeter { nav.push(Route.ZhChars) } }
+        // (認識的漢字: not for 瑞典語 / 英語, which have no 漢字)
+        if (zh && !Store.isSv) item { CharMeter { nav.push(Route.ZhChars) } }
         items(list, key = { "h|" + it.id }) { t ->
             if (zh && t.id == firstChar) Txt(tr("漢字卡"), ff(FF.Headline), T.muted, Modifier.padding(top = 6.dp, bottom = 8.dp))
             if (!zh && (t.id == Lang.freqWordBase || t.id == Lang.freqCharBase))
@@ -798,12 +832,19 @@ fun HSKProgressList() {
             val isChar = (t.id > Lang.charTopicBase && t.id < Lang.freqWordBase) || t.id >= Lang.freqCharBase
             val k = if (p.total > 0) p.known.toDouble() / p.total else 0.0
             val u = if (p.total > 0) p.unknown.toDouble() / p.total else 0.0
-            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(T.fn.copy(alpha = 0.55f)).clickable { nav.push(Route.ZhLevel(t.id)) }
+            val on = picking && t.id in picked
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(T.fn.copy(alpha = 0.55f))
+                .border(2.dp, if (on) levelColor(t.id) else Color.Transparent, RoundedCornerShape(16.dp))
+                .clickable { if (picking) { if (t.id in picked) picked.remove(t.id) else picked.add(t.id); confirming = false } else nav.push(Route.ZhLevel(t.id)) }
                 .padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted, modifier = Modifier.size(16.dp))
+                    if (picking) Box(Modifier.size(18.dp).clip(CircleShape).background(if (on) levelColor(t.id) else Color.Transparent)
+                        .border(2.dp, if (on) levelColor(t.id) else T.muted, CircleShape), contentAlignment = Alignment.Center) {
+                        if (on) Txt("✓", ff(FF.Caption2, FontWeight.Bold), T.fn)
+                    }
+                    else Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = T.muted, modifier = Modifier.size(16.dp))
                     Txt(t.name, ff(FF.Headline), T.glyph)
-                    Txt("${p.total} ${if (isChar) "字" else "詞"}", ff(FF.Caption), T.muted, Modifier.weight(1f))
+                    Txt("${p.total} ${if (isChar) tr("字") else tr("詞")}", ff(FF.Caption), T.muted, Modifier.weight(1f))
                     Txt(tr("熟悉 {0}", pct(k)), ff(FF.Subheadline, FontWeight.SemiBold), levelColor(t.id))
                     Txt(tr("不熟 {0}", pct(u)), ff(FF.Subheadline, FontWeight.SemiBold), levelColor(t.id).copy(alpha = 0.6f))
                 }
