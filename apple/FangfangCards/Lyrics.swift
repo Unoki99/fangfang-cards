@@ -764,6 +764,11 @@ struct LyricsPage: View {
     @State private var job: Task<Void, Never>?
     @State private var songSearch = false
     @State private var ownPick = false
+    @AppStorage(YtPlayer.lyricsSourceKey) private var ytSource = 0
+    @ObservedObject private var yt = YtPlayer.shared
+    /// 用這部影片的字幕: working, or the video had none
+    @State private var subsBusy = false
+    @State private var subsNone = false
 
     var body: some View {
         List {
@@ -778,6 +783,33 @@ struct LyricsPage: View {
                 }
             } footer: {
                 Text(tr("找一首歌來放，歌詞會跟著歌走。")).ffFont(.footnote)
+            }
+            // YouTube: the lyrics database or the video's own subtitles
+            Section {
+                Picker(tr("YouTube 的歌詞先用"), selection: $ytSource) {
+                    Text(tr("歌詞資料庫")).tag(0)
+                    Text(tr("影片的字幕")).tag(1)
+                }
+                if yt.now != nil {
+                    Button {
+                        subsBusy = true; subsNone = false
+                        Task {
+                            let ok = await YtPlayer.shared.useSubtitles()
+                            subsBusy = false
+                            if ok { if inSheet { dismiss() } } else { subsNone = true }
+                        }
+                    } label: {
+                        HStack {
+                            Label(tr("用這部影片的字幕"), systemImage: "captions.bubble")
+                            Spacer()
+                            if subsBusy { ProgressView() }
+                        }
+                    }
+                    .disabled(subsBusy)
+                    if subsNone { Text(tr("這部影片沒有字幕。")).ffFont(.footnote).foregroundStyle(T.muted) }
+                }
+            } footer: {
+                Text(tr("找不到的話會用另一個。")).ffFont(.footnote)
             }
             Section {
                 HStack {

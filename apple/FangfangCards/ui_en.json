@@ -2097,5 +2097,11 @@
  "把選的 {0} 個等級標成熟悉（{1} 個詞）": "Mark the {0} levels picked as known ({1} words)",
  "等級：那一級（和前面每一級）的詞你認識八成以上。按「選擇」可以選幾個等級，把它們的詞一次標成熟悉。": "Level: you know at least 80% of the words of that level (and of every level before it). Press Select to pick several levels and mark all their words as known at once.",
  "讀音（IPA）": "Reading (IPA)",
- "整句的講法": "The whole phrase"
+ "整句的講法": "The whole phrase",
+ "YouTube 的歌詞先用": "YouTube lyrics: first try",
+ "歌詞資料庫": "Lyrics database",
+ "影片的字幕": "The video's subtitles",
+ "用這部影片的字幕": "Use this video's subtitles",
+ "這部影片沒有字幕。": "This video has no subtitles.",
+ "找不到的話會用另一個。": "If none are found there, the other is used."
 }

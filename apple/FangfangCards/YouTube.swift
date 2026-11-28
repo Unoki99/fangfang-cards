@@ -305,7 +305,23 @@ final class YtPlayer: ObservableObject {
         }
     }
 
-    /// LRCLIB's lyrics for the video: the first search that finds any; timed ones first, then those about as long
+    /// where a video's lyrics come from first: 0 the lyrics database (LRCLIB), its subtitles when it has none;
+    /// 1 the video's own subtitles, LRCLIB when it has none
+    static let lyricsSourceKey = "ytLyricsSource"
+    static var subtitlesFirst: Bool { UserDefaults.standard.integer(forKey: lyricsSourceKey) == 1 }
+
+    /// 用這部影片的字幕: this video's subtitles as its lyrics, from now on (this video only: they're timed to it);
+    /// false when it has none
+    func useSubtitles() async -> Bool {
+        guard let n = now, let lrc = await subtitleLyrics(), now?.id == n.id else { return false }
+        let h = LyricsFolder.saveVideo(id: n.id, title: n.title, artist: n.artist, lrc: lrc)
+        YtPicks.set(video: n.id, title: n.title, h, nameToo: false)
+        LyricsBridge.shared.put(h)
+        return true
+    }
+
+    /// the lyrics for the video: picked before, else LRCLIB's (the first search that finds any; timed ones first,
+    /// then those about as long) or the video's subtitles, whichever is set to go first
     private func findLyrics(_ n: YtNow, _ key: String) {
         lyricsJob?.cancel()
         let b = LyricsBridge.shared
@@ -314,9 +330,18 @@ final class YtPlayer: ObservableObject {
         // (then your own lyrics whose song's name is in the video's)
         // (your own lyrics made for this video in 歌詞對時 first)
         if let o = OwnLyrics.shared.get(Self.trackId(n.id)) { b.put(o.hit); return }
-        if let h = YtPicks.get(video: n.id, title: n.title) ?? LyricsFolder.forVideo(n.id)
+        let subsFirst = Self.subtitlesFirst
+        // (the 歌詞 folder's file for the video: lyrics picked on the computer always; made from its subtitles only
+        // when subtitles go first, else after LRCLIB)
+        if let h = YtPicks.get(video: n.id, title: n.title) ?? LyricsFolder.forVideo(n.id, subtitles: subsFirst)
             ?? YtPicks.ownMatch(title: n.title, artist: n.artist) { b.put(h); return }
         lyricsJob = Task {
+            // (subtitles first: the video's own, when it has any)
+            if subsFirst, let lrc = await self.subtitleLyrics() {
+                guard lyricsFor == key else { return }
+                b.put(LyricsFolder.saveVideo(id: n.id, title: n.title, artist: n.artist, lrc: lrc))
+                return
+            }
             var hits: [LyricHit] = []
             for q in Self.queries(n.title, n.artist, n.music) {
                 if let r = try? await LyricsSource.search(q) {
@@ -329,12 +354,11 @@ final class YtPlayer: ObservableObject {
             let len = now?.d ?? n.d
             let best = hits.min { a, c in Self.score(a, len) < Self.score(c, len) }
             if let best { b.put(best); return }
-            // (none on LRCLIB: the video's own subtitles made into timed lyrics, kept in the 歌詞 folder and for this
-            // video, so they're there next time and on the other devices)
-            if let lrc = await self.subtitleLyrics(), lyricsFor == key {
-                let h = LyricsFolder.saveVideo(id: n.id, title: n.title, artist: n.artist, lrc: lrc)
-                YtPicks.set(video: n.id, title: n.title, h)
-                b.put(h)
+            // (none on LRCLIB: the video's own subtitles made into timed lyrics, kept in the 歌詞 folder, so they're
+            // there next time and on the other devices)
+            if !subsFirst, let h = LyricsFolder.forVideo(n.id) { b.put(h); return }
+            if !subsFirst, let lrc = await self.subtitleLyrics(), lyricsFor == key {
+                b.put(LyricsFolder.saveVideo(id: n.id, title: n.title, artist: n.artist, lrc: lrc))
                 return
             }
             guard lyricsFor == key else { return }

@@ -60,7 +60,8 @@ enum LyricsFolder {
     }
 
     /// the computer version's lyrics for this YouTube video ("… [yt-<video>].lrc"), if the folder has them
-    static func forVideo(_ id: String) -> LyricHit? {
+    /// (subtitles: false leaves out the ones made from the video's subtitles)
+    static func forVideo(_ id: String, subtitles: Bool = true) -> LyricHit? {
         guard !id.isEmpty, let folder = Store.shared.backupFolderURL else { return nil }
         let ok = folder.startAccessingSecurityScopedResource()
         defer { if ok { folder.stopAccessingSecurityScopedResource() } }
@@ -68,8 +69,11 @@ enum LyricsFolder {
         let tag = "[yt-" + id + "].lrc"
         guard let n = (try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.first(where: { $0.hasSuffix(tag) }),
               let d = read(dir.appendingPathComponent(n)), let text = String(data: d, encoding: .utf8) else { return nil }
+        if !subtitles && text.contains(subtitleTag) { return nil }
         return file(n, text).hit
     }
+
+    static let subtitleTag = "[re:YouTube 字幕]"
 
     /// lyrics made from a YouTube video's subtitles: written to the 歌詞 folder as "… [yt-<video>].lrc" (the same as
     /// the computer version's), when there is a folder; the lyrics either way
@@ -156,13 +160,15 @@ enum YtPicks {
         return LyricHit(id: k.id, trackName: k.title, artistName: k.artist, duration: k.duration, plain: k.plain, synced: k.synced)
     }
 
-    static func set(video: String, title: String, _ h: LyricHit) {
+    /// (nameToo: for the song's name too, so other videos of the song get them; not for a video's own subtitles,
+    /// timed to that video)
+    static func set(video: String, title: String, _ h: LyricHit, nameToo: Bool = true) {
         let own: Int? = h.id < 0 && OwnLyrics.shared.get(-h.id) != nil ? -h.id : nil
         let k = Kept(id: h.id, title: h.trackName, artist: h.artistName, duration: h.duration,
                      plain: own == nil ? h.plainLyrics : nil, synced: own == nil ? h.syncedLyrics : nil, own: own)
         if !video.isEmpty { all["v:" + video] = k }
         let n = nameKey(title)
-        if !n.isEmpty { all["n:" + n] = k }
+        if nameToo && !n.isEmpty { all["n:" + n] = k }
         if let d = try? JSONEncoder().encode(all) { try? d.write(to: file, options: .atomic) }
     }
 
