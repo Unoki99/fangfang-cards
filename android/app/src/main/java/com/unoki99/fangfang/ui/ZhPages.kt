@@ -194,7 +194,7 @@ private fun ZhLookupList(z: ZhDict) {
         // way are rough): what Gemini thinks was meant, when it's on), after
         // everything the dictionary (and your own words) found
         if (query.isNotEmpty() && searched == query && Gemini.on &&
-            (f.empty || (z.isSv && (f.weak || query.codePoints().anyMatch { Zhuyin.isHan(it) })))) item {
+            (f.empty || f.onlyOwn || (z.isSv && (f.weak || query.codePoints().anyMatch { Zhuyin.isHan(it) })))) item {
             GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
                 has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query },
                 found = { w -> z.wordIndices(w).filter { it < z.entries.size } }, row = { i -> ZhListRow(z, i) })

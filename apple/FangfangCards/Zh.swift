@@ -1384,6 +1384,8 @@ final class ZhDict: @unchecked Sendable {
         var svViaEnglish = ""
         /// 瑞典語, 英語: no word found as it was searched (only a compound worked out, or words with it inside):
         /// Gemini is asked too
+        /// only your own words found, nothing of the dictionary's (Gemini is asked too)
+        var onlyOwn = false
         var weak: Bool { words.isEmpty && starts.isEmpty && svVia.isEmpty && mandarin.isEmpty && defs.isEmpty && english.isEmpty && parts.isEmpty && tones.isEmpty }
         var empty: Bool { svEst == nil && svVia.isEmpty && mandarin.isEmpty && parts.isEmpty && words.isEmpty && starts.isEmpty && contains.isEmpty && defs.isEmpty && english.isEmpty && tones.isEmpty }
     }
@@ -1413,15 +1415,22 @@ final class ZhDict: @unchecked Sendable {
 
     func search(_ q0: String, place: Int = 0) -> Found {
         var f = searchSorted(q0, place: place)
+        withOwn(&f, q0)
+        let all = f.words + f.starts + f.contains + f.defs + f.english + f.mandarin + f.svVia + f.tones + f.partWords.joined()
+        f.onlyOwn = !all.isEmpty && all.allSatisfy { $0 < entries.count && entries[$0].own } && f.svEst == nil
+        return f
+    }
+
+    private func withOwn(_ f: inout Found, _ q0: String) {
         // (one found already stays in its place, moved to the front of its list; the others go first in 「…」)
         let own = ownHits(q0)
-        guard !own.isEmpty else { return f }
-        func front(_ l: inout [Int]) { let s = Set(own); l = l.filter { s.contains($0) } + l.filter { !s.contains($0) } }
+        guard !own.isEmpty else { return }
+        let s = Set(own)
+        func front(_ l: inout [Int]) { l = l.filter { s.contains($0) } + l.filter { !s.contains($0) } }
         front(&f.words); front(&f.english); front(&f.svVia); front(&f.mandarin); front(&f.starts); front(&f.contains); front(&f.defs)
         let shown = Set(f.words + f.english + f.svVia + f.mandarin + f.starts + f.contains + f.defs + f.tones)
         let rest = own.filter { !shown.contains($0) }
         if !rest.isEmpty { f.words = rest + f.words }
-        return f
     }
 
     private func searchSorted(_ q0: String, place: Int = 0) -> Found {

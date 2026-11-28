@@ -972,11 +972,6 @@ private fun LookupList(d: Dict) {
             }
         }
         if (query.isNotEmpty() && r.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
-        if (query.isNotEmpty() && r.empty && searched == query && Gemini.on) item {
-            // (each word Gemini gives looked up in the background: its 台語 words listed right away)
-            GeminiSuggestions(query, 0, { query = it }, addOwn = { w -> addOwn = w to query },
-                found = { w -> Lookup.run(d, w, place, Prefs).let { (it.taigi + it.exact).distinct() } }, row = { k -> KeyRow(d, k) })
-        }
         if (r.isPattern) {
             keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)
             keyItems(d, tr("華語「{0}」的台語講法", query), r.patternZh)
@@ -1004,6 +999,12 @@ private fun LookupList(d: Dict) {
         }
         val pi = picked
         if (pi != null && pi < r.partResults.size) moreItems(r.partResults[pi], r.parts[pi], nav) else moreItems(r, query, nav)
+        // (nothing found, or only your own words: what Gemini thinks was meant, after everything found)
+        if (query.isNotEmpty() && (r.empty || r.onlyOwn) && searched == query && Gemini.on) item {
+            // (each word Gemini gives looked up in the background: its 台語 words listed right away)
+            GeminiSuggestions(query, 0, { query = it }, addOwn = { w -> addOwn = w to query },
+                found = { w -> Lookup.run(d, w, place, Prefs).let { (it.taigi + it.exact).distinct() } }, row = { k -> KeyRow(d, k) })
+        }
         item { Spacer(Modifier.height(40.dp)) }
     }
 }

@@ -5,6 +5,8 @@ class PlaceGroup(val zh: String, val rows: List<PlaceRow>)
 
 class LookupResult {
     var exact: List<String> = emptyList()
+    /** only your own words found, nothing of the dictionary's (Gemini is asked too) */
+    var onlyOwn = false
     var taigi: List<String> = emptyList()       // words for a 台語 spelling
     var contains: List<String> = emptyList()    // 台語 words that contain the 漢字
     var pattern: List<String> = emptyList()     // 台語 words matching a * / ? pattern
@@ -176,6 +178,8 @@ object Lookup {
         val shown = (r.exact + r.taigi + r.contains + r.gloss + r.synonyms + r.defs + r.english + r.tones).toSet()
         val rest = own.filter { it !in shown }
         if (rest.isNotEmpty()) r.exact = rest + r.exact
+        val all = r.exact + r.taigi + r.contains + r.gloss + r.synonyms + r.defs + r.english + r.tones
+        r.onlyOwn = all.isNotEmpty() && r.parts.isEmpty() && all.all { d.isUser(it) }
         return r
     }
 

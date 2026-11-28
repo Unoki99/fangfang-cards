@@ -1287,6 +1287,8 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         var svViaEnglish = ""
         /** 瑞典語, 英語: no word found as it was searched (only a compound worked out, or words with it inside): Gemini is
          *  asked too */
+        /** only your own words found, nothing of the dictionary's (Gemini is asked too) */
+        var onlyOwn = false
         val weak: Boolean get() = words.isEmpty() && starts.isEmpty() && svVia.isEmpty() && mandarin.isEmpty() && defs.isEmpty() && english.isEmpty() && parts.isEmpty() && tones.isEmpty()
         val empty: Boolean get() = svEst == null && svVia.isEmpty() && mandarin.isEmpty() && parts.isEmpty() && words.isEmpty() && starts.isEmpty() && contains.isEmpty() && defs.isEmpty() && english.isEmpty() && tones.isEmpty()
     }
@@ -1314,9 +1316,16 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
 
     fun search(q0: String, place: Int = 0): Found {
         val f = searchSorted(q0, place)
+        withOwn(f, q0)
+        val all = f.words + f.starts + f.contains + f.defs + f.english + f.mandarin + f.svVia + f.tones + f.partWords.flatten()
+        f.onlyOwn = all.isNotEmpty() && all.all { it < entries.size && entries[it].own } && f.svEst == null
+        return f
+    }
+
+    private fun withOwn(f: Found, q0: String) {
         // (one found already stays in its place, moved to the front of its list; the others go first in 「…」)
         val own = ownHits(q0)
-        if (own.isEmpty()) return f
+        if (own.isEmpty()) return
         val s = own.toSet()
         for (l in listOf(f.words, f.english, f.svVia, f.mandarin, f.starts, f.contains, f.defs)) {
             val mine = l.filter { it in s }; if (mine.isEmpty()) continue
@@ -1325,7 +1334,6 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
         val shown = (f.words + f.english + f.svVia + f.mandarin + f.starts + f.contains + f.defs + f.tones).toSet()
         val rest = own.filter { it !in shown }
         if (rest.isNotEmpty()) f.words.addAll(0, rest)
-        return f
     }
 
     private fun searchSorted(q0: String, place: Int = 0): Found {

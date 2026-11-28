@@ -1715,6 +1715,8 @@ struct LookupResult: Sendable {
     var partResults: [LookupResult] = []
     /// words whose English (Wiktionary) has the word: added after the rest, which stay as they are
     var english: [String] = []
+    /// only your own words found, nothing of the dictionary's (Gemini is asked too)
+    var onlyOwn = false
     var empty: Bool { english.isEmpty && parts.isEmpty && tones.isEmpty && taigi.isEmpty && contains.isEmpty && pattern.isEmpty && patternZh.isEmpty && exact.isEmpty && gloss.isEmpty && synonyms.isEmpty && defs.isEmpty && places.isEmpty }
 }
 
@@ -1954,6 +1956,8 @@ enum Lookup {
         let shown = Set(r.exact + r.taigi + r.contains + r.gloss + r.synonyms + r.defs + r.english + r.tones)
         let rest = own.filter { !shown.contains($0) }
         if !rest.isEmpty { r.exact = rest + r.exact }
+        let all = r.exact + r.taigi + r.contains + r.gloss + r.synonyms + r.defs + r.english + r.tones
+        r.onlyOwn = !all.isEmpty && r.parts.isEmpty && r.places.isEmpty && all.allSatisfy { d.isUser($0) }
         return r
     }
 
@@ -2176,11 +2180,6 @@ struct LookupPane: View {
             if !query.isEmpty && result.empty && searched == query {
                 Text(tr("找不到「\(query)」。")).foregroundStyle(T.muted).listRowBackground(Color.clear)
             }
-            // (nothing found: what Gemini thinks was meant, when it's turned on; tap one to search it)
-            if !query.isEmpty && result.empty && searched == query {
-                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { _ in nil },
-                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
-            }
             if result.isPattern {
                 group(tr("台語詞「\(query)」（\(result.pattern.count == 300 ? "300+" : String(result.pattern.count))）"), result.pattern)
                 group(tr("華語「\(query)」的台語講法"), result.patternZh)
@@ -2221,6 +2220,12 @@ struct LookupPane: View {
                 more(result.partResults[i], result.parts[i])
             } else {
                 more(result, query)
+            }
+            // (nothing found, or only your own words: what Gemini thinks was meant, when it's turned on; tap one to search it),
+            // after everything found
+            if !query.isEmpty && (result.empty || result.onlyOwn) && searched == query {
+                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { _ in nil },
+                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
             }
         }
         .scrollContentBackground(.hidden)
