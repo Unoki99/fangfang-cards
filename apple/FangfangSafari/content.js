@@ -1391,14 +1391,14 @@
         .grip.tr { right: 0; top: 0; cursor: nesw-resize; } .grip.tr::after { right: 5px; top: 5px; border-right-width: 2px; border-top-width: 2px; border-top-right-radius: 3px; }
         .grip.tl { left: 0; top: 0; } .grip.tl::after { left: 5px; top: 5px; border-left-width: 2px; border-top-width: 2px; border-top-left-radius: 3px; }
         .top { display: flex; justify-content: flex-end; gap: 6px; margin-bottom: 4px; }
-        .sec { border-radius: 10px; padding: 6px 9px 8px; border-left: 4px solid transparent; }
+        .sec { border-radius: 10px; padding: 6px 9px 8px; }
         .sec + .sec { margin-top: 8px; }
-        .sec.zh { background: rgba(79, 125, 255, 0.10); border-left-color: #4f7dff; }
-        .sec.tw { background: rgba(63, 174, 102, 0.10); border-left-color: #3fae66; }
-        .sec.yue { background: rgba(201, 162, 39, 0.10); border-left-color: #c9a227; }
-        .sec.hak { background: rgba(216, 67, 79, 0.10); border-left-color: #d8434f; }
-        .sec.sv { background: rgba(63, 201, 189, 0.08); border-left-color: #3fc9bd; }
-        .sec.eng { background: rgba(240, 138, 60, 0.08); border-left-color: #f08a3c; }
+        .sec.zh { background: rgba(79, 125, 255, 0.10); }
+        .sec.tw { background: rgba(63, 174, 102, 0.10); }
+        .sec.yue { background: rgba(201, 162, 39, 0.10); }
+        .sec.hak { background: rgba(216, 67, 79, 0.10); }
+        .sec.sv { background: rgba(63, 201, 189, 0.08); }
+        .sec.eng { background: rgba(240, 138, 60, 0.08); }
         .cols { display: flex; gap: 8px; align-items: flex-start; }
         .cols > .sec { flex: 1 1 0; min-width: 190px; margin-top: 0; }
         .lang { display: inline-block; font-size: 12px; padding: 1px 7px; border-radius: 6px; margin-bottom: 4px; }
@@ -1457,7 +1457,7 @@
             box-shadow: 0 0 0 1px rgba(195, 155, 255, .16), 0 0 26px rgba(195, 155, 255, .14), 0 14px 40px rgba(0, 0, 0, .55);
             font: 15px/1.4 -apple-system, "PingFang TC", "Heiti TC", sans-serif; }
         .body { padding: 10px 14px 16px; }
-        .sec { --lc: #c39bff; border-left: none; border-radius: 16px; padding: 10px 12px 12px;
+        .sec { --lc: #c39bff; border-radius: 16px; padding: 10px 12px 12px;
             background: linear-gradient(180deg, color-mix(in srgb, var(--lc) 10%, transparent), color-mix(in srgb, var(--lc) 4%, transparent));
             border: 1px solid color-mix(in srgb, var(--lc) 38%, transparent);
             box-shadow: inset 0 0 18px color-mix(in srgb, var(--lc) 8%, transparent); }
