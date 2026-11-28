@@ -2103,5 +2103,7 @@
  "影片的字幕": "The video's subtitles",
  "用這部影片的字幕": "Use this video's subtitles",
  "這部影片沒有字幕。": "This video has no subtitles.",
- "找不到的話會用另一個。": "If none are found there, the other is used."
+ "找不到的話會用另一個。": "If none are found there, the other is used.",
+ "點要標成熟悉的等級": "Tap the levels to mark as known",
+ "選了 {0} 個等級（{1} 個詞）": "{0} levels picked ({1} words)"
 }

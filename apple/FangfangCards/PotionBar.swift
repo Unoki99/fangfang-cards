@@ -302,9 +302,51 @@ enum LevelRoute: Hashable {
 
 struct HSKProgressView: View {
     @EnvironmentObject var store: Store
+    /// 選擇: several levels picked, then all their words marked 熟悉 at once
+    @State private var picking = false
+    @State private var picked: Set<Int> = []
+    @State private var confirming = false
+    @State private var doneNote: String?
     var body: some View {
+        // (the words of the levels picked that aren't 熟悉 yet)
+        let toMark = picked.isEmpty ? [] : picked.sorted().flatMap { store.levelCards($0) }.filter { store.status($0) != 1 }
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 14) {
+                // 選擇: tap levels to pick them (instead of opening them), then mark them all 熟悉
+                HStack {
+                    if picking {
+                        Text(picked.isEmpty ? tr("點要標成熟悉的等級") : tr("選了 \(picked.count) 個等級（\(toMark.count) 個詞）"))
+                            .ffFont(.subheadline).foregroundStyle(T.glyph)
+                    }
+                    Spacer()
+                    Button(picking ? tr("取消") : tr("選擇")) {
+                        picking.toggle(); picked = []; confirming = false; doneNote = nil
+                    }
+                    .buttonStyle(.bordered)
+                }
+                if picking {
+                    if confirming {
+                        Text(tr("把 \(toMark.count) 個詞標成「熟悉」？（不熟的也會標成熟悉）")).ffFont(.subheadline).foregroundStyle(T.glyph)
+                        HStack {
+                            Button(tr("取消")) { confirming = false }.buttonStyle(.bordered)
+                            Button(tr("標成熟悉")) {
+                                let n = toMark.count
+                                store.markAll(toMark, known: true)
+                                doneNote = tr("標好了：\(n) 個詞。")
+                                picking = false; picked = []; confirming = false
+                            }
+                            .prominentButton(T.greenEdge)
+                        }
+                    } else {
+                        Button { confirming = true } label: {
+                            Text(picked.isEmpty ? tr("選幾個等級") : tr("把選的 \(picked.count) 個等級標成熟悉（\(toMark.count) 個詞）"))
+                                .frame(maxWidth: .infinity, minHeight: 30)
+                        }
+                        .prominentButton(T.greenEdge)
+                        .disabled(toMark.isEmpty)
+                    }
+                }
+                if let doneNote { Text(doneNote).ffFont(.caption).foregroundStyle(T.greenInk) }
                 // 華語: the word list switched right here too (HSK 3.0 ⇄ TOCFL), not only in 新詞
                 if store.lang == 1 || store.isEn {
                     Picker(tr("詞表"), selection: $store.zhList) {
@@ -332,10 +374,15 @@ struct HSKProgressView: View {
                     let p = all[t.id] ?? (0, 0, 0)
                     let k = p.total > 0 ? Double(p.known) / Double(p.total) : 0
                     let u = p.total > 0 ? Double(p.unknown) / Double(p.total) : 0
-                    NavigationLink(value: LevelRoute.level(t.id, t.name)) {
+                    let row = Group {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline) {
-                            Image(systemName: "chevron.right").ffFont(.caption).foregroundStyle(T.muted)
+                            if picking {
+                                Image(systemName: picked.contains(t.id) ? "checkmark.circle.fill" : "circle")
+                                    .ffFont(.headline).foregroundStyle(picked.contains(t.id) ? levelColor(t.id) : T.muted)
+                            } else {
+                                Image(systemName: "chevron.right").ffFont(.caption).foregroundStyle(T.muted)
+                            }
                             Text(t.name).ffFont(.headline).foregroundStyle(T.glyph)
                             Text("\(p.total) \((t.id > Lang.charTopicBase && t.id < Lang.freqWordBase) || t.id >= Lang.freqCharBase ? "字" : "詞")").ffFont(.caption).foregroundStyle(T.muted)
                             Spacer()
@@ -348,9 +395,19 @@ struct HSKProgressView: View {
                     }
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 16).fill(T.fn.opacity(0.55)))
+                    .overlay(RoundedRectangle(cornerRadius: 16).stroke(picking && picked.contains(t.id) ? levelColor(t.id) : .clear, lineWidth: 2))
                     .contentShape(RoundedRectangle(cornerRadius: 16))
                     }
-                    .buttonStyle(.plain)
+                    if picking {
+                        Button {
+                            if picked.contains(t.id) { picked.remove(t.id) } else { picked.insert(t.id) }
+                            confirming = false
+                        } label: { row }
+                        .buttonStyle(.plain)
+                    } else {
+                        NavigationLink(value: LevelRoute.level(t.id, t.name)) { row }
+                            .buttonStyle(.plain)
+                    }
                 }
                 if !store.isZh {
                     Text(tr("台語的詞照常用的程度分組，每組 \(Lang.freqSize) 個：最常用的在「常用詞 1–\(Lang.freqSize)」。單一個字的另外分在「常用字」。在「新詞」右上角可以選一組來滑。點一組可以看全部的詞，或一次把整組標成熟悉。"))
