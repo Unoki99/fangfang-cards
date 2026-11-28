@@ -44,6 +44,8 @@
         // subsSwell: the words of the line being said get bigger as it goes, as if timed like the lyrics (the line's
         // time shared out over its characters)
         subsSwell: false,
+        // subsSwapNext: 一句一句往上換 shows the next line, small, at the bottom (off: more room for the line being said)
+        subsSwapNext: true,
         // that row's height as dragged by its top edge (0 = as its words need); it keeps the whole width, centred
         subsFlowH: 0,
         // over / under the words you don't know in the subtitles: their reading, and their meaning (English or 中文, as 英文 is set)
@@ -3023,7 +3025,7 @@
         // (the second language: a smaller line under each one)
         const two = st.sec && st.sec.cues.length ? fs * 0.58 * 1.3 * 2 + 3 : 0;
         // (一句一句往上換: room for the next line, small, under the one being said)
-        const nextRoom = swap ? fs * 0.75 + 8 : 0;
+        const nextRoom = swap && prefs.subsSwapNext !== false ? fs * 0.75 + 8 : 0;
         const autoH = Math.round((bare ? 0 : 38) + two + nextRoom + Math.max(76, fs * (anno ? 2.9 + 1.25 * ((prefs.subsRd ? prefs.subsRdSize || 0.56 : 0) + (prefs.subsGl ? prefs.subsGlSize || 0.5 : 0)) : 3)));
         // (dragged taller or lower by its top edge: as dragged, between a little room for one line and most of the screen)
         const flowH = prefs.subsFlowH > 0 ? Math.round(Math.min(Math.max(prefs.subsFlowH, (bare ? 0 : 38) + 44), window.innerHeight * 0.85)) : autoH;
@@ -3109,6 +3111,7 @@
         row(ffT("影片上原本的字幕"), choice("subsHideVideo", [[false, ffT("顯示")], [true, ffT("隱藏")]], () => { subsHeader(); subsTick(); }));
         if (fsTarget() === document.documentElement || st.air) row(ffT("面板"), choice("subsFlow", [[false, ffT("旁邊，往上捲")], [true, ffT("下面一行")]], () => subsLayout()));
         if (st.flow) row(ffT("下面一行的字幕"), choice("subsFlowStyle", [["scroll", ffT("一直往旁邊移")], ["swap", ffT("一句一句往上換")]], () => subsLayout()));
+        if (st.flow && prefs.subsFlowStyle === "swap") row(ffT("下一句"), choice("subsSwapNext", [[true, ffT("小小的顯示在下面")], [false, ffT("不顯示（字更大）")]], () => subsSwapShow(st.now, false)));
         row(ffT("字跟著時間變大"), choice("subsSwell", [[false, ffT("關")], [true, ffT("開")]], () => subsLayout()));
         row(ffT("面板上的按鈕"), choice("subsBar", [[true, ffT("顯示")], [false, ffT("隱藏")]], () => subsLayout()));
         const done = document.createElement("button"); done.className = "done"; done.textContent = ffT("完成");
@@ -4003,6 +4006,8 @@
         const st = subs;
         if (!st.swapbox) { st.swapbox = document.createElement("div"); st.swapbox.className = "swapbox"; }
         if (st.swapbox.parentNode !== st.view) st.view.appendChild(st.swapbox);
+        st.swapbox.style.setProperty("--ff-rd", (prefs.subsRdSize || 0.56) + "em");
+        st.swapbox.style.setProperty("--ff-gl", (prefs.subsGlSize || 0.5) + "em");
         return st.swapbox;
     }
     function subsSwapCopy(i) {
@@ -4015,36 +4020,61 @@
         c.dataset.n = tx ? tx.childNodes.length + ":" + tx.textContent.length + ":" + (tx.firstChild ? tx.firstChild.nodeName : "") : "";
         return c;
     }
-    // (where each one goes: with a next line, the line being said ends a little below the middle and the next one
-    // starts under it, half the size; without one, the line in the middle)
+    // (the subtitles' own size, readings and meanings: the same as the row's)
+    function subsSwapBase() {
+        const st = subs;
+        return parseFloat(st.rail && st.rail.style.fontSize) || 18 * subsScale();
+    }
+    // (the line as big as the room allows: up to three times the subtitles' size, as long as it fits above the next
+    // line (or in the whole box, without one), wrapping when it's long. Each line gets the size it will have when
+    // it's being said; the next one is that line made small)
+    function subsSwapFit(el) {
+        const st = subs, box = st.swapbox;
+        const H = box.clientHeight || 100;
+        const base = subsSwapBase();
+        const room = H - (prefs.subsSwapNext === false ? 0 : Math.min(H * 0.3, base * 0.8 + 10)) - 6;
+        let lo = base * 0.7, hi = base * 3, best = lo;
+        for (let k = 0; k < 8; k++) {
+            const mid = (lo + hi) / 2;
+            el.style.fontSize = mid.toFixed(1) + "px";
+            if (el.offsetHeight <= room) { best = mid; lo = mid; } else hi = mid;
+        }
+        el.style.fontSize = best.toFixed(1) + "px";
+        el.dataset.fs = best;
+    }
+    // (where each one goes: the line being said in the middle of the room above the next one; the next one small,
+    // at the bottom)
     function subsSwapSet(el, role) {
         if (!el) return;
-        const st = subs, H = st.swapbox.clientHeight || 100, h = el.offsetHeight;
-        const hasNext = !!st.swapbox.querySelector(".sw-nxt:not(.sw-out)");
-        const line = H * 0.6;
+        const st = subs, box = st.swapbox, H = box.clientHeight || 100, h = el.offsetHeight;
+        const base = subsSwapBase(), next = prefs.subsSwapNext !== false;
+        const sN = Math.min(1, base * 0.6 / (+el.dataset.fs || base));
+        const room = H - (next ? Math.min(H * 0.3, base * 0.8 + 10) : 0) - 6;
         let y, sc = 1, op = 1;
-        if (role === "cur") y = hasNext ? Math.max(0, line - h) : Math.max(0, (H - h) / 2);
-        else if (role === "nxt") { y = line + 2; sc = 0.5; op = 0.55; }
-        else if (role === "in") { y = line + 28; sc = 0.5; op = 0; }
-        else { y = -h * 0.8; op = 0; }                                  // (out: up and away)
-        el.style.transform = `translate3d(0,${y.toFixed(1)}px,0) scale(${sc})`;
+        if (role === "cur") y = Math.max(0, (room - h) / 2);
+        else if (role === "nxt") { y = H - h * sN - 2; sc = sN; op = next ? 0.55 : 0; }
+        else if (role === "in") { y = H + 4; sc = sN; op = 0; }
+        else { y = -h * 0.7; op = 0; }                                  // (out: up and away)
+        el.style.transform = `translate3d(0,${y.toFixed(1)}px,0) scale(${sc.toFixed(3)})`;
         el.style.opacity = op;
     }
     function subsSwapPlace() {
         const st = subs;
         if (!st.swapbox) return;
         const cur = st.swapbox.querySelector(".sw-cur"), nxt = st.swapbox.querySelector(".sw-nxt");
+        if (cur) subsSwapFit(cur);
+        if (nxt) subsSwapFit(nxt);
         subsSwapSet(nxt, "nxt"); subsSwapSet(cur, "cur");
     }
     function subsSwapShow(at, anim) {
         const st = subs;
         if (!st.panel || !st.view) return;
         const box = subsSwapBox();
-        const mk = (i, cls) => { const c = subsSwapCopy(i); if (c) c.classList.add(cls); return c; };
+        const mk = (i, cls) => { const c = subsSwapCopy(i); if (c) { c.classList.add(cls); c.style.transition = "none"; box.appendChild(c); subsSwapFit(c); } return c; };
         if (!anim) {
+            box.replaceChildren();
             const cur = at >= 0 ? mk(at, "sw-cur") : null, nxt = mk(at + 1, "sw-nxt");
             if (cur) cur.classList.add("now");
-            box.replaceChildren(...[cur, nxt].filter(Boolean));
             for (const el of box.children) el.style.transition = "none";
             subsSwapPlace();
             void box.offsetWidth;
@@ -4060,12 +4090,11 @@
         // (the one that was next: a fresh copy (it may have been coloured since) in its place, then up)
         let cur = mk(at, "sw-cur");
         if (cur) {
-            cur.style.transition = "none";
-            if (oldNxt && +oldNxt.dataset.src === at) { cur.style.transform = oldNxt.style.transform; cur.style.opacity = oldNxt.style.opacity; oldNxt.replaceWith(cur); }
-            else { if (oldNxt) oldNxt.remove(); box.appendChild(cur); subsSwapSet(cur, "nxt"); }
+            if (oldNxt && +oldNxt.dataset.src === at) { cur.style.transform = oldNxt.style.transform; cur.style.opacity = oldNxt.style.opacity; oldNxt.remove(); }
+            else { if (oldNxt) oldNxt.remove(); subsSwapSet(cur, "nxt"); }
         } else if (oldNxt) oldNxt.remove();
         const nxt = mk(at + 1, "sw-nxt");
-        if (nxt) { nxt.style.transition = "none"; box.appendChild(nxt); subsSwapSet(nxt, "in"); }
+        if (nxt) subsSwapSet(nxt, "in");
         void box.offsetWidth;
         if (cur) { cur.style.transition = ""; cur.classList.add("now"); subsSwapSet(cur, "cur"); }
         if (nxt) { nxt.style.transition = ""; subsSwapSet(nxt, "nxt"); }
@@ -4085,6 +4114,7 @@
             if (role === "cur") c.classList.add("now");
             c.style.transition = "none";
             el.replaceWith(c);
+            subsSwapFit(c);
             subsSwapSet(c, role);
             void c.offsetWidth;
             c.style.transition = "";

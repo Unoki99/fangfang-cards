@@ -1,6 +1,9 @@
 // 方方詞卡 查詞: the add-on's own words in English, for 設定 → 介面語言 → English. Each Chinese text of the add-on
 // (as it is in content.js, options.js, popup.js) → its English. Words and meanings from the dictionaries stay as they are.
 var FF_EN = {
+    "下一句": "The next line",
+    "小小的顯示在下面": "Small, underneath",
+    "不顯示（字更大）": "Hidden (bigger text)",
     "一直往旁邊移，或一句說完往上換下一句（下一句小小的在下面）": "Keep moving sideways, or move up to the next line when one ends (the next one small below)",
     "正在說的字變大，像歌詞一樣": "The words being said grow, like in the lyrics",
     "連到方方詞卡（Windows）": "Link to 方方詞卡 (Windows)",
