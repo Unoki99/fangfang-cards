@@ -153,7 +153,7 @@
         choice("pageAnno", [[false, ffT("不標")], ["both", ffT("讀音和意思")], ["rd", ffT("只有讀音")], ["gl", ffT("只有意思")]], cc)));
     const onlySw = ffSwitch(prefs, "onlyNew");
     onlySw.style.setProperty("--c", cc);
-    tile(clG, ffT("只有標出來的詞上色"), ffT("其他的詞不上色（字幕和網頁都是）"), onlySw);
+    tile(clG, ffT("只有不熟的詞上色"), ffT("其他的詞不上色（字幕和網頁都是）"), onlySw);
     needWeb.push(tile(clG, ffT("收藏的詞"), ffT("網頁上收藏過的詞加彩虹框"), choice("ring", [[false, ffT("不標")], [true, ffT("彩虹框")]], cc)));
     tip(cl, "warn", ffT("「全部」在很長的網頁上可能會慢。"));
 

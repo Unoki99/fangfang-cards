@@ -1,6 +1,19 @@
 // 方方詞卡 查詞: the add-on's own words in English, for 設定 → 介面語言 → English. Each Chinese text of the add-on
 // (as it is in content.js, options.js, popup.js) → its English. Words and meanings from the dictionaries stay as they are.
 var FF_EN = {
+    "只有不熟的詞上色": "Colour only unknown words",
+    "橫的字幕：畫面上面的詞卡": "Horizontal subtitles: word cards at the top",
+    "標哪些詞（加讀音和意思）": "Which words to mark (reading and meaning)",
+    "第二種字幕（每一句下面）": "Second subtitles (under each line)",
+    "主要的字幕：用哪個語言的詞典": "Main subtitles: which dictionary",
+    "橫的字幕怎麼動": "How horizontal subtitles move",
+    "橫的（下面一行）": "Horizontal (one row below)",
+    "直的（旁邊，往上捲）": "Vertical (beside, scrolling up)",
+    "（全螢幕時都是橫的）": " (always horizontal in full screen)",
+    "字幕直的還是橫的": "Subtitles vertical or horizontal",
+    "全部的詞": "All words",
+    "繁體／簡體": "Traditional / simplified",
+    "注音／拼音": "Zhuyin / pinyin",
     "生詞：這部影片裡還不認識的詞": "New words: the words in this video you don't know yet",
     "詞典裡沒有「": "Not in the dictionary: \u201c",
     "」。": "\u201d.",

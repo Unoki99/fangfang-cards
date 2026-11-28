@@ -3153,16 +3153,26 @@
             b.addEventListener("click", () => { prefs[key] = v; savePrefs(); if (after) after(); redraw(); });
             return b;
         });
-        // (every subtitle setting, the same as on the settings page, in its order)
+        // (every subtitle setting: the ones used most first)
         const onOff = [[true, ffT("開")], [false, ffT("關")]];
         const relay = () => { subsSize(); subsLayout(); subsRedraw(); };
         const sec = t => { const x = document.createElement("h3"); x.textContent = t; x.style.cssText = "margin:18px 0 4px;font-size:15px;color:#c39bff"; card.appendChild(x); };
-        sec(ffT("面板"));
-        row(ffT("位置") + (fsTarget() === document.documentElement || st.air ? "" : ffT("（全螢幕時都在下面）")),
-            choice("subsFlow", [[false, ffT("旁邊，往上捲")], [true, ffT("下面一行")]], () => subsLayout()));
-        row(ffT("下面一行的字幕"), choice("subsFlowStyle", [["scroll", ffT("一直往旁邊移")], ["swap", ffT("一句一句往上換")]], () => subsLayout()));
-        row(ffT("下一句（一句一句往上換）"), choice("subsSwapNext", [[true, ffT("小小的顯示在下面")], [false, ffT("不顯示（字更大）")]], () => subsLayout()));
-        row(ffT("字跟著時間變大"), choice("subsSwell", [[false, ffT("關")], [true, ffT("開")]], () => subsLayout()));
+        row(ffT("注音／拼音"), choice("zhRom", [[1, ffT("注音")], [0, ffT("拼音")]], relay));
+        row(ffT("繁體／簡體"), choice("subsTrad", [[true, ffT("轉成繁體")], ["simp", ffT("轉成簡體")], [false, ffT("照原樣")]]));
+        // (顏色: none, every word, or only the words you don't know yet: two settings as one choice)
+        const colourNow = prefs.subsColours === false ? "none" : prefs.onlyNew ? "new" : "all";
+        row(ffT("顏色"), [["none", ffT("不上色")], ["all", ffT("全部的詞")], ["new", ffT("不熟的詞")]].map(([v, t]) => {
+            const b = document.createElement("button"); b.textContent = t;
+            if (v === colourNow) b.className = "on";
+            b.addEventListener("click", () => {
+                prefs.subsColours = v !== "none"; prefs.onlyNew = v === "new";
+                savePrefs(); relay(); redraw();
+            });
+            return b;
+        }));
+        row(ffT("字幕直的還是橫的") + (fsTarget() === document.documentElement || st.air ? "" : ffT("（全螢幕時都是橫的）")),
+            choice("subsFlow", [[false, ffT("直的（旁邊，往上捲）")], [true, ffT("橫的（下面一行）")]], () => subsLayout()));
+        row(ffT("橫的字幕怎麼動"), choice("subsFlowStyle", [["scroll", ffT("一直往旁邊移")], ["swap", ffT("一句一句往上換")]], () => subsLayout()));
         const SIZES = [0.85, 1, 1.15, 1.3, 1.5, 1.8, 2.2, 2.7];
         const size = d => {
             const b = document.createElement("button"); b.textContent = d < 0 ? "A−" : "A+";
@@ -3174,20 +3184,15 @@
             return b;
         };
         row(ffT("字的大小"), [size(-1), size(1)]);
-        row(ffT("面板的底"), choice("subsBg", [["dark", ffT("黑色")], ["tint", ffT("跟著底下的畫面")], ["clear", ffT("沒有底")]], () => { subsTint(); subsLayout(); }));
-        row(ffT("面板上的按鈕"), choice("subsBar", [[true, ffT("顯示")], [false, ffT("隱藏")]], () => subsLayout()));
-        row(ffT("影片上原本的字幕"), choice("subsHideVideo", [[false, ffT("顯示")], [true, ffT("隱藏")]], () => { subsHeader(); subsTick(); }));
-        row(ffT("查詞時影片暫停"), choice("subsPause", onOff));
-        row(ffT("字幕在下面橫排時的詞卡"), choice("subsDefs", [[true, ffT("顯示")], [false, ffT("不顯示")]], () => subsDefs(true)));
         sec(ffT("字幕的語言"));
-        row(ffT("用哪個語言的詞典看字幕"), choice("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]], relay));
-        row(ffT("華語讀音"), choice("zhRom", [[0, ffT("拼音")], [1, ffT("注音")]], relay));
-        row(ffT("字幕的字"), choice("subsTrad", [[true, ffT("轉成繁體")], [false, ffT("照原樣")], ["simp", ffT("轉成簡體")]]));
+        row(ffT("主要的字幕：用哪個語言的詞典"), choice("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]], relay));
         const s2 = subs2Select();
-        if (s2) row(ffT("第二語言（每一行下面）"), [s2]);
+        if (s2) row(ffT("第二種字幕（每一句下面）"), [s2]);
         row(ffT("英文字幕下面標中文"), choice("subsEnZh", onOff, relay));
-        sec(ffT("標出來的詞"));
-        row(ffT("標哪些詞"), choice("subsMark", [["new", ffT("不認識的詞")], ["rare", ffT("不常用的詞")], ["both", ffT("不認識又不常用的詞")]], relay));
+        sec(ffT("其他"));
+        row(ffT("下一句（一句一句往上換）"), choice("subsSwapNext", [[true, ffT("小小的顯示在下面")], [false, ffT("不顯示（字更大）")]], () => subsLayout()));
+        row(ffT("字跟著時間變大"), choice("subsSwell", [[false, ffT("關")], [true, ffT("開")]], () => subsLayout()));
+        row(ffT("標哪些詞（加讀音和意思）"), choice("subsMark", [["new", ffT("不認識的詞")], ["rare", ffT("不常用的詞")], ["both", ffT("不認識又不常用的詞")]], relay));
         row(ffT("多不常用才標"), choice("subsRare", [[1000, ffT("第 1001 個以後的詞")], [3000, ffT("第 3001 個以後的詞")], [8000, ffT("第 8001 個以後的詞")], [20000, ffT("第 20001 個以後的詞")]], relay));
         row(ffT("詞上的讀音、詞下的意思"), [
             ...choice("subsRd", [[true, ffT("讀音：開")], [false, ffT("讀音：關")]], relay),
@@ -3195,9 +3200,11 @@
         ]);
         row(ffT("讀音的大小"), choice("subsRdSize", [[0.32, ffT("很小")], [0.45, ffT("小")], [0.56, ffT("中")], [0.7, ffT("大")], [1, ffT("和字一樣")]], relay));
         row(ffT("意思的大小"), choice("subsGlSize", [[0.32, ffT("很小")], [0.4, ffT("小一點")], [0.5, ffT("中")], [0.6, ffT("大")], [0.75, ffT("更大")]], relay));
-        sec(ffT("顏色"));
-        row(ffT("字幕"), choice("subsColours", onOff, relay));
-        row(ffT("只有標出來的詞上色"), choice("onlyNew", [[false, ffT("關")], [true, ffT("開")]], relay));
+        row(ffT("面板的底"), choice("subsBg", [["dark", ffT("黑色")], ["tint", ffT("跟著底下的畫面")], ["clear", ffT("沒有底")]], () => { subsTint(); subsLayout(); }));
+        row(ffT("面板上的按鈕"), choice("subsBar", [[true, ffT("顯示")], [false, ffT("隱藏")]], () => subsLayout()));
+        row(ffT("影片上原本的字幕"), choice("subsHideVideo", [[false, ffT("顯示")], [true, ffT("隱藏")]], () => { subsHeader(); subsTick(); }));
+        row(ffT("查詞時影片暫停"), choice("subsPause", onOff));
+        row(ffT("橫的字幕：畫面上面的詞卡"), choice("subsDefs", [[true, ffT("顯示")], [false, ffT("不顯示")]], () => subsDefs(true)));
         const done = document.createElement("button"); done.className = "done"; done.textContent = ffT("完成");
         done.addEventListener("click", () => sh.remove());
         card.appendChild(done);
