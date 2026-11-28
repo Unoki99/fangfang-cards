@@ -1,6 +1,9 @@
 // 方方詞卡 查詞: the add-on's own words in English, for 設定 → 介面語言 → English. Each Chinese text of the add-on
 // (as it is in content.js, options.js, popup.js) → its English. Words and meanings from the dictionaries stay as they are.
 var FF_EN = {
+    "用哪個語言的詞典看字幕": "Which dictionary reads the subtitles",
+    "下一句（一句一句往上換）": "The next line (one line at a time)",
+    "（全螢幕時都在下面）": " (always below in full screen)",
     "下一句": "The next line",
     "小小的顯示在下面": "Small, underneath",
     "不顯示（字更大）": "Hidden (bigger text)",
