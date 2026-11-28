@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Liquid Glass (iOS 26) with a plain 方方-style fallback for older iOS or when switched off in 設定.
 
@@ -141,7 +142,26 @@ struct AppBackground: View {
     @State private var move = false
     private let glassOn = false   // the Liquid Glass look was taken out
 
+    @AppStorage(BgPhoto.amountKey) private var photoAmount = 0.5
+    @AppStorage(BgPhoto.versionKey) private var photoVersion = 0
+
     var body: some View {
+        ZStack {
+            themeBody
+            // 背景照片: over the theme, as much of it as chosen
+            if let img = BgPhoto.image(photoVersion) {
+                GeometryReader { g in
+                    Image(uiImage: img).resizable().scaledToFill()
+                        .frame(width: g.size.width, height: g.size.height).clipped()
+                }
+                .ignoresSafeArea()
+                .opacity(photoAmount)
+                .allowsHitTesting(false)
+            }
+        }
+    }
+
+    @ViewBuilder private var themeBody: some View {
         switch AppTheme.current {
         case .witch: WitchBackground()
         case .space: SpaceBackground()
@@ -180,4 +200,38 @@ struct AppBackground: View {
             .frame(width: size * 1.5, height: size * 1.5)
             .offset(move ? b : a)
     }
+}
+
+
+/// 背景照片 (設定 → 顏色與外觀): a photo from the album behind the whole app, over the theme; how much of it shows.
+/// Kept in the app's own folder, at most 2048 points on its long side
+enum BgPhoto {
+    static let amountKey = "bgPhotoAmount"
+    static let versionKey = "bgPhotoVersion"
+    private static var url: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("background.jpg")
+    }
+    static var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
+    nonisolated(unsafe) private static var cache: (Int, UIImage?)?
+    /// the photo (read again when the version changes)
+    static func image(_ version: Int) -> UIImage? {
+        if let c = cache, c.0 == version { return c.1 }
+        let img = exists ? UIImage(contentsOfFile: url.path) : nil
+        cache = (version, img)
+        return img
+    }
+    /// a photo picked: made smaller when it's big, and kept
+    static func save(_ data: Data) -> Bool {
+        guard let img = UIImage(data: data) else { return false }
+        let side = max(img.size.width, img.size.height), most: CGFloat = 2048
+        var out = img
+        if side > most {
+            let sz = CGSize(width: img.size.width * most / side, height: img.size.height * most / side)
+            out = UIGraphicsImageRenderer(size: sz).image { _ in img.draw(in: CGRect(origin: .zero, size: sz)) }
+        }
+        guard let jpg = out.jpegData(compressionQuality: 0.85) else { return false }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        return (try? jpg.write(to: url, options: .atomic)) != nil
+    }
+    static func remove() { try? FileManager.default.removeItem(at: url) }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PhotosUI
 
 // MARK: - 設定: a grid of topics; each opens its own page
 
@@ -159,15 +160,26 @@ struct SettingsPage<Content: View>: View {
 private struct LookSettings: View {
     @EnvironmentObject var store: Store
     @AppStorage(AppTheme.key) private var theme = AppTheme.night.rawValue
-    @State private var iconLight = UIApplication.shared.alternateIconName == "AppIconLight"
-
-    /// the home screen icon: AppIconLight (white, a black 方) or the usual dark one; iOS says it changed
-    private func setIcon(_ light: Bool) {
-        guard UIApplication.shared.supportsAlternateIcons else { return }
+    @State private var iconNow = UIApplication.shared.alternateIconName
+    /// the home screen icons: the usual dark one (nil), the light one, and one for each theme: the icon's name, its
+    /// name here, the small picture shown
+    private static let icons: [(String?, String, String)] = [
+        (nil, "方方之夜", "IconPreviewNight"), ("AppIconLight", "亮", "IconPreviewLight"),
+        ("AppIconWitch", "女巫小屋", "IconPreviewWitch"), ("AppIconSpace", "星空", "IconPreviewSpace"),
+        ("AppIconGoblin", "苔蘚小窩", "IconPreviewGoblin"), ("AppIconWinter", "雪夜", "IconPreviewWinter"),
+        ("AppIconSakura", "夜櫻", "IconPreviewSakura"), ("AppIconMomiji", "紅葉狩", "IconPreviewMomiji"),
+    ]
+    /// the home screen icon changed (iOS says so itself)
+    private func setIcon(_ name: String?) {
+        guard UIApplication.shared.supportsAlternateIcons, name != iconNow else { return }
         Task { @MainActor in
-            do { try await UIApplication.shared.setAlternateIconName(light ? "AppIconLight" : nil); iconLight = light } catch {}
+            do { try await UIApplication.shared.setAlternateIconName(name); iconNow = name } catch {}
         }
     }
+    /// 背景照片: one from the photo album behind everything, and how much of it shows
+    @State private var photoItem: PhotosPickerItem?
+    @AppStorage(BgPhoto.amountKey) private var photoAmount = 0.5
+    @AppStorage(BgPhoto.versionKey) private var photoVersion = 0
     @AppStorage(ToneColors.key) private var toneSys = 0
     @AppStorage(ToneColors.marksKey) private var toneMarks = false
     @AppStorage(ToneColors.glowKey) private var toneGlow = ToneColors.glowStandard
@@ -209,14 +221,64 @@ private struct LookSettings: View {
                 .pickerStyle(.menu)
                 Toggle(tr("主題動畫"), isOn: $themeMotion)
                 Toggle(tr("省電動畫"), isOn: $motionSaver).disabled(!themeMotion)
-                // (the icon on the home screen: dark, or light with a black 方)
-                Picker(tr("App 圖示"), selection: Binding(get: { iconLight ? 1 : 0 }, set: { setIcon($0 == 1) })) {
-                    Text(tr("暗")).tag(0)
-                    Text(tr("亮")).tag(1)
-                }
-                .pickerStyle(.segmented)
             } footer: {
                 Text(tr("關掉的話，主題的背景（螢火蟲、星星、雪）和藥水條都不會動，比較省電。省電動畫：雪和花瓣少一半，一秒只畫 12 次（開低耗電模式的時候也會自動這樣）。被別的頁面蓋住的背景不會動。"))
+            }
+            // App 圖示: the icons themselves to pick from
+            Section {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 14) {
+                        ForEach(Self.icons, id: \.2) { icon in
+                            let on = icon.0 == iconNow
+                            Button { setIcon(icon.0) } label: {
+                                VStack(spacing: 6) {
+                                    Image(icon.2).resizable().interpolation(.high)
+                                        .frame(width: 62, height: 62)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                            .stroke(on ? T.btnEdge : .clear, lineWidth: 3).padding(-4))
+                                        .shadow(color: on ? T.btnEdge.opacity(0.6) : .clear, radius: 8)
+                                    Text(trs(icon.1)).ffFont(.caption2, on ? .semibold : .regular)
+                                        .foregroundStyle(on ? T.glyph : T.muted).lineLimit(1)
+                                }
+                                .frame(width: 74)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(trs(icon.1))
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, 8).padding(.horizontal, 4)
+                }
+            } header: {
+                Text(tr("App 圖示"))
+            } footer: {
+                Text(tr("主畫面上的圖示。換的時候 iOS 會自己說一聲。"))
+            }
+            // 背景照片
+            Section {
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Label(BgPhoto.exists ? tr("換一張照片") : tr("選一張照片"), systemImage: "photo")
+                }
+                if BgPhoto.exists {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(tr("照片顯示多少：\(Int((photoAmount * 100).rounded()))%"))
+                        Slider(value: $photoAmount, in: 0.05...1, step: 0.05)
+                    }
+                    Button(tr("拿掉照片"), role: .destructive) { BgPhoto.remove(); photoVersion += 1 }
+                }
+            } header: {
+                Text(tr("背景照片"))
+            } footer: {
+                Text(tr("相簿裡的一張照片當整個 App 的背景，蓋在主題上面。顯示得少一點，字比較好讀。"))
+            }
+            .onChange(of: photoItem) {
+                guard let item = photoItem else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self), BgPhoto.save(data) {
+                        await MainActor.run { photoVersion += 1; photoItem = nil }
+                    }
+                }
             }
             // 日語: no tones; kanji, hiragana, katakana, particles and endings each in a colour (英語: no colours)
             if store.isEn {

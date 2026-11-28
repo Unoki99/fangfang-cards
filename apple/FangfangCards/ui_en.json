@@ -2105,5 +2105,12 @@
  "這部影片沒有字幕。": "This video has no subtitles.",
  "找不到的話會用另一個。": "If none are found there, the other is used.",
  "點要標成熟悉的等級": "Tap the levels to mark as known",
- "選了 {0} 個等級（{1} 個詞）": "{0} levels picked ({1} words)"
+ "選了 {0} 個等級（{1} 個詞）": "{0} levels picked ({1} words)",
+ "主畫面上的圖示。換的時候 iOS 會自己說一聲。": "The icon on the home screen. iOS says so itself when it changes.",
+ "換一張照片": "Choose another photo",
+ "選一張照片": "Choose a photo",
+ "照片顯示多少：{0}%": "How much of the photo shows: {0}%",
+ "拿掉照片": "Remove the photo",
+ "背景照片": "Background photo",
+ "相簿裡的一張照片當整個 App 的背景，蓋在主題上面。顯示得少一點，字比較好讀。": "A photo from your album as the whole app's background, over the theme. Showing less of it keeps the text easier to read."
 }
