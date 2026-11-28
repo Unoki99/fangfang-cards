@@ -2293,9 +2293,18 @@
     }
     // the language wanted: 台語, then 繁體, 粵語, 簡體, 日語, 瑞典語; written ones before automatic ones
     const SUBS_ORDER = ["nan", "zh-TW", "zh-Hant", "zh-HK", "yue", "zh", "zh-Hans", "zh-CN", "zh-SG", "ja", "sv"];
+    /// the main subtitles wanted: English ones when 主要的字幕 is 英語, or it's 自動 with 英語 the lookup language
+    /// (but not when English is the second subtitles: then Chinese ones are the main, English under them)
+    function subsWantEnglish() {
+        const sl = prefs.subsLang || "auto";
+        if (sl === "eng") return true;
+        if (sl !== "auto") return false;
+        return activeLang() === "eng" && !/^en/i.test(prefs.subs2 || "");
+    }
     function subsRank(t) {
-        // (英語 on: English ones first)
-        if (activeLang() === "eng" && /^en/i.test(t.lang)) return t.kind === "asr" ? 1 : 0;
+        if (subsWantEnglish() && /^en/i.test(t.lang)) return t.kind === "asr" ? 1 : 0;
+        // (the second subtitles' language: not the main one, so both show)
+        if (prefs.subs2 && subs2Match(t.lang, prefs.subs2)) return 500 + (t.kind === "asr" ? 1 : 0);
         let i = SUBS_ORDER.findIndex(l => t.lang === l || t.lang.toLowerCase() === l.toLowerCase());
         if (i < 0) i = /^zh/i.test(t.lang) ? 8 : 99;
         return i * 2 + (t.kind === "asr" ? 1 : 0);
@@ -2322,6 +2331,17 @@
             else if (pick) subsUseTrack(pick);
         }
         subsHeader();
+    }
+    /// 主要的字幕 or the second subtitles changed: the main ones picked again the same way as at the start
+    function subsRepick() {
+        const st = subs;
+        if (!st || !st.ytTracks || !st.ytTracks.length) return;
+        const pick = [...st.ytTracks].sort((a, b) => subsRank(a) - subsRank(b))[0];
+        const zh = (st.ytTrans || []).find(t => t.lang === "zh-Hant") || (st.ytTrans || []).find(t => t.lang === "zh-TW");
+        let id = "";
+        if (pick && subsRank(pick) >= 198 && zh) { const b = subsBase(); id = subsId(b.lang, b.kind, zh.lang); if (id !== st.cur) subsUseTrack(b, zh); }
+        else if (pick) { id = subsId(pick.lang, pick.kind); if (id !== st.cur) subsUseTrack(pick); }
+        setTimeout(() => subs2Pick(true), 400);
     }
     /// what YouTube translates from: the video's own subtitles (written ones before automatic ones)
     function subsBase() {
@@ -3121,17 +3141,21 @@
             css.textContent = `
 #ff-subs-sheet { position: fixed; inset: 0; z-index: 2147483646; display: flex; align-items: center; justify-content: center;
   background: rgba(0,0,0,.45); font: 15px -apple-system, system-ui, sans-serif; color: #e8eaf3; }
-#ff-subs-sheet .card { width: min(560px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: 16px 16px 12px;
+#ff-subs-sheet .card { width: min(900px, calc(100vw - 24px)); max-height: calc(100vh - 32px); overflow-y: auto; padding: 16px 16px 12px;
   border-radius: 18px; background: rgba(22,24,36,.97); border: 1px solid rgba(255,255,255,.14); box-shadow: 0 12px 40px rgba(0,0,0,.5); }
 #ff-subs-sheet h3 { margin: 0 0 10px; font-size: 18px; }
-#ff-subs-sheet .row { margin: 12px 0; }
+/* (the settings in a grid of tiles, as many side by side as fit) */
+#ff-subs-sheet .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+#ff-subs-sheet .row { margin: 0; padding: 10px 12px 12px; border-radius: 14px; background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.09); }
+#ff-subs-sheet .row button { min-height: 40px; padding: 0 12px; }
 #ff-subs-sheet .lab { font-size: 13px; color: #9aa0b8; margin-bottom: 6px; }
 #ff-subs-sheet .seg { display: flex; flex-wrap: wrap; gap: 8px; }
 #ff-subs-sheet button, #ff-subs-sheet select { min-height: 44px; padding: 0 16px; border-radius: 12px; font: inherit; cursor: pointer;
   color: #e8eaf3; background: rgba(255,255,255,.07); border: 1.5px solid rgba(255,255,255,.16); }
 #ff-subs-sheet button.on { background: rgba(195,155,255,.28); border-color: #c39bff; color: #fff; font-weight: 600; }
 #ff-subs-sheet select { width: 100%; }
-#ff-subs-sheet .done { width: 100%; margin-top: 8px; background: rgba(195,155,255,.35); border-color: #c39bff; font-weight: 600; }`;
+#ff-subs-sheet .done { width: 100%; margin-top: 14px; background: rgba(195,155,255,.35); border-color: #c39bff; font-weight: 600; }`;
             (document.head || document.documentElement).appendChild(css);
         }
         sh = document.createElement("div"); sh.id = "ff-subs-sheet";
@@ -3140,11 +3164,14 @@
         sh.addEventListener("click", e => { if (e.target === sh) sh.remove(); });
         for (const ev of ["pointerdown", "pointerup", "mousedown", "mouseup", "keydown", "wheel", "touchstart"]) card.addEventListener(ev, e => e.stopPropagation());
         const h = document.createElement("h3"); h.textContent = ffT("字幕設定"); card.appendChild(h);
+        // (the tiles go in a grid; a heading starts a new one)
+        let grid = null;
         const row = (label, kids) => {
+            if (!grid) { grid = document.createElement("div"); grid.className = "grid"; card.appendChild(grid); }
             const r = document.createElement("div"); r.className = "row";
             const l = document.createElement("div"); l.className = "lab"; l.textContent = label;
             const g = document.createElement("div"); g.className = "seg"; g.append(...kids);
-            r.append(l, g); card.appendChild(r);
+            r.append(l, g); grid.appendChild(r);
         };
         const redraw = () => { sh.remove(); subsSheet(); };
         const choice = (key, opts, after) => opts.map(([v, t]) => {
@@ -3156,7 +3183,7 @@
         // (every subtitle setting: the ones used most first)
         const onOff = [[true, ffT("開")], [false, ffT("關")]];
         const relay = () => { subsSize(); subsLayout(); subsRedraw(); };
-        const sec = t => { const x = document.createElement("h3"); x.textContent = t; x.style.cssText = "margin:18px 0 4px;font-size:15px;color:#c39bff"; card.appendChild(x); };
+        const sec = t => { const x = document.createElement("h3"); x.textContent = t; x.style.cssText = "margin:18px 0 8px;font-size:15px;color:#c39bff"; card.appendChild(x); grid = null; };
         row(ffT("注音／拼音"), choice("zhRom", [[1, ffT("注音")], [0, ffT("拼音")]], relay));
         row(ffT("繁體／簡體"), choice("subsTrad", [[true, ffT("轉成繁體")], ["simp", ffT("轉成簡體")], [false, ffT("照原樣")]]));
         // (顏色: none, every word, or only the words you don't know yet: two settings as one choice)
@@ -3185,7 +3212,7 @@
         };
         row(ffT("字的大小"), [size(-1), size(1)]);
         sec(ffT("字幕的語言"));
-        row(ffT("主要的字幕：用哪個語言的詞典"), choice("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]], relay));
+        row(ffT("主要的字幕"), choice("subsLang", [["auto", ffT("自動（跟查詞的語言）")], ["zh", ffT("華語")], ["tw", ffT("台語")], ["yue", ffT("粵語")], ["hak", ffT("客語")], ["eng", ffT("英語")]], () => { relay(); subsRepick(); }));
         const s2 = subs2Select();
         if (s2) row(ffT("第二種字幕（每一句下面）"), [s2]);
         row(ffT("英文字幕下面標中文"), choice("subsEnZh", onOff, relay));
@@ -3419,7 +3446,7 @@
                 if (m) sel2.value = m.code;
                 else { const x = document.createElement("option"); x.value = want; x.textContent = "+ " + want + ffT("（這部影片沒有）"); sel2.appendChild(x); sel2.value = want; }
             } else sel2.value = want;
-            sel2.addEventListener("change", () => { prefs.subs2 = sel2.value; savePrefs(); subs2Pick(true); });
+            sel2.addEventListener("change", () => { prefs.subs2 = sel2.value; savePrefs(); subs2Pick(true); subsRepick(); });
             return sel2;
         }
     }
