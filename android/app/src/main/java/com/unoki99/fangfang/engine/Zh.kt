@@ -915,7 +915,17 @@ class ZhDict(src: java.io.BufferedReader, val accent: Int = EngineSettings.hakAc
 
     fun entry(k: String): ZhEntry? = index[k]?.let { entries[it] }
     /** whether the dictionary has the word (as written; 瑞典語 / 英語: in small letters, or one of its forms) */
-    fun has(w: String): Boolean = byHan.containsKey(w) || byHan.containsKey(buildString { w.codePoints().forEach { appendCodePoint(Simp.reverse(it) ?: it) } }) || (isSv && (byPlain.containsKey(w.lowercase()) || svKey(w) != null))
+    fun has(w: String): Boolean = wordIndices(w).isNotEmpty()
+    /** the entries of a word (as written, or in 正體; 瑞典語 / 英語: in small letters, or the word it's a form of: ran → run) */
+    fun wordIndices(w: String): List<Int> {
+        byHan[w]?.let { return it }
+        byHan[buildString { w.codePoints().forEach { appendCodePoint(Simp.reverse(it) ?: it) } }]?.let { return it }
+        if (isSv) {
+            byPlain[w.lowercase()]?.let { return it }
+            svKey(w)?.let { k -> index[k]?.let { return listOf(it) } }
+        }
+        return emptyList()
+    }
     fun others(e: ZhEntry): List<ZhEntry> = (byHan[e.h] ?: emptyList<Int>()).map { entries[it] }.filter { it.k != e.k && it.h == e.h }
 
     // MARK: readings

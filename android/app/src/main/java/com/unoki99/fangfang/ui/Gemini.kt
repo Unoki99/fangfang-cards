@@ -176,21 +176,30 @@ fun GeminiSettings() {
 /** a search that found nothing: the words Gemini thinks were meant (when it's turned on); tapping one searches the
  *  dictionary for it. `addTerm`: 華語's add-to-自訂 */
 @Composable
-fun GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, addTerm: ((Gemini.Term) -> Unit)? = null,
+fun <K> GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, addTerm: ((Gemini.Term) -> Unit)? = null,
                       /** a word Gemini gave that the dictionary doesn't have (has: whether it does): saved as your own
                        *  word (自訂), its meaning what was searched */
-                      has: (String) -> Boolean = { false }, addOwn: ((String) -> Unit)? = null) {
+                      has: (String) -> Boolean = { false }, addOwn: ((String) -> Unit)? = null,
+                      /** the dictionary's entries for a word Gemini gave, shown as they are in the list (no need to
+                       *  search it again); a word with none is a button that searches it */
+                      found: (String) -> List<K> = { emptyList() }, row: (@Composable (K) -> Unit)? = null) {
     if (!Gemini.on) return
     var got by remember { mutableStateOf<Gemini.Suggestion?>(null) }
     var gotFor by remember { mutableStateOf("") }
     var failed by remember { mutableStateOf<String?>(null) }
+    // (each word's entries, looked up in the background before the words are shown)
+    var foundMap by remember { mutableStateOf<Map<String, List<K>>>(emptyMap()) }
     LaunchedEffect(query) {
         val q = query.trim()
         if (q.isEmpty() || gotFor == query) return@LaunchedEffect
         failed = null
         // (only once typing has stopped for a moment: a new query cancels this)
         delay(900)
-        try { got = Gemini.suggest(q, lang); gotFor = query } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { failed = Gemini.message(e) }
+        try {
+            val s = Gemini.suggest(q, lang)
+            foundMap = if (row == null) emptyMap() else withContext(Dispatchers.Default) { s.words.associateWith { runCatching { found(it).take(3) }.getOrDefault(emptyList()) } }
+            got = s; gotFor = query
+        } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Throwable) { failed = Gemini.message(e) }
     }
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(T.fn.copy(alpha = 0.6f)).padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Txt(tr("Gemini 猜你要找的詞"), ff(FF.Caption, FontWeight.Bold), T.muted)
@@ -200,16 +209,22 @@ fun GeminiSuggestions(query: String, lang: Int, search: (String) -> Unit, addTer
         else if (g == null || gotFor != query) Txt(tr("問 Gemini 中…"), ff(FF.Footnote), T.muted)
         else {
             if (g.note.isNotEmpty()) Txt(g.note, ff(FF.Footnote), T.muted)
-            for (w in g.words) Row(Modifier.fillMaxWidth().clickable { search(w) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Txt(w, ff(FF.Title3, FontWeight.SemiBold), T.glyph, Modifier.weight(1f))
-                if (addOwn != null && !has(w)) TextButton(onClick = { addOwn(w) }) { Text(tr("＋存成自訂詞"), color = T.ownInk) }
-                Txt("⌕", ff(FF.Title3), T.btnInk)
+            for (w in g.words) {
+                val idx = foundMap[w].orEmpty()
+                if (row != null && idx.isNotEmpty()) idx.forEach { row(it) }
+                else Row(Modifier.fillMaxWidth().clickable { search(w) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Txt(w, ff(FF.Title3, FontWeight.SemiBold), T.glyph, Modifier.weight(1f))
+                    if (addOwn != null && (if (row != null) idx.isEmpty() else !has(w))) TextButton(onClick = { addOwn(w) }) { Text(tr("＋存成自訂詞"), color = T.ownInk) }
+                    Txt("⌕", ff(FF.Title3), T.btnInk)
+                }
             }
             if (g.words.isEmpty()) Txt(tr("Gemini 也不知道。"), ff(FF.Footnote), T.muted)
             val t = g.term
             if (t != null && addTerm != null) TextButton(onClick = { addTerm(t) }) { Text(tr("把「{0}」加到自訂（{1}）", t.h, t.pinyin), color = T.ownInk) }
         }
-        Txt(if (addOwn == null) tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。")
+        Txt(if (row != null) (if (addOwn == null) tr("Gemini 猜的詞，詞典有的直接列出來；沒有的，點一下再查。")
+                else tr("Gemini 猜的詞，詞典有的直接列出來；沒有的，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。", query))
+            else if (addOwn == null) tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。")
             else tr("Gemini 猜的，不是詞典的內容：點一個詞，再用詞典查。詞典沒有的詞，按旁邊的＋存成自訂詞（意思先填你查的「{0}」）。", query), ff(FF.Caption2), T.muted)
     }
 }

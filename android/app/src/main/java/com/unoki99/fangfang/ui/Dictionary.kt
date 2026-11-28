@@ -678,18 +678,22 @@ fun SwipeRow(
 fun LazyListScope.keyItems(d: Dict, title: String, keys: List<String>, englishQuery: String? = null) {
     if (keys.isEmpty()) return
     if (title.isNotEmpty()) item { SectionTitle(title) }
-    items(keys, key = { "k|$title|$it" }) { k ->
-        val nav = LocalNav.current
-        val pick = LocalSplitPick.current
-        Store.rev
-        Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
-            SwipeRow(
-                start = if (Store.cardStatus(k) == 0) Pair(tr("加到不熟"), T.rustEdge) else null,
-                end = Pair(if (Store.isSaved(k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
-                onStart = { Store.toggleUnknown(k) }, onEnd = { Store.toggleSaved(k) },
-                onClick = { pick?.invoke(k) ?: nav.push(Route.Entry(k)) },
-            ) { DictRow(d, k, englishQuery = englishQuery) }
-        }
+    items(keys, key = { "k|$title|$it" }) { k -> KeyRow(d, k, englishQuery) }
+}
+
+/** a 台語 word in a list, as keyItems shows it: tap to open, swipe to 不熟 / 收藏 */
+@Composable
+fun KeyRow(d: Dict, k: String, englishQuery: String? = null) {
+    val nav = LocalNav.current
+    val pick = LocalSplitPick.current
+    Store.rev
+    Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
+        SwipeRow(
+            start = if (Store.cardStatus(k) == 0) Pair(tr("加到不熟"), T.rustEdge) else null,
+            end = Pair(if (Store.isSaved(k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
+            onStart = { Store.toggleUnknown(k) }, onEnd = { Store.toggleSaved(k) },
+            onClick = { pick?.invoke(k) ?: nav.push(Route.Entry(k)) },
+        ) { DictRow(d, k, englishQuery = englishQuery) }
     }
 }
 
@@ -969,7 +973,9 @@ private fun LookupList(d: Dict) {
         }
         if (query.isNotEmpty() && r.empty && searched == query) item { Txt(tr("找不到「{0}」。", query), ff(FF.Body), T.muted, Modifier.padding(8.dp)) }
         if (query.isNotEmpty() && r.empty && searched == query && Gemini.on) item {
-            GeminiSuggestions(query, 0, { query = it }, addOwn = { w -> addOwn = w to query })
+            // (each word Gemini gives looked up in the background: its 台語 words listed right away)
+            GeminiSuggestions(query, 0, { query = it }, addOwn = { w -> addOwn = w to query },
+                found = { w -> Lookup.run(d, w, place, Prefs).let { (it.taigi + it.exact).distinct() } }, row = { k -> KeyRow(d, k) })
         }
         if (r.isPattern) {
             keyItems(d, tr("台語詞「{0}」（{1}）", query, if (r.pattern.size == 300) "300+" else r.pattern.size.toString()), r.pattern)

@@ -179,7 +179,8 @@ private fun ZhLookupList(z: ZhDict) {
         if (query.isNotEmpty() && searched == query && Gemini.on &&
             (f.empty || (z.isSv && (f.weak || query.codePoints().anyMatch { Zhuyin.isHan(it) })))) item {
             GeminiSuggestions(query, z.lang, { query = it }, if (z.lang == 1) { t -> addTerm = t } else null,
-                has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query })
+                has = { w -> z.has(w) }, addOwn = { w -> addOwn = w to query },
+                found = { w -> z.wordIndices(w).filter { it < z.entries.size } }, row = { i -> ZhListRow(z, i) })
         }
         // 瑞典語: a word the dictionary doesn't have, worked out; words found through a 華語 word's English
         f.svEst?.let { est -> if (est.parts.size > 1 || est.steps.isNotEmpty()) item { Box(Modifier.padding(8.dp)) { SvEstimateBlock(z, est) } } }
@@ -206,18 +207,24 @@ internal fun LazyListScope.zhItems(z: ZhDict, title: String, list: List<Int>, en
     if (list.isEmpty()) return
     item { SectionTitle(title) }
     items(list.take(if (limit > 0) limit else if (english) 250 else 500).filter { it < z.entries.size }, key = { "z|$title|$it" }) { i ->
-        val nav = LocalNav.current
-        val pick = LocalSplitPick.current
-        val e = z.entries[i]
-        Store.rev
-        Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
-            SwipeRow(
-                start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) tr("移回新詞") else tr("加到不熟"), T.rustEdge) else null,
-                end = Pair(if (Store.isSaved(e.k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
-                onStart = { Store.toggleUnknown(e.k) }, onEnd = { Store.toggleSaved(e.k) },
-                onClick = { pick?.invoke(e.k) ?: nav.push(Route.ZhEntry(e.k)) },
-            ) { ZhWordRow(z, e, english, query = query) }
-        }
+        ZhListRow(z, i, english, query)
+    }
+}
+
+/** a word in a list, as zhItems shows it: tap to open, swipe to 不熟 / 收藏 */
+@Composable
+fun ZhListRow(z: ZhDict, i: Int, english: Boolean = false, query: String? = null) {
+    val nav = LocalNav.current
+    val pick = LocalSplitPick.current
+    val e = z.entries[i]
+    Store.rev
+    Box(Modifier.clip(RoundedCornerShape(10.dp)).padding(vertical = 1.dp)) {
+        SwipeRow(
+            start = if (Store.cardStatus(e.k) != 1) Pair(if (Store.cardStatus(e.k) == 2) tr("移回新詞") else tr("加到不熟"), T.rustEdge) else null,
+            end = Pair(if (Store.isSaved(e.k)) tr("取消收藏") else tr("收藏"), T.oliveEdge),
+            onStart = { Store.toggleUnknown(e.k) }, onEnd = { Store.toggleSaved(e.k) },
+            onClick = { pick?.invoke(e.k) ?: nav.push(Route.ZhEntry(e.k)) },
+        ) { ZhWordRow(z, e, english, query = query) }
     }
 }
 
