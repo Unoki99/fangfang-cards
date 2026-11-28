@@ -2969,6 +2969,11 @@
 #ff-subs.swell .tx .h, #ff-subs.swell .tx .su { display: inline-block; transform-origin: 50% 85%; transition: transform .22s ease-out; }
 #ff-subs.swell .tx .sw1 { transform: scale(1.06); }
 #ff-subs.swell .tx .sw2 { transform: scale(1.3); }
+/* (words in letters (English, Swedish…): a little hop up instead of growing, so a long word doesn't cover the
+   ones beside it) */
+#ff-subs.swell .tx .su { transform-origin: 50% 100%; transition: transform .28s cubic-bezier(.3, 1.8, .5, 1); }
+#ff-subs.swell .tx .su.sw1 { transform: none; }
+#ff-subs.swell .tx .su.sw2 { transform: translateY(-.24em); }
 @media (prefers-reduced-motion: reduce) { #ff-subs .rail, #ff-subs .swapbox .line { transition: none; } }`;
         (document.head || document.documentElement).appendChild(css);
         const p = document.createElement("div");
