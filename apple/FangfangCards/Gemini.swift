@@ -243,6 +243,8 @@ struct GeminiSuggestSection: View {
     var addTerm: ((Gemini.Term) -> Void)? = nil
     /// a word Gemini gave that the dictionary doesn't have: saved as your own word (自訂), its meaning what was searched
     var addOwn: ((String) -> Void)? = nil
+    /// looks the words up (in the background) before they're shown, for `row` (台語: a search each)
+    var prefetch: (([String]) async -> Void)? = nil
     @AppStorage(Gemini.onKey) private var on = false
     @AppStorage(Gemini.keyKey) private var key = ""
     @State private var got: Gemini.Suggestion?
@@ -327,6 +329,7 @@ struct GeminiSuggestSection: View {
         guard !Task.isCancelled else { return }
         do {
             let s = try await Gemini.suggest(q, lang: lang)
+            if let prefetch { await prefetch(s.words + s.phraseWords) }
             guard !Task.isCancelled else { return }
             got = s; gotFor = query
         } catch {

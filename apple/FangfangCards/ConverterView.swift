@@ -2134,6 +2134,17 @@ struct LookupPane: View {
     @State private var picked: Int?
     /// a word Gemini gave, being saved as your own (自訂)
     @State private var addOwn: GeminiOwnItem?
+    /// the 台語 words for each word Gemini gave (looked up before they're shown)
+    @State private var geminiKeys = GeminiKeys()
+    final class GeminiKeys: @unchecked Sendable { var m: [String: [String]] = [:] }
+
+    /// a word Gemini gave: its 台語 words as the list shows them (nil: none, shown as a button that searches it)
+    private func geminiRow(_ w: String) -> AnyView? {
+        guard let ks = geminiKeys.m[w], !ks.isEmpty else { return nil }
+        return AnyView(ForEach(ks, id: \.self) { k in
+            EntryLink(value: DictKey(k: k)) { DictRow(dict: dict, key: k) }
+        })
+    }
 
     /// 部首查字, 依詞類列出, 單詞比較, 日語借詞, (a 腔口 chosen: its own words,) 依常用度列出
     private var tiles: [AnyView] {
@@ -2224,8 +2235,22 @@ struct LookupPane: View {
             // (nothing found, or only your own words: what Gemini thinks was meant, when it's turned on; tap one to search it),
             // after everything found
             if !query.isEmpty && (result.empty || result.onlyOwn) && searched == query {
-                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { _ in nil },
-                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) })
+                // (each word Gemini gives looked up in the background: its 台語 words listed right away)
+                GeminiSuggestSection(query: query, lang: 0, search: { query = $0 }, row: { geminiRow($0) },
+                                     addOwn: { addOwn = GeminiOwnItem(word: $0, meaning: query) },
+                                     prefetch: { words in
+                                         let d = dict, pl = place
+                                         let m = await Task.detached(priority: .userInitiated) { () -> [String: [String]] in
+                                             var out: [String: [String]] = [:]
+                                             for w in words {
+                                                 let r = Lookup.run(d, w, place: pl)
+                                                 var seen = Set<String>()
+                                                 out[w] = Array((r.taigi + r.exact).filter { seen.insert($0).inserted }.prefix(3))
+                                             }
+                                             return out
+                                         }.value
+                                         geminiKeys.m.merge(m) { _, new in new }
+                                     })
             }
         }
         .scrollContentBackground(.hidden)
