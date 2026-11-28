@@ -198,6 +198,9 @@
     const subsCol = () => prefs.subsColours !== false;
     function fixPrefs(p) {
         const out = { ...DEFAULTS, ...(p || {}) };
+        // (Firefox: the panel without its rows of buttons, only the gear and 生詞 beside the subtitles, once; the
+        // gear's 面板上的按鈕 brings them back)
+        if (/Firefox\//.test(navigator.userAgent) && !out.subsBarFx) { out.subsBar = false; out.subsBarFx = true; }
         if (out.corner === true && (!p || !p.pos)) out.pos = "tl";      // (the older 左上角 setting)
         delete out.corner;
         // one language at a time: the first one on (none: 華語)
@@ -2889,6 +2892,12 @@
 #ff-subs.bare.flow .view { bottom: 0; }
 #ff-subs.bare .gear { opacity: .55; background: rgba(16,18,28,.7); }
 #ff-subs.bare .gear:hover { opacity: 1; }
+/* (橫排 without the buttons: the gear and 生詞 one above the other at the left, beside the subtitles, not over them) */
+#ff-subs.bare.flow .gear { top: 8px; bottom: auto; left: 8px; }
+#ff-subs.bare.flow .gear.words { top: 42px; left: 8px; }
+#ff-subs.bare.flow .view { left: 42px; }
+/* (直排 without the buttons: the two side by side in the corner, the first line a little lower) */
+#ff-subs.bare:not(.flow) .view { top: 40px; }
 #ff-subs .empty { display: block; padding: 18px; color: #8b90a8; font-size: 14px; }
 #ff-subs.flow { left: 12px; right: 12px; bottom: 12px; top: auto; width: auto; height: 116px; }
 /* (橫排: the edges faded by the panel's own colour laid over them, not by a mask: a masked box with a moving row in
