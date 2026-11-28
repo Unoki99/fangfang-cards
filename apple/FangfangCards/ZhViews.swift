@@ -459,6 +459,11 @@ struct ZhEntryBody: View {
                 // phone: the characters got squeezed and the reading broke in the middle)
                 let head = TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl)) { tapped = ZhKey(k: $0) }
                     .toneGlow().fixedSize()
+                // (a very long word or saying, 一言既出，駟馬難追: smaller, and on two lines when even that doesn't fit)
+                let small = TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl), size: 32) { tapped = ZhKey(k: $0) }
+                    .toneGlow().fixedSize()
+                let wrapped = TappableHeadword(text: dict.hanText(entry.h, syl, base: T.glyph), targets: charKeys(syl), size: 32, wrap: true) { tapped = ZhKey(k: $0) }
+                    .toneGlow()
                 let reading = Text(dict.reading(syl, store.zhRom)).toneGlow().latFont(22).foregroundStyle(T.greenInk).textSelection(.enabled)
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .center, spacing: 12) {
@@ -486,6 +491,28 @@ struct ZhEntryBody: View {
                         }
                         HStack(alignment: .center, spacing: 12) {
                             reading
+                            PlayButton(path: entry.audio ?? "tts:" + entry.h)
+                        }
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .center, spacing: 12) {
+                            small
+                            Spacer(minLength: 0)
+                            FrequencyBadge(key: entry.k)
+                        }
+                        HStack(alignment: .center, spacing: 12) {
+                            reading
+                            PlayButton(path: entry.audio ?? "tts:" + entry.h)
+                        }
+                    }
+                    // (the last one always fits: the word and its reading wrap)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .top, spacing: 12) {
+                            wrapped.frame(maxWidth: .infinity, alignment: .leading)
+                            FrequencyBadge(key: entry.k)
+                        }
+                        HStack(alignment: .center, spacing: 12) {
+                            reading.frame(maxWidth: .infinity, alignment: .leading)
                             PlayButton(path: entry.audio ?? "tts:" + entry.h)
                         }
                     }

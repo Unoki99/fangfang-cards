@@ -128,11 +128,20 @@ struct TappableHeadword: View {
     /// for each character: what to open when it's tapped (nil = not tappable)
     let targets: [String?]
     var size: CGFloat = 44
+    /// a word too long for the screen: the characters go on to the next line
+    var wrap = false
     let onTap: (String) -> Void
 
     var body: some View {
+        if wrap {
+            FlowLayout(spacing: 0, lineSpacing: 0) { characters }
+        } else {
+            HStack(spacing: 0) { characters }
+        }
+    }
+
+    @ViewBuilder private var characters: some View {
         let chars = splitCharacters(text)
-        HStack(spacing: 0) {
             ForEach(Array(chars.enumerated()), id: \.offset) { i, ch in
                 let t = Text(ch).scaledFont(size, weight: .semibold)
                 if chars.count > 1, i < targets.count, let k = targets[i] {
@@ -144,6 +153,5 @@ struct TappableHeadword: View {
                     t
                 }
             }
-        }
     }
 }

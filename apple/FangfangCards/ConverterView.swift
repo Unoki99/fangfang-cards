@@ -1533,7 +1533,9 @@ struct FlowLayout: Layout {
         let w = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, maxX: CGFloat = 0
         for s in subviews {
-            let sz = s.sizeThatFits(.unspecified)
+            // (one wider than the row: as wide as the row, wrapping inside)
+            var sz = s.sizeThatFits(.unspecified)
+            if sz.width > w { sz = s.sizeThatFits(ProposedViewSize(width: w, height: nil)) }
             if (x > 0 && x + sz.width > w + 0.5) || (s[FlowBreak.self] && (x > 0 || y > 0 || row > 0)) {
                 x = 0; y += row + (lineSpacing ?? spacing); row = 0
             }
@@ -1547,8 +1549,10 @@ struct FlowLayout: Layout {
         // line would hang over whatever comes below
         let maxX = bounds.minX + max(bounds.width, proposal.width ?? 0) + 0.5
         var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
+        let rowW = max(bounds.width, proposal.width ?? 0)
         for s in subviews {
-            let sz = s.sizeThatFits(.unspecified)
+            var sz = s.sizeThatFits(.unspecified)
+            if sz.width > rowW { sz = s.sizeThatFits(ProposedViewSize(width: rowW, height: nil)) }
             if (x > bounds.minX && x + sz.width > maxX) || (s[FlowBreak.self] && (x > bounds.minX || y > bounds.minY || row > 0)) {
                 x = bounds.minX; y += row + (lineSpacing ?? spacing); row = 0
             }
